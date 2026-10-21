@@ -9,9 +9,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.URI
+import java.io.IOException
 import javax.inject.Inject
 import kotlin.apply
 
@@ -51,9 +52,13 @@ class DefaultServerConfigurationRepository @Inject constructor(
     private fun probeServerHealth(serverUrl: String): ServerProbeStatus {
         val httpClient = OkHttpClient.Builder().build()
         val request = Request.Builder().url("$serverUrl/api/_health").get().build()
-        val probeResponse = httpClient.newCall(request).execute()
+        val isSuccessful = try {
+            httpClient.newCall(request).execute().use { it.isSuccessful }
+        } catch (_: IOException) {
+            false
+        }
 
-        return if (probeResponse.isSuccessful) {
+        return if (isSuccessful) {
             ServerProbeStatus.SERVER_FOUND
         } else {
             ServerProbeStatus.SERVER_NOT_FOUND
@@ -67,9 +72,7 @@ class DefaultServerConfigurationRepository @Inject constructor(
             normalized = "http://$normalized"
         }
         normalized = normalized.trimEnd('/')
-        val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
-        if (uri.host == null) return null
-        return normalized
+        return normalized.takeIf { it.toHttpUrlOrNull() != null }
     }
 
     companion object {
