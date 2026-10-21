@@ -64,8 +64,10 @@ class DefaultAuthRepository @Inject constructor(
                         //todo: do something with the user info that returned from this call
                         authTokenStore.save(token)
                         AuthLoginResult.Authenticated
-                    } else {
+                    } else if (response.code == 401){
                         AuthLoginResult.Unauthenticated
+                    } else {
+                        AuthLoginResult.Error
                     }
                 }
             } catch (ex: Exception) {

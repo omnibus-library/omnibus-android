@@ -37,6 +37,7 @@ Run from the `omnibus/` directory:
 Follow the documents in `docs/engineering/`:
 
 - [Architecture](docs/engineering/architecture.md): MVVM, uni-directional data flow (state flows up from data layers to the UI, events flow down from the UI to data layers), and standard concurrency best practices.
+- [Feature Layers](docs/engineering/feature-layers.md): Screen (Compose) → ViewModel → Repository → Data sources, with conventions per layer. The login feature is the reference implementation.
 - [Commits](docs/engineering/commits.md): Never commit directly to `main`; work on a branch and merge via pull request. Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification).
 - [KDocs](docs/engineering/kdocs.md): Document public APIs with KDoc. Keep descriptions concise and avoid restating what is obvious from the signature.
 - [Testing](docs/engineering/testing.md): Unit test non-Android Kotlin/KMP code with Kotest on the JUnit runner, preferring the [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec) style. Test code that needs an Android `Context` with instrumented tests in `app/src/androidTest/`.
