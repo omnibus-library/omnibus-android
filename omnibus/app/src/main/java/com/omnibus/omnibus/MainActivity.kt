@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
+import com.omnibus.omnibus.feature.auth.ui.LoginScreen
+import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreen
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -19,9 +25,32 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val backstack = rememberNavBackStack(ServerConfigurationScreenRoute)
+
             OmnibusTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    ServerConfigurationScreenRoute(modifier = Modifier.padding(innerPadding))
+
+                    NavDisplay(
+                        modifier = Modifier.padding(innerPadding),
+                        backStack = backstack,
+                        onBack = {
+                            backstack.removeLastOrNull()
+                        },
+                        entryProvider = entryProvider {
+                            entry<ServerConfigurationScreenRoute> {
+                                ServerConfigurationScreen(onServerConfigurationSaved = {
+                                    backstack.add(LoginScreenRoute)
+                                })
+                            }
+                            entry<LoginScreenRoute> {
+                                LoginScreen(
+                                    onLogin = {
+                                        //todo
+                                    }
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }

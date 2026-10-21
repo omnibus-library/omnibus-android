@@ -11,8 +11,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -23,26 +25,38 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.auth.LoginStatus
 import com.omnibus.omnibus.feature.auth.LoginUIState
 import com.omnibus.omnibus.feature.auth.LoginViewModel
+import kotlinx.serialization.Serializable
+
+@Serializable
+data object LoginScreenRoute: NavKey
 
 @Composable
-fun LoginScreenRoute(
+fun LoginScreen(
+    onLogin: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentOnLogin by rememberUpdatedState(onLogin)
 
-    LoginScreen(modifier = modifier, uiState = uiState) { username, password ->
-        viewModel.attemptLogin(username, password)
+    LaunchedEffect(uiState.loginStatus) {
+        if (uiState.loginStatus == LoginStatus.LOGGED_IN) {
+            currentOnLogin()
+        }
     }
 
+    LoginContent(modifier = modifier, uiState = uiState) { username, password ->
+        viewModel.attemptLogin(username, password)
+    }
 }
 
 @Composable
-private fun LoginScreen(
+private fun LoginContent(
     modifier: Modifier,
     uiState: LoginUIState,
     onSignIn: (username: String, password: String) -> Unit
@@ -102,8 +116,8 @@ private fun LoginScreen(
 
 @Composable
 @PreviewLightDark
-fun LoginScreenRoutePreviewBasic() {
-    LoginScreen(
+fun LoginContentRoutePreviewBasic() {
+    LoginContent(
         modifier = Modifier,
         uiState = LoginUIState()
     ) { username, password ->

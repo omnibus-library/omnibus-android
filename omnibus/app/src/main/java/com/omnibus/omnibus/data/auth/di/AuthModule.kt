@@ -7,8 +7,6 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import javax.inject.Singleton
 import javax.inject.Qualifier
 
@@ -24,10 +22,6 @@ abstract class AuthModule {
 
     companion object {
         @Provides
-        @IoDispatcher
-        fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
-
-        @Provides
         @BaseUrl
         fun provideBaseUrl(): String = "https://read.h00n.dev/"
     }
@@ -36,7 +30,3 @@ abstract class AuthModule {
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class BaseUrl
-
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class IoDispatcher

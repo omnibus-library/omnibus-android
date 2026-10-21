@@ -5,9 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
-import com.omnibus.omnibus.data.auth.di.IoDispatcher
 import com.omnibus.omnibus.data.configuration.DefaultServerConfigurationRepository
 import com.omnibus.omnibus.data.configuration.ServerConfigurationRepository
+import com.omnibus.omnibus.di.IoDispatcher
 import dagger.Binds
 import dagger.Module
 import dagger.Provides

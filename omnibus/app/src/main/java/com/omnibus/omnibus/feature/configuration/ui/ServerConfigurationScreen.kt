@@ -10,9 +10,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,17 +22,31 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.configuration.ServerConfigSubmissionStatus
 import com.omnibus.omnibus.feature.configuration.ServerConfigUIState
 import com.omnibus.omnibus.feature.configuration.ServerConfigurationViewModel
+import kotlinx.serialization.Serializable
+
+@Serializable
+data object ServerConfigurationScreenRoute: NavKey
 
 @Composable
-fun ServerConfigurationScreenRoute(
+fun ServerConfigurationScreen(
+    onServerConfigurationSaved: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: ServerConfigurationViewModel = hiltViewModel()
+    viewModel: ServerConfigurationViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    ServerConfigurationScreen(
+    val currentOnServerConfigurationSaved by rememberUpdatedState(onServerConfigurationSaved)
+
+    LaunchedEffect(uiState.submissionStatus) {
+        if (uiState.submissionStatus == ServerConfigSubmissionStatus.ACCEPTED) {
+            currentOnServerConfigurationSaved()
+        }
+    }
+
+    ServerConfigurationContent(
         modifier = modifier,
         uiState = uiState
     ) { serverUrl ->
@@ -39,7 +55,7 @@ fun ServerConfigurationScreenRoute(
 }
 
 @Composable
-private fun ServerConfigurationScreen(
+private fun ServerConfigurationContent(
     modifier: Modifier,
     uiState: ServerConfigUIState,
     onConfigSubmitted: (serverUrl: String) -> Unit
@@ -80,8 +96,8 @@ private fun ServerConfigurationScreen(
 
 @Composable
 @PreviewLightDark
-fun ServerConfigurationScreenRoutePreviewBasic() {
-    ServerConfigurationScreen(
+fun ServerConfigurationContentRoutePreviewBasic() {
+    ServerConfigurationContent(
         modifier = Modifier,
         uiState = ServerConfigUIState()
     ) {
@@ -91,8 +107,8 @@ fun ServerConfigurationScreenRoutePreviewBasic() {
 
 @Composable
 @PreviewLightDark
-fun ServerConfigurationScreenRoutePreviewDisabled() {
-    ServerConfigurationScreen(
+fun ServerConfigurationContentRoutePreviewDisabled() {
+    ServerConfigurationContent(
         modifier = Modifier,
         uiState = ServerConfigUIState(submissionStatus = ServerConfigSubmissionStatus.PENDING)
     ) {

@@ -7,31 +7,41 @@ import com.omnibus.omnibus.data.configuration.ServerValidationResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 @HiltViewModel
 class ServerConfigurationViewModel @Inject constructor(
     private val serverConfigRepo: ServerConfigurationRepository,
 ) : ViewModel() {
 
-    private val _uiState: MutableStateFlow<ServerConfigUIState> =
-        MutableStateFlow(ServerConfigUIState())
-    val uiState: StateFlow<ServerConfigUIState> = _uiState.asStateFlow()
+    private val serverConfigState: StateFlow<String?> = serverConfigRepo.fetchSavedServerConfig()
+        .stateIn(scope = viewModelScope, initialValue = "", started = SharingStarted.Lazily)
 
-    init {
-        viewModelScope.launch {
-            serverConfigRepo.fetchSavedServerConfig().map { savedConfigValue ->
-                _uiState.update { it.copy(savedConfigurationValue = savedConfigValue ?: "") }
-            }
-        }
-    }
+    private var _submissionStatusState = MutableStateFlow(ServerConfigSubmissionStatus.UNSUBMITTED)
+
+    val uiState: StateFlow<ServerConfigUIState> =
+        combine(serverConfigState, _submissionStatusState) { serverConfig, submissionStatus ->
+            ServerConfigUIState(
+                submissionStatus = submissionStatus,
+                savedConfigurationValue = serverConfig ?: ""
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Lazily,
+            initialValue = ServerConfigUIState()
+        )
 
     fun submitServerUrl(serverUrl: String) {
-        _uiState.update { it.copy(submissionStatus = ServerConfigSubmissionStatus.PENDING) }
+        _submissionStatusState.update { ServerConfigSubmissionStatus.PENDING }
+
         viewModelScope.launch {
             val submissionResult = serverConfigRepo.validateServerAddress(address = serverUrl)
             val submissionStatus = when (submissionResult) {
@@ -41,7 +51,11 @@ class ServerConfigurationViewModel @Inject constructor(
                 else -> ServerConfigSubmissionStatus.UNSUBMITTED
             }
 
-            _uiState.update { it.copy(submissionStatus = submissionStatus) }
+            if (submissionResult == ServerValidationResult.Success) {
+                serverConfigRepo.saveServerConfig(address = serverUrl)
+            }
+
+            _submissionStatusState.update { submissionStatus }
         }
     }
 }

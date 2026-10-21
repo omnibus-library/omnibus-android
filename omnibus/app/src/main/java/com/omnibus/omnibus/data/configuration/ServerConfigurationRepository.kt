@@ -4,8 +4,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.omnibus.omnibus.data.configuration.di.ServerConfigPreferences
+import com.omnibus.omnibus.di.IoDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.URI
@@ -13,22 +16,25 @@ import javax.inject.Inject
 import kotlin.apply
 
 class DefaultServerConfigurationRepository @Inject constructor(
-    @param:ServerConfigPreferences private val serverConfigPreferences: DataStore<Preferences>
+    @param:ServerConfigPreferences private val serverConfigPreferences: DataStore<Preferences>,
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ServerConfigurationRepository {
 
-    override fun validateServerAddress(address: String): ServerValidationResult {
-        val normalizedAddress = normalizeServerAddress(address)
+    override suspend fun validateServerAddress(address: String): ServerValidationResult {
+        return withContext(ioDispatcher) {
+            val normalizedAddress = normalizeServerAddress(address)
 
-        return normalizedAddress?.let { serverAddress ->
-            val probeResponse = probeServerHealth(serverAddress)
-            when (probeResponse) {
-                ServerProbeStatus.SERVER_FOUND -> {
-                    ServerValidationResult.Success
+            normalizedAddress?.let { serverAddress ->
+                val probeResponse = probeServerHealth(serverAddress)
+                when (probeResponse) {
+                    ServerProbeStatus.SERVER_FOUND -> {
+                        ServerValidationResult.Success
+                    }
+
+                    else -> ServerValidationResult.ServerNotFound
                 }
-
-                else -> ServerValidationResult.ServerNotFound
-            }
-        } ?: ServerValidationResult.InvalidAddressFormat
+            } ?: ServerValidationResult.InvalidAddressFormat
+        }
     }
 
     override suspend fun saveServerConfig(address: String) {
@@ -39,7 +45,7 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
-    override suspend fun fetchSavedServerConfig(): Flow<String?> =
+    override fun fetchSavedServerConfig(): Flow<String?> =
         serverConfigPreferences.data.map { configDataStore -> configDataStore[SERVER_URL_PREFS_KEY] }
 
     private fun probeServerHealth(serverUrl: String): ServerProbeStatus {
@@ -72,10 +78,10 @@ class DefaultServerConfigurationRepository @Inject constructor(
 }
 
 interface ServerConfigurationRepository {
-    fun validateServerAddress(address: String): ServerValidationResult
+    suspend fun validateServerAddress(address: String): ServerValidationResult
     suspend fun saveServerConfig(address: String)
 
-    suspend fun fetchSavedServerConfig(): Flow<String?>
+    fun fetchSavedServerConfig(): Flow<String?>
 }
 
 enum class ServerProbeStatus {

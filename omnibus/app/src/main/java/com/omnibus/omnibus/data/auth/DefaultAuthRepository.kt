@@ -1,11 +1,11 @@
 package com.omnibus.omnibus.data.auth
 
 import android.util.Log
-import com.omnibus.omnibus.data.auth.di.IoDispatcher
 import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
 import com.omnibus.omnibus.data.auth.remote.OmnibusHttpClient
+import com.omnibus.omnibus.di.IoDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
