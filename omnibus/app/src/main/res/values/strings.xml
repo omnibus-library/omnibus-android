@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Omnibus</string>
+
+    <!-- Server configuration -->
+    <string name="server_config_title">Connect to Omnibus</string>
+    <string name="server_config_subtitle">Point the app at your self-hosted library server.</string>
+    <string name="server_config_address_label">Server address</string>
+    <string name="server_config_address_placeholder" translatable="false">192.168.1.10:3000</string>
+    <!-- %1$s is the URL scheme (server_config_https_scheme), rendered in monospace. -->
+    <string name="server_config_address_hint">Include the port if it isn\'t 80 or 443. %1$s is assumed only if you type it.</string>
+    <string name="server_config_https_scheme" translatable="false">https://</string>
+    <string name="server_config_connect">Connect</string>
+    <!-- Spoken by screen readers while the server is being checked. -->
+    <string name="server_config_connecting">Connecting</string>
+    <string name="server_config_error_invalid_address">That doesn\'t look like a valid address.</string>
+    <!-- %1$s is the server address the user entered. -->
+    <string name="server_config_error_unreachable">Couldn\'t reach %1$s.</string>
 </resources>

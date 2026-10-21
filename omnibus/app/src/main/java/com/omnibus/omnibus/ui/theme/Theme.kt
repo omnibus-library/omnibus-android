@@ -1,58 +1,65 @@
 package com.omnibus.omnibus.ui.theme
 
-import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
+private val LocalOmnibusPalette = staticCompositionLocalOf { OmnibusPalette.Atrium }
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-)
-
+/**
+ * Applies the Atrium palette to [content], both as [OmnibusTheme.palette] and mapped onto the
+ * Material [ColorScheme] so stock Material components pick up the same colors.
+ *
+ * @param darkTheme Selects [OmnibusPalette.Atrium] when true, [OmnibusPalette.Light] otherwise.
+ */
 @Composable
 fun OmnibusTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
+    val palette = if (darkTheme) OmnibusPalette.Atrium else OmnibusPalette.Light
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    CompositionLocalProvider(LocalOmnibusPalette provides palette) {
+        MaterialTheme(
+            colorScheme = palette.toColorScheme(darkTheme),
+            typography = Typography,
+            content = content
+        )
     }
+}
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+object OmnibusTheme {
+    /** The palette provided by the nearest enclosing [OmnibusTheme]. */
+    val palette: OmnibusPalette
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalOmnibusPalette.current
+}
+
+private fun OmnibusPalette.toColorScheme(darkTheme: Boolean): ColorScheme {
+    val base = if (darkTheme) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = accent,
+        onPrimary = accentInk,
+        secondary = accent,
+        onSecondary = accentInk,
+        tertiary = accent,
+        onTertiary = accentInk,
+        background = bg0,
+        onBackground = ink0,
+        surface = bg0,
+        onSurface = ink0,
+        surfaceVariant = bg1,
+        onSurfaceVariant = ink2,
+        outline = line,
+        outlineVariant = line,
+        error = bad,
+        onError = accentInk,
     )
 }
