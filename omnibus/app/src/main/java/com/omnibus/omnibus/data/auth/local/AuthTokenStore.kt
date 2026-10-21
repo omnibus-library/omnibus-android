@@ -29,23 +29,11 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/**
- * Persists the bearer token used to authenticate requests against the Omnibus API.
- */
-interface AuthTokenStore {
-    /** The currently stored token, or `null` when signed out. */
-    val token: Flow<String?>
-
-    suspend fun save(token: String)
-
-    suspend fun clear()
-}
-
 @Singleton
-class DefaultAuthTokenStore @Inject constructor(
+class AuthTokenStore @Inject constructor(
     @param:ApplicationContext private val context: Context,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
-) : AuthTokenStore {
+) {
     private val dataStore: DataStore<Preferences> by lazy {
         AeadConfig.register()
         val keysetHandle = AndroidKeysetManager.Builder()
@@ -71,13 +59,13 @@ class DefaultAuthTokenStore @Inject constructor(
         )
     }
 
-    override val token: Flow<String?> = flow {
+    val token: Flow<String?> = flow {
         emitAll(dataStore.data.map { preferences ->
             preferences[AUTH_TOKEN]
         })
     }
 
-    override suspend fun save(token: String) {
+    suspend fun save(token: String) {
         withContext(ioDispatcher) {
             dataStore.updateData { preferences ->
                 preferences.toMutablePreferences().apply {
@@ -87,7 +75,7 @@ class DefaultAuthTokenStore @Inject constructor(
         }
     }
 
-    override suspend fun clear() {
+    suspend fun clear() {
         withContext(ioDispatcher) {
             dataStore.updateData { preferences ->
                 preferences.toMutablePreferences().apply {

@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class AuthSignInResponseDto(
     val user: UserInfoDto,
-    val token: String,
+    val token: String? = null,
 ) {
     companion object {
         fun fromJsonString(jsonString: String): AuthSignInResponseDto =

@@ -1,13 +1,13 @@
 package com.omnibus.omnibus.data.auth.remote
 
 import com.omnibus.omnibus.data.auth.di.BaseUrl
+import javax.inject.Inject
+import javax.inject.Singleton
 import okhttp3.Call
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import javax.inject.Inject
-import javax.inject.Singleton
 
 @Singleton
 class OmnibusHttpClient @Inject constructor(

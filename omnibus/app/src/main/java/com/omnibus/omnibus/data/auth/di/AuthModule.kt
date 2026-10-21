@@ -2,8 +2,6 @@ package com.omnibus.omnibus.data.auth.di
 
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.DefaultAuthRepository
-import com.omnibus.omnibus.data.auth.local.AuthTokenStore
-import com.omnibus.omnibus.data.auth.local.DefaultAuthTokenStore
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -24,12 +22,6 @@ abstract class AuthModule {
         repository: DefaultAuthRepository,
     ): AuthRepository
 
-    @Binds
-    @Singleton
-    abstract fun bindAuthTokenStore(
-        tokenStore: DefaultAuthTokenStore,
-    ): AuthTokenStore
-
     companion object {
         @Provides
         @IoDispatcher
@@ -37,7 +29,6 @@ abstract class AuthModule {
 
         @Provides
         @BaseUrl
-        //fixme: read this from the server config; not use hardcoded value
         fun provideBaseUrl(): String = "https://read.h00n.dev/"
     }
 }
