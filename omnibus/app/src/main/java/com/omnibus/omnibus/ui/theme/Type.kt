@@ -19,6 +19,9 @@ val UiFontFamily = FontFamily(
     Font(R.font.instrument_sans_semibold, FontWeight.SemiBold),
 )
 
+/** Space Mono, for addresses, numerals, and keys. Only Regular is bundled. */
+val MonoFontFamily = FontFamily(Font(R.font.space_mono_regular))
+
 /**
  * A complete [TextStyle] in [DisplayFontFamily], so it replaces rather than merges with
  * `LocalTextStyle` (whose Material letter spacing would otherwise leak in).
@@ -39,6 +42,17 @@ fun displayTextStyle(size: Int, color: Color) = TextStyle(
 fun uiTextStyle(size: Int, weight: FontWeight, color: Color) = TextStyle(
     fontFamily = UiFontFamily,
     fontWeight = weight,
+    fontSize = size.sp,
+    color = color,
+)
+
+/**
+ * A complete [TextStyle] in [MonoFontFamily]; see [displayTextStyle].
+ *
+ * @param size Font size in sp.
+ */
+fun monoTextStyle(size: Int, color: Color) = TextStyle(
+    fontFamily = MonoFontFamily,
     fontSize = size.sp,
     color = color,
 )

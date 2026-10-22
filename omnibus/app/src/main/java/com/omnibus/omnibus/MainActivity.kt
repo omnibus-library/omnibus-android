@@ -12,9 +12,11 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.feature.auth.ui.LoginScreen
+import com.omnibus.omnibus.feature.auth.ui.LoginScreenAction
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
-import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreen
+import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenAction
+import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -38,16 +40,32 @@ class MainActivity : ComponentActivity() {
                         },
                         entryProvider = entryProvider {
                             entry<ServerConfigurationScreenRoute> {
-                                ServerConfigurationScreen(onServerConfigurationSaved = {
-                                    backstack.add(LoginScreenRoute)
+                                ServerConfigurationScreen(onAction = { action ->
+                                    when (action) {
+                                        is ServerConfigurationScreenAction.SaveServerConfiguration -> {
+                                            backstack.removeLastOrNull()
+                                            backstack.add(LoginScreenRoute)
+                                        }
+                                    }
                                 })
                             }
                             entry<LoginScreenRoute> {
-                                LoginScreen(
-                                    onLogin = {
-                                        //todo
+                                LoginScreen(onAction = { action ->
+                                    when (action) {
+                                        is LoginScreenAction.Login -> {
+                                            // do login shit
+                                        }
+
+                                        is LoginScreenAction.ChangeServer -> {
+                                            backstack.removeLastOrNull()
+                                            backstack.add(ServerConfigurationScreenRoute)
+                                        }
+
+                                        is LoginScreenAction.Register -> {
+                                            // do registration shit
+                                        }
                                     }
-                                )
+                                })
                             }
                         }
                     )

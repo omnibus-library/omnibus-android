@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.auth.remote.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import javax.inject.Inject
 
 class DefaultAuthRepository @Inject constructor(
@@ -25,7 +26,15 @@ class DefaultAuthRepository @Inject constructor(
         val request = omnibusHttpClient.request(LOGIN_PATH).post(body).build()
 
         return withContext(ioDispatcher) {
-            omnibusHttpClient.newCall(request).execute().use { result ->
+            val call = omnibusHttpClient.newCall(request)
+            val httpResponse = try {
+                call.execute()
+            } catch (ex: IOException) {
+                Log.e(TAG, "Unable to reach the server", ex)
+                return@withContext AuthSignInResult.Error
+            }
+
+            httpResponse.use { result ->
                 Log.d(TAG, "Login Result: $result")
 
                 if (result.isSuccessful) {

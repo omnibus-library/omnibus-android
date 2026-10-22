@@ -4,24 +4,42 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.AuthSignInResult
+import com.omnibus.omnibus.data.configuration.ServerConfigurationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    serverConfigRepo: ServerConfigurationRepository,
 ) : ViewModel() {
 
-    private val _uiState: MutableStateFlow<LoginUIState> = MutableStateFlow(LoginUIState())
-    val uiState: StateFlow<LoginUIState> = _uiState.asStateFlow()
+    private val loginStatus = MutableStateFlow(LoginStatus.NOT_LOGGED_IN)
+
+    val uiState: StateFlow<LoginUIState> =
+        combine(serverConfigRepo.fetchSavedServerConfig(), loginStatus) { serverAddress, status ->
+
+            val loginStatus =
+                if (serverAddress.isNullOrBlank()) LoginStatus.MISSING_SERVER_CONFIG else status
+
+            LoginUIState(loginStatus = loginStatus, serverAddress = serverAddress.orEmpty())
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Lazily,
+            initialValue = LoginUIState(),
+        )
 
     fun attemptLogin(username: String, password: String) {
-        if (uiState.value.loginStatus != LoginStatus.AUTH_PENDING) {
+        if (loginStatus.value != LoginStatus.AUTH_PENDING) {
+            loginStatus.update { LoginStatus.AUTH_PENDING }
+
             viewModelScope.launch {
                 val signInResult = authRepository.signIn(
                     username = username,
@@ -30,10 +48,11 @@ class LoginViewModel @Inject constructor(
 
                 when (signInResult) {
                     is AuthSignInResult.Success -> {
-                        _uiState.update { it.copy(loginStatus = LoginStatus.LOGGED_IN) }
+                        loginStatus.update { LoginStatus.LOGGED_IN }
                     }
+
                     else -> {
-                        _uiState.update { it.copy(loginStatus = LoginStatus.AUTH_FAILED) }
+                        loginStatus.update { LoginStatus.AUTH_FAILED }
                     }
                 }
             }
@@ -42,12 +61,14 @@ class LoginViewModel @Inject constructor(
 }
 
 data class LoginUIState(
-    val loginStatus: LoginStatus = LoginStatus.NOT_LOGGED_IN
+    val loginStatus: LoginStatus = LoginStatus.NOT_LOGGED_IN,
+    val serverAddress: String = "",
 )
 
 enum class LoginStatus {
     NOT_LOGGED_IN,
     AUTH_PENDING,
     LOGGED_IN,
-    AUTH_FAILED
+    AUTH_FAILED,
+    MISSING_SERVER_CONFIG
 }
