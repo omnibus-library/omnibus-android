@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthRegisterResult
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.AuthSignInResult
 import com.omnibus.omnibus.data.configuration.ServerConfigurationRepository
@@ -75,8 +76,52 @@ class LoginViewModel @Inject constructor(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun attemptRegister(username: String, password: String) = Unit
+    fun attemptRegister(username: String, password: String) {
+        if (loginStatus.value != LoginStatus.AUTH_PENDING) {
+            loginStatus.update { LoginStatus.AUTH_PENDING }
+
+            viewModelScope.launch {
+                val registerResult = authRepository.register(
+                    username = username,
+                    password = password
+                )
+
+                when (registerResult) {
+                    is AuthRegisterResult.Success -> {
+                        loginStatus.update { LoginStatus.LOGGED_IN }
+                    }
+
+                    is AuthRegisterResult.NoServer -> {
+                        loginStatus.update { LoginStatus.MISSING_SERVER_CONFIG }
+                    }
+
+                    AuthRegisterResult.UsernameTaken -> {
+                        loginStatus.update { LoginStatus.USERNAME_TAKEN }
+                    }
+
+                    AuthRegisterResult.RegistrationDisabled -> {
+                        loginStatus.update { LoginStatus.REGISTRATION_DISABLED }
+                    }
+
+                    AuthRegisterResult.InvalidDetails -> {
+                        loginStatus.update { LoginStatus.INVALID_DETAILS }
+                    }
+
+                    AuthRegisterResult.TooManyAttempts -> {
+                        loginStatus.update { LoginStatus.TOO_MANY_ATTEMPTS }
+                    }
+
+                    AuthRegisterResult.Unreachable -> {
+                        loginStatus.update { LoginStatus.SERVER_UNREACHABLE }
+                    }
+
+                    AuthRegisterResult.ServerError -> {
+                        loginStatus.update { LoginStatus.SERVER_ERROR }
+                    }
+                }
+            }
+        }
+    }
 }
 
 data class LoginUIState(
