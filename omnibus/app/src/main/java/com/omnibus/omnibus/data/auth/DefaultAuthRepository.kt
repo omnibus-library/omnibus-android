@@ -9,6 +9,10 @@ import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import javax.inject.Inject
@@ -19,9 +23,11 @@ class DefaultAuthRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : AuthRepository {
 
-    // STUB(Stage 3): replace with the real implementation.
-    override val isSignedIn: Flow<Boolean>
-        get() = TODO("Stage 3")
+    override val isSignedIn: Flow<Boolean> =
+        authTokenStore.token
+            .map { !it.isNullOrBlank() }
+            .catch { emit(false) }
+            .distinctUntilChanged()
 
     override suspend fun signIn(
         username: String,
@@ -86,12 +92,52 @@ class DefaultAuthRepository @Inject constructor(
             AuthSignOutResult.Failure
         }
 
-    // STUB(Stage 3): replace with the real implementation.
-    override suspend fun verifySession(): AuthSessionResult = TODO("Stage 3")
+    override suspend fun verifySession(): AuthSessionResult = withContext(ioDispatcher) {
+        val storedToken = try {
+            authTokenStore.token.first()
+        } catch (ex: IOException) {
+            Log.e(TAG, "Unable to read the stored auth token", ex)
+            null
+        }
+        if (storedToken.isNullOrBlank()) {
+            return@withContext AuthSessionResult.NoSession
+        }
+
+        val request = omnibusHttpClient.request(ME_PATH)
+            ?: return@withContext AuthSessionResult.NoServer
+
+        val httpResponse = try {
+            omnibusHttpClient.execute(request.get().build())
+        } catch (ex: IOException) {
+            Log.e(TAG, "Unable to reach the server", ex)
+            return@withContext AuthSessionResult.Unreachable
+        }
+
+        httpResponse.use { result ->
+            Log.d(TAG, "Verify session result: $result")
+            when {
+                result.isSuccessful -> {
+                    Log.d(TAG, "Session status: Valid")
+                    AuthSessionResult.Valid
+                }
+                // The client already invalidated the token on this 401.
+                result.code == 401 -> {
+                    Log.d(TAG, "Session status: Rejected")
+                    AuthSessionResult.Rejected
+                }
+                else -> {
+                    Log.d(TAG, "Session status: Failed")
+                    Log.d(TAG, "Failure Response: ${result.message}")
+                    AuthSessionResult.ServerError
+                }
+            }
+        }
+    }
 
     internal companion object {
         const val TAG = "DefaultAuthRepository"
 
         const val LOGIN_PATH = "api/auth/login"
+        const val ME_PATH = "api/auth/me"
     }
 }
