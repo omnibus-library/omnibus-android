@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Intentionally empty. Like iOS's generated launch screen, the system splash is only the launch
+  ground; the stoat mark and spinner are drawn by LaunchScreen once the app is running, so
+  nothing jumps between the two.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <size
+        android:width="1dp"
+        android:height="1dp" />
+    <solid android:color="@android:color/transparent" />
+</shape>

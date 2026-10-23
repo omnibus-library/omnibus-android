@@ -16,7 +16,7 @@ import com.google.crypto.tink.RegistryConfiguration
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.aead.PredefinedAeadParameters
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
-import com.omnibus.omnibus.data.auth.di.IoDispatcher
+import com.omnibus.omnibus.di.IoDispatcher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,11 +29,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/**
- * Persists the bearer token used to authenticate requests against the Omnibus API.
- */
+/** Persists the auth token issued by the server. */
 interface AuthTokenStore {
-    /** The currently stored token, or `null` when signed out. */
+    /** The stored token, or null when signed out. */
     val token: Flow<String?>
 
     suspend fun save(token: String)

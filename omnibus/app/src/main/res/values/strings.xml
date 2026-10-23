@@ -1,3 +1,37 @@
 <resources>
     <string name="app_name">Omnibus</string>
+
+    <!-- Spoken by screen readers while the app is starting. -->
+    <string name="launch_loading">Loading Omnibus</string>
+
+    <!-- Server configuration -->
+    <string name="server_config_title">Connect to Omnibus</string>
+    <string name="server_config_subtitle">Point the app at your self-hosted library server.</string>
+    <string name="server_config_address_label">Server address</string>
+    <string name="server_config_address_placeholder" translatable="false">192.168.1.10:3000</string>
+    <!-- %1$s is the URL scheme (server_config_https_scheme), rendered in monospace. -->
+    <string name="server_config_address_hint">Include the port if it isn\'t 80 or 443. %1$s is assumed only if you type it.</string>
+    <string name="server_config_https_scheme" translatable="false">https://</string>
+    <string name="server_config_connect">Connect</string>
+    <!-- Spoken by screen readers while the server is being checked. -->
+    <string name="server_config_connecting">Connecting</string>
+    <string name="server_config_error_invalid_address">That doesn\'t look like a valid address.</string>
+    <!-- %1$s is the server address the user entered. -->
+    <string name="server_config_error_unreachable">Couldn\'t reach %1$s.</string>
+
+    <!-- Login -->
+    <string name="login_title">Welcome back</string>
+    <string name="login_title_register">Create an account</string>
+    <string name="login_username_placeholder">Username</string>
+    <string name="login_password_placeholder">Password</string>
+    <string name="login_password_requirement">Passwords must be at least 10 characters.</string>
+    <string name="login_sign_in">Sign in</string>
+    <string name="login_create_account">Create account</string>
+    <!-- Spoken by screen readers while credentials are being checked. -->
+    <string name="login_signing_in">Signing in</string>
+    <string name="login_no_account">No account yet?</string>
+    <string name="login_have_account">Already have an account?</string>
+    <string name="login_register">Register</string>
+    <string name="login_change_server">Use a different server</string>
+    <string name="login_error_invalid_credentials">That username or password isn\'t right.</string>
 </resources>
