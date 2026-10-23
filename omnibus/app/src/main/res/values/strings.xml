@@ -34,4 +34,8 @@
     <string name="login_register">Register</string>
     <string name="login_change_server">Use a different server</string>
     <string name="login_error_invalid_credentials">That username or password isn\'t right.</string>
+    <!-- %1$s is the server address. -->
+    <string name="login_error_unreachable">Couldn\'t reach %1$s.</string>
+    <string name="login_error_too_many_attempts">Too many sign-in attempts. Wait a moment and try again.</string>
+    <string name="login_error_server">Something went wrong on the server. Try again.</string>
 </resources>
