@@ -2,4 +2,11 @@
 <resources>
 
     <style name="Theme.Omnibus" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Applied to MainActivity at launch: just the Atrium background, as on iOS. Swaps to Theme.Omnibus once the splash is dismissed. -->
+    <style name="Theme.Omnibus.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="postSplashScreenTheme">@style/Theme.Omnibus</item>
+    </style>
 </resources>

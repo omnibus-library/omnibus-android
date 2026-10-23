@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Omnibus</string>
 
+    <!-- Spoken by screen readers while the app is starting. -->
+    <string name="launch_loading">Loading Omnibus</string>
+
     <!-- Server configuration -->
     <string name="server_config_title">Connect to Omnibus</string>
     <string name="server_config_subtitle">Point the app at your self-hosted library server.</string>
