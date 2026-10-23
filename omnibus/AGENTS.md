@@ -10,6 +10,19 @@ Omnibus is a single-module Android app (`:app`) written in Kotlin with Jetpack C
 - Min SDK 24, target/compile SDK 37, Java 11 bytecode
 - Dependencies and plugin versions are managed in `gradle/libs.versions.toml`
 
+### Related Projects
+
+This app is one client of [Omnibus](https://github.com/omnibus-library/omnibus), a self-hosted library server. That repository also contains the server and the other clients, which are the reference for behavior, design, and API usage:
+
+| Path | What it is | Use it for |
+|---|---|---|
+| [`omnibus-ios/`](https://github.com/omnibus-library/omnibus/tree/main/omnibus-ios) | Native iOS client (SwiftUI) | Screen flows, copy, and UX parity. The closest analogue to this app. |
+| [`frontend/`](https://github.com/omnibus-library/omnibus/tree/main/frontend) | Web client (Rust/Dioxus) | Behavior the native clients mirror. Design tokens live in `frontend/assets/atrium.css`. |
+| [`server/`](https://github.com/omnibus-library/omnibus/tree/main/server) | API server (Rust) | Endpoints and request/response shapes (`server/src/backend/routes.rs`). |
+| [`docs/design/atrium-design-system.md`](https://github.com/omnibus-library/omnibus/blob/main/docs/design/atrium-design-system.md) | Atrium design system | Palette, spacing, type, and motion. `ui/theme/` mirrors these. |
+
+When adding or changing a feature, check how iOS does it first and match it unless there's an Android-specific reason not to. Read the files on GitHub, or clone the repository if you need to search it.
+
 ## Layout
 
 ```
