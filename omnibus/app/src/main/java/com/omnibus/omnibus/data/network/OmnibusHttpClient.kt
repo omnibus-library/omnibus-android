@@ -61,7 +61,12 @@ class OmnibusHttpClient @Inject constructor(
             request.header("Authorization") != null &&
             !isSignInPath(request.url.encodedPath)
         ) {
-            authTokenProvider.invalidate()
+            try {
+                authTokenProvider.invalidate()
+            } catch (t: Throwable) {
+                response.close()
+                throw t
+            }
         }
         return response
     }
