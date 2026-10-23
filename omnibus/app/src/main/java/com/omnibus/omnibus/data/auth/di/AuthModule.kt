@@ -2,13 +2,15 @@ package com.omnibus.omnibus.data.auth.di
 
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.DefaultAuthRepository
+import com.omnibus.omnibus.data.auth.local.AuthTokenStore
+import com.omnibus.omnibus.data.auth.local.DefaultAuthTokenStore
+import com.omnibus.omnibus.data.auth.remote.ClientInfo
+import com.omnibus.omnibus.data.auth.remote.DefaultClientInfo
 import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
-import javax.inject.Qualifier
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -20,13 +22,14 @@ abstract class AuthModule {
         repository: DefaultAuthRepository,
     ): AuthRepository
 
-    companion object {
-        @Provides
-        @BaseUrl
-        fun provideBaseUrl(): String = "https://read.h00n.dev/"
-    }
-}
+    @Binds
+    @Singleton
+    abstract fun bindAuthTokenStore(
+        store: DefaultAuthTokenStore,
+    ): AuthTokenStore
 
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class BaseUrl
+    @Binds
+    abstract fun bindClientInfo(
+        clientInfo: DefaultClientInfo,
+    ): ClientInfo
+}

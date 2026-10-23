@@ -262,8 +262,6 @@ private fun LoginContent(
             text = stringResource(R.string.login_change_server),
             color = palette.ink3,
             size = 13,
-            // TODO: Sign out, clear the saved server address, and navigate back to the server
-            //  configuration screen, replacing this screen on the back stack.
             onClick = onChangeServer,
             modifier = Modifier.align(Alignment.CenterHorizontally),
         )

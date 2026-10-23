@@ -45,11 +45,10 @@ class ServerConfigurationViewModel @Inject constructor(
                 is ServerValidationResult.Success -> ServerConfigSubmissionStatus.ACCEPTED
                 is ServerValidationResult.InvalidAddressFormat -> ServerConfigSubmissionStatus.ERROR
                 is ServerValidationResult.ServerNotFound -> ServerConfigSubmissionStatus.NOT_ACCEPTED
-                else -> ServerConfigSubmissionStatus.UNSUBMITTED
             }
 
-            if (submissionResult == ServerValidationResult.Success) {
-                serverConfigRepo.saveServerConfig(address = serverUrl)
+            if (submissionResult is ServerValidationResult.Success) {
+                serverConfigRepo.saveServerConfig(address = submissionResult.serverAddress)
             }
 
             _submissionStatusState.update { submissionStatus }

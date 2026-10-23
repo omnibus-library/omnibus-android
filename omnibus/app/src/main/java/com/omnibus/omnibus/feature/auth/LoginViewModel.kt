@@ -51,7 +51,11 @@ class LoginViewModel @Inject constructor(
                         loginStatus.update { LoginStatus.LOGGED_IN }
                     }
 
-                    else -> {
+                    is AuthSignInResult.NoServer -> {
+                        loginStatus.update { LoginStatus.MISSING_SERVER_CONFIG }
+                    }
+
+                    is AuthSignInResult.Failure, is AuthSignInResult.Error -> {
                         loginStatus.update { LoginStatus.AUTH_FAILED }
                     }
                 }

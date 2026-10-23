@@ -19,6 +19,11 @@ sealed interface AuthSignInResult {
     data object Error: AuthSignInResult {
         override val authToken = null
     }
+
+    /** No valid server is saved, so there is nowhere to sign in. */
+    data object NoServer : AuthSignInResult {
+        override val authToken = null
+    }
 }
 
 sealed interface AuthSignOutResult {

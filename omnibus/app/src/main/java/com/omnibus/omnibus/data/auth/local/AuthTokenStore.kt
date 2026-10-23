@@ -29,11 +29,21 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
+/** Persists the auth token issued by the server. */
+interface AuthTokenStore {
+    /** The stored token, or null when signed out. */
+    val token: Flow<String?>
+
+    suspend fun save(token: String)
+
+    suspend fun clear()
+}
+
 @Singleton
-class AuthTokenStore @Inject constructor(
+class DefaultAuthTokenStore @Inject constructor(
     @param:ApplicationContext private val context: Context,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
-) {
+) : AuthTokenStore {
     private val dataStore: DataStore<Preferences> by lazy {
         AeadConfig.register()
         val keysetHandle = AndroidKeysetManager.Builder()
@@ -59,13 +69,13 @@ class AuthTokenStore @Inject constructor(
         )
     }
 
-    val token: Flow<String?> = flow {
+    override val token: Flow<String?> = flow {
         emitAll(dataStore.data.map { preferences ->
             preferences[AUTH_TOKEN]
         })
     }
 
-    suspend fun save(token: String) {
+    override suspend fun save(token: String) {
         withContext(ioDispatcher) {
             dataStore.updateData { preferences ->
                 preferences.toMutablePreferences().apply {
@@ -75,7 +85,7 @@ class AuthTokenStore @Inject constructor(
         }
     }
 
-    suspend fun clear() {
+    override suspend fun clear() {
         withContext(ioDispatcher) {
             dataStore.updateData { preferences ->
                 preferences.toMutablePreferences().apply {

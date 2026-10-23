@@ -43,8 +43,7 @@ com.omnibus.omnibus/
     ├── di/AuthModule.kt                  # Hilt bindings and qualifiers
     ├── local/AuthTokenStore.kt           # Encrypted DataStore token persistence
     └── remote/
-        ├── OmnibusHttpClient.kt          # Shared OkHttp client + URL resolution
-        ├── OmnibusNetworkInterceptor.kt  # Common headers
+        ├── ClientInfo.kt                 # Device name + app version sent on sign-in
         ├── AuthClientMetadataInterceptor.kt
         ├── AuthSignInRequestDto.kt
         └── AuthSignInResponseDto.kt
@@ -52,6 +51,7 @@ com.omnibus.omnibus/
 
 * `feature/<feature>/` holds UI code grouped by user-facing feature.
 * `data/<domain>/` holds everything below the ViewModel, grouped by business domain. A domain can serve many features.
+* `data/network/` holds the HTTP client and interceptors shared by every domain (`OmnibusHttpClient`, `OmnibusNetworkInterceptor`, `ServerBaseUrlProvider`).
 * Within a domain, `remote/` and `local/` separate data sources by where the data lives.
 
 ## Screen (Compose)
@@ -154,7 +154,10 @@ Data sources do one kind of I/O and contain no business decisions.
 
 ### Remote
 
-* `OmnibusHttpClient` is a `@Singleton` wrapper around a single `OkHttpClient`. It resolves paths against the injected `@BaseUrl` (`request(path)`) and creates calls (`newCall(request)`). Repositories build requests through it instead of creating their own clients.
+* `OmnibusHttpClient` is a `@Singleton` wrapper around a single `OkHttpClient`. Repositories build requests through it instead of creating their own clients.
+  * `request(path)` resolves against the saved server from `ServerBaseUrlProvider` and returns null when none is saved; repositories map that to a domain result (`AuthSignInResult.NoServer`).
+  * `request(baseUrl, path)` targets an explicit server, for talking to one before it's saved (the health check).
+  * Paths are relative (`api/auth/login`, no leading slash) so they resolve beneath the server's base URL and keep any path prefix.
 * Cross-cutting request behavior is done in OkHttp interceptors injected into the client:
   * `OmnibusNetworkInterceptor` adds headers every request needs (`Accept: application/json`).
   * `AuthClientMetadataInterceptor` adds client metadata (`client_kind`, `device_name`, `client_version`) to auth request bodies.
@@ -171,8 +174,8 @@ Data sources do one kind of I/O and contain no business decisions.
 `data/<domain>/di/<Domain>Module.kt` is an `abstract class` module installed in `SingletonComponent`:
 
 * `@Binds @Singleton` functions map interfaces to `Default*` implementations.
-* A `companion object` holds `@Provides` functions for values that aren't classes you own (dispatchers, base URL).
-* Qualifier annotations (`@IoDispatcher`, `@BaseUrl`) are declared in the same file. Use `@param:` when applying a qualifier to a constructor property.
+* A `companion object` holds `@Provides` functions for values that aren't classes you own (dispatchers, DataStores).
+* Qualifier annotations (`@IoDispatcher`, `@ServerConfigPreferences`) are declared in the same file. Use `@param:` when applying a qualifier to a constructor property.
 
 `OmnibusApplication` is annotated with `@HiltAndroidApp` and `MainActivity` with `@AndroidEntryPoint`, which is what makes `hiltViewModel()` work in the screen.
 
@@ -180,7 +183,7 @@ Data sources do one kind of I/O and contain no business decisions.
 
 Follow [Testing](testing.md). Per layer:
 
-* **Repository**: Kotest `DescribeSpec` JVM test. Construct `Default<Name>Repository` directly (no Hilt), pass `Dispatchers.Unconfined`, point `OmnibusHttpClient` at a `MockWebServer`, and use fakes for local data sources. See `DefaultAuthRepositoryTest`.
+* **Repository**: Kotest `DescribeSpec` JVM test. Construct `Default<Name>Repository` directly (no Hilt), pass `Dispatchers.Unconfined`, point `OmnibusHttpClient` at a `MockWebServer` with `FakeServerBaseUrlProvider`, and use fakes for local data sources. See `DefaultAuthRepositoryTest`.
 * **Local data sources**: hand-written in-memory fakes in `app/src/test/` that implement the interface (`FakeAuthTokenStore`). Fakes can expose hooks such as `saveFailure` to simulate errors. The real implementations need a `Context` and are tested with instrumented tests.
 * **Android-only collaborators** (anything touching `Build`, `PackageManager`, `Log`): stub with MockK on the JVM, e.g. a pass-through `AuthClientMetadataInterceptor` or `mockkStatic(Log::class)`.
 * **ViewModel**: inject a fake repository interface and assert on `uiState` emissions.
@@ -201,5 +204,5 @@ The login flow doesn't yet fully follow the pattern above. Don't copy these part
 * `LoginScreenViewModel.login()` discards the `AuthLoginResult` and never sets `loginAttempt` (e.g. `Loading` before the call, `Success`/`Failure` after).
 * `LoginAttemptState` is declared as `abstract interface`; it should be a `sealed interface` so `when` checks are exhaustive.
 * `DefaultAuthRepository` catches `Exception`, which also swallows `CancellationException`. Rethrow cancellation so `viewModelScope` cancellation propagates.
-* The user info in `AuthSignInResponseDto` is dropped, and the base URL is hard-coded in `AuthModule`.
+* The user info in `AuthSignInResponseDto` is dropped.
 * There is no ViewModel test yet.

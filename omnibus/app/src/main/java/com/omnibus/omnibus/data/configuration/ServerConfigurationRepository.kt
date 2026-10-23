@@ -9,8 +9,9 @@ interface ServerConfigurationRepository {
     fun fetchSavedServerConfig(): Flow<String?>
 }
 
-interface ServerValidationResult {
-    data object Success : ServerValidationResult
+sealed interface ServerValidationResult {
+    /** @property serverAddress The normalized address (scheme added, trailing slash removed) to save. */
+    data class Success(val serverAddress: String) : ServerValidationResult
     data object InvalidAddressFormat : ServerValidationResult
     data object ServerNotFound : ServerValidationResult
 }

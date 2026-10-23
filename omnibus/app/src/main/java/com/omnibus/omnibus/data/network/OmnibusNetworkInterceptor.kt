@@ -1,4 +1,4 @@
-package com.omnibus.omnibus.data.auth.remote
+package com.omnibus.omnibus.data.network
 
 import javax.inject.Inject
 import okhttp3.Interceptor

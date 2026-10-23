@@ -22,7 +22,11 @@ class FakeAuthTokenStore(initialToken: String? = null) : AuthTokenStore {
         _token.value = token
     }
 
+    /** When non-null, [clear] throws this instead of removing the token. */
+    var clearFailure: Throwable? = null
+
     override suspend fun clear() {
+        clearFailure?.let { throw it }
         _token.value = null
     }
 }

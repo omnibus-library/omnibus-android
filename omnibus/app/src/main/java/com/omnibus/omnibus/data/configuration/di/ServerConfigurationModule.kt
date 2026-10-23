@@ -6,7 +6,9 @@ import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import com.omnibus.omnibus.data.configuration.DefaultServerConfigurationRepository
+import com.omnibus.omnibus.data.configuration.SavedServerBaseUrlProvider
 import com.omnibus.omnibus.data.configuration.ServerConfigurationRepository
+import com.omnibus.omnibus.data.network.ServerBaseUrlProvider
 import com.omnibus.omnibus.di.IoDispatcher
 import dagger.Binds
 import dagger.Module
@@ -29,6 +31,11 @@ abstract class ServerConfigurationModule {
     abstract fun bindServerConfigurationRepository(
         repository: DefaultServerConfigurationRepository,
     ): ServerConfigurationRepository
+
+    @Binds
+    abstract fun bindServerBaseUrlProvider(
+        provider: SavedServerBaseUrlProvider,
+    ): ServerBaseUrlProvider
 
     companion object {
         private const val DATASTORE_FILE_NAME = "server_configuration.preferences_pb"

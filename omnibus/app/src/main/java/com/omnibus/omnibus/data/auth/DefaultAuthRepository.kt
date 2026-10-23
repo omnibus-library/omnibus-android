@@ -4,7 +4,7 @@ import android.util.Log
 import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
-import com.omnibus.omnibus.data.auth.remote.OmnibusHttpClient
+import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -23,9 +23,10 @@ class DefaultAuthRepository @Inject constructor(
     ): AuthSignInResult {
 
         val body = AuthSignInRequestDto(username = username, password = password).toJsonRequest()
-        val request = omnibusHttpClient.request(LOGIN_PATH).post(body).build()
 
         return withContext(ioDispatcher) {
+            val request = omnibusHttpClient.request(LOGIN_PATH)?.post(body)?.build()
+                ?: return@withContext AuthSignInResult.NoServer
             val call = omnibusHttpClient.newCall(request)
             val httpResponse = try {
                 call.execute()
@@ -68,9 +69,9 @@ class DefaultAuthRepository @Inject constructor(
             AuthSignOutResult.Failure
         }
 
-    private companion object {
+    internal companion object {
         const val TAG = "DefaultAuthRepository"
 
-        const val LOGIN_PATH = "/api/auth/login"
+        const val LOGIN_PATH = "api/auth/login"
     }
 }
