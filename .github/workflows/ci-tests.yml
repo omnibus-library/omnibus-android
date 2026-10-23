@@ -2,7 +2,7 @@ name: CI Tests
 
 on:
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened]
     branches: [main]
 
 permissions:
@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   tests:
-    if: github.event.action == 'opened'
     permissions:
       contents: read
     uses: ./.github/workflows/android-tests.yml
@@ -28,18 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Clear check on new commits
-        if: github.event.action == 'synchronize'
-        run: |
-          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
-          ### CI Tests: cleared
-          New commits were pushed. Tests were not run.
-          An owner, member, or collaborator can comment `ci test` or `ci tests` to run them on the current head.
-          EOF
-          exit 1
-
       - name: Report test verdict
-        if: github.event.action == 'opened'
         run: |
           unit="${{ needs.tests.outputs.unit }}"
           instrumentation="${{ needs.tests.outputs.instrumentation }}"
