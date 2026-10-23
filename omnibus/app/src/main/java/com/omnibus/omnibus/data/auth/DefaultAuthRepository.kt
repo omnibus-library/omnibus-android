@@ -33,9 +33,8 @@ class DefaultAuthRepository @Inject constructor(
         return withContext(ioDispatcher) {
             val request = omnibusHttpClient.request(LOGIN_PATH)?.post(body)?.build()
                 ?: return@withContext AuthSignInResult.NoServer
-            val call = omnibusHttpClient.newCall(request)
             val httpResponse = try {
-                call.execute()
+                omnibusHttpClient.execute(request)
             } catch (ex: IOException) {
                 Log.e(TAG, "Unable to reach the server", ex)
                 return@withContext AuthSignInResult.Unreachable

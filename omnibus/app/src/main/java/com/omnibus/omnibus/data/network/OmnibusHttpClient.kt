@@ -28,11 +28,23 @@ class OmnibusHttpClient @Inject constructor(
         .addInterceptor(authClientMetadataInterceptor)
         .build()
 
-    /** Builds a request for [path] on the saved server, or returns null if no server is saved. */
-    suspend fun request(path: String): Request.Builder? =
-        baseUrlProvider.baseUrl()?.let { request(it, path) }
+    /**
+     * Builds a request for [path] on the saved server, or returns null if no server is saved.
+     * Sets `Authorization: Bearer <token>` when a non-blank token is stored.
+     */
+    suspend fun request(path: String): Request.Builder? {
+        val baseUrl = baseUrlProvider.baseUrl() ?: return null
+        val builder = request(baseUrl, path)
+        authTokenProvider.token()?.takeIf { it.isNotBlank() }?.let { token ->
+            builder.header("Authorization", "Bearer $token")
+        }
+        return builder
+    }
 
-    /** Builds a request for [path] on [baseUrl], for servers that haven't been saved yet. */
+    /**
+     * Builds a request for [path] on [baseUrl], for servers that haven't been saved yet,
+     * so it never carries the bearer token.
+     */
     fun request(baseUrl: HttpUrl, path: String): Request.Builder =
         Request.Builder().url(resolve(baseUrl, path))
 
@@ -42,8 +54,17 @@ class OmnibusHttpClient @Inject constructor(
      * Executes [request]. A 401 on a request that carried a bearer token (other than sign-in)
      * invalidates the stored token. Throws [IOException] when the server can't be reached.
      */
-    // STUB(Stage 2): replace with the real implementation.
-    suspend fun execute(request: Request): Response = TODO("Stage 2")
+    suspend fun execute(request: Request): Response {
+        val response = client.newCall(request).execute()
+        if (
+            response.code == 401 &&
+            request.header("Authorization") != null &&
+            !isSignInPath(request.url.encodedPath)
+        ) {
+            authTokenProvider.invalidate()
+        }
+        return response
+    }
 
     private fun resolve(baseUrl: HttpUrl, path: String): HttpUrl {
         require(!path.startsWith("/")) { "API paths must be relative: $path" }
@@ -53,5 +74,11 @@ class OmnibusHttpClient @Inject constructor(
             baseUrl.newBuilder().encodedPath("${baseUrl.encodedPath}/").build()
         }
         return checkNotNull(directory.resolve(path)) { "Unable to resolve Omnibus API path: $path" }
+    }
+
+    private companion object {
+        fun isSignInPath(encodedPath: String): Boolean =
+            encodedPath.endsWith("/api/auth/login") ||
+                encodedPath.endsWith("/api/auth/register")
     }
 }
