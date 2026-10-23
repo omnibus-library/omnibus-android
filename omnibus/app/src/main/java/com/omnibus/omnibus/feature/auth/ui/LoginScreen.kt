@@ -1,22 +1,15 @@
 package com.omnibus.omnibus.feature.auth.ui
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,23 +35,23 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.auth.LoginStatus
 import com.omnibus.omnibus.feature.auth.LoginUIState
 import com.omnibus.omnibus.feature.auth.LoginViewModel
+import com.omnibus.omnibus.ui.components.AdaptiveFormLayout
 import com.omnibus.omnibus.ui.components.FilledButton
 import com.omnibus.omnibus.ui.components.InlineError
 import com.omnibus.omnibus.ui.components.OmnibusTextField
+import com.omnibus.omnibus.ui.components.ScreenHeader
 import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
-import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.serialization.Serializable
@@ -67,6 +60,7 @@ import kotlinx.serialization.Serializable
 data object LoginScreenRoute : NavKey
 
 private enum class LoginMode { LOGIN, REGISTER }
+
 
 abstract class LoginScreenAction {
     data object Login : LoginScreenAction()
@@ -163,159 +157,158 @@ private fun LoginContent(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(palette.bg0)
-            .then(modifier)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.screen)
-                .padding(top = 72.dp),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xl),
-        ) {
-            Header(mode = mode, serverAddress = uiState.serverAddress)
+    AdaptiveFormLayout(modifier = modifier) {
+        Header(mode = mode, serverAddress = uiState.serverAddress)
 
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                OmnibusTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    placeholder = stringResource(R.string.login_username_placeholder),
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                        imeAction = ImeAction.Next,
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { passwordFocusRequester.requestFocus() }
-                    ),
-                    modifier = Modifier
-                        .focusRequester(usernameFocusRequester)
-                        .semantics {
-                            contentType = when (mode) {
-                                LoginMode.LOGIN -> ContentType.Username
-                                LoginMode.REGISTER -> ContentType.NewUsername
-                            }
-                        },
-                )
-
-                OmnibusTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    placeholder = stringResource(R.string.login_password_placeholder),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        autoCorrectEnabled = false,
-                        imeAction = ImeAction.Go,
-                    ),
-                    keyboardActions = KeyboardActions(onGo = { submit() }),
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier
-                        .focusRequester(passwordFocusRequester)
-                        .semantics {
-                            contentType = when (mode) {
-                                LoginMode.LOGIN -> ContentType.Password
-                                LoginMode.REGISTER -> ContentType.NewPassword
-                            }
-                        },
-                )
-            }
-
-            InlineError(message = errorMessage)
-
-            AnimatedVisibility(
-                visible = mode == LoginMode.REGISTER,
-                enter = fadeIn(Motion.settle()),
-                exit = fadeOut(Motion.settle()),
-            ) {
-                Text(
-                    text = stringResource(R.string.login_password_requirement),
-                    style = uiTextStyle(12, FontWeight.Normal, palette.ink3),
-                )
-            }
-
-            FilledButton(
-                text = when (mode) {
-                    LoginMode.LOGIN -> stringResource(R.string.login_sign_in)
-                    LoginMode.REGISTER -> stringResource(R.string.login_create_account)
-                },
-                onClick = submit,
-                enabled = canSubmit,
-                isLoading = isBusy,
-                loadingDescription = stringResource(R.string.login_signing_in),
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = when (mode) {
-                        LoginMode.LOGIN -> stringResource(R.string.login_no_account)
-                        LoginMode.REGISTER -> stringResource(R.string.login_have_account)
-                    },
-                    style = uiTextStyle(14, FontWeight.Normal, palette.ink2),
-                )
-                TextLinkButton(
-                    text = when (mode) {
-                        LoginMode.LOGIN -> stringResource(R.string.login_register)
-                        LoginMode.REGISTER -> stringResource(R.string.login_sign_in)
-                    },
-                    color = palette.accent,
-                    size = 14,
-                    onClick = {
-                        mode = when (mode) {
-                            LoginMode.LOGIN -> LoginMode.REGISTER
-                            LoginMode.REGISTER -> LoginMode.LOGIN
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            OmnibusTextField(
+                value = username,
+                onValueChange = { username = it },
+                placeholder = stringResource(R.string.login_username_placeholder),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { passwordFocusRequester.requestFocus() }
+                ),
+                modifier = Modifier
+                    .focusRequester(usernameFocusRequester)
+                    .semantics {
+                        contentType = when (mode) {
+                            LoginMode.LOGIN -> ContentType.Username
+                            LoginMode.REGISTER -> ContentType.NewUsername
                         }
-                        showError = false
                     },
-                )
-            }
-
-            TextLinkButton(
-                text = stringResource(R.string.login_change_server),
-                color = palette.ink3,
-                size = 13,
-                // TODO: Sign out, clear the saved server address, and navigate back to the server
-                //  configuration screen, replacing this screen on the back stack.
-                onClick = onChangeServer,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
 
-            Spacer(modifier = Modifier.height(Spacing.xl))
+            OmnibusTextField(
+                value = password,
+                onValueChange = { password = it },
+                placeholder = stringResource(R.string.login_password_placeholder),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier
+                    .focusRequester(passwordFocusRequester)
+                    .semantics {
+                        contentType = when (mode) {
+                            LoginMode.LOGIN -> ContentType.Password
+                            LoginMode.REGISTER -> ContentType.NewPassword
+                        }
+                    },
+            )
         }
+
+        InlineError(message = errorMessage)
+
+        AnimatedVisibility(
+            visible = mode == LoginMode.REGISTER,
+            enter = fadeIn(Motion.settle()),
+            exit = fadeOut(Motion.settle()),
+        ) {
+            Text(
+                text = stringResource(R.string.login_password_requirement),
+                style = uiTextStyle(12, FontWeight.Normal, palette.ink3),
+            )
+        }
+
+        FilledButton(
+            text = when (mode) {
+                LoginMode.LOGIN -> stringResource(R.string.login_sign_in)
+                LoginMode.REGISTER -> stringResource(R.string.login_create_account)
+            },
+            onClick = submit,
+            enabled = canSubmit,
+            isLoading = isBusy,
+            loadingDescription = stringResource(R.string.login_signing_in),
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = when (mode) {
+                    LoginMode.LOGIN -> stringResource(R.string.login_no_account)
+                    LoginMode.REGISTER -> stringResource(R.string.login_have_account)
+                },
+                style = uiTextStyle(14, FontWeight.Normal, palette.ink2),
+            )
+            TextLinkButton(
+                text = when (mode) {
+                    LoginMode.LOGIN -> stringResource(R.string.login_register)
+                    LoginMode.REGISTER -> stringResource(R.string.login_sign_in)
+                },
+                color = palette.accent,
+                size = 14,
+                onClick = {
+                    mode = when (mode) {
+                        LoginMode.LOGIN -> LoginMode.REGISTER
+                        LoginMode.REGISTER -> LoginMode.LOGIN
+                    }
+                    showError = false
+                },
+            )
+        }
+
+        TextLinkButton(
+            text = stringResource(R.string.login_change_server),
+            color = palette.ink3,
+            size = 13,
+            // TODO: Sign out, clear the saved server address, and navigate back to the server
+            //  configuration screen, replacing this screen on the back stack.
+            onClick = onChangeServer,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
     }
-}
+    }
 
 @Composable
 private fun Header(mode: LoginMode, serverAddress: String) {
     val palette = OmnibusTheme.palette
 
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Text(
-            text = when (mode) {
-                LoginMode.LOGIN -> stringResource(R.string.login_title)
-                LoginMode.REGISTER -> stringResource(R.string.login_title_register)
-            },
-            style = displayTextStyle(34, palette.ink0),
-        )
-        if (serverAddress.isNotEmpty()) {
-            Text(
-                text = serverAddress.removePrefix("http://"),
-                style = monoTextStyle(13, palette.ink3),
-            )
-        }
-    }
+    ScreenHeader(
+        title = when (mode) {
+            LoginMode.LOGIN -> stringResource(R.string.login_title)
+            LoginMode.REGISTER -> stringResource(R.string.login_title_register)
+        },
+        subtitle = if (serverAddress.isNotEmpty()) {
+            {
+                Text(
+                    text = serverAddress.removePrefix("http://"),
+                    style = monoTextStyle(13, palette.ink3),
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
 @PreviewLightDark
 fun LoginContentRoutePreviewBasic() {
+    OmnibusTheme {
+        LoginContent(
+            modifier = Modifier,
+            uiState = LoginUIState(serverAddress = "192.168.1.10:3000"),
+            onSignIn = { _, _ -> },
+            onChangeServer = {}
+        )
+    }
+}
+
+@Composable
+@Preview(name = "Light", widthDp = 840, heightDp = 900)
+@Preview(name = "Dark", widthDp = 840, heightDp = 900, uiMode = Configuration.UI_MODE_NIGHT_YES)
+fun LoginContentRoutePreviewWide() {
     OmnibusTheme {
         LoginContent(
             modifier = Modifier,

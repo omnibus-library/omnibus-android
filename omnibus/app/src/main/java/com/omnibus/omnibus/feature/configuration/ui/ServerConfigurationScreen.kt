@@ -1,19 +1,13 @@
 package com.omnibus.omnibus.feature.configuration.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,22 +33,23 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.configuration.ServerConfigSubmissionStatus
 import com.omnibus.omnibus.feature.configuration.ServerConfigUIState
+import com.omnibus.omnibus.ui.components.AdaptiveFormLayout
 import com.omnibus.omnibus.feature.configuration.ServerConfigurationViewModel
 import com.omnibus.omnibus.ui.components.FilledButton
 import com.omnibus.omnibus.ui.components.InlineError
 import com.omnibus.omnibus.ui.components.OmnibusTextField
+import com.omnibus.omnibus.ui.components.ScreenHeader
 import com.omnibus.omnibus.ui.theme.MonoFontFamily
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
-import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.serialization.Serializable
 
@@ -62,7 +57,7 @@ import kotlinx.serialization.Serializable
 data object ServerConfigurationScreenRoute : NavKey
 
 abstract class ServerConfigurationScreenAction {
-    data object SaveServerConfiguration : ServerConfigurationScreenAction()
+    data object ServerConfigurationSaved : ServerConfigurationScreenAction()
 }
 
 @Composable
@@ -74,23 +69,17 @@ fun ServerConfigurationScreen(
     val uiState by viewModel.uiState.collectAsState()
     val currentOnAction by rememberUpdatedState(onAction)
 
-    // The ViewModel can outlive this entry, so only act on ACCEPTED results submitted during this visit.
-    var awaitingValidation by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(uiState.submissionStatus, awaitingValidation) {
-        if (awaitingValidation && uiState.submissionStatus == ServerConfigSubmissionStatus.ACCEPTED) {
-            awaitingValidation = false
-            currentOnAction(ServerConfigurationScreenAction.SaveServerConfiguration)
+    LaunchedEffect(uiState.submissionStatus) {
+        if (uiState.submissionStatus == ServerConfigSubmissionStatus.ACCEPTED) {
+            currentOnAction(ServerConfigurationScreenAction.ServerConfigurationSaved)
         }
     }
 
     ServerConfigurationContent(
         modifier = modifier,
-        uiState = uiState
-    ) { serverUrl ->
-        awaitingValidation = true
-        viewModel.submitServerUrl(serverUrl)
-    }
+        uiState = uiState,
+        onConfigSubmitted = viewModel::submitServerUrl,
+    )
 }
 
 @Composable
@@ -103,8 +92,13 @@ private fun ServerConfigurationContent(
     val haptics = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
 
-    var serverUrl by rememberSaveable { mutableStateOf("") }
+    var serverUrl by rememberSaveable { mutableStateOf(uiState.savedConfigurationValue) }
     var submittedUrl by rememberSaveable { mutableStateOf("") }
+
+    // The saved address loads asynchronously, so seed the field once it arrives unless the user has typed.
+    LaunchedEffect(uiState.savedConfigurationValue) {
+        if (serverUrl.isEmpty()) serverUrl = uiState.savedConfigurationValue
+    }
 
     val isProbing = uiState.submissionStatus == ServerConfigSubmissionStatus.PENDING
     val canSubmit = serverUrl.isNotBlank() && uiState.submitButtonEnabled
@@ -142,69 +136,53 @@ private fun ServerConfigurationContent(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(palette.bg0)
-            .then(modifier)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.screen)
-                .padding(top = 72.dp),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xl),
-        ) {
-            Header()
+    AdaptiveFormLayout(modifier = modifier) {
+        Header()
 
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(
-                    text = stringResource(R.string.server_config_address_label),
-                    style = uiTextStyle(13, FontWeight.Medium, palette.ink2),
-                )
-
-                OmnibusTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    placeholder = stringResource(R.string.server_config_address_placeholder),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                        imeAction = ImeAction.Go,
-                    ),
-                    keyboardActions = KeyboardActions(onGo = { submit() }),
-                    modifier = Modifier
-                        .focusRequester(focusRequester)
-                        .testTag("server-address"),
-                )
-
-                val hintParts =
-                    stringResource(R.string.server_config_address_hint).split("%1\$s", limit = 2)
-                val httpsScheme = stringResource(R.string.server_config_https_scheme)
-                Text(
-                    text = buildAnnotatedString {
-                        append(hintParts[0])
-                        withStyle(SpanStyle(fontFamily = MonoFontFamily)) { append(httpsScheme) }
-                        append(hintParts.getOrElse(1) { "" })
-                    },
-                    style = uiTextStyle(12, FontWeight.Normal, palette.ink3),
-                )
-            }
-
-            InlineError(message = errorMessage)
-
-            FilledButton(
-                text = stringResource(R.string.server_config_connect),
-                onClick = submit,
-                enabled = canSubmit,
-                isLoading = isProbing,
-                loadingDescription = stringResource(R.string.server_config_connecting),
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(
+                text = stringResource(R.string.server_config_address_label),
+                style = uiTextStyle(13, FontWeight.Medium, palette.ink2),
             )
 
-            Spacer(modifier = Modifier.height(Spacing.xl))
+            OmnibusTextField(
+                value = serverUrl,
+                onValueChange = { serverUrl = it },
+                placeholder = stringResource(R.string.server_config_address_placeholder),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
+                modifier = Modifier
+                    .focusRequester(focusRequester)
+                    .testTag("server-address"),
+            )
+
+            val hintParts =
+                stringResource(R.string.server_config_address_hint).split("%1\$s", limit = 2)
+            val httpsScheme = stringResource(R.string.server_config_https_scheme)
+            Text(
+                text = buildAnnotatedString {
+                    append(hintParts[0])
+                    withStyle(SpanStyle(fontFamily = MonoFontFamily)) { append(httpsScheme) }
+                    append(hintParts.getOrElse(1) { "" })
+                },
+                style = uiTextStyle(12, FontWeight.Normal, palette.ink3),
+            )
         }
+
+        InlineError(message = errorMessage)
+
+        FilledButton(
+            text = stringResource(R.string.server_config_connect),
+            onClick = submit,
+            enabled = canSubmit,
+            isLoading = isProbing,
+            loadingDescription = stringResource(R.string.server_config_connecting),
+        )
     }
 }
 
@@ -212,28 +190,43 @@ private fun ServerConfigurationContent(
 private fun Header() {
     val palette = OmnibusTheme.palette
 
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        Image(
-            painter = painterResource(R.drawable.omnibus_stoat),
-            contentDescription = null,
-            modifier = Modifier
-                .padding(bottom = Spacing.xs)
-                .size(36.dp),
-        )
-        Text(
-            text = stringResource(R.string.server_config_title),
-            style = displayTextStyle(34, palette.ink0),
-        )
-        Text(
-            text = stringResource(R.string.server_config_subtitle),
-            style = uiTextStyle(15, FontWeight.Normal, palette.ink2),
-        )
-    }
+    ScreenHeader(
+        title = stringResource(R.string.server_config_title),
+        leading = {
+            Image(
+                painter = painterResource(R.drawable.omnibus_stoat),
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(bottom = Spacing.xs)
+                    .size(36.dp),
+            )
+        },
+        subtitle = {
+            Text(
+                text = stringResource(R.string.server_config_subtitle),
+                style = uiTextStyle(15, FontWeight.Normal, palette.ink2),
+            )
+        },
+    )
 }
 
 @Composable
 @PreviewLightDark
 fun ServerConfigurationContentRoutePreviewBasic() {
+    OmnibusTheme {
+        ServerConfigurationContent(
+            modifier = Modifier,
+            uiState = ServerConfigUIState()
+        ) {
+            //todo
+        }
+    }
+}
+
+@Composable
+@Preview(name = "Light", widthDp = 840, heightDp = 900)
+@Preview(name = "Dark", widthDp = 840, heightDp = 900, uiMode = Configuration.UI_MODE_NIGHT_YES)
+fun ServerConfigurationContentRoutePreviewWide() {
     OmnibusTheme {
         ServerConfigurationContent(
             modifier = Modifier,

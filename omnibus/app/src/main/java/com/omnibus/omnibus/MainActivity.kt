@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.feature.auth.ui.LoginScreen
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenAction
@@ -38,11 +40,15 @@ class MainActivity : ComponentActivity() {
                         onBack = {
                             backstack.removeLastOrNull()
                         },
+                        entryDecorators = listOf(
+                            rememberSaveableStateHolderNavEntryDecorator(),
+                            rememberViewModelStoreNavEntryDecorator(),
+                        ),
                         entryProvider = entryProvider {
                             entry<ServerConfigurationScreenRoute> {
                                 ServerConfigurationScreen(onAction = { action ->
                                     when (action) {
-                                        is ServerConfigurationScreenAction.SaveServerConfiguration -> {
+                                        is ServerConfigurationScreenAction.ServerConfigurationSaved -> {
                                             backstack.removeLastOrNull()
                                             backstack.add(LoginScreenRoute)
                                         }
