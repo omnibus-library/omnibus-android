@@ -6,6 +6,7 @@ import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -37,7 +38,7 @@ class DefaultAuthRepository @Inject constructor(
                 call.execute()
             } catch (ex: IOException) {
                 Log.e(TAG, "Unable to reach the server", ex)
-                return@withContext AuthSignInResult.ServerError
+                return@withContext AuthSignInResult.Unreachable
             }
 
             httpResponse.use { result ->
@@ -47,18 +48,28 @@ class DefaultAuthRepository @Inject constructor(
                     try {
                         Log.d(TAG, "Login Status: Success")
                         val response = AuthSignInResponseDto.fromJsonString(result.body.string())
-                        response.token?.let { token ->
+                        val token = response.token
+                        if (token.isNullOrBlank()) {
+                            AuthSignInResult.ServerError
+                        } else {
                             authTokenStore.save(token)
                             AuthSignInResult.Success(authToken = token)
-                        } ?: AuthSignInResult.ServerError
+                        }
+                    } catch (ex: CancellationException) {
+                        throw ex
                     } catch (ex: Exception) {
-                        Log.e(TAG, ex.message ?: "Error message not available")
+                        // The exception message can include the response body, which carries the token.
+                        Log.e(TAG, "Unable to complete sign-in")
                         AuthSignInResult.ServerError
                     }
                 } else {
                     Log.d(TAG, "Login Status: Failed")
                     Log.d(TAG, "Failure Response: ${result.message}")
-                    AuthSignInResult.InvalidCredentials
+                    when (result.code) {
+                        401, 403 -> AuthSignInResult.InvalidCredentials
+                        429 -> AuthSignInResult.TooManyAttempts
+                        else -> AuthSignInResult.ServerError
+                    }
                 }
             }
         }
@@ -69,8 +80,10 @@ class DefaultAuthRepository @Inject constructor(
             //TODO: Actually call the endpoint to clear the session, if there is one
             authTokenStore.clear()
             AuthSignOutResult.Success
-        } catch (exception: Exception) {
-            Log.e(TAG, "Unable to clear the stored auth token", exception)
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unable to clear the stored auth token", ex)
             AuthSignOutResult.Failure
         }
 
