@@ -203,6 +203,5 @@ The login flow doesn't yet fully follow the pattern above. Don't copy these part
 
 * `LoginScreenViewModel.login()` discards the `AuthLoginResult` and never sets `loginAttempt` (e.g. `Loading` before the call, `Success`/`Failure` after).
 * `LoginAttemptState` is declared as `abstract interface`; it should be a `sealed interface` so `when` checks are exhaustive.
-* `DefaultAuthRepository` catches `Exception`, which also swallows `CancellationException`. Rethrow cancellation so `viewModelScope` cancellation propagates.
 * The user info in `AuthSignInResponseDto` is dropped.
 * There is no ViewModel test yet.
