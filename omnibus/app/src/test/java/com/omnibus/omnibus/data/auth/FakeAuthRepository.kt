@@ -23,6 +23,15 @@ class FakeAuthRepository : AuthRepository {
     /** Every (username, password) pair passed to [signIn], in order. */
     val signInAttempts = mutableListOf<Pair<String, String>>()
 
+    /** Returned by [register]. */
+    var registerResult: AuthRegisterResult = AuthRegisterResult.Success(authToken = "token")
+
+    /** When set, [register] suspends until this completes, to observe pending state. */
+    var registerGate: CompletableDeferred<Unit>? = null
+
+    /** Every (username, password) pair passed to [register], in order. */
+    val registerAttempts = mutableListOf<Pair<String, String>>()
+
     /** Returned by [signOut]. */
     var signOutResult: AuthSignOutResult = AuthSignOutResult.Success
 
@@ -42,6 +51,12 @@ class FakeAuthRepository : AuthRepository {
         signInAttempts += username to password
         signInGate?.await()
         return signInResult
+    }
+
+    override suspend fun register(username: String, password: String): AuthRegisterResult {
+        registerAttempts += username to password
+        registerGate?.await()
+        return registerResult
     }
 
     override suspend fun signOut(): AuthSignOutResult = signOutResult

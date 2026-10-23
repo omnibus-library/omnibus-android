@@ -80,6 +80,11 @@ class DefaultAuthRepository @Inject constructor(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
+    override suspend fun register(username: String, password: String): AuthRegisterResult {
+        throw UnsupportedOperationException("register is not implemented")
+    }
+
     override suspend fun signOut(): AuthSignOutResult =
         try {
             //TODO: Actually call the endpoint to clear the session, if there is one

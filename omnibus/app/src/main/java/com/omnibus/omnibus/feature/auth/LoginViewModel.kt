@@ -74,6 +74,9 @@ class LoginViewModel @Inject constructor(
             }
         }
     }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun attemptRegister(username: String, password: String) = Unit
 }
 
 data class LoginUIState(
@@ -89,16 +92,22 @@ enum class LoginStatus {
     TOO_MANY_ATTEMPTS,
     SERVER_UNREACHABLE,
     SERVER_ERROR,
-    MISSING_SERVER_CONFIG
+    USERNAME_TAKEN,
+    REGISTRATION_DISABLED,
+    INVALID_DETAILS,
+    MISSING_SERVER_CONFIG,
 }
 
-/** Whether this status is a failed sign-in attempt that should show an inline error. */
+/** Whether this status is a failed sign-in or registration that should show an inline error. */
 val LoginStatus.isFailure: Boolean
     get() = when (this) {
         LoginStatus.INVALID_CREDENTIALS,
         LoginStatus.TOO_MANY_ATTEMPTS,
         LoginStatus.SERVER_UNREACHABLE,
         LoginStatus.SERVER_ERROR,
+        LoginStatus.USERNAME_TAKEN,
+        LoginStatus.REGISTRATION_DISABLED,
+        LoginStatus.INVALID_DETAILS,
         -> true
 
         LoginStatus.NOT_LOGGED_IN,
