@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -25,6 +26,8 @@ import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreen
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenAction
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
+import com.omnibus.omnibus.feature.shell.ui.SignedInShellScreen
 import com.omnibus.omnibus.ui.components.LaunchScreen
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -43,20 +46,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val startDestination by viewModel.startDestination.collectAsState()
+            val isSignedIn by viewModel.isSignedIn.collectAsState()
 
             val startRoute: NavKey? = when (startDestination) {
                 StartDestination.Loading -> null
                 StartDestination.ServerConfiguration -> ServerConfigurationScreenRoute
                 StartDestination.Login -> LoginScreenRoute
-                // STUB(Stage 5): map to SignedInShellRoute once the shell exists.
-                StartDestination.SignedIn -> LoginScreenRoute
+                StartDestination.SignedIn -> SignedInShellRoute
             }
 
             OmnibusTheme {
                 if (startRoute == null) {
                     LaunchScreen()
                 } else {
-                    OmnibusNavigation(startRoute = startRoute)
+                    OmnibusNavigation(startRoute = startRoute, isSignedIn = isSignedIn)
                 }
             }
         }
@@ -64,9 +67,18 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun OmnibusNavigation(startRoute: NavKey) {
+private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
     // Saveable, so after rotation or process death the restored stack wins over startRoute.
     val backstack = rememberNavBackStack(startRoute)
+
+    // Null means the session hasn't been read yet, so only an explicit false leaves the shell.
+    LaunchedEffect(isSignedIn) {
+        if (isSignedIn == false && backstack.lastOrNull() == SignedInShellRoute) {
+            // Add before removing so the back stack is never empty.
+            backstack.add(LoginScreenRoute)
+            backstack.removeAll { it != LoginScreenRoute }
+        }
+    }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         NavDisplay(
@@ -94,7 +106,9 @@ private fun OmnibusNavigation(startRoute: NavKey) {
                     LoginScreen(onAction = { action ->
                         when (action) {
                             is LoginScreenAction.Login -> {
-                                // do login shit
+                                // Add before removing so the back stack is never empty.
+                                backstack.add(SignedInShellRoute)
+                                backstack.removeAll { it != SignedInShellRoute }
                             }
 
                             is LoginScreenAction.ChangeServer -> {
@@ -107,6 +121,9 @@ private fun OmnibusNavigation(startRoute: NavKey) {
                             }
                         }
                     })
+                }
+                entry<SignedInShellRoute> {
+                    SignedInShellScreen()
                 }
             }
         )

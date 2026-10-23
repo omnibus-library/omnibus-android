@@ -8,16 +8,19 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * Decides which screen the app opens on.
  *
  * The saved server configuration is read once at launch. It is deliberately not observed after
- * that, so saving or changing the server later never triggers navigation from here.
+ * that, so saving or changing the server later never changes [startDestination]. The session is
+ * observed only so a session that ends returns to login.
  */
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -25,25 +28,45 @@ class MainViewModel @Inject constructor(
     authRepository: AuthRepository,
 ) : ViewModel() {
 
-    /** [StartDestination.Loading] until the saved configuration has been read. */
-    val startDestination: StateFlow<StartDestination> = serverConfigRepo.fetchSavedServerConfig()
+    /** [StartDestination.Loading] until the saved server and the session have both been read. */
+    val startDestination: StateFlow<StartDestination> = combine(
+        serverConfigRepo.fetchSavedServerConfig(),
+        authRepository.isSignedIn,
+    ) { serverAddress, signedIn ->
+        when {
+            serverAddress.isNullOrBlank() -> StartDestination.ServerConfiguration
+            signedIn -> StartDestination.SignedIn
+            else -> StartDestination.Login
+        }
+    }
         .take(1)
         // An unreadable store is treated as "not configured" so the user can set a server up again.
-        .catch { emit(null) }
-        .map { serverAddress ->
-            if (serverAddress.isNullOrBlank()) StartDestination.ServerConfiguration
-            else StartDestination.Login
-        }
+        .catch { emit(StartDestination.ServerConfiguration) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
             initialValue = StartDestination.Loading,
         )
 
-    /** Whether a session is stored, or null until that has been read. */
-    // STUB(Stage 5): replace with authRepository.isSignedIn.stateIn(viewModelScope, Eagerly, null).
-    val isSignedIn: StateFlow<Boolean?>
-        get() = TODO("Stage 5")
+    /**
+     * Whether a session is stored, or null until that has been read.
+     *
+     * Null is not signed out. Treating it as false would send the shell back to login on a cold start.
+     */
+    val isSignedIn: StateFlow<Boolean?> = authRepository.isSignedIn.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = null,
+    )
+
+    init {
+        viewModelScope.launch {
+            // Once per ViewModel, so it survives rotation. The outcome reaches the UI through isSignedIn.
+            if (startDestination.first { it != StartDestination.Loading } == StartDestination.SignedIn) {
+                authRepository.verifySession()
+            }
+        }
+    }
 }
 
 /** The screen the app should open on. */
@@ -54,7 +77,7 @@ sealed interface StartDestination {
     /** No server is saved, so the user needs to configure one. */
     data object ServerConfiguration : StartDestination
 
-    /** A server is saved, so the user can go straight to login. */
+    /** A server is saved but no session is, so the user goes to login. */
     data object Login : StartDestination
 
     /** A server and a session are saved, so the user can go straight to the signed-in shell. */
