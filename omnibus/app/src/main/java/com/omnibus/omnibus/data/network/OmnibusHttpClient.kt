@@ -7,6 +7,8 @@ import okhttp3.Call
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import java.io.IOException
 
 /**
  * The app's single HTTP client for talking to an Omnibus server.
@@ -17,6 +19,7 @@ import okhttp3.Request
 @Singleton
 class OmnibusHttpClient @Inject constructor(
     private val baseUrlProvider: ServerBaseUrlProvider,
+    private val authTokenProvider: AuthTokenProvider,
     omnibusNetworkInterceptor: OmnibusNetworkInterceptor,
     authClientMetadataInterceptor: AuthClientMetadataInterceptor,
 ) {
@@ -34,6 +37,13 @@ class OmnibusHttpClient @Inject constructor(
         Request.Builder().url(resolve(baseUrl, path))
 
     fun newCall(request: Request): Call = client.newCall(request)
+
+    /**
+     * Executes [request]. A 401 on a request that carried a bearer token (other than sign-in)
+     * invalidates the stored token. Throws [IOException] when the server can't be reached.
+     */
+    // STUB(Stage 2): replace with the real implementation.
+    suspend fun execute(request: Request): Response = TODO("Stage 2")
 
     private fun resolve(baseUrl: HttpUrl, path: String): HttpUrl {
         require(!path.startsWith("/")) { "API paths must be relative: $path" }

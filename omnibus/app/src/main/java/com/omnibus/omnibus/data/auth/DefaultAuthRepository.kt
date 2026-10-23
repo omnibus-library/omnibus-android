@@ -7,6 +7,7 @@ import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import javax.inject.Inject
@@ -16,6 +17,10 @@ class DefaultAuthRepository @Inject constructor(
     private val authTokenStore: AuthTokenStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : AuthRepository {
+
+    // STUB(Stage 3): replace with the real implementation.
+    override val isSignedIn: Flow<Boolean>
+        get() = TODO("Stage 3")
 
     override suspend fun signIn(
         username: String,
@@ -32,7 +37,7 @@ class DefaultAuthRepository @Inject constructor(
                 call.execute()
             } catch (ex: IOException) {
                 Log.e(TAG, "Unable to reach the server", ex)
-                return@withContext AuthSignInResult.Error
+                return@withContext AuthSignInResult.ServerError
             }
 
             httpResponse.use { result ->
@@ -45,15 +50,15 @@ class DefaultAuthRepository @Inject constructor(
                         response.token?.let { token ->
                             authTokenStore.save(token)
                             AuthSignInResult.Success(authToken = token)
-                        } ?: AuthSignInResult.Error
+                        } ?: AuthSignInResult.ServerError
                     } catch (ex: Exception) {
                         Log.e(TAG, ex.message ?: "Error message not available")
-                        AuthSignInResult.Error
+                        AuthSignInResult.ServerError
                     }
                 } else {
                     Log.d(TAG, "Login Status: Failed")
                     Log.d(TAG, "Failure Response: ${result.message}")
-                    AuthSignInResult.Failure
+                    AuthSignInResult.InvalidCredentials
                 }
             }
         }
@@ -68,6 +73,9 @@ class DefaultAuthRepository @Inject constructor(
             Log.e(TAG, "Unable to clear the stored auth token", exception)
             AuthSignOutResult.Failure
         }
+
+    // STUB(Stage 3): replace with the real implementation.
+    override suspend fun verifySession(): AuthSessionResult = TODO("Stage 3")
 
     internal companion object {
         const val TAG = "DefaultAuthRepository"

@@ -55,7 +55,11 @@ class LoginViewModel @Inject constructor(
                         loginStatus.update { LoginStatus.MISSING_SERVER_CONFIG }
                     }
 
-                    is AuthSignInResult.Failure, is AuthSignInResult.Error -> {
+                    AuthSignInResult.InvalidCredentials,
+                    AuthSignInResult.TooManyAttempts,
+                    AuthSignInResult.Unreachable,
+                    AuthSignInResult.ServerError,
+                    -> {
                         loginStatus.update { LoginStatus.AUTH_FAILED }
                     }
                 }
@@ -74,5 +78,15 @@ enum class LoginStatus {
     AUTH_PENDING,
     LOGGED_IN,
     AUTH_FAILED,
+    // STUB(Stage 4): the four statuses below are not produced yet; Stage 4 removes AUTH_FAILED.
+    INVALID_CREDENTIALS,
+    TOO_MANY_ATTEMPTS,
+    SERVER_UNREACHABLE,
+    SERVER_ERROR,
     MISSING_SERVER_CONFIG
 }
+
+/** Whether this status is a failed sign-in attempt that should show an inline error. */
+// STUB(Stage 4): replace with the real implementation.
+val LoginStatus.isFailure: Boolean
+    get() = TODO("Stage 4")

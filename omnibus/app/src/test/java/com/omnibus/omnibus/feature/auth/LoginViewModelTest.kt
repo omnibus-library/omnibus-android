@@ -69,7 +69,7 @@ class LoginViewModelTest : DescribeSpec({
             authRepository.signInAttempts shouldBe listOf(USERNAME to PASSWORD)
         }
 
-        it("is AUTH_PENDING while signing in") {
+        it("TC-30: is AUTH_PENDING while signing in") {
             authRepository.signInGate = CompletableDeferred()
             val viewModel = createViewModel()
 
@@ -78,7 +78,7 @@ class LoginViewModelTest : DescribeSpec({
             viewModel.uiState.value.loginStatus shouldBe LoginStatus.AUTH_PENDING
         }
 
-        it("ignores further attempts while one is pending") {
+        it("TC-30: ignores further attempts while one is pending") {
             val gate = CompletableDeferred<Unit>()
             authRepository.signInGate = gate
             val viewModel = createViewModel()
@@ -108,20 +108,72 @@ class LoginViewModelTest : DescribeSpec({
             viewModel.uiState.value.loginStatus shouldBe LoginStatus.MISSING_SERVER_CONFIG
         }
 
-        mapOf(
-            "rejects the credentials" to AuthSignInResult.Failure,
-            "errors" to AuthSignInResult.Error,
-        ).forEach { (description, result) ->
-            it("becomes AUTH_FAILED when sign-in $description, and allows a retry") {
+        listOf(
+            Triple("TC-26", AuthSignInResult.InvalidCredentials, LoginStatus.INVALID_CREDENTIALS),
+            Triple("TC-27", AuthSignInResult.TooManyAttempts, LoginStatus.TOO_MANY_ATTEMPTS),
+            Triple("TC-28", AuthSignInResult.Unreachable, LoginStatus.SERVER_UNREACHABLE),
+            Triple("TC-29", AuthSignInResult.ServerError, LoginStatus.SERVER_ERROR),
+        ).forEach { (id, result, expected) ->
+            it("$id: becomes $expected when sign-in returns $result, and allows a retry") {
                 authRepository.signInResult = result
                 val viewModel = createViewModel()
 
                 viewModel.attemptLogin(USERNAME, PASSWORD)
-                viewModel.uiState.value.loginStatus shouldBe LoginStatus.AUTH_FAILED
+                viewModel.uiState.value.loginStatus shouldBe expected
 
                 authRepository.signInResult = AuthSignInResult.Success(authToken = "token")
                 viewModel.attemptLogin(USERNAME, PASSWORD)
                 viewModel.uiState.value.loginStatus shouldBe LoginStatus.LOGGED_IN
+            }
+        }
+
+        it("TC-30: ignores attempts while pending even after an earlier failure, then settles on the result") {
+            authRepository.signInResult = AuthSignInResult.InvalidCredentials
+            val viewModel = createViewModel()
+            viewModel.attemptLogin(USERNAME, PASSWORD)
+            viewModel.uiState.value.loginStatus shouldBe LoginStatus.INVALID_CREDENTIALS
+
+            val gate = CompletableDeferred<Unit>()
+            authRepository.signInGate = gate
+            authRepository.signInResult = AuthSignInResult.Unreachable
+            viewModel.attemptLogin(USERNAME, PASSWORD)
+            viewModel.attemptLogin(USERNAME, PASSWORD)
+            viewModel.uiState.value.loginStatus shouldBe LoginStatus.AUTH_PENDING
+            authRepository.signInAttempts.size shouldBe 2
+
+            gate.complete(Unit)
+
+            viewModel.uiState.value.loginStatus shouldBe LoginStatus.SERVER_UNREACHABLE
+        }
+
+        it("TC-28: keeps the saved server address through a failure") {
+            authRepository.signInResult = AuthSignInResult.Unreachable
+            val viewModel = createViewModel()
+
+            viewModel.attemptLogin(USERNAME, PASSWORD)
+
+            viewModel.uiState.value.serverAddress shouldBe SERVER
+        }
+    }
+
+    describe("LoginStatus.isFailure") {
+
+        val failures = setOf(
+            LoginStatus.INVALID_CREDENTIALS,
+            LoginStatus.TOO_MANY_ATTEMPTS,
+            LoginStatus.SERVER_UNREACHABLE,
+            LoginStatus.SERVER_ERROR,
+        )
+
+        failures.forEach { status ->
+            it("TC-31: is true for $status") {
+                status.isFailure shouldBe true
+            }
+        }
+
+        (LoginStatus.entries.toSet() - failures).forEach { status ->
+            it("TC-31: is false for $status") {
+                status.isFailure shouldBe false
             }
         }
     }

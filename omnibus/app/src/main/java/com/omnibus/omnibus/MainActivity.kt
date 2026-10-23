@@ -48,6 +48,8 @@ class MainActivity : ComponentActivity() {
                 StartDestination.Loading -> null
                 StartDestination.ServerConfiguration -> ServerConfigurationScreenRoute
                 StartDestination.Login -> LoginScreenRoute
+                // STUB(Stage 5): map to SignedInShellRoute once the shell exists.
+                StartDestination.SignedIn -> LoginScreenRoute
             }
 
             OmnibusTheme {
