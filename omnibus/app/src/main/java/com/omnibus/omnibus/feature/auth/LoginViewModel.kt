@@ -55,8 +55,20 @@ class LoginViewModel @Inject constructor(
                         loginStatus.update { LoginStatus.MISSING_SERVER_CONFIG }
                     }
 
-                    is AuthSignInResult.Failure, is AuthSignInResult.Error -> {
-                        loginStatus.update { LoginStatus.AUTH_FAILED }
+                    AuthSignInResult.InvalidCredentials -> {
+                        loginStatus.update { LoginStatus.INVALID_CREDENTIALS }
+                    }
+
+                    AuthSignInResult.TooManyAttempts -> {
+                        loginStatus.update { LoginStatus.TOO_MANY_ATTEMPTS }
+                    }
+
+                    AuthSignInResult.Unreachable -> {
+                        loginStatus.update { LoginStatus.SERVER_UNREACHABLE }
+                    }
+
+                    AuthSignInResult.ServerError -> {
+                        loginStatus.update { LoginStatus.SERVER_ERROR }
                     }
                 }
             }
@@ -73,6 +85,25 @@ enum class LoginStatus {
     NOT_LOGGED_IN,
     AUTH_PENDING,
     LOGGED_IN,
-    AUTH_FAILED,
+    INVALID_CREDENTIALS,
+    TOO_MANY_ATTEMPTS,
+    SERVER_UNREACHABLE,
+    SERVER_ERROR,
     MISSING_SERVER_CONFIG
 }
+
+/** Whether this status is a failed sign-in attempt that should show an inline error. */
+val LoginStatus.isFailure: Boolean
+    get() = when (this) {
+        LoginStatus.INVALID_CREDENTIALS,
+        LoginStatus.TOO_MANY_ATTEMPTS,
+        LoginStatus.SERVER_UNREACHABLE,
+        LoginStatus.SERVER_ERROR,
+        -> true
+
+        LoginStatus.NOT_LOGGED_IN,
+        LoginStatus.AUTH_PENDING,
+        LoginStatus.LOGGED_IN,
+        LoginStatus.MISSING_SERVER_CONFIG,
+        -> false
+    }

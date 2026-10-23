@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.omnibus.omnibus.data.auth.local.FakeAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
 import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
@@ -31,6 +32,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
     lateinit var dataStoreDir: File
     lateinit var dataStoreScope: CoroutineScope
     lateinit var tokenStore: FakeAuthTokenStore
+    lateinit var tokenProvider: FakeAuthTokenProvider
     lateinit var repository: DefaultServerConfigurationRepository
 
     beforeSpec {
@@ -47,6 +49,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
         dataStoreDir = createTempDirectory("server-config-test").toFile()
         dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         tokenStore = FakeAuthTokenStore(initialToken = TOKEN)
+        tokenProvider = FakeAuthTokenProvider(token = TOKEN)
         repository = DefaultServerConfigurationRepository(
             serverConfigPreferences = PreferenceDataStoreFactory.create(
                 scope = dataStoreScope,
@@ -55,6 +58,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
             omnibusHttpClient = OmnibusHttpClient(
                 // Validation targets the candidate address, never the saved one.
                 baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = null),
+                authTokenProvider = tokenProvider,
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
                 authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
             ),
@@ -160,6 +164,15 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
                 repository.validateServerAddress(server.url("/omnibus/").toString())
 
                 server.takeRequest().url.encodedPath shouldBe "/omnibus/api/_health"
+            }
+
+            it("TC-12: doesn't send the stored bearer token to the unsaved server") {
+                server.enqueue(MockResponse.Builder().code(200).build())
+
+                repository.validateServerAddress(server.url("/").toString())
+
+                server.takeRequest().headers["Authorization"].shouldBeNull()
+                tokenProvider.invalidateCalls shouldBe 0
             }
 
             it("doesn't save the address") {

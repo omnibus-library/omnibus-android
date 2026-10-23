@@ -43,6 +43,7 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.auth.LoginStatus
 import com.omnibus.omnibus.feature.auth.LoginUIState
 import com.omnibus.omnibus.feature.auth.LoginViewModel
+import com.omnibus.omnibus.feature.auth.isFailure
 import com.omnibus.omnibus.ui.components.AdaptiveFormLayout
 import com.omnibus.omnibus.ui.components.FilledButton
 import com.omnibus.omnibus.ui.components.InlineError
@@ -123,13 +124,22 @@ private fun LoginContent(
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var showError by rememberSaveable {
-        mutableStateOf(uiState.loginStatus == LoginStatus.AUTH_FAILED)
+        mutableStateOf(uiState.loginStatus.isFailure)
     }
 
     val isBusy = uiState.loginStatus == LoginStatus.AUTH_PENDING
     val canSubmit = username.isNotBlank() && password.isNotEmpty() && !isBusy
-    val errorMessage = stringResource(R.string.login_error_invalid_credentials)
-        .takeIf { showError && uiState.loginStatus == LoginStatus.AUTH_FAILED }
+    val errorMessage = when (uiState.loginStatus) {
+        LoginStatus.INVALID_CREDENTIALS -> stringResource(R.string.login_error_invalid_credentials)
+        LoginStatus.TOO_MANY_ATTEMPTS -> stringResource(R.string.login_error_too_many_attempts)
+        LoginStatus.SERVER_UNREACHABLE -> stringResource(
+            R.string.login_error_unreachable,
+            uiState.serverAddress.removePrefix("http://"),
+        )
+        LoginStatus.SERVER_ERROR -> stringResource(R.string.login_error_server)
+
+        else -> null
+    }.takeIf { showError && uiState.loginStatus.isFailure }
 
     val submit = {
         if (canSubmit) {
@@ -145,15 +155,15 @@ private fun LoginContent(
     LaunchedEffect(Unit) { usernameFocusRequester.requestFocus() }
 
     LaunchedEffect(uiState.loginStatus) {
-        when (uiState.loginStatus) {
-            LoginStatus.AUTH_PENDING -> showError = false
-            LoginStatus.LOGGED_IN -> haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-            LoginStatus.AUTH_FAILED -> {
+        when {
+            uiState.loginStatus == LoginStatus.AUTH_PENDING -> showError = false
+            uiState.loginStatus == LoginStatus.LOGGED_IN ->
+                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+
+            uiState.loginStatus.isFailure -> {
                 showError = true
                 haptics.performHapticFeedback(HapticFeedbackType.Reject)
             }
-
-            else -> Unit
         }
     }
 
@@ -340,7 +350,23 @@ fun LoginContentRoutePreviewFailed() {
         LoginContent(
             modifier = Modifier,
             uiState = LoginUIState(
-                loginStatus = LoginStatus.AUTH_FAILED,
+                loginStatus = LoginStatus.INVALID_CREDENTIALS,
+                serverAddress = "192.168.1.10:3000",
+            ),
+            onSignIn = { _, _ -> },
+            onChangeServer = {}
+        )
+    }
+}
+
+@Composable
+@PreviewLightDark
+fun LoginContentRoutePreviewUnreachable() {
+    OmnibusTheme {
+        LoginContent(
+            modifier = Modifier,
+            uiState = LoginUIState(
+                loginStatus = LoginStatus.SERVER_UNREACHABLE,
                 serverAddress = "192.168.1.10:3000",
             ),
             onSignIn = { _, _ -> },
