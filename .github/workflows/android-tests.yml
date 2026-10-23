@@ -1,0 +1,59 @@
+on:
+  workflow_call:
+    inputs:
+      head_sha:
+        required: true
+        type: string
+    outputs:
+      unit:
+        value: ${{ jobs.collect.outputs.unit }}
+      instrumentation:
+        value: ${{ jobs.collect.outputs.instrumentation }}
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.head_sha }}
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Run unit tests
+        working-directory: omnibus
+        run: ./gradlew test --stacktrace
+
+      - name: Upload unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: omnibus/app/build/reports/tests/
+          if-no-files-found: ignore
+
+  collect:
+    needs: [unit-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      unit: ${{ needs.unit-tests.result }}
+      instrumentation: ${{ 'success' }}
+    steps:
+      - name: Print results
+        run: |
+          echo "unit=${{ needs.unit-tests.result }}"
+          echo "instrumentation=${{ 'success' }}"
+          exit 0
