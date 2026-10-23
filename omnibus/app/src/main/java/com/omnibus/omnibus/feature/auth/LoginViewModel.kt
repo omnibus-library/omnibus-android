@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthRegisterResult
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.AuthSignInResult
 import com.omnibus.omnibus.data.configuration.ServerConfigurationRepository
@@ -74,6 +75,53 @@ class LoginViewModel @Inject constructor(
             }
         }
     }
+
+    fun attemptRegister(username: String, password: String) {
+        if (loginStatus.value != LoginStatus.AUTH_PENDING) {
+            loginStatus.update { LoginStatus.AUTH_PENDING }
+
+            viewModelScope.launch {
+                val registerResult = authRepository.register(
+                    username = username,
+                    password = password
+                )
+
+                when (registerResult) {
+                    is AuthRegisterResult.Success -> {
+                        loginStatus.update { LoginStatus.LOGGED_IN }
+                    }
+
+                    is AuthRegisterResult.NoServer -> {
+                        loginStatus.update { LoginStatus.MISSING_SERVER_CONFIG }
+                    }
+
+                    AuthRegisterResult.UsernameTaken -> {
+                        loginStatus.update { LoginStatus.USERNAME_TAKEN }
+                    }
+
+                    AuthRegisterResult.RegistrationDisabled -> {
+                        loginStatus.update { LoginStatus.REGISTRATION_DISABLED }
+                    }
+
+                    AuthRegisterResult.InvalidDetails -> {
+                        loginStatus.update { LoginStatus.INVALID_DETAILS }
+                    }
+
+                    AuthRegisterResult.TooManyAttempts -> {
+                        loginStatus.update { LoginStatus.TOO_MANY_ATTEMPTS }
+                    }
+
+                    AuthRegisterResult.Unreachable -> {
+                        loginStatus.update { LoginStatus.SERVER_UNREACHABLE }
+                    }
+
+                    AuthRegisterResult.ServerError -> {
+                        loginStatus.update { LoginStatus.SERVER_ERROR }
+                    }
+                }
+            }
+        }
+    }
 }
 
 data class LoginUIState(
@@ -89,16 +137,22 @@ enum class LoginStatus {
     TOO_MANY_ATTEMPTS,
     SERVER_UNREACHABLE,
     SERVER_ERROR,
-    MISSING_SERVER_CONFIG
+    USERNAME_TAKEN,
+    REGISTRATION_DISABLED,
+    INVALID_DETAILS,
+    MISSING_SERVER_CONFIG,
 }
 
-/** Whether this status is a failed sign-in attempt that should show an inline error. */
+/** Whether this status is a failed sign-in or registration that should show an inline error. */
 val LoginStatus.isFailure: Boolean
     get() = when (this) {
         LoginStatus.INVALID_CREDENTIALS,
         LoginStatus.TOO_MANY_ATTEMPTS,
         LoginStatus.SERVER_UNREACHABLE,
         LoginStatus.SERVER_ERROR,
+        LoginStatus.USERNAME_TAKEN,
+        LoginStatus.REGISTRATION_DISABLED,
+        LoginStatus.INVALID_DETAILS,
         -> true
 
         LoginStatus.NOT_LOGGED_IN,

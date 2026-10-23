@@ -29,6 +29,8 @@
     <string name="login_create_account">Create account</string>
     <!-- Spoken by screen readers while credentials are being checked. -->
     <string name="login_signing_in">Signing in</string>
+    <!-- Spoken by screen readers while the account is being created. -->
+    <string name="login_creating_account">Creating account</string>
     <string name="login_no_account">No account yet?</string>
     <string name="login_have_account">Already have an account?</string>
     <string name="login_register">Register</string>
@@ -37,6 +39,10 @@
     <!-- %1$s is the server address. -->
     <string name="login_error_unreachable">Couldn\'t reach %1$s.</string>
     <string name="login_error_too_many_attempts">Too many sign-in attempts. Wait a moment and try again.</string>
+    <string name="login_error_too_many_register_attempts">Too many attempts. Wait a moment and try again.</string>
+    <string name="login_error_username_taken">That username is already taken.</string>
+    <string name="login_error_registration_disabled">Registration is closed on this server.</string>
+    <string name="login_error_invalid_details">That username or password isn\'t allowed.</string>
     <string name="login_error_server">Something went wrong on the server. Try again.</string>
 
     <!-- Signed-in shell -->
