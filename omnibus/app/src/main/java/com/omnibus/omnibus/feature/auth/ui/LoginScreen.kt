@@ -65,7 +65,6 @@ private enum class LoginMode { LOGIN, REGISTER }
 
 abstract class LoginScreenAction {
     data object Login : LoginScreenAction()
-    data object Register : LoginScreenAction()
     data object ChangeServer : LoginScreenAction()
 }
 
@@ -101,6 +100,10 @@ fun LoginScreen(
             awaitingLogin = true
             viewModel.attemptLogin(username, password)
         },
+        onRegister = { username, password ->
+            awaitingLogin = true
+            viewModel.attemptRegister(username, password)
+        },
         onChangeServer = {
             currentAction(LoginScreenAction.ChangeServer)
         }
@@ -113,6 +116,7 @@ private fun LoginContent(
     uiState: LoginUIState,
     initialMode: LoginMode = LoginMode.LOGIN,
     onSignIn: (username: String, password: String) -> Unit,
+    onRegister: (username: String, password: String) -> Unit,
     onChangeServer: () -> Unit
 ) {
     val palette = OmnibusTheme.palette
@@ -131,12 +135,18 @@ private fun LoginContent(
     val canSubmit = username.isNotBlank() && password.isNotEmpty() && !isBusy
     val errorMessage = when (uiState.loginStatus) {
         LoginStatus.INVALID_CREDENTIALS -> stringResource(R.string.login_error_invalid_credentials)
-        LoginStatus.TOO_MANY_ATTEMPTS -> stringResource(R.string.login_error_too_many_attempts)
+        LoginStatus.TOO_MANY_ATTEMPTS -> when (mode) {
+            LoginMode.LOGIN -> stringResource(R.string.login_error_too_many_attempts)
+            LoginMode.REGISTER -> stringResource(R.string.login_error_too_many_register_attempts)
+        }
         LoginStatus.SERVER_UNREACHABLE -> stringResource(
             R.string.login_error_unreachable,
             uiState.serverAddress.removePrefix("http://"),
         )
         LoginStatus.SERVER_ERROR -> stringResource(R.string.login_error_server)
+        LoginStatus.USERNAME_TAKEN -> stringResource(R.string.login_error_username_taken)
+        LoginStatus.REGISTRATION_DISABLED -> stringResource(R.string.login_error_registration_disabled)
+        LoginStatus.INVALID_DETAILS -> stringResource(R.string.login_error_invalid_details)
 
         else -> null
     }.takeIf { showError && uiState.loginStatus.isFailure }
@@ -145,9 +155,7 @@ private fun LoginContent(
         if (canSubmit) {
             when (mode) {
                 LoginMode.LOGIN -> onSignIn(username, password)
-                // TODO: Call /api/auth/register with the same credentials, then sign in with the
-                //  returned token exactly as a login does.
-                LoginMode.REGISTER -> Unit
+                LoginMode.REGISTER -> onRegister(username, password)
             }
         }
     }
@@ -236,7 +244,12 @@ private fun LoginContent(
             onClick = submit,
             enabled = canSubmit,
             isLoading = isBusy,
-            loadingDescription = stringResource(R.string.login_signing_in),
+            loadingDescription = stringResource(
+                when (mode) {
+                    LoginMode.REGISTER -> R.string.login_creating_account
+                    LoginMode.LOGIN -> R.string.login_signing_in
+                },
+            ),
         )
 
         Row(
@@ -308,6 +321,7 @@ fun LoginContentRoutePreviewBasic() {
             modifier = Modifier,
             uiState = LoginUIState(serverAddress = "192.168.1.10:3000"),
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
@@ -322,6 +336,7 @@ fun LoginContentRoutePreviewWide() {
             modifier = Modifier,
             uiState = LoginUIState(serverAddress = "192.168.1.10:3000"),
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
@@ -338,6 +353,7 @@ fun LoginContentRoutePreviewPending() {
                 serverAddress = "192.168.1.10:3000",
             ),
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
@@ -354,6 +370,25 @@ fun LoginContentRoutePreviewFailed() {
                 serverAddress = "192.168.1.10:3000",
             ),
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
+            onChangeServer = {}
+        )
+    }
+}
+
+@Composable
+@PreviewLightDark
+fun LoginContentRoutePreviewUsernameTaken() {
+    OmnibusTheme {
+        LoginContent(
+            modifier = Modifier,
+            uiState = LoginUIState(
+                loginStatus = LoginStatus.USERNAME_TAKEN,
+                serverAddress = "192.168.1.10:3000",
+            ),
+            initialMode = LoginMode.REGISTER,
+            onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
@@ -370,6 +405,7 @@ fun LoginContentRoutePreviewUnreachable() {
                 serverAddress = "192.168.1.10:3000",
             ),
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
@@ -384,6 +420,7 @@ fun LoginContentRoutePreviewRegister() {
             uiState = LoginUIState(serverAddress = "192.168.1.10:3000"),
             initialMode = LoginMode.REGISTER,
             onSignIn = { _, _ -> },
+            onRegister = { _, _ -> },
             onChangeServer = {}
         )
     }
