@@ -5,9 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,7 +82,14 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    // The shell insets itself so the keyboard can cover its tab bar; the Scaffold would pad for it.
+    val insets = if (backstack.lastOrNull() == SignedInShellRoute) {
+        WindowInsets(0)
+    } else {
+        ScaffoldDefaults.contentWindowInsets
+    }
+
+    Scaffold(modifier = Modifier.fillMaxSize(), contentWindowInsets = insets) { innerPadding ->
         NavDisplay(
             modifier = Modifier.padding(innerPadding),
             backStack = backstack,
