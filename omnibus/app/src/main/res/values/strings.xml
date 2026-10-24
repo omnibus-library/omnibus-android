@@ -40,5 +40,9 @@
     <string name="login_error_server">Something went wrong on the server. Try again.</string>
 
     <!-- Signed-in shell -->
-    <string name="shell_placeholder">Library</string>
+    <string name="shell_tab_library">Library</string>
+    <string name="shell_tab_authors">Authors</string>
+    <string name="shell_tab_series">Series</string>
+    <string name="shell_tab_stats">Stats</string>
+    <string name="shell_tab_you">You</string>
 </resources>
