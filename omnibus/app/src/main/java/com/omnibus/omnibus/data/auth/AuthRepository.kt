@@ -9,6 +9,9 @@ interface AuthRepository {
 
     suspend fun signIn(username: String, password: String): AuthSignInResult
 
+    /** Creates an account on the saved server and saves the bearer token on success. */
+    suspend fun register(username: String, password: String): AuthRegisterResult
+
     suspend fun signOut(): AuthSignOutResult
 
     /** Confirms the stored session with the server. */
@@ -34,6 +37,33 @@ sealed interface AuthSignInResult {
 
     /** No valid server is saved, so there is nowhere to sign in. */
     data object NoServer : AuthSignInResult
+}
+
+/** The outcome of creating an account. */
+sealed interface AuthRegisterResult {
+    /** Account created and [authToken] saved. */
+    data class Success(val authToken: String) : AuthRegisterResult
+
+    /** 409. Nothing saved. */
+    data object UsernameTaken : AuthRegisterResult
+
+    /** 403. Registration is closed. Nothing saved. */
+    data object RegistrationDisabled : AuthRegisterResult
+
+    /** 400. Username or password rejected. Nothing saved. */
+    data object InvalidDetails : AuthRegisterResult
+
+    /** 429. Nothing saved. */
+    data object TooManyAttempts : AuthRegisterResult
+
+    /** Transport failure before a response. Nothing saved. */
+    data object Unreachable : AuthRegisterResult
+
+    /** Other non-2xx, unusable body, blank token, or token save failed. */
+    data object ServerError : AuthRegisterResult
+
+    /** No saved server. No request. */
+    data object NoServer : AuthRegisterResult
 }
 
 sealed interface AuthSignOutResult {

@@ -80,6 +80,59 @@ class DefaultAuthRepository @Inject constructor(
         }
     }
 
+    override suspend fun register(
+        username: String,
+        password: String
+    ): AuthRegisterResult {
+
+        val body = AuthSignInRequestDto(username = username, password = password).toJsonRequest()
+
+        return withContext(ioDispatcher) {
+            val request = omnibusHttpClient.request(REGISTER_PATH)?.post(body)?.build()
+                ?: return@withContext AuthRegisterResult.NoServer
+            val httpResponse = try {
+                omnibusHttpClient.execute(request)
+            } catch (ex: IOException) {
+                Log.e(TAG, "Unable to reach the server", ex)
+                return@withContext AuthRegisterResult.Unreachable
+            }
+
+            httpResponse.use { result ->
+                Log.d(TAG, "Register Result: $result")
+
+                if (result.isSuccessful) {
+                    try {
+                        Log.d(TAG, "Register Status: Success")
+                        val response = AuthSignInResponseDto.fromJsonString(result.body.string())
+                        val token = response.token
+                        if (token.isNullOrBlank()) {
+                            AuthRegisterResult.ServerError
+                        } else {
+                            authTokenStore.save(token)
+                            AuthRegisterResult.Success(authToken = token)
+                        }
+                    } catch (ex: CancellationException) {
+                        throw ex
+                    } catch (ex: Exception) {
+                        // The exception message can include the response body, which carries the token.
+                        Log.e(TAG, "Unable to complete registration")
+                        AuthRegisterResult.ServerError
+                    }
+                } else {
+                    Log.d(TAG, "Register Status: Failed")
+                    Log.d(TAG, "Failure Response: ${result.message}")
+                    when (result.code) {
+                        409 -> AuthRegisterResult.UsernameTaken
+                        403 -> AuthRegisterResult.RegistrationDisabled
+                        400 -> AuthRegisterResult.InvalidDetails
+                        429 -> AuthRegisterResult.TooManyAttempts
+                        else -> AuthRegisterResult.ServerError
+                    }
+                }
+            }
+        }
+    }
+
     override suspend fun signOut(): AuthSignOutResult =
         try {
             //TODO: Actually call the endpoint to clear the session, if there is one
@@ -138,6 +191,7 @@ class DefaultAuthRepository @Inject constructor(
         const val TAG = "DefaultAuthRepository"
 
         const val LOGIN_PATH = "api/auth/login"
+        const val REGISTER_PATH = "api/auth/register"
         const val ME_PATH = "api/auth/me"
     }
 }

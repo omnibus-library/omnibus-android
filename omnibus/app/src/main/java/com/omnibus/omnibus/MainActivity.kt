@@ -115,10 +115,6 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                                 backstack.removeLastOrNull()
                                 backstack.add(ServerConfigurationScreenRoute)
                             }
-
-                            is LoginScreenAction.Register -> {
-                                // do registration shit
-                            }
                         }
                     })
                 }
