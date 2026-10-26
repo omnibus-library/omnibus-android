@@ -54,4 +54,19 @@
 
     <!-- Masthead -->
     <string name="masthead_add_books">Add books by upload or barcode scan</string>
+
+    <!-- Library -->
+    <string name="library_title">Library</string>
+    <string name="library_all_books">All books</string>
+    <string name="library_loading">Loading your library</string>
+    <string name="library_error_title">Couldn\'t load this</string>
+    <string name="library_try_again">Try again</string>
+    <string name="library_empty_kicker">YOUR LIBRARY</string>
+    <string name="library_empty_title">No books yet</string>
+    <string name="library_empty_message">Point the server at a library folder, or add a book from the You tab.</string>
+
+    <!-- Book detail -->
+    <string name="book_detail_stub_title">Book detail</string>
+    <!-- %1$s is the book's uuid. -->
+    <string name="book_detail_stub_uuid" translatable="false">uuid: %1$s</string>
 </resources>
