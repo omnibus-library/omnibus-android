@@ -2,14 +2,14 @@ name: CI Tests
 
 on:
   pull_request_target:
-    types: [opened]
+    types: [opened, synchronize, reopened]
     branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-tests-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: ci-tests-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -19,27 +19,3 @@ jobs:
     uses: ./.github/workflows/android-tests.yml
     with:
       head_sha: ${{ github.event.pull_request.head.sha }}
-
-  verdict:
-    name: verdict
-    needs: [tests]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Report test verdict
-        run: |
-          unit="${{ needs.tests.outputs.unit }}"
-          instrumentation="${{ needs.tests.outputs.instrumentation }}"
-          if [ "$unit" = "success" ] && [ "$instrumentation" = "success" ]; then
-            echo "### CI Tests: passed" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "### CI Tests: failed" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          {
-            echo "unit: $unit"
-            echo "instrumentation: $instrumentation"
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$unit" != "success" ] || [ "$instrumentation" != "success" ]; then
-            exit 1
-          fi
