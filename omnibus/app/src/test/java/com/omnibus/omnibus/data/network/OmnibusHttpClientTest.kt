@@ -125,7 +125,7 @@ class OmnibusHttpClientTest : DescribeSpec({
 
     describe("newCall") {
 
-        it("sends requests through the shared interceptors") {
+        it("TC-183: sends requests through the shared interceptors") {
             MockWebServer().use { server ->
                 server.start()
                 server.enqueue(MockResponse.Builder().code(200).build())
@@ -133,6 +133,20 @@ class OmnibusHttpClientTest : DescribeSpec({
                 client.newCall(client.request(server.url("/"), "api/_health").build()).execute().close()
 
                 server.takeRequest().headers["Accept"] shouldBe "application/json"
+            }
+        }
+
+        it("TC-184: keeps an Accept header the request already set") {
+            MockWebServer().use { server ->
+                server.start()
+                server.enqueue(MockResponse.Builder().code(200).build())
+                val request = client.request(server.url("/"), "api/thumbs/abc/md")
+                    .header("Accept", "image/webp")
+                    .build()
+
+                client.newCall(request).execute().close()
+
+                server.takeRequest().headers["Accept"] shouldBe "image/webp"
             }
         }
     }
@@ -237,7 +251,7 @@ class OmnibusHttpClientTest : DescribeSpec({
             tokenProvider.invalidateCalls shouldBe 0
         }
 
-        it("sends requests through the shared interceptors") {
+        it("TC-183: sends requests through the shared interceptors") {
             enqueue(200)
 
             client.execute(client.request("api/auth/me")!!.build()).close()

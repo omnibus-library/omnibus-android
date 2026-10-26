@@ -4,16 +4,15 @@
    for details.
 -->
 <data-extraction-rules>
+    <!-- The cover cache is re-downloadable, so it stays out of backups and transfers. -->
     <cloud-backup>
+        <exclude domain="file" path="covers/"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="covers/"/>
     </device-transfer>
-    -->
 </data-extraction-rules>
