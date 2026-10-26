@@ -8,7 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
@@ -27,6 +29,9 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import com.omnibus.omnibus.feature.library.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.library.ui.BookDetailStubScreen
+import com.omnibus.omnibus.feature.library.ui.LibraryScreen
 import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
 import com.omnibus.omnibus.feature.shell.SeriesRoot
@@ -89,7 +94,9 @@ private fun SignedInShellContent(
         NavDisplay(
             modifier = Modifier
                 .weight(1f)
-                .windowInsetsPadding(WindowInsets.statusBars),
+                .windowInsetsPadding(WindowInsets.statusBars)
+                // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
+                .consumeWindowInsets(WindowInsets.navigationBars),
             backStack = navigator.backStack,
             onBack = onBack,
             // Switching tabs moves between stacks, which a slide would read as a push or pop.
@@ -101,7 +108,13 @@ private fun SignedInShellContent(
                 rememberViewModelStoreNavEntryDecorator(),
             ),
             entryProvider = entryProvider {
-                entry<LibraryRoot> { EmptyTabRoot(ShellTab.Library) }
+                entry<LibraryRoot> {
+                    LibraryScreen(
+                        onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                        onAddBooks = { /* Add books sheet: later ticket */ },
+                    )
+                }
+                entry<BookDetailRoute> { key -> BookDetailStubScreen(uuid = key.uuid) }
                 entry<AuthorsRoot> { EmptyTabRoot(ShellTab.Authors) }
                 entry<SeriesRoot> { EmptyTabRoot(ShellTab.Series) }
                 entry<StatsRoot> { EmptyTabRoot(ShellTab.Stats) }
