@@ -4,11 +4,6 @@ on:
       head_sha:
         required: true
         type: string
-    outputs:
-      unit:
-        value: ${{ jobs.collect.outputs.unit }}
-      instrumentation:
-        value: ${{ jobs.collect.outputs.instrumentation }}
 
 permissions:
   contents: read
@@ -94,18 +89,3 @@ jobs:
             omnibus/app/build/reports/androidTests/
             omnibus/app/build/outputs/androidTest-results/
           if-no-files-found: ignore
-
-  collect:
-    needs: [unit-tests, instrumentation-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      unit: ${{ needs.unit-tests.result }}
-      instrumentation: ${{ needs.instrumentation-tests.result }}
-    steps:
-      - name: Print results
-        run: |
-          echo "unit=${{ needs.unit-tests.result }}"
-          echo "instrumentation=${{ needs.instrumentation-tests.result }}"
-          exit 0
