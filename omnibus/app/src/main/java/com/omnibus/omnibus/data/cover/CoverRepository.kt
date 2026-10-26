@@ -31,6 +31,8 @@ interface CoverRepository {
     /**
      * Drops the [uuid] book's thumbnails at every size from both cache tiers. Call this after a
      * cover is uploaded or reverted, since its URLs stay the same while the bytes behind them don't.
+     * An invalidation that lands while a fetch is in flight can leave one stale memory-cache entry
+     * (Coil stores the decoded bitmap after [thumbnail] returns) until its revalidation window ends.
      */
     suspend fun invalidate(uuid: String)
 
