@@ -108,7 +108,8 @@ class DefaultCoverRepository @Inject constructor(
             cacheLock.withLock {
                 // Bumped before the removals, so a fetch that finishes after them is refused.
                 diskKeys.forEach { generations.computeIfAbsent(it) { AtomicInteger() }.incrementAndGet() }
-                diskKeys.forEach { diskStore.remove(it) }
+                // Every size is attempted even if one removal fails, so no stale copy outlives the call.
+                diskKeys.forEach { key -> diskOrNull("remove cached cover") { diskStore.remove(key) } }
             }
         }
         memoryCache.keys
@@ -120,7 +121,7 @@ class DefaultCoverRepository @Inject constructor(
         withContext(ioDispatcher) {
             cacheLock.withLock {
                 globalGeneration.incrementAndGet()
-                diskStore.clear()
+                diskOrNull("clear cover cache") { diskStore.clear() }
             }
         }
         memoryCache.clear()

@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.cover.local
 
 import coil3.disk.DiskCache
+import kotlinx.coroutines.CancellationException
 import okio.ByteString
 import okio.FileSystem
 import okio.buffer
@@ -45,7 +46,7 @@ class DefaultCoverDiskStore @Inject constructor(
     private val fileSystem: FileSystem get() = diskCache.fileSystem
 
     override suspend fun read(key: String): CachedCover? =
-        runCatching {
+        try {
             diskCache.openSnapshot(key)?.use { snapshot ->
                 val bytes = fileSystem.source(snapshot.data).buffer().use { it.readByteString() }
                 val metadata = CoverMetadata.decode(
@@ -53,7 +54,11 @@ class DefaultCoverDiskStore @Inject constructor(
                 )
                 CachedCover(bytes, metadata.etag, metadata.storedAtMillis)
             }
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            null
+        }
 
     override suspend fun write(key: String, cover: CachedCover) {
         // Null when another write to this key is in flight; that one is as current as this one.

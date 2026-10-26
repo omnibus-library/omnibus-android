@@ -13,10 +13,12 @@ import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -389,6 +391,22 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             result shouldBe found("superseded", CoverSize.Md, fromCache = false)
             cached("book", CoverSize.Md).shouldBeNull()
         }
+
+        it("TC-205: doesn't throw when a disk removal fails, still tries every size and clears memory") {
+            CoverSize.entries.forEach { seed("book", it, "bytes", etag = "\"v\"") }
+            diskStore.removeFailure = IOException("journal locked")
+            val image = mockk<Image>(relaxed = true)
+            val keys = CoverSize.entries.map {
+                MemoryCache.Key(CoverCacheKeys.memoryKey(CoverThumbnail("book", it), now))
+            }
+            keys.forEach { memoryCache[it] = MemoryCache.Value(image) }
+
+            shouldNotThrowAny { repository.invalidate("book") }
+
+            diskStore.removedKeys shouldContainExactlyInAnyOrder
+                CoverSize.entries.map { CoverCacheKeys.diskKey("book", it) }
+            keys.forEach { memoryCache[it].shouldBeNull() }
+        }
     }
 
     describe("clear") {
@@ -401,6 +419,17 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             repository.clear()
 
             diskStore.entries.keys.toList().shouldBeEmpty()
+            memoryCache[key].shouldBeNull()
+        }
+
+        it("TC-206: doesn't throw when the disk clear fails, and still clears memory") {
+            seed("book", CoverSize.Md, "bytes", etag = "\"v\"")
+            diskStore.clearFailure = IOException("journal locked")
+            val key = MemoryCache.Key("k")
+            memoryCache[key] = MemoryCache.Value(mockk<Image>(relaxed = true))
+
+            shouldNotThrowAny { repository.clear() }
+
             memoryCache[key].shouldBeNull()
         }
 
