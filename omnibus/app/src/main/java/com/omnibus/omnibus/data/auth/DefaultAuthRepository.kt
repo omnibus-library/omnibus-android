@@ -4,16 +4,21 @@ import android.util.Log
 import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
+import com.omnibus.omnibus.data.auth.remote.UserInfoDto
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
 
@@ -27,6 +32,13 @@ class DefaultAuthRepository @Inject constructor(
         authTokenStore.token
             .map { !it.isNullOrBlank() }
             .catch { emit(false) }
+            .distinctUntilChanged()
+
+    /** The user the server last reported. Only exposed while signed in, so a stale user never outlives the token. */
+    private val lastUser = MutableStateFlow<CurrentUser?>(null)
+
+    override val currentUser: Flow<CurrentUser?> =
+        combine(lastUser, isSignedIn) { user, signedIn -> user.takeIf { signedIn } }
             .distinctUntilChanged()
 
     override suspend fun signIn(
@@ -58,6 +70,7 @@ class DefaultAuthRepository @Inject constructor(
                             AuthSignInResult.ServerError
                         } else {
                             authTokenStore.save(token)
+                            lastUser.value = response.user.toCurrentUser()
                             AuthSignInResult.Success(authToken = token)
                         }
                     } catch (ex: CancellationException) {
@@ -109,6 +122,7 @@ class DefaultAuthRepository @Inject constructor(
                             AuthRegisterResult.ServerError
                         } else {
                             authTokenStore.save(token)
+                            lastUser.value = response.user.toCurrentUser()
                             AuthRegisterResult.Success(authToken = token)
                         }
                     } catch (ex: CancellationException) {
@@ -137,6 +151,7 @@ class DefaultAuthRepository @Inject constructor(
         try {
             //TODO: Actually call the endpoint to clear the session, if there is one
             authTokenStore.clear()
+            lastUser.value = null
             AuthSignOutResult.Success
         } catch (ex: CancellationException) {
             throw ex
@@ -171,11 +186,14 @@ class DefaultAuthRepository @Inject constructor(
             when {
                 result.isSuccessful -> {
                     Log.d(TAG, "Session status: Valid")
+                    // A body that doesn't decode keeps the user from the last good check.
+                    readCurrentUser(result)?.let { lastUser.value = it }
                     AuthSessionResult.Valid
                 }
                 // The client already invalidated the token on this 401.
                 result.code == 401 -> {
                     Log.d(TAG, "Session status: Rejected")
+                    lastUser.value = null
                     AuthSessionResult.Rejected
                 }
                 else -> {
@@ -187,11 +205,27 @@ class DefaultAuthRepository @Inject constructor(
         }
     }
 
+    /**
+     * The user in a 2xx `/me` body, or null when it can't be read. `/me` returns the user object
+     * directly, with keys [UserInfoDto] doesn't declare, so this decoder ignores unknown keys.
+     */
+    private fun readCurrentUser(result: Response): CurrentUser? =
+        try {
+            MeJson.decodeFromString<UserInfoDto>(result.body.string()).toCurrentUser()
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            Log.w(TAG, "Unable to read the current user from the session check", ex)
+            null
+        }
+
     internal companion object {
         const val TAG = "DefaultAuthRepository"
 
         const val LOGIN_PATH = "api/auth/login"
         const val REGISTER_PATH = "api/auth/register"
         const val ME_PATH = "api/auth/me"
+
+        private val MeJson = Json { ignoreUnknownKeys = true }
     }
 }
