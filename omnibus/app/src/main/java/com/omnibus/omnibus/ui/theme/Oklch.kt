@@ -67,7 +67,7 @@ data class Oklch(
 
         /**
          * Parses the per-book `accent` string: `oklch(L C H [/ A])`, where `L` may be a percentage
-         * (any value above 1 is divided by 100), or `#rrggbb`. Returns null for anything else so
+         * (`55%` is 0.55; a bare value above 1 is also divided by 100), or `#rrggbb`. Returns null for anything else so
          * callers can fall back to a title-derived tone.
          */
         fun parse(css: String): Oklch? {

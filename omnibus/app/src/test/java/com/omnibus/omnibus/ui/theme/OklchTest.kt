@@ -78,6 +78,8 @@ class OklchTest : DescribeSpec({
 
         it("TC-109: reads a percentage lightness and alpha") {
             Oklch.parse("oklch(55% 0.09 200 / 0.5)") shouldBe Oklch(0.55, 0.09, 200.0, 0.5)
+            // CSS reading: anything marked % is a percentage, even at or below 1.
+            Oklch.parse("oklch(1% 0 0)")!!.l shouldBe 0.01
         }
 
         it("TC-110: keeps lightness of 1 or less as is") {
