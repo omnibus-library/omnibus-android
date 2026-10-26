@@ -9,8 +9,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 
-/** Cormorant Garamond, the display face shared with the iOS and web clients. Only Regular is bundled. */
-val DisplayFontFamily = FontFamily(Font(R.font.cormorant_garamond_regular))
+/** Cormorant Garamond, the display face shared with the iOS and web clients. Bundles Normal and SemiBold. */
+val DisplayFontFamily = FontFamily(
+    Font(R.font.cormorant_garamond_regular, FontWeight.Normal),
+    Font(R.font.cormorant_garamond_semibold, FontWeight.SemiBold),
+)
 
 /** Instrument Sans, the UI face shared with the iOS and web clients. Bundles Normal, Medium, and SemiBold. */
 val UiFontFamily = FontFamily(
