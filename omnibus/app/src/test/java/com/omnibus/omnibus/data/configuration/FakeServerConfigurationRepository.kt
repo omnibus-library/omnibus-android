@@ -21,7 +21,7 @@ class FakeServerConfigurationRepository(initialAddress: String? = null) :
     /** Every address passed to [validateServerAddress], in order. */
     val validatedAddresses = mutableListOf<String>()
 
-    /** When set, [fetchSavedServerConfig] fails with this instead of emitting. */
+    /** When set, [getSavedServerConfigFlow] fails with this instead of emitting. */
     var readFailure: Throwable? = null
 
     override suspend fun validateServerAddress(address: String): ServerValidationResult {
@@ -34,7 +34,7 @@ class FakeServerConfigurationRepository(initialAddress: String? = null) :
         savedAddress.value = address
     }
 
-    override fun fetchSavedServerConfig(): Flow<String?> = flow {
+    override fun getSavedServerConfigFlow(): Flow<String?> = flow {
         readFailure?.let { throw it }
         savedAddress.collect { emit(it) }
     }

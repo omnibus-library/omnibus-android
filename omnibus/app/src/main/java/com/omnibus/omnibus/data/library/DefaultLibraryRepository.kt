@@ -29,15 +29,15 @@ class DefaultLibraryRepository @Inject constructor(
     private val omnibusHttpClient: OmnibusHttpClient,
 ) : LibraryRepository {
 
-    override fun booksPage(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
+    override fun getBooksPageFlow(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
         emit(fetchBooksPage(query, cursor))
     }
 
-    override fun recentProgress(): Flow<RecentProgressResult> = flow {
+    override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flow {
         emit(fetchRecentProgress())
     }
 
-    override fun shelfPreviews(): Flow<ShelfPreviewsResult> = flow {
+    override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow {
         emit(fetchShelfPreviews())
     }
 

@@ -19,7 +19,7 @@ class ServerConfigurationViewModel @Inject constructor(
     private val serverConfigRepo: ServerConfigurationRepository,
 ) : ViewModel() {
 
-    private val serverConfigState: StateFlow<String?> = serverConfigRepo.fetchSavedServerConfig()
+    private val serverConfigState: StateFlow<String?> = serverConfigRepo.getSavedServerConfigFlow()
         .stateIn(scope = viewModelScope, initialValue = "", started = SharingStarted.Lazily)
 
     private var _submissionStatusState = MutableStateFlow(ServerConfigSubmissionStatus.UNSUBMITTED)

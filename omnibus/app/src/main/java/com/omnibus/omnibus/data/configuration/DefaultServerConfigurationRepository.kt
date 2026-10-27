@@ -60,7 +60,7 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
-    override fun fetchSavedServerConfig(): Flow<String?> =
+    override fun getSavedServerConfigFlow(): Flow<String?> =
         serverConfigPreferences.data.map { configDataStore -> configDataStore[SERVER_URL_PREFS_KEY] }
 
     private fun probeServerHealth(serverUrl: HttpUrl): ServerProbeStatus {

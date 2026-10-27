@@ -9,16 +9,16 @@ import kotlinx.coroutines.flow.Flow
 interface LibraryRepository {
 
     /** One page of books. Pass the previous page's [BooksPage.nextCursor] as [cursor] for the next one. */
-    fun booksPage(
+    fun getBooksPageFlow(
         query: BooksPageQuery = BooksPageQuery(),
         cursor: String? = null,
     ): Flow<LibraryPageResult>
 
     /** The most recent resume points, newest first. */
-    fun recentProgress(): Flow<RecentProgressResult>
+    fun getRecentProgressFlow(): Flow<RecentProgressResult>
 
     /** Every shelf the user can see, in the server's order, each with up to four covers. */
-    fun shelfPreviews(): Flow<ShelfPreviewsResult>
+    fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult>
 }
 
 /** The sort keys the server accepts for a books page. [apiName] is what goes on the wire. */
@@ -53,7 +53,7 @@ data class BooksPageQuery(
 /**
  * One page of books.
  *
- * @property nextCursor Pass to the next [LibraryRepository.booksPage] call, or null on the last page.
+ * @property nextCursor Pass to the next [LibraryRepository.getBooksPageFlow] call, or null on the last page.
  * @property total The library size for the query, when the server reports it.
  * @property hiddenCount How many books the `excludeFormats` filter hid. Only sent on the first page.
  */
@@ -64,7 +64,7 @@ data class BooksPage(
     val hiddenCount: Int?,
 )
 
-/** The outcome of [LibraryRepository.booksPage]. */
+/** The outcome of [LibraryRepository.getBooksPageFlow]. */
 sealed interface LibraryPageResult {
 
     data class Success(val page: BooksPage) : LibraryPageResult
@@ -76,7 +76,7 @@ sealed interface LibraryPageResult {
     data class Failure(val message: String) : LibraryPageResult
 }
 
-/** The outcome of [LibraryRepository.recentProgress]. */
+/** The outcome of [LibraryRepository.getRecentProgressFlow]. */
 sealed interface RecentProgressResult {
 
     data class Success(val points: List<ResumePoint>) : RecentProgressResult
@@ -88,7 +88,7 @@ sealed interface RecentProgressResult {
     data class Failure(val message: String) : RecentProgressResult
 }
 
-/** The outcome of [LibraryRepository.shelfPreviews]. */
+/** The outcome of [LibraryRepository.getShelfPreviewsFlow]. */
 sealed interface ShelfPreviewsResult {
 
     data class Success(val previews: List<ShelfPreview>) : ShelfPreviewsResult

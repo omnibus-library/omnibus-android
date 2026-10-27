@@ -91,14 +91,14 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
 
     afterEach { server.close() }
 
-    describe("booksPage") {
+    describe("getBooksPageFlow") {
 
         describe("request parameters") {
 
             it("TC-1: first page sends limit, sort and dir, and no cursor or filters") {
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage().single()
+                repository.getBooksPageFlow().single()
 
                 val request = server.takeRequest()
                 request.method shouldBe "GET"
@@ -114,7 +114,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-2: a cursor request still carries sort, dir and limit") {
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage(
+                repository.getBooksPageFlow(
                     BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc),
                     cursor = "c1",
                 ).single()
@@ -129,7 +129,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-3: formats are lowercase and comma-separated, exclude_formats is sorted") {
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage(
+                repository.getBooksPageFlow(
                     BooksPageQuery(formats = setOf("EPUB", "Pdf"), excludeFormats = setOf("m4b", "epub")),
                 ).single()
 
@@ -141,7 +141,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-3: both filter params are absent when the sets are empty") {
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage(BooksPageQuery(formats = emptySet(), excludeFormats = emptySet())).single()
+                repository.getBooksPageFlow(BooksPageQuery(formats = emptySet(), excludeFormats = emptySet())).single()
 
                 val request = server.takeRequest()
                 request.url.queryParameter("formats").shouldBeNull()
@@ -152,8 +152,8 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 LibrarySort.entries.forEach { _ -> enqueue(200, EMPTY_BOOKS) }
                 SortDirection.entries.forEach { _ -> enqueue(200, EMPTY_BOOKS) }
 
-                LibrarySort.entries.forEach { sort -> repository.booksPage(BooksPageQuery(sort = sort)).single() }
-                SortDirection.entries.forEach { dir -> repository.booksPage(BooksPageQuery(dir = dir)).single() }
+                LibrarySort.entries.forEach { sort -> repository.getBooksPageFlow(BooksPageQuery(sort = sort)).single() }
+                SortDirection.entries.forEach { dir -> repository.getBooksPageFlow(BooksPageQuery(dir = dir)).single() }
 
                 LibrarySort.entries.map { _ -> server.takeRequest().url.queryParameter("sort") } shouldBe
                     LibrarySort.entries.map { it.apiName }
@@ -176,7 +176,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-5: sends the bearer token and JSON accept header") {
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage().single()
+                repository.getBooksPageFlow().single()
 
                 val request = server.takeRequest()
                 request.headers["Authorization"] shouldBe "Bearer secret"
@@ -187,7 +187,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 baseUrlProvider.baseUrl = server.url("/omnibus")
                 enqueue(200, EMPTY_BOOKS)
 
-                repository.booksPage().single()
+                repository.getBooksPageFlow().single()
 
                 server.takeRequest().url.encodedPath shouldBe "/omnibus/api/ebooks"
             }
@@ -202,7 +202,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                     mapOf("X-Next-Cursor" to "c2", "X-Total-Count" to "123", "X-Hidden-Count" to "4"),
                 )
 
-                val page = repository.booksPage().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
 
                 page.nextCursor shouldBe "c2"
                 page.total shouldBe 123L
@@ -212,7 +212,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-7: a last page without the headers gives null cursor, total and hidden count") {
                 enqueue(200, booksBody(listOf(1)))
 
-                val page = repository.booksPage().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
 
                 page.nextCursor.shouldBeNull()
                 page.total.shouldBeNull()
@@ -225,7 +225,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-8: decodes a body with every optional key and maps the books") {
                 enqueue(200, """{"path":"/x","books":[{"id":1,"title":"A"}],"error":null,"total":5}""")
 
-                val page = repository.booksPage().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
 
                 page.books.map { it.title } shouldBe listOf("A")
             }
@@ -233,7 +233,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-8: decodes a minimal body") {
                 enqueue(200, """{"books":[{"id":2}]}""")
 
-                val page = repository.booksPage().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
 
                 page.books.map { it.id } shouldBe listOf(2L)
             }
@@ -252,14 +252,14 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 it("TC-25: HTTP $code with body '$body' gives Failure('$message') and does not throw") {
                     enqueue(code, body)
 
-                    repository.booksPage().single() shouldBe LibraryPageResult.Failure(message)
+                    repository.getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(message)
                 }
             }
 
             it("TC-25: an unreachable server gives Failure('Could not connect to the server.')") {
                 server.close()
 
-                repository.booksPage().single() shouldBe
+                repository.getBooksPageFlow().single() shouldBe
                     LibraryPageResult.Failure("Could not connect to the server.")
             }
         }
@@ -269,19 +269,19 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             it("TC-26: returns NoServer without making a request") {
                 baseUrlProvider.baseUrl = null
 
-                repository.booksPage().single() shouldBe LibraryPageResult.NoServer
+                repository.getBooksPageFlow().single() shouldBe LibraryPageResult.NoServer
 
                 server.requestCount shouldBe 0
             }
         }
     }
 
-    describe("recentProgress") {
+    describe("getRecentProgressFlow") {
 
         it("TC-9: GET api/progress/recent with limit=5") {
             enqueue(200, "[]")
 
-            repository.recentProgress().single() shouldBe RecentProgressResult.Success(emptyList())
+            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(emptyList())
 
             val request = server.takeRequest()
             request.method shouldBe "GET"
@@ -333,7 +333,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 """,
             )
 
-            repository.recentProgress().single() shouldBe RecentProgressResult.Success(
+            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(
                 listOf(
                     ResumePoint(
                         record = ProgressRecord(
@@ -407,7 +407,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 """[{"record":{"book_uuid":"uuid-3","format":"epub","updated_at":5,"future_key":"x"},"book":{"id":3,"novel_key":true}}]""",
             )
 
-            val point = repository.recentProgress().single()
+            val point = repository.getRecentProgressFlow().single()
                 .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
 
             point.record shouldBe ProgressRecord(
@@ -430,44 +430,44 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         it("TC-24: emits exactly once and then completes") {
             enqueue(200, "[]")
 
-            repository.recentProgress().toList().size shouldBe 1
+            repository.getRecentProgressFlow().toList().size shouldBe 1
         }
 
         it("TC-27: a 500 gives Failure with the verbatim body") {
             enqueue(500, "internal server error")
 
-            repository.recentProgress().single() shouldBe RecentProgressResult.Failure("internal server error")
+            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Failure("internal server error")
         }
 
         it("TC-27: a malformed 200 body gives Failure('Unexpected response from the server.')") {
             enqueue(200, "{")
 
-            repository.recentProgress().single() shouldBe
+            repository.getRecentProgressFlow().single() shouldBe
                 RecentProgressResult.Failure("Unexpected response from the server.")
         }
 
         it("TC-27: an unreachable server gives Failure('Could not connect to the server.')") {
             server.close()
 
-            repository.recentProgress().single() shouldBe
+            repository.getRecentProgressFlow().single() shouldBe
                 RecentProgressResult.Failure("Could not connect to the server.")
         }
 
         it("TC-26: returns NoServer without making a request") {
             baseUrlProvider.baseUrl = null
 
-            repository.recentProgress().single() shouldBe RecentProgressResult.NoServer
+            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.NoServer
 
             server.requestCount shouldBe 0
         }
     }
 
-    describe("shelfPreviews") {
+    describe("getShelfPreviewsFlow") {
 
         it("TC-12: fetches pages only for shelves with books, keeping at most four covers in order") {
             serveShelves { id -> shelfPage(if (id == 2L) listOf(20, 21) else (30L..38L).toList()) }
 
-            val previews = repository.shelfPreviews().single()
+            val previews = repository.getShelfPreviewsFlow().single()
                 .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
 
             previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
@@ -480,7 +480,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         it("TC-13: keeps the server's shelf order when a page answers late, and decodes shelf fields") {
             serveShelves { id -> if (id == 2L) shelfPage(listOf(20), delay = 300) else shelfPage(listOf(30)) }
 
-            val previews = repository.shelfPreviews().single()
+            val previews = repository.getShelfPreviewsFlow().single()
                 .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
 
             previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
@@ -507,7 +507,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 }
             }
 
-            val previews = repository.shelfPreviews().single()
+            val previews = repository.getShelfPreviewsFlow().single()
                 .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
 
             previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
@@ -518,40 +518,40 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         it("TC-15: a failed shelf list gives Failure with the error text and no exception") {
             enqueue(500, "internal server error")
 
-            repository.shelfPreviews().single() shouldBe ShelfPreviewsResult.Failure("internal server error")
+            repository.getShelfPreviewsFlow().single() shouldBe ShelfPreviewsResult.Failure("internal server error")
         }
 
         it("TC-24: emits exactly once and then completes") {
             enqueue(200, "[]")
 
-            repository.shelfPreviews().toList().size shouldBe 1
+            repository.getShelfPreviewsFlow().toList().size shouldBe 1
         }
 
         it("TC-27: a 401 gives Failure('Your session expired. Sign in again.')") {
             enqueue(401)
 
-            repository.shelfPreviews().single() shouldBe
+            repository.getShelfPreviewsFlow().single() shouldBe
                 ShelfPreviewsResult.Failure("Your session expired. Sign in again.")
         }
 
         it("TC-27: a malformed shelf list gives Failure('Unexpected response from the server.')") {
             enqueue(200, "[{")
 
-            repository.shelfPreviews().single() shouldBe
+            repository.getShelfPreviewsFlow().single() shouldBe
                 ShelfPreviewsResult.Failure("Unexpected response from the server.")
         }
 
         it("TC-27: an unreachable server gives Failure('Could not connect to the server.')") {
             server.close()
 
-            repository.shelfPreviews().single() shouldBe
+            repository.getShelfPreviewsFlow().single() shouldBe
                 ShelfPreviewsResult.Failure("Could not connect to the server.")
         }
 
         it("TC-26: returns NoServer without making a request") {
             baseUrlProvider.baseUrl = null
 
-            repository.shelfPreviews().single() shouldBe ShelfPreviewsResult.NoServer
+            repository.getShelfPreviewsFlow().single() shouldBe ShelfPreviewsResult.NoServer
 
             server.requestCount shouldBe 0
         }
@@ -562,7 +562,7 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         it("TC-24: a books page emits exactly once and then completes") {
             enqueue(200, EMPTY_BOOKS)
 
-            repository.booksPage().toList().size shouldBe 1
+            repository.getBooksPageFlow().toList().size shouldBe 1
         }
     }
 }) {

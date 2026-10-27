@@ -6,7 +6,7 @@ interface ServerConfigurationRepository {
     suspend fun validateServerAddress(address: String): ServerValidationResult
     suspend fun saveServerConfig(address: String)
 
-    fun fetchSavedServerConfig(): Flow<String?>
+    fun getSavedServerConfigFlow(): Flow<String?>
 }
 
 sealed interface ServerValidationResult {
