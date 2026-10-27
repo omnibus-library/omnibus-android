@@ -60,6 +60,11 @@
     <string name="library_all_books">All books</string>
     <string name="library_loading">Loading your library</string>
     <string name="library_error_title">Couldn\'t load this</string>
+    <string name="library_error_unreachable">Could not connect to the server.</string>
+    <string name="library_error_unexpected_response">Unexpected response from the server.</string>
+    <string name="library_error_session_expired">Your session expired. Sign in again.</string>
+    <string name="library_error_http">Server error (%1$d).</string>
+    <string name="library_error_no_server">No server configured.</string>
     <string name="library_try_again">Try again</string>
     <string name="library_empty_kicker">YOUR LIBRARY</string>
     <string name="library_empty_title">No books yet</string>

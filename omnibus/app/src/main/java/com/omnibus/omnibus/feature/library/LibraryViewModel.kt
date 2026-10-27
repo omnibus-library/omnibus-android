@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BooksPageQuery
+import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,7 +60,7 @@ class LibraryViewModel @Inject constructor(
         _uiState.update { it.copy(isLoadingMore = true) }
         loadMoreJob = viewModelScope.launch {
             // The repository always emits at least once, so the last emission is the result.
-            val result = libraryRepository.booksPage(DEFAULT_QUERY, cursor).last()
+            val result = libraryRepository.getBooksPageFlow(DEFAULT_QUERY, cursor).last()
             if (token == reloadToken) _uiState.update { it.applyLoadMore(result) }
         }
     }
@@ -83,7 +84,7 @@ class LibraryViewModel @Inject constructor(
         }
         // Launched in viewModelScope so a recomposition cancelling its collector cannot cancel the reload.
         reloadJob = viewModelScope.launch {
-            libraryRepository.booksPage(DEFAULT_QUERY).collect { result ->
+            libraryRepository.getBooksPageFlow(DEFAULT_QUERY).collect { result ->
                 if (token == reloadToken) _uiState.update { it.applyFirstPage(result) }
             }
             if (token == reloadToken) {
@@ -97,7 +98,6 @@ class LibraryViewModel @Inject constructor(
 
         /** How many books from the end the last visible one may be before the next page is requested. */
         const val LOAD_MORE_THRESHOLD = 12
-        const val NO_SERVER_MESSAGE = "No server configured."
     }
 
     /** A first-page result replaces the books. A failure is a full-screen error only when nothing is shown. */
@@ -110,15 +110,15 @@ class LibraryViewModel @Inject constructor(
             hasLoaded = true,
         )
 
-        is LibraryPageResult.NoServer -> withFirstPageFailure(NO_SERVER_MESSAGE)
-        is LibraryPageResult.Failure -> withFirstPageFailure(result.message)
+        is LibraryPageResult.NoServer -> withFirstPageFailure(LibraryUIError.NoServer)
+        is LibraryPageResult.Failure -> withFirstPageFailure(LibraryUIError.Failed(result.error))
     }
 
-    private fun LibraryUIState.withFirstPageFailure(message: String): LibraryUIState =
+    private fun LibraryUIState.withFirstPageFailure(uiError: LibraryUIError): LibraryUIState =
         if (books.isEmpty()) {
-            copy(error = message, hasLoaded = true)
+            copy(error = uiError, hasLoaded = true)
         } else {
-            copy(transientError = message, hasLoaded = true)
+            copy(transientError = uiError, hasLoaded = true)
         }
 
     /** A failed page keeps the cursor, so pagination is not ended and the next scroll retries it. */
@@ -129,8 +129,8 @@ class LibraryViewModel @Inject constructor(
             isLoadingMore = false,
         )
 
-        is LibraryPageResult.NoServer -> copy(isLoadingMore = false, transientError = NO_SERVER_MESSAGE)
-        is LibraryPageResult.Failure -> copy(isLoadingMore = false, transientError = result.message)
+        is LibraryPageResult.NoServer -> copy(isLoadingMore = false, transientError = LibraryUIError.NoServer)
+        is LibraryPageResult.Failure -> copy(isLoadingMore = false, transientError = LibraryUIError.Failed(result.error))
     }
 }
 
@@ -140,7 +140,7 @@ class LibraryViewModel @Inject constructor(
  *
  * @property error A full-screen failure. Only shown when there are no [books]; otherwise it's [transientError].
  * @property hasLoaded Whether a first-page result has arrived, successful or not.
- * @property transientError A one-shot message for a failed refresh or load-more, shown as a snackbar and cleared by [LibraryViewModel.transientErrorShown].
+ * @property transientError A one-shot error for a failed refresh or load-more, shown as a snackbar and cleared by [LibraryViewModel.transientErrorShown].
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -148,9 +148,9 @@ data class LibraryUIState(
     val isInitialLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
-    val error: String? = null,
+    val error: LibraryUIError? = null,
     val hasLoaded: Boolean = false,
-    val transientError: String? = null,
+    val transientError: LibraryUIError? = null,
 ) {
 
     /** The state to show. Loading beats Error, Error beats Empty, and Content is the fallback once books exist. */
@@ -168,10 +168,20 @@ sealed interface LibraryScreenState {
 
     data object Loading : LibraryScreenState
 
-    /** [message] is shown verbatim under the error title. */
-    data class Error(val message: String) : LibraryScreenState
+    /** [error] is resolved to text by the UI and shown under the error title. */
+    data class Error(val error: LibraryUIError) : LibraryScreenState
 
     data object Empty : LibraryScreenState
 
     data object Content : LibraryScreenState
+}
+
+/** Why the Library could not load. The data layer reports the cause; the UI layer picks the text. */
+sealed interface LibraryUIError {
+
+    /** No server address is saved yet. */
+    data object NoServer : LibraryUIError
+
+    /** The repository reported [error]. */
+    data class Failed(val error: LibraryError) : LibraryUIError
 }

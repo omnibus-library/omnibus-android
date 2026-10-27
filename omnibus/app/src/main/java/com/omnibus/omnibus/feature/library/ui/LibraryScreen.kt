@@ -56,7 +56,9 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.library.LibraryGridMetrics
+import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.feature.library.LibraryScreenState
+import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.LibraryViewModel
 import com.omnibus.omnibus.ui.components.EmptyStateView
@@ -157,10 +159,12 @@ internal fun LibraryScreenContent(
 ) {
     val scope = rememberCoroutineScope()
 
+    val transientMessage = uiState.transientError?.let { libraryErrorText(it) }
+
     // Clearing the message restarts this effect with null, so the snackbar is launched in a scope
     // that outlives the effect.
     LaunchedEffect(uiState.transientError) {
-        val message = uiState.transientError ?: return@LaunchedEffect
+        val message = transientMessage ?: return@LaunchedEffect
         onTransientErrorShown()
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
@@ -174,7 +178,7 @@ internal fun LibraryScreenContent(
 
             is LibraryScreenState.Error -> ErrorStateView(
                 title = stringResource(R.string.library_error_title),
-                message = screen.message,
+                message = libraryErrorText(screen.error),
                 actionLabel = stringResource(R.string.library_try_again),
                 onRetry = onRetry,
                 modifier = Modifier.fillMaxSize(),
@@ -208,6 +212,18 @@ internal fun LibraryScreenContent(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
         )
+    }
+}
+
+/** The user-facing text for [error]. The data layer only says what went wrong; the wording lives in string resources. */
+@Composable
+internal fun libraryErrorText(error: LibraryUIError): String = when (error) {
+    LibraryUIError.NoServer -> stringResource(R.string.library_error_no_server)
+    is LibraryUIError.Failed -> when (val cause = error.error) {
+        LibraryError.Unreachable -> stringResource(R.string.library_error_unreachable)
+        LibraryError.UnexpectedResponse -> stringResource(R.string.library_error_unexpected_response)
+        LibraryError.SessionExpired -> stringResource(R.string.library_error_session_expired)
+        is LibraryError.Http -> cause.serverMessage ?: stringResource(R.string.library_error_http, cause.code)
     }
 }
 
@@ -393,7 +409,7 @@ private fun LibraryLoadingPreview() {
 @PreviewLightDark
 @Composable
 private fun LibraryErrorPreview() {
-    LibraryPreviewContent(LibraryUIState(error = "Could not connect to the server.", hasLoaded = true))
+    LibraryPreviewContent(LibraryUIState(error = LibraryUIError.Failed(LibraryError.Unreachable), hasLoaded = true))
 }
 
 @PreviewLightDark

@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
+import com.omnibus.omnibus.data.library.LibraryError
+import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -68,7 +70,7 @@ class LibraryScreenTest {
         rule.onNodeWithTag(LibraryTestTags.GRID).assertDoesNotExist()
 
         rule.runOnIdle {
-            uiState.value = LibraryUIState(error = CONNECT_ERROR, hasLoaded = true)
+            uiState.value = LibraryUIState(error = CONNECT_UI_ERROR, hasLoaded = true)
         }
         rule.onNodeWithText(ERROR_TITLE).assertIsDisplayed()
         rule.onNodeWithText(CONNECT_ERROR).assertIsDisplayed()
@@ -330,9 +332,39 @@ class LibraryScreenTest {
     }
 
     @Test
+    fun httpErrorShowsServerMessageOrFallsBackToStatusCode() {
+        val uiState = mutableStateOf(
+            LibraryUIState(error = LibraryUIError.Failed(LibraryError.Http(503, "Down for maintenance")), hasLoaded = true),
+        )
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                Box(Modifier.size(390.dp, 800.dp)) {
+                    LibraryScreenContent(
+                        uiState = uiState.value,
+                        onRetry = {},
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onOpenBook = {},
+                        onAddBooks = {},
+                        onTransientErrorShown = {},
+                        bottomInset = 0.dp,
+                    )
+                }
+            }
+        }
+
+        rule.onNodeWithText("Down for maintenance").assertIsDisplayed()
+
+        rule.runOnIdle {
+            uiState.value = LibraryUIState(error = LibraryUIError.Failed(LibraryError.Http(503, null)), hasLoaded = true)
+        }
+        rule.onNodeWithText("Server error (503).").assertIsDisplayed()
+    }
+
+    @Test
     fun tc100_snackbarShowsTransientErrorOnceAndIgnoresRecomposition() {
         val uiState = mutableStateOf(
-            LibraryUIState(books = listOf(book(1L)), transientError = CONNECT_ERROR),
+            LibraryUIState(books = listOf(book(1L)), transientError = CONNECT_UI_ERROR),
         )
         val unrelated = mutableStateOf(0)
         var shown = 0
@@ -410,6 +442,7 @@ class LibraryScreenTest {
     private companion object {
         const val LOADING_LABEL = "Loading your library"
         const val ERROR_TITLE = "Couldn't load this"
+        val CONNECT_UI_ERROR = LibraryUIError.Failed(LibraryError.Unreachable)
         const val CONNECT_ERROR = "Could not connect to the server."
         const val TRY_AGAIN = "Try again"
         const val EMPTY_TITLE = "No books yet"

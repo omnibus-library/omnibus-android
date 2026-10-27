@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.library
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.SortDirection
@@ -80,15 +81,15 @@ class LibraryViewModelTest : DescribeSpec({
             createViewModel().uiState.value.screen shouldBe LibraryScreenState.Loading
         }
 
-        it("TC-59: is Error with the verbatim message when the first page fails") {
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+        it("TC-59: is Error with the typed failure when the first page fails") {
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
 
             createViewModel().uiState.value.screen shouldBe
-                LibraryScreenState.Error("Could not connect to the server.")
+                LibraryScreenState.Error(LibraryUIError.Failed(LibraryError.Unreachable))
         }
 
         it("TC-60: retry re-runs the first-page request and goes Error, Loading, Content") {
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
             val viewModel = createViewModel()
             val second = CompletableDeferred<LibraryPageResult>()
             repository.enqueue(second)
@@ -103,11 +104,11 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
         }
 
-        it("TC-61: is Error with the no-server message when no server is saved") {
+        it("TC-61: is Error with the no-server error when no server is saved") {
             repository.enqueue(LibraryPageResult.NoServer)
 
             createViewModel().uiState.value.screen shouldBe
-                LibraryScreenState.Error("No server configured.")
+                LibraryScreenState.Error(LibraryUIError.NoServer)
         }
 
         it("TC-62: is Empty for a loaded page with no books") {
@@ -122,23 +123,23 @@ class LibraryViewModelTest : DescribeSpec({
         it("TC-63: keeps Content when a refresh or load-more fails with books on screen") {
             repository.enqueue(pageOf(1L..60L, cursor = "c1"))
             val viewModel = createViewModel()
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
 
             viewModel.loadMoreIfNeeded(59)
 
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
 
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
             viewModel.refresh()
 
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
         }
 
         it("TC-63: applies Loading, then Error, then Empty, then Content by first match") {
-            LibraryUIState(isInitialLoading = true, error = "e").screen shouldBe LibraryScreenState.Loading
-            LibraryUIState(error = "e").screen shouldBe LibraryScreenState.Error("e")
+            LibraryUIState(isInitialLoading = true, error = LibraryUIError.NoServer).screen shouldBe LibraryScreenState.Loading
+            LibraryUIState(error = LibraryUIError.NoServer).screen shouldBe LibraryScreenState.Error(LibraryUIError.NoServer)
             LibraryUIState().screen shouldBe LibraryScreenState.Empty
-            LibraryUIState(books = listOf(testBook(1)), error = "e").screen shouldBe LibraryScreenState.Content
+            LibraryUIState(books = listOf(testBook(1)), error = LibraryUIError.NoServer).screen shouldBe LibraryScreenState.Content
             LibraryUIState(isInitialLoading = true, books = listOf(testBook(1))).screen shouldBe
                 LibraryScreenState.Content
         }
@@ -299,7 +300,7 @@ class LibraryViewModelTest : DescribeSpec({
     describe("stale reloads") {
 
         it("TC-89: drops an older reload that completes after a newer one") {
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
             val viewModel = createViewModel()
             val older = CompletableDeferred<LibraryPageResult>()
             repository.enqueue(older)
@@ -341,7 +342,7 @@ class LibraryViewModelTest : DescribeSpec({
             repository.enqueue(page(2L))
             viewModel.refresh()
 
-            older.complete(LibraryPageResult.Failure("old failure"))
+            older.complete(LibraryPageResult.Failure(LibraryError.Http(500, "old failure")))
 
             viewModel.uiState.value.transientError shouldBe null
             viewModel.uiState.value.error shouldBe null
@@ -372,14 +373,14 @@ class LibraryViewModelTest : DescribeSpec({
         it("TC-95: a failed load-more keeps the books and cursor and sets the message") {
             repository.enqueue(pageOf(1L..60L, cursor = "c1"))
             val viewModel = createViewModel()
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
 
             viewModel.loadMoreIfNeeded(59)
 
             val state = viewModel.uiState.value
             state.books.size shouldBe 60
             state.nextCursor shouldBe "c1"
-            state.transientError shouldBe "Could not connect to the server."
+            state.transientError shouldBe LibraryUIError.Failed(LibraryError.Unreachable)
             state.isLoadingMore shouldBe false
             state.error shouldBe null
             state.screen shouldBe LibraryScreenState.Content
@@ -388,7 +389,7 @@ class LibraryViewModelTest : DescribeSpec({
         it("TC-96: after a failed load-more, the next scroll retries with the same cursor") {
             repository.enqueue(pageOf(1L..60L, cursor = "c1"))
             val viewModel = createViewModel()
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
             viewModel.loadMoreIfNeeded(59)
             repository.enqueue(pageOf(61L..62L, cursor = "c2"))
 
@@ -403,14 +404,14 @@ class LibraryViewModelTest : DescribeSpec({
         it("TC-97: a failed refresh keeps the old books and cursor and sets the message") {
             repository.enqueue(pageOf(1L..60L, cursor = "c1"))
             val viewModel = createViewModel()
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
 
             viewModel.refresh()
 
             val state = viewModel.uiState.value
             state.books.size shouldBe 60
             state.nextCursor shouldBe "c1"
-            state.transientError shouldBe "Could not connect to the server."
+            state.transientError shouldBe LibraryUIError.Failed(LibraryError.Unreachable)
             state.isRefreshing shouldBe false
             state.screen shouldBe LibraryScreenState.Content
         }
@@ -418,26 +419,26 @@ class LibraryViewModelTest : DescribeSpec({
         it("TC-98: transientErrorShown clears the message, and a later failure sets it again") {
             repository.enqueue(pageOf(1L..60L, cursor = "c1"))
             val viewModel = createViewModel()
-            repository.enqueue(LibraryPageResult.Failure("first"))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.UnexpectedResponse))
             viewModel.loadMoreIfNeeded(59)
-            viewModel.uiState.value.transientError shouldBe "first"
+            viewModel.uiState.value.transientError shouldBe LibraryUIError.Failed(LibraryError.UnexpectedResponse)
 
             viewModel.transientErrorShown()
             viewModel.transientErrorShown()
             viewModel.uiState.value.transientError shouldBe null
 
-            repository.enqueue(LibraryPageResult.Failure("second"))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.SessionExpired))
             viewModel.loadMoreIfNeeded(59)
-            viewModel.uiState.value.transientError shouldBe "second"
+            viewModel.uiState.value.transientError shouldBe LibraryUIError.Failed(LibraryError.SessionExpired)
         }
 
         it("TC-99: a first-page failure with no books sets error but no transient message") {
-            repository.enqueue(LibraryPageResult.Failure("Could not connect to the server."))
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
 
             val viewModel = createViewModel()
 
             viewModel.uiState.value.screen shouldBe
-                LibraryScreenState.Error("Could not connect to the server.")
+                LibraryScreenState.Error(LibraryUIError.Failed(LibraryError.Unreachable))
             viewModel.uiState.value.transientError shouldBe null
         }
     }
@@ -448,8 +449,8 @@ class LibraryViewModelTest : DescribeSpec({
             val fake = FakeLibraryRepository()
             fake.enqueue(page(1L, cursor = "c1"))
 
-            val first = fake.booksPage(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc)).toList()
-            val second = fake.booksPage(cursor = "c1").toList()
+            val first = fake.getBooksPageFlow(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc)).toList()
+            val second = fake.getBooksPageFlow(cursor = "c1").toList()
 
             first shouldBe listOf<LibraryPageResult>(page(1L, cursor = "c1"))
             second shouldBe listOf<LibraryPageResult>(fake.defaultResult)
@@ -469,7 +470,7 @@ class LibraryViewModelTest : DescribeSpec({
             val collected = mutableListOf<LibraryPageResult>()
 
             network.complete(page(2L))
-            fake.booksPage().toList(collected)
+            fake.getBooksPageFlow().toList(collected)
 
             collected shouldBe listOf<LibraryPageResult>(page(1L), page(2L))
         }

@@ -7,19 +7,19 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * In-memory [LibraryRepository] for tests. Each [booksPage] call takes the next queued script, or
+ * In-memory [LibraryRepository] for tests. Each [getBooksPageFlow] call takes the next queued script, or
  * emits [defaultResult] when none is queued, and every call is recorded in [pageRequests].
  */
 class FakeLibraryRepository : LibraryRepository {
 
-    /** The arguments of one [booksPage] call, in call order. */
+    /** The arguments of one [getBooksPageFlow] call, in call order. */
     data class PageRequest(val query: BooksPageQuery, val cursor: String?)
 
     val pageRequests = mutableListOf<PageRequest>()
 
     private val scripts = ArrayDeque<suspend FlowCollector<LibraryPageResult>.() -> Unit>()
 
-    /** Emitted by [booksPage] when no script is queued. */
+    /** Emitted by [getBooksPageFlow] when no script is queued. */
     var defaultResult: LibraryPageResult = LibraryPageResult.Success(BooksPage(emptyList(), null, null, null))
 
     /** Queues a call that emits [result] once. */
@@ -37,15 +37,15 @@ class FakeLibraryRepository : LibraryRepository {
         scripts.addLast(script)
     }
 
-    override fun booksPage(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
+    override fun getBooksPageFlow(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
         pageRequests += PageRequest(query, cursor)
         val script = scripts.removeFirstOrNull()
         if (script != null) script(this) else emit(defaultResult)
     }
 
-    override fun recentProgress(): Flow<RecentProgressResult> = flowOf(RecentProgressResult.Success(emptyList()))
+    override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flowOf(RecentProgressResult.Success(emptyList()))
 
-    override fun shelfPreviews(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.Success(emptyList()))
+    override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.Success(emptyList()))
 }
 
 /** A successful page of books with the given ids, built with [testBook]. */
