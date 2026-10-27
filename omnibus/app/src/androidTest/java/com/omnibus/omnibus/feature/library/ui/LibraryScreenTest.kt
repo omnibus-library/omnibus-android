@@ -156,7 +156,9 @@ class LibraryScreenTest {
         val author = "A Long Author Name"
         setLibrary(LibraryUIState(books = listOf(book(7L, title = title, author = author))))
 
-        rule.onNodeWithText(title, useUnmergedTree = true).assertIsDisplayed()
+        // The generated cover plate draws the title too, so address the caption by its tag.
+        rule.onNodeWithTag(LibraryTestTags.title(7L), useUnmergedTree = true).assertIsDisplayed()
+            .assertTextContains(title)
         rule.onNodeWithText(author, useUnmergedTree = true).assertIsDisplayed()
 
         val titleLayout = rule.textLayoutOf(LibraryTestTags.title(7L))
@@ -200,7 +202,9 @@ class LibraryScreenTest {
             ),
         )
 
-        rule.onNodeWithText("fallback.epub", useUnmergedTree = true).assertIsDisplayed()
+        // The generated cover plate draws the title too, so address the caption by its tag.
+        rule.onNodeWithTag(LibraryTestTags.title(9L), useUnmergedTree = true).assertIsDisplayed()
+            .assertTextContains("fallback.epub")
         rule.onNodeWithText("Unknown author", useUnmergedTree = true).assertIsDisplayed()
     }
 
@@ -269,6 +273,9 @@ class LibraryScreenTest {
         rule.onNodeWithTag(LibraryTestTags.FOOTER_SPINNER).assertDoesNotExist()
 
         rule.runOnIdle { uiState.value = uiState.value.copy(isLoadingMore = true) }
+        // Six books fill more than the 800 dp viewport, so scroll the footer (after the header and books) into view.
+        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(FOOTER_INDEX)
+        rule.waitForIdle()
         val spinner = rule.onNodeWithTag(LibraryTestTags.FOOTER_SPINNER).getUnclippedBoundsInRoot()
         val lastCell = rule.onNodeWithTag(LibraryTestTags.cell(6L)).getUnclippedBoundsInRoot()
         assertTrue("spinner sits below the last row", spinner.top >= lastCell.bottom - HALF_DP)
@@ -413,6 +420,9 @@ class LibraryScreenTest {
 
         /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
         val HALF_DP = 0.5.dp
+
+        /** Grid index of the footer in tc84: one header item, six books, then the footer. */
+        const val FOOTER_INDEX = 7
 
         fun assertNear(expected: Dp, actual: Dp, message: String, tolerance: Double = HALF_DP.value.toDouble()) {
             assertEquals(message, expected.value.toDouble(), actual.value.toDouble(), tolerance)
