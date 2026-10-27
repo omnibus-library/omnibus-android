@@ -242,25 +242,35 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         describe("failures") {
 
             listOf(
-                Triple(500, "internal server error", "internal server error"),
-                Triple(500, "", "Server error (500)."),
-                Triple(400, """{"error":"bad cursor"}""", "bad cursor"),
-                Triple(401, "", "Your session expired. Sign in again."),
-                Triple(200, """{"books": [""", "Unexpected response from the server."),
-            ).forEach { (code, body, message) ->
+                Triple(500, "internal server error", LibraryError.Http(500, "internal server error")),
+                Triple(500, "", LibraryError.Http(500, null)),
+                Triple(500, "   \n ", LibraryError.Http(500, null)),
+                Triple(400, """{"error":"bad cursor"}""", LibraryError.Http(400, "bad cursor")),
+                Triple(422, """{"message":"bad sort"}""", LibraryError.Http(422, "bad sort")),
+                Triple(404, """{"detail":"no such page"}""", LibraryError.Http(404, "no such page")),
+                Triple(401, "", LibraryError.SessionExpired),
+                Triple(200, """{"books": [""", LibraryError.UnexpectedResponse),
+            ).forEach { (code, body, error) ->
 
-                it("TC-25: HTTP $code with body '$body' gives Failure('$message') and does not throw") {
+                it("TC-25: HTTP $code with body '$body' gives Failure($error) and does not throw") {
                     enqueue(code, body)
 
-                    repository.getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(message)
+                    repository.getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(error)
                 }
             }
 
-            it("TC-25: an unreachable server gives Failure('Could not connect to the server.')") {
+            it("TC-25: a plain-text body longer than 300 characters is truncated to 300") {
+                enqueue(500, "x".repeat(400))
+
+                repository.getBooksPageFlow().single() shouldBe
+                    LibraryPageResult.Failure(LibraryError.Http(500, "x".repeat(300)))
+            }
+
+            it("TC-25: an unreachable server gives Failure(Unreachable)") {
                 server.close()
 
                 repository.getBooksPageFlow().single() shouldBe
-                    LibraryPageResult.Failure("Could not connect to the server.")
+                    LibraryPageResult.Failure(LibraryError.Unreachable)
             }
         }
 
@@ -433,24 +443,25 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             repository.getRecentProgressFlow().toList().size shouldBe 1
         }
 
-        it("TC-27: a 500 gives Failure with the verbatim body") {
+        it("TC-27: a 500 gives Failure(Http) carrying the body as serverMessage") {
             enqueue(500, "internal server error")
 
-            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Failure("internal server error")
+            repository.getRecentProgressFlow().single() shouldBe
+                RecentProgressResult.Failure(LibraryError.Http(500, "internal server error"))
         }
 
-        it("TC-27: a malformed 200 body gives Failure('Unexpected response from the server.')") {
+        it("TC-27: a malformed 200 body gives Failure(UnexpectedResponse)") {
             enqueue(200, "{")
 
             repository.getRecentProgressFlow().single() shouldBe
-                RecentProgressResult.Failure("Unexpected response from the server.")
+                RecentProgressResult.Failure(LibraryError.UnexpectedResponse)
         }
 
-        it("TC-27: an unreachable server gives Failure('Could not connect to the server.')") {
+        it("TC-27: an unreachable server gives Failure(Unreachable)") {
             server.close()
 
             repository.getRecentProgressFlow().single() shouldBe
-                RecentProgressResult.Failure("Could not connect to the server.")
+                RecentProgressResult.Failure(LibraryError.Unreachable)
         }
 
         it("TC-26: returns NoServer without making a request") {
@@ -515,10 +526,11 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             previews[2].covers.map { it.id } shouldBe listOf(30L, 31L, 32L, 33L)
         }
 
-        it("TC-15: a failed shelf list gives Failure with the error text and no exception") {
+        it("TC-15: a failed shelf list gives Failure(Http) with the server message and no exception") {
             enqueue(500, "internal server error")
 
-            repository.getShelfPreviewsFlow().single() shouldBe ShelfPreviewsResult.Failure("internal server error")
+            repository.getShelfPreviewsFlow().single() shouldBe
+                ShelfPreviewsResult.Failure(LibraryError.Http(500, "internal server error"))
         }
 
         it("TC-24: emits exactly once and then completes") {
@@ -527,25 +539,25 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             repository.getShelfPreviewsFlow().toList().size shouldBe 1
         }
 
-        it("TC-27: a 401 gives Failure('Your session expired. Sign in again.')") {
+        it("TC-27: a 401 gives Failure(SessionExpired)") {
             enqueue(401)
 
             repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure("Your session expired. Sign in again.")
+                ShelfPreviewsResult.Failure(LibraryError.SessionExpired)
         }
 
-        it("TC-27: a malformed shelf list gives Failure('Unexpected response from the server.')") {
+        it("TC-27: a malformed shelf list gives Failure(UnexpectedResponse)") {
             enqueue(200, "[{")
 
             repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure("Unexpected response from the server.")
+                ShelfPreviewsResult.Failure(LibraryError.UnexpectedResponse)
         }
 
-        it("TC-27: an unreachable server gives Failure('Could not connect to the server.')") {
+        it("TC-27: an unreachable server gives Failure(Unreachable)") {
             server.close()
 
             repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure("Could not connect to the server.")
+                ShelfPreviewsResult.Failure(LibraryError.Unreachable)
         }
 
         it("TC-26: returns NoServer without making a request") {

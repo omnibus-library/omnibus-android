@@ -16,6 +16,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
@@ -59,7 +63,7 @@ class DefaultLibraryRepository @Inject constructor(
         emit(
             when (read) {
                 is Read.Ok -> LibraryPageResult.Success(read.value)
-                is Read.Failed -> LibraryPageResult.Failure(read.message)
+                is Read.Failed -> LibraryPageResult.Failure(read.error)
                 Read.NoServer -> LibraryPageResult.NoServer
             },
         )
@@ -75,7 +79,7 @@ class DefaultLibraryRepository @Inject constructor(
         emit(
             when (read) {
                 is Read.Ok -> RecentProgressResult.Success(read.value)
-                is Read.Failed -> RecentProgressResult.Failure(read.message)
+                is Read.Failed -> RecentProgressResult.Failure(read.error)
                 Read.NoServer -> RecentProgressResult.NoServer
             },
         )
@@ -89,7 +93,7 @@ class DefaultLibraryRepository @Inject constructor(
         ) {
             is Read.Ok -> read.value
             is Read.Failed -> {
-                emit(ShelfPreviewsResult.Failure(read.message))
+                emit(ShelfPreviewsResult.Failure(read.error))
                 return@flow
             }
             Read.NoServer -> {
@@ -113,7 +117,7 @@ class DefaultLibraryRepository @Inject constructor(
                         when (read) {
                             is Read.Ok -> read.value
                             is Read.Failed -> {
-                                Log.w(TAG, "Shelf ${shelf.id} covers unavailable: ${read.message}")
+                                Log.w(TAG, "Shelf ${shelf.id} covers unavailable: ${read.error}")
                                 emptyList()
                             }
                             Read.NoServer -> emptyList()
@@ -129,8 +133,8 @@ class DefaultLibraryRepository @Inject constructor(
     }
 
     /**
-     * One GET, reduced to a value or a failure. Every library read maps errors here, so the
-     * failure text is the same for each read.
+     * One GET, reduced to a value or a [LibraryError]. Every library read maps errors here, so a
+     * given failure is reported the same way for each read.
      */
     private suspend fun <T> get(
         path: String,
@@ -148,28 +152,48 @@ class DefaultLibraryRepository @Inject constructor(
                 if (response.isSuccessful) {
                     Read.Ok(decode(response))
                 } else {
-                    Read.Failed(LibraryErrorMessages.forHttp(response.code, response.body.string()))
+                    val error = if (response.code == 401) {
+                        LibraryError.SessionExpired
+                    } else {
+                        val body = response.body.string()
+                        val json = try {
+                            Json.parseToJsonElement(body) as? JsonObject
+                        } catch (ex: SerializationException) {
+                            null
+                        }
+                        // Prefer the server's own text, then the plain-text body.
+                        val serverMessage = json
+                            ?.let { obj ->
+                                SERVER_MESSAGE_KEYS.firstNotNullOfOrNull { key ->
+                                    (obj[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                                        ?.takeIf { it.isNotBlank() }
+                                }
+                            }
+                            ?: body.trim().take(MAX_SERVER_MESSAGE_LENGTH).takeIf { it.isNotBlank() }
+                        LibraryError.Http(response.code, serverMessage)
+                    }
+                    Read.Failed(error)
                 }
             }
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: IOException) {
             Log.w(TAG, "Unable to reach the server for $path", ex)
-            Read.Failed(LibraryErrorMessages.UNREACHABLE)
+            Read.Failed(LibraryError.Unreachable)
         } catch (ex: IllegalArgumentException) {
             // SerializationException is a subtype, so a body that doesn't decode lands here too.
             Log.w(TAG, "Unexpected response for $path", ex)
-            Read.Failed(LibraryErrorMessages.UNEXPECTED)
+            Read.Failed(LibraryError.UnexpectedResponse)
         } catch (ex: Exception) {
             Log.e(TAG, "Unexpected failure reading $path", ex)
-            Read.Failed(LibraryErrorMessages.UNEXPECTED)
+            Read.Failed(LibraryError.UnexpectedResponse)
         }
     }
 
     /** The outcome of one GET before it is turned into a read's own result type. */
     private sealed interface Read<out T> {
         data class Ok<out T>(val value: T) : Read<T>
-        data class Failed(val message: String) : Read<Nothing>
+        data class Failed(val error: LibraryError) : Read<Nothing>
         data object NoServer : Read<Nothing>
     }
 
@@ -183,6 +207,9 @@ class DefaultLibraryRepository @Inject constructor(
         const val PAGE_SIZE = 60
         const val RECENT_LIMIT = 5
         const val SHELF_COVER_COUNT = 4
+
+        const val MAX_SERVER_MESSAGE_LENGTH = 300
+        val SERVER_MESSAGE_KEYS = listOf("error", "message", "detail")
 
         const val NEXT_CURSOR_HEADER = "X-Next-Cursor"
         const val TOTAL_COUNT_HEADER = "X-Total-Count"

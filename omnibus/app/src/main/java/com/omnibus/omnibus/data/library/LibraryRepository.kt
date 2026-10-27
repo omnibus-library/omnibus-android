@@ -72,8 +72,8 @@ sealed interface LibraryPageResult {
     /** No server is saved, so no request was made. */
     data object NoServer : LibraryPageResult
 
-    /** [message] is the text to show the user. */
-    data class Failure(val message: String) : LibraryPageResult
+    /** [error] is why the read failed. The UI layer decides what text to show for it. */
+    data class Failure(val error: LibraryError) : LibraryPageResult
 }
 
 /** The outcome of [LibraryRepository.getRecentProgressFlow]. */
@@ -84,8 +84,8 @@ sealed interface RecentProgressResult {
     /** No server is saved, so no request was made. */
     data object NoServer : RecentProgressResult
 
-    /** [message] is the text to show the user. */
-    data class Failure(val message: String) : RecentProgressResult
+    /** [error] is why the read failed. The UI layer decides what text to show for it. */
+    data class Failure(val error: LibraryError) : RecentProgressResult
 }
 
 /** The outcome of [LibraryRepository.getShelfPreviewsFlow]. */
@@ -96,6 +96,28 @@ sealed interface ShelfPreviewsResult {
     /** No server is saved, so no request was made. */
     data object NoServer : ShelfPreviewsResult
 
-    /** [message] is the text to show the user. A failed cover fetch for one shelf never gets here. */
-    data class Failure(val message: String) : ShelfPreviewsResult
+    /** [error] is why the read failed. A failed cover fetch for one shelf never gets here. */
+    data class Failure(val error: LibraryError) : ShelfPreviewsResult
+}
+
+/** Why a library read failed. The UI layer decides what text to show for each. */
+sealed interface LibraryError {
+
+    /** The server could not be reached. */
+    data object Unreachable : LibraryError
+
+    /** The response could not be decoded, or the read failed for any other reason. */
+    data object UnexpectedResponse : LibraryError
+
+    /** The server answered 401, so the user must sign in again. */
+    data object SessionExpired : LibraryError
+
+    /**
+     * The server answered with another non-2xx status.
+     *
+     * @property code The HTTP status code.
+     * @property serverMessage The server's own text: the JSON `error`, `message` or `detail` string,
+     * else the trimmed plain-text body capped at 300 characters, else null.
+     */
+    data class Http(val code: Int, val serverMessage: String?) : LibraryError
 }
