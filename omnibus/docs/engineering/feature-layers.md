@@ -145,6 +145,15 @@ sealed interface AuthLoginResult {
 * Repositories own business rules: which endpoint to call, what to persist on success (`authTokenStore.save(token)`), and how to interpret responses.
 * Repository functions are main-safe. They take an injected dispatcher (`@IoDispatcher`) and wrap blocking work in `withContext(ioDispatcher)`, so callers can invoke them from any coroutine. The dispatcher is injected rather than hard-coded so tests can pass `Dispatchers.Unconfined`.
 * Results are returned as a domain `sealed interface` (`AuthLoginResult`) rather than thrown. Expected failures (non-2xx responses) and unexpected ones (network errors, parse failures, storage failures) are each mapped to a distinct case at this boundary. Exceptions don't escape the repository.
+* Failures are reported as typed errors (a `sealed interface` such as `LibraryError`), never as user-facing strings. The data layer says what went wrong; the UI layer maps each error to a string resource.
+* Functions that fetch or get something and expose it as a `Flow` are named `get<Item>Flow()`, so the return type is obvious at the call site and they don't read like `suspend` one-shot calls.
+
+  ```kotlin
+  fun getRecentProgressFlow(): Flow<RecentProgressResult>
+  fun getSavedServerConfigFlow(): Flow<String?>
+  ```
+
+  The rule is for functions. Flow-typed properties (`val token: Flow<String?>`) keep plain names.
 * DTOs stop at the repository. Callers receive domain results, not `AuthSignInResponseDto`.
 * Path constants (`LOGIN_PATH`) and log tags live in the implementation's `companion object`.
 

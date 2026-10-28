@@ -73,23 +73,23 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
         dataStoreDir.deleteRecursively()
     }
 
-    describe("fetchSavedServerConfig") {
+    describe("getSavedServerConfigFlow") {
 
         it("emits null when no server has been saved") {
-            repository.fetchSavedServerConfig().first().shouldBeNull()
+            repository.getSavedServerConfigFlow().first().shouldBeNull()
         }
 
         it("emits the address passed to saveServerConfig") {
             repository.saveServerConfig("http://10.0.0.2:3000")
 
-            repository.fetchSavedServerConfig().first() shouldBe "http://10.0.0.2:3000"
+            repository.getSavedServerConfigFlow().first() shouldBe "http://10.0.0.2:3000"
         }
 
         it("emits the most recently saved address") {
             repository.saveServerConfig("http://10.0.0.2:3000")
             repository.saveServerConfig("https://read.example.com")
 
-            repository.fetchSavedServerConfig().first() shouldBe "https://read.example.com"
+            repository.getSavedServerConfigFlow().first() shouldBe "https://read.example.com"
         }
     }
 
@@ -133,7 +133,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
             repository.saveServerConfig("https://read.example.com")
 
-            repository.fetchSavedServerConfig().first() shouldBe "https://read.example.com"
+            repository.getSavedServerConfigFlow().first() shouldBe "https://read.example.com"
         }
     }
 
@@ -180,7 +180,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
                 repository.validateServerAddress(server.url("/").toString())
 
-                repository.fetchSavedServerConfig().first().shouldBeNull()
+                repository.getSavedServerConfigFlow().first().shouldBeNull()
             }
         }
 

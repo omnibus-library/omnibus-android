@@ -7,6 +7,12 @@ interface AuthRepository {
     /** Whether a session token is stored. A storage read failure counts as signed out. */
     val isSignedIn: Flow<Boolean>
 
+    /**
+     * The profile the server last reported at sign-in, registration or session check. Null when
+     * unknown or signed out.
+     */
+    val currentUser: Flow<CurrentUser?>
+
     suspend fun signIn(username: String, password: String): AuthSignInResult
 
     /** Creates an account on the saved server and saves the bearer token on success. */

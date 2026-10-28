@@ -25,7 +25,7 @@ class LoginViewModel @Inject constructor(
     private val loginStatus = MutableStateFlow(LoginStatus.NOT_LOGGED_IN)
 
     val uiState: StateFlow<LoginUIState> =
-        combine(serverConfigRepo.fetchSavedServerConfig(), loginStatus) { serverAddress, status ->
+        combine(serverConfigRepo.getSavedServerConfigFlow(), loginStatus) { serverAddress, status ->
 
             val loginStatus =
                 if (serverAddress.isNullOrBlank()) LoginStatus.MISSING_SERVER_CONFIG else status

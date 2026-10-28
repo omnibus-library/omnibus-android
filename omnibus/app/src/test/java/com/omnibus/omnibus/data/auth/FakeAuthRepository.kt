@@ -14,6 +14,9 @@ class FakeAuthRepository : AuthRepository {
     /** When set, [isSignedIn] emits nothing until this completes, to observe the unread state. */
     var isSignedInGate: CompletableDeferred<Unit>? = null
 
+    /** Backs [currentUser]. Set it to simulate a signed-in user. */
+    val currentUserState = MutableStateFlow<CurrentUser?>(null)
+
     /** Returned by [signIn]. */
     var signInResult: AuthSignInResult = AuthSignInResult.Success(authToken = "token")
 
@@ -46,6 +49,8 @@ class FakeAuthRepository : AuthRepository {
         isSignedInGate?.await()
         signedIn.collect { emit(it) }
     }
+
+    override val currentUser: Flow<CurrentUser?> = currentUserState
 
     override suspend fun signIn(username: String, password: String): AuthSignInResult {
         signInAttempts += username to password

@@ -30,7 +30,7 @@ class MainViewModel @Inject constructor(
 
     /** [StartDestination.Loading] until the saved server and the session have both been read. */
     val startDestination: StateFlow<StartDestination> = combine(
-        serverConfigRepo.fetchSavedServerConfig(),
+        serverConfigRepo.getSavedServerConfigFlow(),
         authRepository.isSignedIn,
     ) { serverAddress, signedIn ->
         when {

@@ -778,6 +778,79 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("currentUser") {
+
+        val userWithExtraKeys = """
+            {
+                "id": 1,
+                "username": "$USERNAME",
+                "is_admin": false,
+                "can_upload": true,
+                "can_edit": true,
+                "can_download": true,
+                "hidden_formats": ["CBZ"],
+                "stack_series": true
+            }
+        """
+
+        it("TC-16: exposes the user from the session check, with one /me call") {
+            tokenStore.save(TOKEN)
+            enqueue(200, userWithExtraKeys)
+
+            repository.verifySession() shouldBe AuthSessionResult.Valid
+
+            repository.currentUser.first() shouldBe CurrentUser(
+                id = 1,
+                canEdit = true,
+                canUpload = true,
+                hiddenFormats = setOf("cbz"),
+            )
+            server.requestCount shouldBe 1
+        }
+
+        it("TC-16: is the user from sign-in once signIn succeeds") {
+            enqueue(200, VALID_RESPONSE_BODY)
+
+            repository.signIn(USERNAME, PASSWORD)
+
+            repository.currentUser.first() shouldBe CurrentUser(
+                id = 1,
+                canEdit = true,
+                canUpload = true,
+                hiddenFormats = emptySet(),
+            )
+        }
+
+        it("TC-16: is null after signOut") {
+            enqueue(200, VALID_RESPONSE_BODY)
+            repository.signIn(USERNAME, PASSWORD)
+
+            repository.signOut()
+
+            repository.currentUser.first().shouldBeNull()
+        }
+
+        it("TC-16: is null after the session is rejected") {
+            tokenStore.save(TOKEN)
+            enqueue(200, userWithExtraKeys)
+            repository.verifySession()
+            enqueue(401)
+
+            repository.verifySession() shouldBe AuthSessionResult.Rejected
+
+            repository.currentUser.first().shouldBeNull()
+        }
+
+        it("TC-16: is null when the session check body can't be read, and the session is still Valid") {
+            tokenStore.save(TOKEN)
+            enqueue(200, "not json")
+
+            repository.verifySession() shouldBe AuthSessionResult.Valid
+
+            repository.currentUser.first().shouldBeNull()
+        }
+    }
 }) {
     private companion object {
         const val USERNAME = "hunter"
