@@ -64,6 +64,7 @@ dependencies {
         exclude(group = "com.google.crypto.tink", module = "tink")
     }
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.webkit)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
