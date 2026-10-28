@@ -21,7 +21,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
@@ -559,7 +558,8 @@ class LibraryScreenTest {
         rule.onAllNodes(isSelected()).assertCountEquals(2)
         rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.All)).assertIsSelected()
         rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.NewestAdded)).assertIsSelected()
-        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsNotSelected()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
 
         rule.runOnIdle {
             uiState.value = uiState.value.copy(
@@ -572,7 +572,8 @@ class LibraryScreenTest {
         rule.onAllNodes(isSelected()).assertCountEquals(2)
         rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.Audiobooks)).assertIsSelected()
         rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.Title)).assertIsSelected()
-        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsNotSelected()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
     }
 
     @Test
