@@ -3,15 +3,20 @@ package com.omnibus.omnibus.feature.library
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibrarySort
+import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.data.library.local.FakeLibrarySortPreferenceStore
 import com.omnibus.omnibus.data.library.page
 import com.omnibus.omnibus.data.library.testBook
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,14 +29,18 @@ import kotlinx.coroutines.test.setMain
 class LibraryViewModelTest : DescribeSpec({
 
     lateinit var repository: FakeLibraryRepository
+    lateinit var sortStore: FakeLibrarySortPreferenceStore
     lateinit var collecting: CollectingScope
 
-    /** Builds a VM against [repo] and keeps its state collected, as a screen would. */
-    fun viewModelFor(repo: FakeLibraryRepository) = LibraryViewModel(repo).also {
+    /** Builds a VM against [repo] and [store] and keeps its state collected, as a screen would. */
+    fun viewModelFor(
+        repo: FakeLibraryRepository,
+        store: FakeLibrarySortPreferenceStore = FakeLibrarySortPreferenceStore(),
+    ) = LibraryViewModel(repo, store).also {
         collecting.collect(it.uiState)
     }
 
-    fun createViewModel() = viewModelFor(repository)
+    fun createViewModel() = viewModelFor(repository, sortStore)
 
     fun pageOf(range: LongRange, cursor: String? = null) = page(*range.toList().toLongArray(), cursor = cursor)
 
@@ -40,6 +49,7 @@ class LibraryViewModelTest : DescribeSpec({
 
     beforeEach {
         repository = FakeLibraryRepository()
+        sortStore = FakeLibrarySortPreferenceStore()
         collecting = CollectingScope()
     }
 
@@ -473,6 +483,394 @@ class LibraryViewModelTest : DescribeSpec({
             fake.getBooksPageFlow().toList(collected)
 
             collected shouldBe listOf<LibraryPageResult>(page(1L), page(2L))
+        }
+    }
+
+    describe("filtered predicate") {
+
+        it("TC-102: the default category, sort and direction are not filtered") {
+            LibraryUIState().isFiltered shouldBe false
+        }
+
+        it("TC-103: each non-default category, sort or direction on its own is filtered") {
+            val filtered = listOf(
+                LibraryUIState(category = LibraryCategory.Ebooks),
+                LibraryUIState(category = LibraryCategory.Audiobooks),
+                LibraryUIState(direction = SortDirection.Asc),
+            ) + LibrarySort.entries.filter { it != LibrarySort.NewestAdded }.map { LibraryUIState(sort = it) }
+
+            filtered.forEach { it.isFiltered shouldBe true }
+        }
+
+        it("TC-104: only category, sort and direction count, never the other fields") {
+            LibraryUIState(
+                books = listOf(testBook(1L)),
+                nextCursor = "c1",
+                isRefreshing = true,
+                isLoadingMore = true,
+                hasLoaded = true,
+                transientError = LibraryUIError.Failed(LibraryError.Unreachable),
+                scrollToTop = true,
+            ).isFiltered shouldBe false
+            LibraryUIState(sort = LibrarySort.NewestAdded, direction = SortDirection.Asc).isFiltered shouldBe true
+        }
+    }
+
+    describe("sort restore") {
+
+        it("TC-121: a stored sort and direction are on the first page request") {
+            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
+            repository.enqueue(page(1L))
+
+            createViewModel()
+
+            repository.pageRequests.single() shouldBe
+                FakeLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc), null)
+        }
+
+        it("TC-122: no page request is sent until the stored preference arrives") {
+            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Author, SortDirection.Asc))
+            val release = CompletableDeferred<Unit>()
+            sortStore.holdFirstEmission = release
+            repository.enqueue(page(1L))
+
+            createViewModel()
+            repository.pageRequests.size shouldBe 0
+
+            release.complete(Unit)
+
+            repository.pageRequests.size shouldBe 1
+            repository.pageRequests.single() shouldBe
+                FakeLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Author, dir = SortDirection.Asc), null)
+        }
+
+        it("TC-123: the defaults still load the first page when the preference read gives defaults") {
+            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference())
+            repository.enqueue(pageOf(1L..2L))
+
+            val viewModel = createViewModel()
+
+            repository.pageRequests.single() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+        }
+
+        it("TC-124: the state is Loading while the stored preference is pending") {
+            val release = CompletableDeferred<Unit>()
+            sortStore.holdFirstEmission = release
+            repository.enqueue(page(1L))
+
+            val viewModel = createViewModel()
+
+            viewModel.uiState.value.isInitialLoading shouldBe true
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Loading
+
+            release.complete(Unit)
+
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+        }
+
+        it("TC-125: a new VM starts on All with an empty formats query, whatever was stored") {
+            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
+            repository.enqueue(page(1L))
+
+            val viewModel = createViewModel()
+
+            viewModel.uiState.value.category shouldBe LibraryCategory.All
+            repository.pageRequests.single().query.formats.shouldBeEmpty()
+        }
+    }
+
+    describe("query changes") {
+
+        it("TC-126: selecting a category never saves the preference") {
+            repository.enqueue(page(1L))
+            val viewModel = createViewModel()
+
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+
+            sortStore.saves.shouldBeEmpty()
+        }
+
+        it("TC-127: a category is not kept across VMs on the same store") {
+            val first = createViewModel()
+            first.selectCategory(LibraryCategory.Audiobooks)
+
+            val second = createViewModel()
+
+            first.uiState.value.category shouldBe LibraryCategory.Audiobooks
+            second.uiState.value.category shouldBe LibraryCategory.All
+        }
+
+        it("TC-128: selecting a category reloads from the first page with its formats") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+                BooksPageQuery(formats = LibraryCategory.Ebooks.formats),
+                null,
+            )
+            viewModel.uiState.value.category shouldBe LibraryCategory.Ebooks
+        }
+
+        it("TC-129: selecting a sort keeps the current direction and category formats") {
+            val viewModel = createViewModel()
+            viewModel.selectCategory(LibraryCategory.Audiobooks)
+
+            viewModel.selectSort(LibrarySort.Title)
+
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+                BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Desc, formats = LibraryCategory.Audiobooks.formats),
+                null,
+            )
+        }
+
+        it("TC-130: toggling the direction reloads with the flipped direction and flips back") {
+            val viewModel = createViewModel()
+
+            viewModel.toggleDirection()
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Asc), null)
+
+            viewModel.toggleDirection()
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Desc), null)
+        }
+
+        it("TC-131: choosing the value already active does nothing") {
+            repository.enqueue(page(1L))
+            val viewModel = createViewModel()
+            val requestsBefore = repository.pageRequests.size
+            val stateBefore = viewModel.uiState.value
+
+            viewModel.selectCategory(LibraryCategory.All)
+            viewModel.selectSort(LibrarySort.NewestAdded)
+
+            repository.pageRequests.size shouldBe requestsBefore
+            sortStore.saves.shouldBeEmpty()
+            viewModel.uiState.value shouldBe stateBefore
+        }
+
+        it("TC-132: a sort or direction change saves the sort and direction") {
+            val viewModel = createViewModel()
+
+            viewModel.selectSort(LibrarySort.Series)
+            viewModel.toggleDirection()
+
+            sortStore.saves shouldBe listOf(
+                LibrarySortPreference(LibrarySort.Series, SortDirection.Desc),
+                LibrarySortPreference(LibrarySort.Series, SortDirection.Asc),
+            )
+        }
+
+        it("TC-133: load-more after a sort and category change uses the current query") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+            repository.enqueue(pageOf(1L..60L, cursor = "c2"))
+            viewModel.selectSort(LibrarySort.Author)
+            repository.enqueue(pageOf(1L..60L, cursor = "c3"))
+            viewModel.selectCategory(LibraryCategory.Audiobooks)
+            repository.enqueue(pageOf(61L..90L, cursor = "c4"))
+
+            viewModel.loadMoreIfNeeded(59)
+
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+                BooksPageQuery(sort = LibrarySort.Author, dir = SortDirection.Desc, formats = LibraryCategory.Audiobooks.formats),
+                "c3",
+            )
+        }
+
+        it("TC-134: load-more on the default state requests the default query with the cursor") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+            repository.enqueue(pageOf(61L..62L))
+
+            viewModel.loadMoreIfNeeded(59)
+
+            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), "c1")
+        }
+
+        it("TC-135: a late first result from a superseded reload is dropped") {
+            repository.enqueue(page(1L))
+            val viewModel = createViewModel()
+            val first = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(first)
+            viewModel.selectSort(LibrarySort.Title)
+            val second = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(second)
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+
+            second.complete(page(7L))
+            first.complete(page(5L))
+
+            viewModel.uiState.value.books.map { it.id } shouldBe listOf(7L)
+            viewModel.uiState.value.nextCursor shouldBe null
+        }
+
+        it("TC-136: a late load-more result from before a query change is discarded and no load-more runs during the reload") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+            val loadMore = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(loadMore)
+            viewModel.loadMoreIfNeeded(59)
+            val reload = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(reload)
+            viewModel.selectSort(LibrarySort.Title)
+
+            viewModel.loadMoreIfNeeded(59)
+            repository.pageRequests.size shouldBe 3
+
+            loadMore.complete(page(61L, cursor = "c2"))
+            viewModel.uiState.value.books.map { it.id } shouldBe (1L..60L).toList()
+
+            reload.complete(page(100L))
+            viewModel.uiState.value.books.map { it.id } shouldBe listOf(100L)
+            viewModel.uiState.value.isLoadingMore shouldBe false
+        }
+
+        it("TC-137: a query change never sends the old cursor and clears it when the reload starts") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+            repository.enqueue(CompletableDeferred())
+
+            viewModel.selectSort(LibrarySort.Title)
+
+            viewModel.uiState.value.nextCursor shouldBe null
+            repository.pageRequests.last().cursor shouldBe null
+            val requestsBefore = repository.pageRequests.size
+            viewModel.loadMoreIfNeeded(59)
+            repository.pageRequests.size shouldBe requestsBefore
+        }
+    }
+
+    describe("scroll to top") {
+
+        it("TC-138: a query change keeps the old books on screen while the reload is pending") {
+            repository.enqueue(pageOf(1L..2L))
+            val viewModel = createViewModel()
+            repository.enqueue(CompletableDeferred())
+
+            viewModel.selectSort(LibrarySort.Title)
+
+            viewModel.uiState.value.books.map { it.id } shouldBe listOf(1L, 2L)
+            viewModel.uiState.value.screen shouldNotBe LibraryScreenState.Loading
+        }
+
+        it("TC-139: the first page of a query change replaces the books and raises scrollToTop") {
+            repository.enqueue(page(1L, 2L))
+            val viewModel = createViewModel()
+            val pending = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(pending)
+
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+            pending.complete(page(7L))
+
+            viewModel.uiState.value.books.map { it.id } shouldBe listOf(7L)
+            viewModel.uiState.value.scrollToTop shouldBe true
+        }
+
+        it("TC-140: scrolledToTop clears the flag and later pages of the same reload do not set it again") {
+            repository.enqueue(page(1L, 2L))
+            val viewModel = createViewModel()
+            val later = CompletableDeferred<LibraryPageResult>()
+            repository.enqueueFlow {
+                emit(page(7L))
+                emit(later.await())
+            }
+
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+            viewModel.uiState.value.scrollToTop shouldBe true
+            viewModel.scrolledToTop()
+            viewModel.uiState.value.scrollToTop shouldBe false
+
+            later.complete(page(8L))
+
+            viewModel.uiState.value.books.map { it.id } shouldBe listOf(8L)
+            viewModel.uiState.value.scrollToTop shouldBe false
+        }
+
+        it("TC-141: initial load, pull to refresh and load-more never raise scrollToTop") {
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val viewModel = createViewModel()
+            viewModel.uiState.value.scrollToTop shouldBe false
+
+            repository.enqueue(pageOf(1L..60L, cursor = "c2"))
+            viewModel.refresh()
+            viewModel.uiState.value.scrollToTop shouldBe false
+
+            repository.enqueue(pageOf(61L..62L, cursor = "c3"))
+            viewModel.loadMoreIfNeeded(59)
+            viewModel.uiState.value.scrollToTop shouldBe false
+        }
+
+        it("TC-142: a failed query-change reload keeps the books, sets the transient error and does not scroll") {
+            repository.enqueue(page(1L, 2L))
+            val viewModel = createViewModel()
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
+
+            viewModel.selectSort(LibrarySort.Title)
+
+            val state = viewModel.uiState.value
+            state.books.map { it.id } shouldBe listOf(1L, 2L)
+            state.scrollToTop shouldBe false
+            state.transientError shouldBe LibraryUIError.Failed(LibraryError.Unreachable)
+        }
+
+        it("TC-143: when a query change supersedes another, only the surviving reload raises the flag, once") {
+            repository.enqueue(page(1L, 2L))
+            val viewModel = createViewModel()
+            val superseded = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(superseded)
+            viewModel.selectSort(LibrarySort.Title)
+            val surviving = CompletableDeferred<LibraryPageResult>()
+            repository.enqueue(surviving)
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+
+            superseded.complete(page(5L))
+            viewModel.uiState.value.scrollToTop shouldBe false
+
+            surviving.complete(page(7L))
+            viewModel.uiState.value.scrollToTop shouldBe true
+
+            viewModel.scrolledToTop()
+            viewModel.uiState.value.scrollToTop shouldBe false
+        }
+    }
+
+    describe("default preference store") {
+
+        it("TC-159: with the default fake store, page 1 uses the default query") {
+            repository.enqueue(pageOf(1L..2L))
+
+            val viewModel = createViewModel()
+
+            repository.pageRequests.single() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+        }
+    }
+
+    describe("filtered empty") {
+
+        it("TC-160: a filtered result with no books is Content, and only the unfiltered empty result is Empty") {
+            LibraryUIState(hasLoaded = true, category = LibraryCategory.Ebooks).screen shouldBe LibraryScreenState.Content
+            LibraryUIState(hasLoaded = true, sort = LibrarySort.Title).screen shouldBe LibraryScreenState.Content
+            LibraryUIState(hasLoaded = true).screen shouldBe LibraryScreenState.Empty
+            LibraryUIState(isInitialLoading = true, category = LibraryCategory.Ebooks).screen shouldBe
+                LibraryScreenState.Loading
+            LibraryUIState(
+                error = LibraryUIError.Failed(LibraryError.Unreachable),
+                category = LibraryCategory.Ebooks,
+                hasLoaded = true,
+            ).screen shouldBe LibraryScreenState.Error(LibraryUIError.Failed(LibraryError.Unreachable))
+        }
+
+        it("TC-160: changing to a filter that matches nothing keeps the grid state as Content") {
+            val viewModel = createViewModel()
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Empty
+
+            viewModel.selectCategory(LibraryCategory.Audiobooks)
+
+            viewModel.uiState.value.category shouldBe LibraryCategory.Audiobooks
+            viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
         }
     }
 })
