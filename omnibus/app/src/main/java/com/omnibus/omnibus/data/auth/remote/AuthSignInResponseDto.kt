@@ -10,9 +10,10 @@ data class AuthSignInResponseDto(
     val token: String? = null,
 ) {
     companion object {
-        fun fromJsonString(jsonString: String): AuthSignInResponseDto =
-            Json.decodeFromString<AuthSignInResponseDto>(jsonString)
+        private val ResponseJson = Json { ignoreUnknownKeys = true }
 
+        fun fromJsonString(jsonString: String): AuthSignInResponseDto =
+            ResponseJson.decodeFromString<AuthSignInResponseDto>(jsonString)
     }
 }
 
