@@ -100,5 +100,22 @@ class OklchTest : DescribeSpec({
             listOf("", "garbage", "oklch(", "oklch()", "oklch(0.5 0.1)", "oklch(a b c)", "#12", "#gggggg", "red")
                 .forEach { Oklch.parse(it).shouldBeNull() }
         }
+
+        it("TC-30: parses the #13 acceptance inputs") {
+            val unitless = Oklch.parse("oklch(0.55 0.09 200)").shouldNotBeNull()
+            unitless.l shouldBe 0.55
+            unitless.c shouldBe 0.09
+            unitless.h shouldBe 200.0
+
+            Oklch.parse("oklch(55% 0.09 200 / 0.5)").shouldNotBeNull().alpha shouldBe 0.5
+
+            val (r, g, b) = Oklch.parse("#112233").shouldNotBeNull().toColor().channels().toList()
+            r.toDouble() shouldBe (0x11.toDouble() plusOrMinus 1.0)
+            g.toDouble() shouldBe (0x22.toDouble() plusOrMinus 1.0)
+            b.toDouble() shouldBe (0x33.toDouble() plusOrMinus 1.0)
+
+            Oklch.parse("garbage").shouldBeNull()
+            Oklch.parse("").shouldBeNull()
+        }
     }
 })

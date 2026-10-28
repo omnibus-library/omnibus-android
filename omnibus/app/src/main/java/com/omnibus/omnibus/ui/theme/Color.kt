@@ -17,6 +17,10 @@ import androidx.compose.ui.graphics.Color
  * @property accent Fill for primary actions.
  * @property accentInk Content drawn on top of [accent].
  * @property bad Error text and icons.
+ * @property bg2 Raised controls, such as the masthead add button.
+ * @property line2 Quieter hairlines and ghost plates.
+ * @property ink1 Between [ink0] and [ink2], for secondary emphasis.
+ * @property warn Offline and caution tint.
  */
 data class OmnibusPalette(
     val bg0: Color,
@@ -28,6 +32,10 @@ data class OmnibusPalette(
     val accent: Color,
     val accentInk: Color,
     val bad: Color,
+    val bg2: Color,
+    val line2: Color,
+    val ink1: Color,
+    val warn: Color,
 ) {
     companion object {
         /** The default dark theme. */
@@ -41,6 +49,10 @@ data class OmnibusPalette(
             accent = Color(0xFFF0A556),
             accentInk = Color(0xFF130B05),
             bad = Color(0xFFF97770),
+            bg2 = Oklch(0.215, 0.010, 70.0).toColor(),
+            line2 = Oklch(0.30, 0.010, 70.0, alpha = 0.30).toColor(),
+            ink1 = Oklch(0.82, 0.010, 75.0).toColor(),
+            warn = Oklch(0.78, 0.13, 75.0).toColor(),
         )
 
         val Light = OmnibusPalette(
@@ -53,6 +65,10 @@ data class OmnibusPalette(
             accent = Color(0xFFF0A556),
             accentInk = Color(0xFF130B05),
             bad = Color(0xFFF97770),
+            bg2 = Oklch(0.940, 0.006, 75.0).toColor(),
+            line2 = Oklch(0.40, 0.010, 70.0, alpha = 0.10).toColor(),
+            ink1 = Oklch(0.36, 0.008, 70.0).toColor(),
+            warn = Oklch(0.78, 0.13, 75.0).toColor(),
         )
     }
 }
