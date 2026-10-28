@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -51,7 +51,7 @@ class LibraryScreenTest {
         var retries = 0
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, 800.dp)) {
+                Box(Modifier.requiredSize(390.dp, 800.dp)) {
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = { retries++ },
@@ -257,7 +257,7 @@ class LibraryScreenTest {
         val uiState = mutableStateOf(LibraryUIState(books = (1L..6L).map { book(it) }))
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, 800.dp)) {
+                Box(Modifier.requiredSize(390.dp, 800.dp)) {
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = {},
@@ -306,7 +306,7 @@ class LibraryScreenTest {
         val inset = mutableStateOf(24.dp)
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, 600.dp)) {
+                Box(Modifier.requiredSize(390.dp, 600.dp)) {
                     LibraryScreenContent(
                         uiState = LibraryUIState(books = (1L..30L).map { book(it) }),
                         onRetry = {},
@@ -338,7 +338,7 @@ class LibraryScreenTest {
         )
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, 800.dp)) {
+                Box(Modifier.requiredSize(390.dp, 800.dp)) {
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = {},
@@ -370,7 +370,7 @@ class LibraryScreenTest {
         var shown = 0
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, 800.dp)) {
+                Box(Modifier.requiredSize(390.dp, 800.dp)) {
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = {},
@@ -409,7 +409,7 @@ class LibraryScreenTest {
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                Box(Modifier.size(390.dp, height)) {
+                Box(Modifier.requiredSize(390.dp, height)) {
                     LibraryScreenContent(
                         uiState = uiState,
                         onRetry = {},
