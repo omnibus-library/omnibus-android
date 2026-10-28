@@ -4,9 +4,12 @@
    for details.
 -->
 <data-extraction-rules>
-    <!-- The cover cache is re-downloadable, so it stays out of backups and transfers. -->
+    <!-- The cover cache is re-downloadable, so it stays out of backups and transfers. The auth keyset and token
+         are unusable on another install: their Keystore master key is never backed up. -->
     <cloud-backup>
         <exclude domain="file" path="covers/"/>
+        <exclude domain="sharedpref" path="omnibus_auth_keyset.xml"/>
+        <exclude domain="file" path="datastore/auth_token.preferences_pb"/>
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -14,5 +17,7 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="covers/"/>
+        <exclude domain="sharedpref" path="omnibus_auth_keyset.xml"/>
+        <exclude domain="file" path="datastore/auth_token.preferences_pb"/>
     </device-transfer>
 </data-extraction-rules>

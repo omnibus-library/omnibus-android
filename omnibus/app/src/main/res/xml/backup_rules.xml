@@ -8,6 +8,9 @@
 <full-backup-content>
     <!-- The cover cache is re-downloadable, so it stays out of backups. -->
     <exclude domain="file" path="covers/"/>
+    <!-- The auth keyset and token are unusable on another install: their Keystore master key is never backed up. -->
+    <exclude domain="sharedpref" path="omnibus_auth_keyset.xml"/>
+    <exclude domain="file" path="datastore/auth_token.preferences_pb"/>
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
