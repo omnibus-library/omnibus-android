@@ -28,13 +28,28 @@ enum class LibrarySort(val apiName: String) {
     Series("series"),
     RecentlyInteracted("recently_interacted"),
     LastUpdated("last_updated"),
-    NewestAdded("newest_added"),
+    NewestAdded("newest_added");
+
+    companion object {
+
+        /** The sort whose [apiName] is [raw], or null when none matches. The match is exact and case-sensitive. */
+        fun fromApiName(raw: String?): LibrarySort? = entries.firstOrNull { it.apiName == raw }
+    }
 }
 
 /** The order of a books page. [apiName] is what goes on the wire. */
 enum class SortDirection(val apiName: String) {
     Asc("asc"),
-    Desc("desc"),
+    Desc("desc");
+
+    /** The opposite order. */
+    fun toggled(): SortDirection = if (this == Asc) Desc else Asc
+
+    companion object {
+
+        /** The direction whose [apiName] is [raw], or null when none matches. The match is exact and case-sensitive. */
+        fun fromApiName(raw: String?): SortDirection? = entries.firstOrNull { it.apiName == raw }
+    }
 }
 
 /**

@@ -569,6 +569,36 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
         }
     }
 
+    describe("category formats on the wire") {
+
+        it("TC-107: Ebooks sends the ebook formats verbatim and in order") {
+            enqueue(200, EMPTY_BOOKS)
+
+            repository.getBooksPageFlow(LibraryCategory.Ebooks.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
+                .single()
+
+            server.takeRequest().url.queryParameter("formats") shouldBe "epub,pdf,mobi,azw3,cbz,cbr"
+        }
+
+        it("TC-107: Audiobooks sends the audio formats verbatim and in order") {
+            enqueue(200, EMPTY_BOOKS)
+
+            repository.getBooksPageFlow(LibraryCategory.Audiobooks.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
+                .single()
+
+            server.takeRequest().url.queryParameter("formats") shouldBe "m4b,m4a,mp3,aac,flac,ogg,opus"
+        }
+
+        it("TC-107: All sends no formats param") {
+            enqueue(200, EMPTY_BOOKS)
+
+            repository.getBooksPageFlow(LibraryCategory.All.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
+                .single()
+
+            server.takeRequest().url.queryParameter("formats").shouldBeNull()
+        }
+    }
+
     describe("single emission") {
 
         it("TC-24: a books page emits exactly once and then completes") {
