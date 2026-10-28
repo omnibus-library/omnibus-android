@@ -113,6 +113,12 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             tokenStore.token.first() shouldBe TOKEN
         }
 
+        it("returns Success when the response carries fields the app doesn't know") {
+            enqueue(200, RESPONSE_BODY_WITH_UNKNOWN_FIELDS)
+
+            repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
+        }
+
         describe("when the server rejects the credentials") {
 
             listOf(401, 403).forEach { code ->
@@ -300,6 +306,12 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
             repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
             tokenStore.token.first() shouldBe TOKEN
+        }
+
+        it("returns Success when the response carries fields the app doesn't know") {
+            enqueue(200, RESPONSE_BODY_WITH_UNKNOWN_FIELDS)
+
+            repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
         }
 
         describe("when the username is already taken") {
@@ -784,5 +796,21 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         """
 
         const val VALID_RESPONSE_BODY = """{"user": $VALID_USER_JSON, "token": "$TOKEN"}"""
+
+        const val RESPONSE_BODY_WITH_UNKNOWN_FIELDS = """
+            {
+                "user": {
+                    "id": 1,
+                    "username": "$USERNAME",
+                    "is_admin": false,
+                    "can_upload": true,
+                    "can_edit": true,
+                    "can_download": true,
+                    "share_stats": true
+                },
+                "token": "$TOKEN",
+                "expires_at": null
+            }
+        """
     }
 }
