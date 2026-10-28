@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.shell
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import com.omnibus.omnibus.feature.library.ui.BookDetailRoute
 import androidx.navigation3.runtime.NavKey
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -115,6 +116,21 @@ class ShellNavigatorTest : DescribeSpec({
 
         it("reports nowhere to go at Library's root") {
             navigator.back() shouldBe false
+        }
+    }
+
+    describe("book detail") {
+        it("TC-75: pushes onto the Library stack only, and back pops to the Library root") {
+            navigator.navigateTo(BookDetailRoute("abc"))
+
+            stack(ShellTab.Library) shouldBe listOf(LibraryRoot, BookDetailRoute("abc"))
+            ShellTab.entries.filter { it != ShellTab.Library }.forEach { tab ->
+                stack(tab) shouldBe listOf(tab.root)
+            }
+
+            navigator.back() shouldBe true
+
+            stack(ShellTab.Library) shouldBe listOf(LibraryRoot)
         }
     }
 
