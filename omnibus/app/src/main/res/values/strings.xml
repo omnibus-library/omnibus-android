@@ -51,4 +51,7 @@
     <string name="shell_tab_series">Series</string>
     <string name="shell_tab_stats">Stats</string>
     <string name="shell_tab_you">You</string>
+
+    <!-- Masthead -->
+    <string name="masthead_add_books">Add books by upload or barcode scan</string>
 </resources>
