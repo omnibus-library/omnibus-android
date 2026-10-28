@@ -9,4 +9,6 @@
     <color name="white">#FFFFFFFF</color>
     <!-- Atrium bg0, so the splash matches the first screen. Dark variant lives in values-night. -->
     <color name="splash_background">#FFFBFAF8</color>
+    <!-- Launcher icon background, sampled from the iOS app icon. -->
+    <color name="ic_launcher_background">#FF0F0E0D</color>
 </resources>
