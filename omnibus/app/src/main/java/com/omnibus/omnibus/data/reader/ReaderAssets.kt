@@ -28,6 +28,15 @@ object ReaderAssets {
     /** The URL epub.js fetches the book from. */
     fun bookUrl(uuid: String): String = "$ORIGIN$BOOK_PATH$uuid.epub"
 
+    private val BOOK_FILE_NAME = Regex("([A-Za-z0-9-]+)\\.epub")
+
+    /**
+     * The book uuid in a path relative to [BOOK_PATH] (`<uuid>.epub`), or null for any other shape.
+     * The uuid goes into an API path, so only letters, digits and dashes are accepted.
+     */
+    fun bookUuidFor(relativePath: String): String? =
+        BOOK_FILE_NAME.matchEntire(relativePath.trimStart('/'))?.groupValues?.get(1)
+
     /**
      * Maps a path relative to [READER_PATH] (`jszip.min.js`) to its path under `assets/`
      * (`reader/jszip.min.js`), or null when it isn't a plain file name.
