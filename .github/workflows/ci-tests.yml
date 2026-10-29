@@ -2,18 +2,21 @@ name: CI Tests
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-tests-${{ github.event.pull_request.number }}
+  # Edits that don't change the base get their own group (their job is skipped), so they can't cancel a real run.
+  group: ci-tests-${{ github.event.pull_request.number }}${{ github.event.action == 'edited' && github.event.changes.base == null && '-edit' || '' }}
   cancel-in-progress: true
 
 jobs:
   tests:
+    # An edit only matters when it changed the base branch (a stacked PR retargeted after its parent merged);
+    # title and body edits must not restart CI.
+    if: github.event.action != 'edited' || github.event.changes.base != null
     permissions:
       contents: read
     uses: ./.github/workflows/android-tests.yml
