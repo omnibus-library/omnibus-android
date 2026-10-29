@@ -69,6 +69,18 @@
     <string name="library_empty_kicker">YOUR LIBRARY</string>
     <string name="library_empty_title">No books yet</string>
     <string name="library_empty_message">Point the server at a library folder, or add a book from the You tab.</string>
+    <string name="library_filter_sort">Filter and sort</string>
+    <string name="library_category_all">All</string>
+    <string name="library_category_ebooks">Ebooks</string>
+    <string name="library_category_audiobooks">Audiobooks</string>
+    <string name="library_sort_title">Title</string>
+    <string name="library_sort_author">Author</string>
+    <string name="library_sort_series">Series</string>
+    <string name="library_sort_recently_interacted">Recently interacted</string>
+    <string name="library_sort_last_updated">Last updated</string>
+    <string name="library_sort_newest_added">Newest added</string>
+    <string name="library_direction_ascending">Ascending</string>
+    <string name="library_direction_descending">Descending</string>
 
     <!-- Book detail -->
     <string name="book_detail_stub_title">Book detail</string>

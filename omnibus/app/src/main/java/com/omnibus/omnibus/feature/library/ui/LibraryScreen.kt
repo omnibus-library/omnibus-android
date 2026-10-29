@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -55,8 +56,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
-import com.omnibus.omnibus.feature.library.LibraryGridMetrics
+import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
+import com.omnibus.omnibus.data.library.LibrarySort
+import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
@@ -80,10 +84,15 @@ internal object LibraryTestTags {
     const val GRID = "library-grid"
     const val HEADING = "library-heading"
     const val FOOTER_SPINNER = "library-footer-spinner"
+    const val FILTER_BUTTON = "library-filter-button"
+    const val MENU_DIRECTION = "library-menu-direction"
 
     fun cell(id: Long) = "library-cell-$id"
     fun cover(id: Long) = "library-cover-$id"
     fun title(id: Long) = "library-title-$id"
+    fun menuCategory(category: LibraryCategory) = "library-menu-category-${category.name}"
+    fun menuSort(sort: LibrarySort) = "library-menu-sort-${sort.name}"
+    fun directionIcon(direction: SortDirection) = "library-menu-direction-icon-${direction.name}"
 }
 
 private const val HEADER_KEY = "header"
@@ -127,6 +136,10 @@ fun LibraryScreen(
         onTransientErrorShown = viewModel::transientErrorShown,
         bottomInset = bottomInset,
         modifier = modifier.onConsumedWindowInsetsChanged { consumed = it },
+        onSelectCategory = viewModel::selectCategory,
+        onSelectSort = viewModel::selectSort,
+        onToggleDirection = viewModel::toggleDirection,
+        onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
     )
 }
@@ -139,6 +152,10 @@ fun LibraryScreen(
  *
  * @param onLoadMore Called with the index of the last visible book whenever it changes.
  * @param bottomInset Navigation bar padding the caller could not consume, added below the grid.
+ * @param onSelectCategory Called with the category picked in the filter menu.
+ * @param onSelectSort Called with the sort key picked in the filter menu.
+ * @param onToggleDirection Called when the Direction row is tapped.
+ * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
  */
@@ -154,6 +171,10 @@ internal fun LibraryScreenContent(
     onTransientErrorShown: () -> Unit,
     bottomInset: Dp,
     modifier: Modifier = Modifier,
+    onSelectCategory: (LibraryCategory) -> Unit = {},
+    onSelectSort: (LibrarySort) -> Unit = {},
+    onToggleDirection: () -> Unit = {},
+    onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
@@ -167,6 +188,14 @@ internal fun LibraryScreenContent(
         val message = transientMessage ?: return@LaunchedEffect
         onTransientErrorShown()
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    // Keyed on the one-shot flag, not a counter, so returning from a book can't re-fire it (#17 AC8).
+    LaunchedEffect(uiState.scrollToTop) {
+        if (uiState.scrollToTop) {
+            gridState.scrollToItem(0)
+            onScrolledToTop()
+        }
     }
 
     Box(modifier.fillMaxSize()) {
@@ -202,6 +231,9 @@ internal fun LibraryScreenContent(
                     onOpenBook = onOpenBook,
                     onAddBooks = onAddBooks,
                     onLoadMore = onLoadMore,
+                    onSelectCategory = onSelectCategory,
+                    onSelectSort = onSelectSort,
+                    onToggleDirection = onToggleDirection,
                     gridState = gridState,
                     bottomInset = bottomInset,
                 )
@@ -246,11 +278,13 @@ private fun EmptyLibrary() {
 }
 
 /**
- * The masthead, the "All books" heading and the cover grid, as one scrolling surface.
+ * The masthead, the category heading with its filter control, and the cover grid, as one scrolling
+ * surface.
  *
  * The column count and cell width come from [LibraryGridMetrics] for the width left after the
  * screen insets. Reports the last visible book index to [onLoadMore], which maps the grid index back
- * past the header and clamps it to the last book.
+ * past the header and clamps it to the last book. The filter menu's choices go to the three
+ * `onSelect*`/`onToggleDirection` callbacks.
  */
 @Composable
 private fun LibraryGrid(
@@ -258,6 +292,9 @@ private fun LibraryGrid(
     onOpenBook: (uuid: String) -> Unit,
     onAddBooks: () -> Unit,
     onLoadMore: (lastVisibleBookIndex: Int) -> Unit,
+    onSelectCategory: (LibraryCategory) -> Unit,
+    onSelectSort: (LibrarySort) -> Unit,
+    onToggleDirection: () -> Unit,
     gridState: LazyGridState,
     bottomInset: Dp,
 ) {
@@ -295,11 +332,25 @@ private fun LibraryGrid(
                         MastheadAddButton(onAddBooks = onAddBooks)
                     }
                     Column(Modifier.padding(horizontal = Spacing.screen)) {
-                        Text(
-                            text = stringResource(R.string.library_all_books),
-                            style = displayTextStyle(27, palette.ink0),
-                            modifier = Modifier.testTag(LibraryTestTags.HEADING),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        ) {
+                            Text(
+                                text = stringResource(uiState.category.headingRes()),
+                                style = displayTextStyle(27, palette.ink0),
+                                modifier = Modifier.weight(1f).testTag(LibraryTestTags.HEADING),
+                            )
+                            LibraryFilterControl(
+                                category = uiState.category,
+                                sort = uiState.sort,
+                                direction = uiState.direction,
+                                isFiltered = uiState.isFiltered,
+                                onSelectCategory = onSelectCategory,
+                                onSelectSort = onSelectSort,
+                                onToggleDirection = onToggleDirection,
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                     }
                 }
@@ -422,4 +473,22 @@ private fun LibraryEmptyPreview() {
 @Composable
 private fun LibraryLoadingMorePreview() {
     LibraryPreviewContent(LibraryUIState(books = previewBooks, nextCursor = "c2", isLoadingMore = true))
+}
+
+@PreviewLightDark
+@Composable
+private fun LibraryFilteredPreview() {
+    LibraryPreviewContent(
+        LibraryUIState(
+            books = previewBooks,
+            category = LibraryCategory.Ebooks,
+            direction = SortDirection.Asc,
+        ),
+    )
+}
+
+@PreviewLightDark
+@Composable
+private fun LibraryFilteredEmptyPreview() {
+    LibraryPreviewContent(LibraryUIState(hasLoaded = true, category = LibraryCategory.Audiobooks))
 }

@@ -3,16 +3,31 @@ package com.omnibus.omnibus.feature.library.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isHeading
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -28,14 +43,20 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.bottomCenter
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
+import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
+import com.omnibus.omnibus.data.library.LibrarySort
+import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
+import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -400,6 +421,351 @@ class LibraryScreenTest {
         assertEquals(1, shown)
     }
 
+    @Test
+    fun tc144_headingNamesActiveCategory() {
+        val uiState = mutableStateOf(LibraryUIState(books = listOf(book(1L))))
+        setLibraryState(uiState)
+
+        heading().assertTextEquals(ALL_BOOKS)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(category = LibraryCategory.Ebooks) }
+        heading().assertTextEquals("Ebooks").assertIsDisplayed()
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(category = LibraryCategory.Audiobooks) }
+        heading().assertTextEquals("Audiobooks").assertIsDisplayed()
+    }
+
+    @Test
+    fun tc145_headingRowLayout() {
+        val uiState = LibraryUIState(books = listOf(book(1L)))
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                // Large font scale, so the heading has to share the row with the button.
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+                    Box(Modifier.requiredWidth(390.dp).height(800.dp)) {
+                        LibraryScreenContent(
+                            uiState = uiState,
+                            onRetry = {},
+                            onRefresh = {},
+                            onLoadMore = {},
+                            onOpenBook = {},
+                            onAddBooks = {},
+                            onTransientErrorShown = {},
+                            bottomInset = 0.dp,
+                        )
+                    }
+                }
+            }
+        }
+
+        val grid = rule.onNodeWithTag(LibraryTestTags.GRID).getUnclippedBoundsInRoot()
+        val heading = heading().getUnclippedBoundsInRoot()
+        val button = filterButton().getUnclippedBoundsInRoot()
+
+        assertNear(20.dp, heading.left - grid.left, "heading starts at the 20 dp inset")
+        assertNear(20.dp, grid.right - button.right, "button sits at the 20 dp trailing inset")
+        assertTrue("at least 8 dp between the heading and the button", button.left - heading.right >= 8.dp - HALF_DP)
+        val headingCentre = (heading.top + heading.bottom) / 2
+        val buttonCentre = (button.top + button.bottom) / 2
+        assertTrue("heading and button are vertically centred", abs((headingCentre - buttonCentre).value) <= 1f)
+    }
+
+    @Test
+    fun tc146_filterButtonSemantics() {
+        setLibrary(LibraryUIState(books = listOf(book(1L))))
+
+        val button = rule.onNodeWithContentDescription(FILTER_LABEL)
+        button.assertHasClickAction()
+        button.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+
+        val bounds = filterButton().getUnclippedBoundsInRoot()
+        assertNear(32.dp, bounds.right - bounds.left, "the button is 32 dp wide")
+        assertNear(32.dp, bounds.bottom - bounds.top, "the button is 32 dp tall")
+    }
+
+    @Test
+    fun tc147_tapOpensMenu() {
+        setLibrary(LibraryUIState(books = listOf(book(1L))))
+
+        openMenu()
+
+        LibraryCategory.entries.forEach { rule.onNodeWithTag(LibraryTestTags.menuCategory(it)).assertIsDisplayed() }
+        LibrarySort.entries.forEach { rule.onNodeWithTag(LibraryTestTags.menuSort(it)).assertIsDisplayed() }
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsDisplayed()
+    }
+
+    @Test
+    fun tc148_buttonColourFollowsFilteredState() {
+        val uiState = mutableStateOf(LibraryUIState(books = listOf(book(1L))))
+        setLibraryState(uiState)
+        rule.waitForIdle()
+
+        assertColourNear(OmnibusPalette.Atrium.bg2, filterButtonFill(), "default fill")
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(category = LibraryCategory.Ebooks) }
+        rule.waitForIdle()
+
+        assertColourNear(OmnibusPalette.Atrium.accent, filterButtonFill(), "filtered fill")
+    }
+
+    @Test
+    fun tc149_buttonAccentForEachFilteredKind() {
+        val base = LibraryUIState(books = listOf(book(1L)))
+        val uiState = mutableStateOf(base)
+        setLibraryState(uiState)
+        rule.waitForIdle()
+        assertColourNear(OmnibusPalette.Atrium.bg2, filterButtonFill(), "default view")
+
+        listOf(
+            "Ebooks" to base.copy(category = LibraryCategory.Ebooks),
+            "Title sort" to base.copy(sort = LibrarySort.Title),
+            "ascending" to base.copy(direction = SortDirection.Asc),
+        ).forEach { (name, state) ->
+            rule.runOnIdle { uiState.value = state }
+            rule.waitForIdle()
+            assertColourNear(OmnibusPalette.Atrium.accent, filterButtonFill(), name)
+        }
+
+        rule.runOnIdle { uiState.value = base }
+        rule.waitForIdle()
+        assertColourNear(OmnibusPalette.Atrium.bg2, filterButtonFill(), "back to the default view")
+    }
+
+    @Test
+    fun tc150_menuGroupOrder() {
+        setLibrary(LibraryUIState(books = listOf(book(1L))))
+        openMenu()
+
+        val lastCategory = rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.Audiobooks))
+            .getUnclippedBoundsInRoot()
+        val firstSort = rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.Title)).getUnclippedBoundsInRoot()
+        val lastSort = rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.NewestAdded))
+            .getUnclippedBoundsInRoot()
+        val direction = rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).getUnclippedBoundsInRoot()
+
+        assertTrue("Show group sits above the Sort group", lastCategory.bottom <= firstSort.top)
+        assertTrue("Sort group sits above the Direction row", lastSort.bottom <= direction.top)
+        assertTrue("a divider separates Show from Sort", firstSort.top - lastCategory.bottom >= 8.dp - HALF_DP)
+        assertTrue("a divider separates Sort from Direction", direction.top - lastSort.bottom >= 8.dp - HALF_DP)
+    }
+
+    @Test
+    fun tc151_checkOnCurrentShowAndSortOnly() {
+        val uiState = mutableStateOf(LibraryUIState(books = listOf(book(1L))))
+        setLibraryState(uiState)
+        openMenu()
+
+        rule.onAllNodes(isSelected()).assertCountEquals(2)
+        rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.All)).assertIsSelected()
+        rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.NewestAdded)).assertIsSelected()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+
+        rule.runOnIdle {
+            uiState.value = uiState.value.copy(
+                category = LibraryCategory.Audiobooks,
+                sort = LibrarySort.Title,
+                direction = SortDirection.Asc,
+            )
+        }
+
+        rule.onAllNodes(isSelected()).assertCountEquals(2)
+        rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.Audiobooks)).assertIsSelected()
+        rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.Title)).assertIsSelected()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION)
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+    }
+
+    @Test
+    fun tc152_selectingItemInvokesCallbackAndClosesMenu() {
+        val categories = mutableListOf<LibraryCategory>()
+        val sorts = mutableListOf<LibrarySort>()
+        var toggles = 0
+        setLibrary(
+            LibraryUIState(books = listOf(book(1L))),
+            onSelectCategory = { categories += it },
+            onSelectSort = { sorts += it },
+            onToggleDirection = { toggles++ },
+        )
+
+        openMenu()
+        rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.Ebooks)).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(LibraryCategory.Ebooks), categories)
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertDoesNotExist()
+
+        openMenu()
+        rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.Author)).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(LibrarySort.Author), sorts)
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertDoesNotExist()
+
+        openMenu()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).performClick()
+        rule.waitForIdle()
+        assertEquals(1, toggles)
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertDoesNotExist()
+    }
+
+    @Test
+    fun tc153_directionRowShowsCurrentDirection() {
+        val uiState = mutableStateOf(LibraryUIState(books = listOf(book(1L))))
+        var toggles = 0
+        setLibraryState(uiState, onToggleDirection = { toggles++ })
+
+        openMenu()
+        rule.onNodeWithText("Descending").assertIsDisplayed()
+        rule.onNodeWithTag(LibraryTestTags.directionIcon(SortDirection.Desc), useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(LibraryTestTags.directionIcon(SortDirection.Asc), useUnmergedTree = true)
+            .assertDoesNotExist()
+
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).performClick()
+        rule.waitForIdle()
+        assertEquals(1, toggles)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(direction = SortDirection.Asc) }
+        openMenu()
+        rule.onNodeWithText("Ascending").assertIsDisplayed()
+        rule.onNodeWithTag(LibraryTestTags.directionIcon(SortDirection.Asc), useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(LibraryTestTags.directionIcon(SortDirection.Desc), useUnmergedTree = true)
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun tc154_noVisibleGroupHeaders() {
+        setLibrary(LibraryUIState(books = listOf(book(1L))))
+        openMenu()
+
+        rule.onNodeWithText("Show").assertDoesNotExist()
+        rule.onNodeWithText("Sort").assertDoesNotExist()
+    }
+
+    @Test
+    fun tc155_scrollToTopFlagScrollsToIndexZero() {
+        val uiState = mutableStateOf(LibraryUIState(books = (1L..20L).map { book(it) }))
+        val gridState = LazyGridState()
+        var scrolledToTop = 0
+        setLibraryState(
+            uiState,
+            onScrolledToTop = {
+                scrolledToTop++
+                uiState.value = uiState.value.copy(scrollToTop = false)
+            },
+            gridState = gridState,
+        )
+
+        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(6)
+        rule.waitForIdle()
+        assertTrue("the grid scrolled away from the top", gridState.firstVisibleItemIndex > 0)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(scrollToTop = true) }
+        rule.waitForIdle()
+
+        assertEquals(0, gridState.firstVisibleItemIndex)
+        assertEquals(1, scrolledToTop)
+    }
+
+    @Test
+    fun tc156_noScrollWithoutFlag() {
+        val uiState = mutableStateOf(LibraryUIState(books = (1L..20L).map { book(it) }))
+        val gridState = LazyGridState()
+        var scrolledToTop = 0
+        setLibraryState(uiState, onScrolledToTop = { scrolledToTop++ }, gridState = gridState)
+
+        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(6)
+        rule.waitForIdle()
+        val scrolledIndex = gridState.firstVisibleItemIndex
+        assertTrue("the grid scrolled away from the top", scrolledIndex > 0)
+
+        // An unrelated change recomposes the screen, the way returning from a book does.
+        rule.runOnIdle { uiState.value = uiState.value.copy(hasLoaded = true) }
+        rule.waitForIdle()
+
+        assertEquals(scrolledIndex, gridState.firstVisibleItemIndex)
+        assertEquals(0, scrolledToTop)
+    }
+
+    @Test
+    fun tc157_oldGridStaysDuringReload() {
+        setLibrary(
+            LibraryUIState(books = listOf(book(1L), book(2L)), isInitialLoading = true, category = LibraryCategory.Audiobooks),
+        )
+
+        rule.onNodeWithTag(LibraryTestTags.GRID).assertIsDisplayed()
+        heading().assertTextEquals("Audiobooks").assertIsDisplayed()
+        rule.onNodeWithText(LOADING_LABEL).assertDoesNotExist()
+    }
+
+    @Test
+    fun tc158_filteredStateRendersInBothThemes() {
+        val darkTheme = mutableStateOf(true)
+        rule.setContent {
+            OmnibusTheme(darkTheme = darkTheme.value) {
+                Box(Modifier.requiredWidth(390.dp).height(800.dp)) {
+                    LibraryScreenContent(
+                        uiState = LibraryUIState(
+                            books = listOf(book(1L)),
+                            category = LibraryCategory.Ebooks,
+                            direction = SortDirection.Asc,
+                        ),
+                        onRetry = {},
+                        onRefresh = {},
+                        onLoadMore = {},
+                        onOpenBook = {},
+                        onAddBooks = {},
+                        onTransientErrorShown = {},
+                        bottomInset = 0.dp,
+                    )
+                }
+            }
+        }
+
+        assertFilteredHeadingAndButton()
+        rule.runOnIdle { darkTheme.value = false }
+        assertFilteredHeadingAndButton()
+    }
+
+    @Test
+    fun tc161_filteredEmptyKeepsHeadingAndFilterButton() {
+        setLibrary(LibraryUIState(hasLoaded = true, category = LibraryCategory.Ebooks))
+
+        heading().assertTextEquals("Ebooks").assertIsDisplayed()
+        filterButton().assertIsDisplayed()
+        rule.onNodeWithText(EMPTY_TITLE).assertDoesNotExist()
+
+        openMenu()
+        rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsDisplayed()
+    }
+
+    private fun assertFilteredHeadingAndButton() {
+        heading().assertTextEquals("Ebooks").assertIsDisplayed()
+        filterButton().assertIsDisplayed()
+    }
+
+    private fun heading() = rule.onNodeWithTag(LibraryTestTags.HEADING, useUnmergedTree = true)
+
+    private fun filterButton() = rule.onNodeWithTag(LibraryTestTags.FILTER_BUTTON)
+
+    private fun openMenu() = filterButton().performClick()
+
+    /** The button's fill, sampled inside the circle clear of the border and glyph. */
+    private fun filterButtonFill(): Color {
+        val pixels = filterButton().captureToImage().toPixelMap()
+        val x = with(rule.density) { 16.dp.roundToPx() }
+        val y = with(rule.density) { 6.dp.roundToPx() }
+        return pixels[x, y]
+    }
+
+    private fun assertColourNear(expected: Color, actual: Color, message: String) {
+        val tolerance = 0.03f
+        assertTrue(
+            "$message: expected $expected but was $actual",
+            abs(expected.red - actual.red) <= tolerance &&
+                abs(expected.green - actual.green) <= tolerance &&
+                abs(expected.blue - actual.blue) <= tolerance,
+        )
+    }
+
     private fun setLibrary(
         uiState: LibraryUIState,
         height: Dp = 800.dp,
@@ -407,12 +773,44 @@ class LibraryScreenTest {
         onAddBooks: () -> Unit = {},
         onLoadMore: (Int) -> Unit = {},
         onRefresh: () -> Unit = {},
+        onSelectCategory: (LibraryCategory) -> Unit = {},
+        onSelectSort: (LibrarySort) -> Unit = {},
+        onToggleDirection: () -> Unit = {},
+        onScrolledToTop: () -> Unit = {},
+        gridState: LazyGridState? = null,
+    ) = setLibraryState(
+        uiState = mutableStateOf(uiState),
+        height = height,
+        onOpenBook = onOpenBook,
+        onAddBooks = onAddBooks,
+        onLoadMore = onLoadMore,
+        onRefresh = onRefresh,
+        onSelectCategory = onSelectCategory,
+        onSelectSort = onSelectSort,
+        onToggleDirection = onToggleDirection,
+        onScrolledToTop = onScrolledToTop,
+        gridState = gridState,
+    )
+
+    /** Like [setLibrary], but reads the state each recomposition so a test can change it between steps. */
+    private fun setLibraryState(
+        uiState: State<LibraryUIState>,
+        height: Dp = 800.dp,
+        onOpenBook: (String) -> Unit = {},
+        onAddBooks: () -> Unit = {},
+        onLoadMore: (Int) -> Unit = {},
+        onRefresh: () -> Unit = {},
+        onSelectCategory: (LibraryCategory) -> Unit = {},
+        onSelectSort: (LibrarySort) -> Unit = {},
+        onToggleDirection: () -> Unit = {},
+        onScrolledToTop: () -> Unit = {},
+        gridState: LazyGridState? = null,
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 Box(Modifier.requiredWidth(390.dp).height(height)) {
                     LibraryScreenContent(
-                        uiState = uiState,
+                        uiState = uiState.value,
                         onRetry = {},
                         onRefresh = onRefresh,
                         onLoadMore = onLoadMore,
@@ -420,6 +818,11 @@ class LibraryScreenTest {
                         onAddBooks = onAddBooks,
                         onTransientErrorShown = {},
                         bottomInset = 0.dp,
+                        onSelectCategory = onSelectCategory,
+                        onSelectSort = onSelectSort,
+                        onToggleDirection = onToggleDirection,
+                        onScrolledToTop = onScrolledToTop,
+                        gridState = gridState ?: rememberLazyGridState(),
                     )
                 }
             }
@@ -451,6 +854,7 @@ class LibraryScreenTest {
         const val LIBRARY_TITLE = "Library"
         const val ALL_BOOKS = "All books"
         const val ADD_LABEL = "Add books by upload or barcode scan"
+        const val FILTER_LABEL = "Filter and sort"
 
         /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
         val HALF_DP = 0.5.dp
