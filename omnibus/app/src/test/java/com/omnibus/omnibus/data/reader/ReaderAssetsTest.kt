@@ -52,6 +52,20 @@ class ReaderAssetsTest : DescribeSpec({
         }
     }
 
+    describe("bookUuidFor") {
+
+        it("TC-226: extracts the uuid from a book file name") {
+            ReaderAssets.bookUuidFor("0a1b2c3d-4e5f.epub") shouldBe "0a1b2c3d-4e5f"
+            ReaderAssets.bookUuidFor("/0a1b2c3d-4e5f.epub") shouldBe "0a1b2c3d-4e5f"
+        }
+
+        it("TC-227: refuses names that could change the API path they are placed in") {
+            listOf("", ".epub", "book.pdf", "a/b.epub", "../x.epub", "a b.epub", "a%2Fb.epub", "a.epub.js").forEach {
+                ReaderAssets.bookUuidFor(it) shouldBe null
+            }
+        }
+    }
+
     describe("URLs") {
 
         it("TC-213: puts the entry page, fonts and book on the one asset-loader origin") {

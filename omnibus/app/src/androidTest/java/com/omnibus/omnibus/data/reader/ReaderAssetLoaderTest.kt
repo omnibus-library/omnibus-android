@@ -10,6 +10,9 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.test.platform.app.InstrumentationRegistry
+import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import kotlinx.coroutines.Dispatchers
+import java.io.ByteArrayInputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.After
@@ -23,12 +26,20 @@ class ReaderAssetLoaderTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context: Context = instrumentation.targetContext
     private val consoleErrors = mutableListOf<String>()
+    private val bookFailures = mutableListOf<BookFileResult.Failure>()
+    private val requestedBooks = mutableListOf<String>()
+    private var bookResult: BookFileResult = BookFileResult.Opened(ByteArrayInputStream("epub-bytes".toByteArray()), 10)
     private lateinit var webView: WebView
 
     @SuppressLint("SetJavaScriptEnabled")
     @Before
     fun loadReaderPage() {
-        val loader = ReaderAssetLoaderFactory(context).create()
+        val source = BookFileSource { uuid ->
+            requestedBooks += uuid
+            bookResult
+        }
+        val loader = ReaderAssetLoaderFactory(context, Dispatchers.Unconfined, source)
+            .create { synchronized(bookFailures) { bookFailures += it } }
         val pageFinished = CountDownLatch(1)
         instrumentation.runOnMainSync {
             webView = WebView(context).apply {
@@ -96,6 +107,39 @@ class ReaderAssetLoaderTest {
         assertEquals("0", status)
         waitFor("window.__status !== undefined")
         assertEquals("404", evaluate("String(window.__status)").trim('"'))
+    }
+
+    @Test
+    fun tc217_bookPathServesTheBookBytesAsEpub() {
+        val body = fetchStatusAndBody("/book/abc-123.epub")
+
+        assertEquals("200:epub-bytes", body)
+        assertEquals(listOf("abc-123"), requestedBooks)
+    }
+
+    @Test
+    fun tc218_aBookThatFailsToOpenIsAnErrorStatusAndIsReportedToTheHost() {
+        bookResult = BookFileResult.NotFound
+
+        assertEquals("404:", fetchStatusAndBody("/book/abc-123.epub"))
+        assertEquals(listOf<BookFileResult.Failure>(BookFileResult.NotFound), synchronized(bookFailures) { bookFailures.toList() })
+    }
+
+    @Test
+    fun tc219_bookPathRefusesAnythingThatIsNotAUuidDotEpub() {
+        assertEquals("404:", fetchStatusAndBody("/book/..%2Fsecret"))
+        assertEquals(emptyList<String>(), requestedBooks)
+    }
+
+    private fun fetchStatusAndBody(path: String): String {
+        evaluate(
+            "window.__result = undefined;" +
+                "fetch('$path').then(function (r) { return r.text().then(function (t) {" +
+                "window.__result = r.status + ':' + t; }); })" +
+                ".catch(function () { window.__result = 'failed'; }); 0",
+        )
+        waitFor("window.__result !== undefined")
+        return evaluate("window.__result").trim('"')
     }
 
     private fun evaluate(script: String): String {
