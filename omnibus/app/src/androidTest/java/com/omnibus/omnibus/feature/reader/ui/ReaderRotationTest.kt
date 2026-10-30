@@ -22,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Rotates the real device, which recreates the activity, and checks the reader keeps its place. */
+// TC-22: ported from onMessage to onEvent, and keeps its behaviour.
 class ReaderRotationTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -32,7 +33,7 @@ class ReaderRotationTest {
         BookFileSource { BookFileResult.Opened(ByteArrayInputStream(epub), epub.size.toLong()) },
     )
     private val controller = AtomicReference<ReaderController>()
-    private val relocates = mutableListOf<ReaderPosition>()
+    private val relocates = mutableListOf<RelocateData>()
 
     @After
     fun restoreRotation() {
@@ -49,9 +50,9 @@ class ReaderRotationTest {
                     settings = ReaderSettings(),
                     controller = reader,
                     assetLoaderFactory = factory,
-                    onMessage = { message ->
-                        if (message.type == "relocate") {
-                            ReaderPosition.parse(message.payload)?.let { synchronized(relocates) { relocates += it } }
+                    onEvent = { event ->
+                        if (event is ReaderEvent.Relocate) {
+                            synchronized(relocates) { relocates += event.data }
                         }
                     },
                 )

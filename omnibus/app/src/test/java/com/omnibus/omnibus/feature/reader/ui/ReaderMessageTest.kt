@@ -30,22 +30,4 @@ class ReaderMessageTest : DescribeSpec({
                 .forEach { ReaderMessage.parse(it) shouldBe null }
         }
     }
-
-    describe("ReaderPosition.parse") {
-
-        it("TC-242: reads the cfi and the echo flag") {
-            ReaderPosition.parse("""{"cfi":"epubcfi(/6/2)","echo":true,"page":3}""") shouldBe
-                ReaderPosition("epubcfi(/6/2)", echo = true)
-        }
-
-        it("TC-243: defaults echo to false and tolerates a missing cfi") {
-            ReaderPosition.parse("""{"page":3}""") shouldBe ReaderPosition(null, echo = false)
-        }
-
-        it("TC-244: returns null for a payload that isn't a JSON object") {
-            ReaderPosition.parse(null) shouldBe null
-            ReaderPosition.parse("nope") shouldBe null
-            ReaderPosition.parse("[1]") shouldBe null
-        }
-    }
 })
