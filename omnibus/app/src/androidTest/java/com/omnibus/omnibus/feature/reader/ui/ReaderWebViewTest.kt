@@ -8,7 +8,9 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -284,10 +286,12 @@ class ReaderWebViewTest {
     @Test
     fun tc226_aResizeKeepsTheReaderOnItsPageAndNeverCountsAsMovement() {
         val controller = ReaderController()
-        var width by mutableStateOf(360)
+        // A fraction of the window, not a dp size: a fixed width is capped by a narrow emulator's
+        // window, which leaves nothing to resize.
+        var widthFraction by mutableStateOf(0.6f)
         rule.setContent {
             OmnibusTheme {
-                Box(Modifier.size(width.dp, 640.dp).testTag(READER)) {
+                Box(Modifier.fillMaxWidth(widthFraction).fillMaxHeight(0.8f).testTag(READER)) {
                     ReaderWebView(
                         "test-book",
                         ReaderSettings(),
@@ -308,7 +312,10 @@ class ReaderWebViewTest {
         val movementsBefore = movements().size
         val relocatesBefore = synchronized(messages) { messages.count { it.type == "relocate" } }
 
-        rule.runOnUiThread { width = 600 }
+        val widthBefore = rule.onNodeWithTag(READER).fetchSemanticsNode().size.width
+        rule.runOnUiThread { widthFraction = 1f }
+        rule.waitForIdle()
+        assertNotEquals("the resize must change the reader's width", widthBefore, rule.onNodeWithTag(READER).fetchSemanticsNode().size.width)
         rule.waitUntil(timeoutMillis = 15_000) { synchronized(messages) { messages.count { it.type == "relocate" } } > relocatesBefore }
         rule.waitForIdle()
 
