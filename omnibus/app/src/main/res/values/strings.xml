@@ -82,6 +82,17 @@
     <string name="library_direction_ascending">Ascending</string>
     <string name="library_direction_descending">Descending</string>
 
+    <!-- Reader -->
+    <string name="reader_loading">Opening your book</string>
+    <string name="reader_error_title">Couldn\'t open this book</string>
+    <string name="reader_error_unreachable">Could not connect to the server.</string>
+    <string name="reader_error_session_expired">Your session expired. Sign in again.</string>
+    <string name="reader_error_not_found">The server doesn\'t have a file for this book.</string>
+    <string name="reader_error_no_server">No server configured.</string>
+    <string name="reader_error_render">Something went wrong showing this book.</string>
+    <string name="reader_error_renderer_crashed">The page viewer stopped working.</string>
+    <string name="reader_try_again">Try again</string>
+
     <!-- Book detail -->
     <string name="book_detail_stub_title">Book detail</string>
     <!-- %1$s is the book's uuid. -->
