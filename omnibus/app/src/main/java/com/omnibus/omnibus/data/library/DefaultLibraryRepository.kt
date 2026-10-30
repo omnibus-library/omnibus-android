@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.library
 
 import android.util.Log
+import com.omnibus.omnibus.data.library.remote.BookDto
 import com.omnibus.omnibus.data.library.remote.EbooksPageResponseDto
 import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.library.remote.ResumePointDto
@@ -51,7 +52,7 @@ class DefaultLibraryRepository @Inject constructor(
             }
         }
 
-        val read = get(EBOOKS_PATH, params) { response ->
+        val read = get(EBOOKS_PATH, params = params) { response ->
             val body = LibraryJson.decodeFromString<EbooksPageResponseDto>(response.body.string())
             BooksPage(
                 books = body.books.map { it.toDomain() },
@@ -72,7 +73,7 @@ class DefaultLibraryRepository @Inject constructor(
     override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flow {
         val params = listOf("limit" to RECENT_LIMIT.toString())
 
-        val read = get(RECENT_PROGRESS_PATH, params) { response ->
+        val read = get(RECENT_PROGRESS_PATH, params = params) { response ->
             LibraryJson.decodeFromString<List<ResumePointDto>>(response.body.string())
                 .mapNotNull { it.toDomain() }
         }
@@ -132,17 +133,49 @@ class DefaultLibraryRepository @Inject constructor(
         emit(ShelfPreviewsResult.Success(previews))
     }
 
+    override fun getBookFlow(uuid: String): Flow<BookResult> = flow {
+        // A blank segment would address the list endpoint, so it is answered without a request.
+        if (uuid.isBlank()) {
+            emit(BookResult.NotFound)
+            return@flow
+        }
+
+        val read = get(EBOOKS_PATH, pathSegments = listOf(uuid)) { response ->
+            LibraryJson.decodeFromString<BookDto>(response.body.string()).toDomain()
+        }
+        emit(
+            when (read) {
+                is Read.Ok -> BookResult.Success(read.value)
+                // Checked before the generic failure, so a missing book is not an HTTP error.
+                is Read.Failed -> {
+                    val error = read.error
+                    if (error is LibraryError.Http && error.code == HTTP_NOT_FOUND) {
+                        BookResult.NotFound
+                    } else {
+                        BookResult.Failure(error)
+                    }
+                }
+                Read.NoServer -> BookResult.NoServer
+            },
+        )
+    }
+
     /**
      * One GET, reduced to a value or a [LibraryError]. Every library read maps errors here, so a
      * given failure is reported the same way for each read.
+     *
+     * @param pathSegments appended to [path] one encoded segment each, so a value such as a uuid
+     *   can't add or split segments.
      */
     private suspend fun <T> get(
         path: String,
+        pathSegments: List<String> = emptyList(),
         params: List<Pair<String, String>> = emptyList(),
         decode: (Response) -> T,
     ): Read<T> = withContext(ioDispatcher) {
         val builder = omnibusHttpClient.request(path) ?: return@withContext Read.NoServer
         val url = builder.build().url.newBuilder().apply {
+            pathSegments.forEach { addPathSegment(it) }
             params.forEach { (name, value) -> addQueryParameter(name, value) }
         }.build()
         val request = builder.url(url).get().build()
@@ -207,6 +240,8 @@ class DefaultLibraryRepository @Inject constructor(
         const val PAGE_SIZE = 60
         const val RECENT_LIMIT = 5
         const val SHELF_COVER_COUNT = 4
+
+        const val HTTP_NOT_FOUND = 404
 
         const val MAX_SERVER_MESSAGE_LENGTH = 300
         val SERVER_MESSAGE_KEYS = listOf("error", "message", "detail")

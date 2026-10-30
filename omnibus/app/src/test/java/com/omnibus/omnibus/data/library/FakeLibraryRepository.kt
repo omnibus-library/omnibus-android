@@ -46,6 +46,20 @@ class FakeLibraryRepository : LibraryRepository {
     override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flowOf(RecentProgressResult.Success(emptyList()))
 
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.Success(emptyList()))
+
+    /** The uuid of every [getBookFlow] call, in call order. */
+    val bookRequests = mutableListOf<String>()
+
+    /** Emitted by [getBookFlow] unless [pendingBook] is set. */
+    var bookResult: BookResult = BookResult.Success(testBook(1))
+
+    /** When set, [getBookFlow] holds until this completes, to observe the loading state. */
+    var pendingBook: CompletableDeferred<BookResult>? = null
+
+    override fun getBookFlow(uuid: String): Flow<BookResult> = flow {
+        bookRequests += uuid
+        emit(pendingBook?.await() ?: bookResult)
+    }
 }
 
 /** A successful page of books with the given ids, built with [testBook]. */

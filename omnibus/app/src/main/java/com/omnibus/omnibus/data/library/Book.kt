@@ -40,11 +40,20 @@ data class Book(
     /** Whether any format is an ebook format. Format names are compared case-insensitively. */
     val hasEbook: Boolean get() = formats.any { it.lowercase() in EBOOK_FORMATS }
 
+    /**
+     * Whether the book can be read in the EPUB reader, from its formats or its files. Unlike
+     * [hasEbook], pdf and cbz don't count. Format names are compared case-insensitively.
+     */
+    val hasEpub: Boolean
+        get() = formats.any { it.equals(EPUB_FORMAT, ignoreCase = true) } ||
+            bookFiles.any { it.format.equals(EPUB_FORMAT, ignoreCase = true) }
+
     /** Whether any format is an audiobook format. Format names are compared case-insensitively. */
     val hasAudiobook: Boolean get() = formats.any { it.lowercase() in AUDIO_FORMATS }
 
     private companion object {
         const val UNKNOWN_AUTHOR = "Unknown author"
+        const val EPUB_FORMAT = "epub"
 
         val EBOOK_FORMATS = setOf("epub", "kepub", "pdf", "mobi", "azw3", "cbz", "cbr")
         val AUDIO_FORMATS = setOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "opus", "wav")

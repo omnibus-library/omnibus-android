@@ -65,6 +65,40 @@ class BookTest : DescribeSpec({
         }
     }
 
+    describe("hasEpub") {
+
+        it("TC-49: is true for formats=[epub]") {
+            testBook(1, formats = listOf("epub")).hasEpub.shouldBeTrue()
+        }
+
+        it("TC-49: is true for formats=[EPUB] (case-insensitive)") {
+            testBook(1, formats = listOf("EPUB")).hasEpub.shouldBeTrue()
+        }
+
+        it("TC-49: is true when a bookFile has format Epub and formats are empty") {
+            testBook(1, formats = emptyList()).copy(
+                bookFiles = listOf(
+                    BookFile(id = 1, format = "Epub", filename = "a.epub", ordinal = 0, label = null, sizeBytes = 1, etag = null),
+                ),
+            ).hasEpub.shouldBeTrue()
+        }
+
+        it("TC-49: is false for only pdf and cbz formats") {
+            testBook(1, formats = listOf("pdf", "cbz")).hasEpub.shouldBeFalse()
+        }
+
+        it("TC-49: is false when formats and bookFiles are both empty") {
+            testBook(1, formats = emptyList()).hasEpub.shouldBeFalse()
+        }
+
+        it("TC-49: excludes pdf and cbz, unlike hasEbook") {
+            testBook(1, formats = listOf("pdf")).let {
+                it.hasEbook.shouldBeTrue()
+                it.hasEpub.shouldBeFalse()
+            }
+        }
+    }
+
     describe("format classification") {
 
         listOf("epub", "kepub", "pdf", "mobi", "azw3", "cbz", "cbr").forEach { format ->

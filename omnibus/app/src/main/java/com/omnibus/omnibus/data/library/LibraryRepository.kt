@@ -19,6 +19,9 @@ interface LibraryRepository {
 
     /** Every shelf the user can see, in the server's order, each with up to four covers. */
     fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult>
+
+    /** One book by its [uuid]. A uuid that isn't in the library gives [BookResult.NotFound]. */
+    fun getBookFlow(uuid: String): Flow<BookResult>
 }
 
 /** The sort keys the server accepts for a books page. [apiName] is what goes on the wire. */
@@ -113,6 +116,21 @@ sealed interface ShelfPreviewsResult {
 
     /** [error] is why the read failed. A failed cover fetch for one shelf never gets here. */
     data class Failure(val error: LibraryError) : ShelfPreviewsResult
+}
+
+/** The outcome of [LibraryRepository.getBookFlow]. */
+sealed interface BookResult {
+
+    data class Success(val book: Book) : BookResult
+
+    /** The server has no book with that uuid (a 404). */
+    data object NotFound : BookResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : BookResult
+
+    /** [error] is why the read failed. The UI layer decides what text to show for it. */
+    data class Failure(val error: LibraryError) : BookResult
 }
 
 /** Why a library read failed. The UI layer decides what text to show for each. */

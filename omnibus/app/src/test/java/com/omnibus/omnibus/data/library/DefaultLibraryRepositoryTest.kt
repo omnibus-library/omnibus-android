@@ -23,6 +23,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 
 class DefaultLibraryRepositoryTest : DescribeSpec({
 
@@ -596,6 +597,107 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                 .single()
 
             server.takeRequest().url.queryParameter("formats").shouldBeNull()
+        }
+    }
+
+    describe("getBookFlow") {
+
+        it("TC-44: returns the book from a realistic body and sends the bearer token to its path") {
+            enqueue(
+                200,
+                """
+                {
+                  "id": 42,
+                  "unique_identifier": "a1b2c3",
+                  "filename": "dune.epub",
+                  "title": "Dune",
+                  "creators": [{"name": "Frank Herbert", "role": "author", "file_as": "Herbert, Frank", "id": 7}],
+                  "cover_url": "/api/ebooks/a1b2c3/cover",
+                  "accent": "#c8a04a",
+                  "formats": ["epub", "pdf"],
+                  "series": "Dune",
+                  "series_index": "1",
+                  "has_physical": false,
+                  "added_at": "2026-01-02T03:04:05Z",
+                  "last_interacted_at": null,
+                  "book_files": [
+                    {"id": 9, "format": "Epub", "filename": "dune.epub", "ordinal": 0, "label": null, "size_bytes": 1024, "etag": null}
+                  ],
+                  "a_field_added_later": {"nested": true}
+                }
+                """.trimIndent(),
+            )
+
+            repository.getBookFlow("a1b2c3").single() shouldBe BookResult.Success(
+                Book(
+                    id = 42,
+                    uniqueIdentifier = "a1b2c3",
+                    filename = "dune.epub",
+                    title = "Dune",
+                    creators = listOf(Creator("Frank Herbert", "author", "Herbert, Frank", 7)),
+                    coverUrl = "/api/ebooks/a1b2c3/cover",
+                    accent = "#c8a04a",
+                    formats = listOf("epub", "pdf"),
+                    series = "Dune",
+                    seriesIndex = "1",
+                    hasPhysical = false,
+                    addedAt = "2026-01-02T03:04:05Z",
+                    lastInteractedAt = null,
+                    bookFiles = listOf(
+                        BookFile(id = 9, format = "Epub", filename = "dune.epub", ordinal = 0, label = null, sizeBytes = 1024, etag = null),
+                    ),
+                ),
+            )
+
+            val request = server.takeRequest()
+            request.method shouldBe "GET"
+            request.url.encodedPath shouldBe "/api/ebooks/a1b2c3"
+            request.headers["Authorization"] shouldBe "Bearer secret"
+        }
+
+        it("TC-45: a 404 gives NotFound, not Failure(Http)") {
+            enqueue(404, """{"error":"no such book"}""")
+
+            repository.getBookFlow("missing").single() shouldBe BookResult.NotFound
+        }
+
+        it("TC-46: returns NoServer without making a request") {
+            baseUrlProvider.baseUrl = null
+
+            repository.getBookFlow("a1b2c3").single() shouldBe BookResult.NoServer
+
+            server.requestCount shouldBe 0
+        }
+
+        val dropped = MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build()
+
+        listOf(
+            Triple({ enqueue(500, "boom") }, "HTTP 500", BookResult.Failure(LibraryError.Http(500, "boom"))),
+            Triple({ enqueue(401, "") }, "HTTP 401", BookResult.Failure(LibraryError.SessionExpired)),
+            Triple({ enqueue(200, """{"id": """) }, "a malformed body", BookResult.Failure(LibraryError.UnexpectedResponse)),
+            Triple({ server.enqueue(dropped) }, "a dropped connection", BookResult.Failure(LibraryError.Unreachable)),
+        ).forEach { (enqueueFailure, case, expected) ->
+            it("TC-47: $case gives $expected and does not throw") {
+                enqueueFailure()
+
+                repository.getBookFlow("a1b2c3").single() shouldBe expected
+            }
+        }
+
+        it("TC-48: a uuid with characters that need encoding is one path segment") {
+            enqueue(200, """{"id": 1}""")
+
+            repository.getBookFlow("a b/c").single()
+
+            val request = server.takeRequest()
+            request.url.encodedPath shouldBe "/api/ebooks/a%20b%2Fc"
+            request.url.encodedPathSegments.size shouldBe 3
+        }
+
+        it("TC-48: a blank uuid is NotFound and makes no request") {
+            repository.getBookFlow("   ").single() shouldBe BookResult.NotFound
+
+            server.requestCount shouldBe 0
         }
     }
 
