@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.ui.theme.Spacing
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import java.io.File
@@ -22,6 +24,16 @@ class ReaderBandsTest : DescribeSpec({
             band("bottom") shouldBe ReaderBands.Bottom.value.toInt()
             band("left") shouldBe ReaderBands.Side.value.toInt()
             band("right") shouldBe ReaderBands.Side.value.toInt()
+        }
+    }
+
+    describe("ReaderMenu") {
+
+        it("RC-22: chrome controls fit the reserved bands") {
+            (ReaderMenu.buttonSize >= 46.dp) shouldBe true
+            (ReaderMenu.rowHeight >= 46.dp) shouldBe true
+            (ReaderMenu.buttonSize + Spacing.xs <= ReaderBands.Top) shouldBe true
+            (ReaderMenu.buttonSize + Spacing.xs <= ReaderBands.Bottom) shouldBe true
         }
     }
 

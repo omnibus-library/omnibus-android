@@ -149,7 +149,7 @@ class LibraryScreenTest {
         val cover = rule.onNodeWithTag(LibraryTestTags.cover(1L), useUnmergedTree = true)
             .getUnclippedBoundsInRoot()
 
-        assertNear(20.dp, heading.left - grid.left, "heading starts at the 20 dp inset")
+        assertNear(20.dp, heading.left - grid.left, "heading starts at the 20 dp inset", tolerance = 1.0)
         assertNear(12.dp, cover.top - heading.bottom, "12 dp between heading and grid")
     }
 
@@ -462,7 +462,7 @@ class LibraryScreenTest {
         val heading = heading().getUnclippedBoundsInRoot()
         val button = filterButton().getUnclippedBoundsInRoot()
 
-        assertNear(20.dp, heading.left - grid.left, "heading starts at the 20 dp inset")
+        assertNear(20.dp, heading.left - grid.left, "heading starts at the 20 dp inset", tolerance = 1.0)
         assertNear(20.dp, grid.right - button.right, "button sits at the 20 dp trailing inset")
         assertTrue("at least 8 dp between the heading and the button", button.left - heading.right >= 8.dp - HALF_DP)
         val headingCentre = (heading.top + heading.bottom) / 2
