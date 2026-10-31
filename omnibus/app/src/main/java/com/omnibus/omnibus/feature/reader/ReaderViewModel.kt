@@ -87,19 +87,34 @@ class ReaderViewModel @AssistedInject constructor(
         }
     }
 
-    /** The reader's chrome was shown or hidden. */
+    /** The reader's chrome was shown or hidden. Hiding it also closes the menu. */
     fun onChromeToggled() {
-        _uiState.update { it.copy(chromeVisible = !it.chromeVisible) }
+        _uiState.update { it.withChromeToggled() }
+    }
+
+    /** The reader tapped the menu button. Does nothing unless the chrome is up and has rows. */
+    fun onMenuOpened() {
+        _uiState.update { it.withMenuOpened() }
+    }
+
+    /** The reader tapped outside the open menu, or went back with it open. */
+    fun onMenuDismissed() {
+        _uiState.update { it.withMenuDismissed() }
+    }
+
+    /** The reader chose a row in the menu, which closes the menu and opens that row's sheet. */
+    fun onMenuRowChosen(row: ReaderMenuRow) {
+        _uiState.update { it.withMenuRowChosen(row) }
     }
 
     /** The reader asked for the contents sheet. */
     fun onContentsRequested() {
-        _uiState.update { it.copy(sheet = ReaderSheet.Contents) }
+        _uiState.update { it.withSheet(ReaderSheet.Contents) }
     }
 
     /** The reader asked for the settings sheet. */
     fun onSettingsRequested() {
-        _uiState.update { it.copy(sheet = ReaderSheet.Settings) }
+        _uiState.update { it.withSheet(ReaderSheet.Settings) }
     }
 
     /** The open sheet was dismissed. */
@@ -157,6 +172,13 @@ data class ReaderUIState(
     val chromeVisible: Boolean = false,
     val settings: ReaderSettings = ReaderSettings(),
     val sheet: ReaderSheet? = null,
+    /** Whether the chrome's menu is open. It only opens when the chrome is up and [menuRows] is non-empty. */
+    val menuOpen: Boolean = false,
+    /**
+     * The rows for reader features that exist. #47 adds `Settings`, #48 adds `Contents`. Empty hides
+     * the menu button.
+     */
+    val menuRows: List<ReaderMenuRow> = emptyList(),
 )
 
 /** Whether the book for the reader could be read. */
@@ -186,6 +208,29 @@ enum class ReaderUnavailableReason {
 
 /** A sheet the reader can show over the page. */
 enum class ReaderSheet { Contents, Settings }
+
+/**
+ * A row in the chrome's menu, each of which opens a [ReaderSheet]. #57 adds `BookmarksAndHighlights`,
+ * whose count comes from its own state.
+ */
+enum class ReaderMenuRow { Contents, Settings }
+
+internal fun ReaderUIState.withChromeToggled(): ReaderUIState =
+    if (chromeVisible) copy(chromeVisible = false, menuOpen = false) else copy(chromeVisible = true)
+
+internal fun ReaderUIState.withMenuOpened(): ReaderUIState =
+    if (chromeVisible && menuRows.isNotEmpty()) copy(menuOpen = true) else this
+
+internal fun ReaderUIState.withMenuDismissed(): ReaderUIState = copy(menuOpen = false)
+
+internal fun ReaderUIState.withSheet(sheet: ReaderSheet): ReaderUIState = copy(sheet = sheet, menuOpen = false)
+
+internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState = withSheet(
+    when (row) {
+        ReaderMenuRow.Contents -> ReaderSheet.Contents
+        ReaderMenuRow.Settings -> ReaderSheet.Settings
+    },
+)
 
 /** An imperative request for the page, which the screen applies to the controller. */
 sealed interface ReaderCommand {
