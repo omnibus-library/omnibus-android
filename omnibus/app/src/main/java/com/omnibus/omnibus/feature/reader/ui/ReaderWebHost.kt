@@ -22,13 +22,20 @@ import com.omnibus.omnibus.data.reader.ReaderAssets
 import com.omnibus.omnibus.data.reader.ReaderTheme
 
 /**
+ * The origins whose page may post to `window.omnibus`. Only the bundled reader page is trusted, so
+ * a book or any other page that reaches the WebView can't drive the reader.
+ */
+internal val READER_MESSAGE_ORIGINS: Set<String> = setOf(ReaderAssets.ORIGIN)
+
+/**
  * The [WebView] behind a [ReaderWebView], configured for the reader and tied to the Compose
  * lifetime that remembers it: attached and loading once remembered, destroyed once forgotten.
  *
  * Nothing here draws or handles touches itself. The glue in the page owns swipe, edge taps and the
  * centre tap, so the WebView must receive every touch unmodified.
  *
- * @param onMessage every message the page posts, on the main thread.
+ * @param onEvent every event the page reports, decoded, on the main thread. Messages that don't
+ *   decode are dropped.
  * @param onRebuild the renderer died and this host is no longer usable; the caller should replace
  *   it with a new one, which boots from the controller's last position and settings.
  */
@@ -38,7 +45,7 @@ internal class ReaderWebHost(
     assetLoaderFactory: ReaderAssetLoaderFactory,
     initialTheme: ReaderTheme,
     initialInsets: PageInsets,
-    private val onMessage: (ReaderMessage) -> Unit,
+    private val onEvent: (ReaderEvent) -> Unit,
     private val onRebuild: () -> Unit,
 ) : RememberObserver {
 
@@ -169,8 +176,8 @@ internal class ReaderWebHost(
             WebViewCompat.addWebMessageListener(
                 webView,
                 JS_OBJECT_NAME,
-                setOf(ReaderAssets.ORIGIN),
-            ) { _, message: WebMessageCompat, _, isMainFrame, _ ->
+                READER_MESSAGE_ORIGINS,
+            ){ _, message: WebMessageCompat, _, isMainFrame, _ ->
                 // The book's own scripts run in a subframe on this origin and must not be able to
                 // impersonate the page.
                 if (isMainFrame) message.data?.let(ReaderMessage::parse)?.let(::dispatch)
@@ -182,8 +189,9 @@ internal class ReaderWebHost(
 
     private fun dispatch(message: ReaderMessage) {
         if (released) return
-        controller.handle(message)
-        onMessage(message)
+        val event = ReaderEvent.decode(message) ?: return
+        controller.handle(event)
+        onEvent(event)
     }
 
     private fun registerDocumentStartScript() {
@@ -192,7 +200,7 @@ internal class ReaderWebHost(
         documentStartScript = WebViewCompat.addDocumentStartJavaScript(
             webView,
             ReaderScripts.pageStyle(theme.groundHex, insets),
-            setOf(ReaderAssets.ORIGIN),
+            READER_MESSAGE_ORIGINS,
         )
     }
 

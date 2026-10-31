@@ -41,6 +41,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
+// TC-22: the existing host cases below are ported from onMessage to onEvent, and keep their behaviour.
 class ReaderWebViewTest {
 
     @get:Rule
@@ -48,7 +49,7 @@ class ReaderWebViewTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val epub = TestEpub.build()
-    private val messages = mutableListOf<ReaderMessage>()
+    private val messages = mutableListOf<ReaderEvent>()
 
     private var bookResult: () -> BookFileResult = { BookFileResult.Opened(ByteArrayInputStream(epub), epub.size.toLong()) }
     private var bookRequests = 0
@@ -80,7 +81,7 @@ class ReaderWebViewTest {
                         settings = settings,
                         controller = controller,
                         assetLoaderFactory = assetLoaderFactory,
-                        onMessage = { synchronized(messages) { messages += it } },
+                        onEvent = { synchronized(messages) { messages += it } },
                     )
                 }
             }
@@ -91,12 +92,17 @@ class ReaderWebViewTest {
         rule.waitUntil(timeoutMillis = 30_000) { controller.status == ReaderLoadStatus.Ready }
     }
 
-    /** The cfi of every non-echo relocate so far. */
+    /** The cfi of every movement relocate so far, ignoring the echoes a layout change reports. */
     private fun movements(): List<String> = synchronized(messages) {
-        messages.filter { it.type == "relocate" }
-            .mapNotNull { ReaderPosition.parse(it.payload) }
-            .filter { !it.echo }
+        messages.filterIsInstance<ReaderEvent.Relocate>()
+            .map { it.data }
+            .filter { it.isMovement }
             .mapNotNull { it.cfi }
+    }
+
+    /** The host's load status, in the order the screen saw it. */
+    private fun loadStatuses(): List<ReaderLoadStatus> = synchronized(messages) {
+        messages.filterIsInstance<ReaderEvent.LoadStatusChanged>().map { it.status }
     }
 
     private fun awaitMovementCount(count: Int) {
@@ -164,9 +170,9 @@ class ReaderWebViewTest {
 
         tap(0.5f)
         try {
-            rule.waitUntil(timeoutMillis = 10_000) { synchronized(messages) { messages.any { it.type == "toggleChrome" } } }
+            rule.waitUntil(timeoutMillis = 10_000) { synchronized(messages) { messages.any { it is ReaderEvent.ToggleChrome } } }
         } catch (e: Throwable) {
-            throw AssertionError("no toggleChrome among " + synchronized(messages) { messages.map { it.type } }, e)
+            throw AssertionError("no toggleChrome among " + synchronized(messages) { messages.map { it.javaClass.simpleName } }, e)
         }
     }
 
@@ -297,7 +303,7 @@ class ReaderWebViewTest {
                         ReaderSettings(),
                         controller,
                         assetLoaderFactory,
-                        onMessage = { synchronized(messages) { messages += it } },
+                        onEvent = { synchronized(messages) { messages += it } },
                     )
                 }
             }
@@ -310,13 +316,13 @@ class ReaderWebViewTest {
         awaitMovementCount(3)
         val before = controller.restoreCfi
         val movementsBefore = movements().size
-        val relocatesBefore = synchronized(messages) { messages.count { it.type == "relocate" } }
+        val relocatesBefore = synchronized(messages) { messages.count { it is ReaderEvent.Relocate } }
 
         val widthBefore = rule.onNodeWithTag(READER).fetchSemanticsNode().size.width
         rule.runOnUiThread { widthFraction = 1f }
         rule.waitForIdle()
         assertNotEquals("the resize must change the reader's width", widthBefore, rule.onNodeWithTag(READER).fetchSemanticsNode().size.width)
-        rule.waitUntil(timeoutMillis = 15_000) { synchronized(messages) { messages.count { it.type == "relocate" } } > relocatesBefore }
+        rule.waitUntil(timeoutMillis = 15_000) { synchronized(messages) { messages.count { it is ReaderEvent.Relocate } } > relocatesBefore }
         rule.waitForIdle()
 
         assertEquals("a resize's re-pagination must not move the restore position", before, controller.restoreCfi)
@@ -343,6 +349,64 @@ class ReaderWebViewTest {
 
         assertEquals(saved, controller.restoreCfi)
     }
+
+    // TC-21: the host decodes the page's messages, and the callback carries typed events.
+    @Test
+    fun tc21_onEventReceivesTypedPageEvents() {
+        val controller = ReaderController()
+        showReader(controller)
+        awaitReady(controller)
+        awaitMovementCount(1)
+        rule.waitUntil(timeoutMillis = 15_000) { synchronized(messages) { messages.any { it is ReaderEvent.Toc } } }
+
+        val pageEvents = synchronized(messages) { messages.filter { it !is ReaderEvent.LoadStatusChanged } }
+        val hostReady = pageEvents.indexOfFirst { it == ReaderEvent.HostReady }
+        val firstRelocate = pageEvents.indexOfFirst { it is ReaderEvent.Relocate }
+        assertTrue("HostReady should arrive before the first relocate", hostReady >= 0 && firstRelocate > hostReady)
+        val relocate = pageEvents.filterIsInstance<ReaderEvent.Relocate>().first().data
+        assertTrue("the relocate should carry a cfi", !relocate.cfi.isNullOrBlank())
+        val toc = pageEvents.filterIsInstance<ReaderEvent.Toc>().last()
+        assertTrue("the toc should list the book's chapters", toc.entries.isNotEmpty())
+    }
+
+    // TC-84: the host reports each load status once, from Loading to Ready.
+    @Test
+    fun tc84_onEventReportsEachLoadStatusOnce() {
+        val controller = ReaderController()
+        showReader(controller)
+        awaitReady(controller)
+        // The screen collects the host's events asynchronously, so wait for the last one to arrive.
+        rule.waitUntil(timeoutMillis = 15_000) { loadStatuses().lastOrNull() == ReaderLoadStatus.Ready }
+
+        val statuses = loadStatuses()
+        assertEquals("the first load status should be Loading", ReaderLoadStatus.Loading, statuses.first())
+        assertEquals("the last load status should be Ready", ReaderLoadStatus.Ready, statuses.last())
+        assertTrue("no two consecutive load statuses should be equal: $statuses", statuses.zipWithNext().none { it.first == it.second })
+    }
+
+    // TC-23: a failed open that is retried reports Failed, then Loading, then Ready.
+    @Test
+    fun tc23_loadStatusFollowsFailureAndRetry() {
+        bookResult = { BookFileResult.NotFound }
+        val controller = ReaderController()
+        showReader(controller)
+        rule.waitUntil(timeoutMillis = 30_000) { loadStatuses().contains(ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)) }
+
+        bookResult = { BookFileResult.Opened(ByteArrayInputStream(epub), epub.size.toLong()) }
+        rule.onNodeWithText("Try again").performClick()
+        awaitReady(controller)
+        rule.waitUntil(timeoutMillis = 15_000) { loadStatuses().lastOrNull() == ReaderLoadStatus.Ready }
+
+        val statuses = loadStatuses()
+        val failed = statuses.indexOf(ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound))
+        val loading = statuses.indexOfFirstAfter(failed, ReaderLoadStatus.Loading)
+        val ready = statuses.indexOfFirstAfter(loading, ReaderLoadStatus.Ready)
+        assertTrue("expected Failed, Loading, Ready in order among $statuses", failed >= 0 && loading > failed && ready > loading)
+    }
+
+    /** The index of the first [status] after [from], or -1. */
+    private fun List<ReaderLoadStatus>.indexOfFirstAfter(from: Int, status: ReaderLoadStatus): Int =
+        withIndex().indexOfFirst { it.index > from && it.value == status }
 
     /** Injects a tap through the window's input pipeline, as a finger would deliver it. */
     private fun tap(xFraction: Float, yFraction: Float = 0.5f) {

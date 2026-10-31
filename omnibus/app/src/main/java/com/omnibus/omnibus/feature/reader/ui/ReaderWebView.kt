@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -20,6 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,8 +54,8 @@ import kotlin.math.roundToInt
  * @param bookUuid the book to open, which is also the key its page numbers are cached under.
  * @param settings the typography in force. A change is applied to the page that is showing.
  * @param controller issues page turns and holds the position a reboot returns to.
- * @param onMessage every message the page posts (relocate, toc, selection, chrome toggles), as the
- *   raw envelope.
+ * @param onEvent every event the page reports (relocate, toc, selection, chrome toggles), decoded,
+ *   and the host's own [ReaderEvent.LoadStatusChanged] each time the load status changes.
  * @param insets pushed into the page as `--inset-*`, so prose never runs under a system bar.
  *   The on-screen keyboard is not one of them: it never opens over the reader, and counting it
  *   would collapse the page.
@@ -65,10 +67,15 @@ fun ReaderWebView(
     controller: ReaderController,
     assetLoaderFactory: ReaderAssetLoaderFactory,
     modifier: Modifier = Modifier,
-    onMessage: (ReaderMessage) -> Unit = {},
+    onEvent: (ReaderEvent) -> Unit = {},
     insets: WindowInsets = ReaderWebViewDefaults.insets,
 ) {
     SideEffect { controller.configure(bookUuid, settings) }
+
+    val currentOnEvent by rememberUpdatedState(onEvent)
+    LaunchedEffect(controller) {
+        snapshotFlow { controller.status }.collect { currentOnEvent(ReaderEvent.LoadStatusChanged(it)) }
+    }
 
     // Bumped to replace the WebView: on retry, and when its renderer dies.
     var generation by remember { mutableIntStateOf(0) }
@@ -92,7 +99,7 @@ fun ReaderWebView(
                     controller = controller,
                     assetLoaderFactory = assetLoaderFactory,
                     insets = insets,
-                    onMessage = onMessage,
+                    onEvent = onEvent,
                     onRebuild = { generation++ },
                 )
             }
@@ -113,7 +120,7 @@ private fun ReaderPage(
     controller: ReaderController,
     assetLoaderFactory: ReaderAssetLoaderFactory,
     insets: WindowInsets,
-    onMessage: (ReaderMessage) -> Unit,
+    onEvent: (ReaderEvent) -> Unit,
     onRebuild: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -125,7 +132,7 @@ private fun ReaderPage(
         left = insets.getLeft(density, layoutDirection).toCssPx(density.density),
         right = insets.getRight(density, layoutDirection).toCssPx(density.density),
     )
-    val currentOnMessage by rememberUpdatedState(onMessage)
+    val currentOnEvent by rememberUpdatedState(onEvent)
     val currentOnRebuild by rememberUpdatedState(onRebuild)
 
     val host = remember {
@@ -135,7 +142,7 @@ private fun ReaderPage(
             assetLoaderFactory = assetLoaderFactory,
             initialTheme = settings.theme,
             initialInsets = pageInsets,
-            onMessage = { currentOnMessage(it) },
+            onEvent = { currentOnEvent(it) },
             onRebuild = { currentOnRebuild() },
         )
     }

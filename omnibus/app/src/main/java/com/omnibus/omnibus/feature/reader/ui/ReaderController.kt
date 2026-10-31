@@ -116,14 +116,25 @@ class ReaderController(startCfi: String? = null) {
         status = ReaderLoadStatus.Loading
     }
 
-    internal fun handle(message: ReaderMessage) {
-        when (message.type) {
-            "hostReady" -> onHostReady()
-            "status" -> when (message.payload) {
+    /** Applies the events the controller acts on. Every case is listed, so a new event is a compile error here. */
+    internal fun handle(event: ReaderEvent) {
+        when (event) {
+            ReaderEvent.HostReady -> onHostReady()
+            is ReaderEvent.Status -> when (event.state) {
                 "ready" -> onReady()
                 "error" -> fail(ReaderLoadFailure.Render)
             }
-            "relocate" -> ReaderPosition.parse(message.payload)?.let(::onRelocate)
+            is ReaderEvent.Relocate -> onRelocate(event.data)
+            is ReaderEvent.Toc,
+            is ReaderEvent.Selection,
+            ReaderEvent.SelectionCleared,
+            is ReaderEvent.AnnotationTap,
+            ReaderEvent.ToggleChrome,
+            is ReaderEvent.ShareText,
+            is ReaderEvent.ShareImage,
+            is ReaderEvent.TurnRequest,
+            is ReaderEvent.LoadStatusChanged,
+            -> Unit
         }
     }
 
@@ -179,9 +190,9 @@ class ReaderController(startCfi: String? = null) {
         syncSettings()
     }
 
-    private fun onRelocate(position: ReaderPosition) {
-        if (position.echo) return
-        position.cfi?.takeIf { it.isNotBlank() }?.let { restoreCfi = it }
+    private fun onRelocate(data: RelocateData) {
+        if (!data.isMovement) return
+        data.cfi?.takeIf { it.isNotBlank() }?.let { restoreCfi = it }
     }
 
     private fun fail(reason: ReaderLoadFailure) {

@@ -10,6 +10,8 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
+// TC-17 and TC-18 are the existing controller cases, ported to ReaderEvent. Their bodies are unchanged;
+// only the send helper above now decodes the envelope first.
 class ReaderControllerTest : DescribeSpec({
 
     val dark = ReaderSettings()
@@ -24,7 +26,11 @@ class ReaderControllerTest : DescribeSpec({
             it.attach(evaluate)
         }
 
-    fun ReaderController.send(type: String, payload: String? = null) = handle(ReaderMessage(type, payload))
+    // Decodes the envelope the way the host does, so each case below drives the controller with the
+    // same events the page sends. Events the controller doesn't act on are dropped by the decode.
+    fun ReaderController.send(type: String, payload: String? = null) {
+        ReaderEvent.decode(ReaderMessage(type, payload))?.let { handle(it) }
+    }
 
     fun ReaderController.relocate(cfi: String, echo: Boolean = false) =
         send("relocate", """{"cfi":"$cfi","echo":$echo}""")
@@ -35,6 +41,21 @@ class ReaderControllerTest : DescribeSpec({
     }
 
     describe("boot") {
+
+        // TC-18: a hostReady or status event the controller doesn't act on, and every other event type, leaves it as it was.
+        it("TC-18: ignores events it doesn't act on") {
+            val reader = controller(startCfi = "start")
+            reader.send("status", "something-else")
+            reader.send("toc", """[{"label":"A","href":"a.xhtml","level":0}]""")
+            reader.send("toggleChrome")
+            reader.send("selectionCleared")
+            reader.send("shareText", "text")
+            reader.send("turnRequest", "next")
+
+            reader.status shouldBe ReaderLoadStatus.Loading
+            reader.restoreCfi shouldBe "start"
+            page.shouldBeEmpty()
+        }
 
         it("TC-248: boots the page when it reports hostReady, at the start position in the current settings") {
             val reader = controller(startCfi = "epubcfi(/6/2)")
@@ -81,6 +102,7 @@ class ReaderControllerTest : DescribeSpec({
             reader.restoreCfi shouldBe "epubcfi(/6/8)"
         }
 
+        // TC-17: the echo relocate leaves restoreCfi alone, now carried as a decoded RelocateData.
         it("TC-253: ignores an echo, such as a rotation's corrected re-pagination") {
             val reader = controller(startCfi = "start")
             reader.relocate("epubcfi(/6/8)")
@@ -244,6 +266,35 @@ class ReaderControllerTest : DescribeSpec({
             reader.configure("book-1", dark.copy(fontSize = 22))
 
             page.shouldBeEmpty()
+        }
+    }
+
+    describe("status") {
+
+        it("TC-19: status transitions are observable in order") {
+            val reader = controller()
+            val seen = mutableListOf(reader.status)
+            fun step(action: () -> Unit) {
+                action()
+                seen += reader.status
+            }
+
+            step { reader.send("hostReady") }
+            step { reader.send("status", "ready") }
+            step { reader.onRendererGone() }
+            step { reader.send("status", "ready") }
+            step { reader.reset() }
+            step { reader.onBookFailure(BookFileResult.NotFound) }
+
+            seen shouldBe listOf(
+                ReaderLoadStatus.Loading,
+                ReaderLoadStatus.Loading,
+                ReaderLoadStatus.Ready,
+                ReaderLoadStatus.Loading,
+                ReaderLoadStatus.Ready,
+                ReaderLoadStatus.Loading,
+                ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound),
+            )
         }
     }
 
