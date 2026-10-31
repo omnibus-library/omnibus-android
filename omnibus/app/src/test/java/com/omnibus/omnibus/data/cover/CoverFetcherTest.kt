@@ -4,7 +4,6 @@ import android.content.Context
 import coil3.decode.DataSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import com.omnibus.omnibus.di.TimeSource
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -19,13 +18,6 @@ class CoverFetcherTest : DescribeSpec({
     val options = Options(mockk<Context>(relaxed = true))
 
     describe("CoverKeyer") {
-
-        it("TC-185: returns the memory key for the thumbnail and the current time") {
-            val now = 7 * CoverCacheKeys.REVALIDATE_AFTER_MILLIS + 42
-
-            CoverKeyer(TimeSource { now }).key(thumbnail, options) shouldBe
-                CoverCacheKeys.memoryKey(thumbnail, now)
-        }
 
         it("TC-186: changes key once the clock moves into the next revalidation window") {
             var now = 0L

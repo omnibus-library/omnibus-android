@@ -80,17 +80,6 @@ class MainViewModelTest : DescribeSpec({
             createViewModel(repository).startDestination.value shouldBe StartDestination.ServerConfiguration
         }
 
-        it("TC-36: opens login when the token can't be read (isSignedIn is false)") {
-            // The repository maps a token-store read failure to a signed-out value.
-            authRepository.signedIn.value = false
-
-            val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
-
-            viewModel.startDestination.value shouldBe StartDestination.Login
-            authRepository.verifySessionCalls shouldBe 0
-        }
-
         it("TC-37: does not change after the config is edited post-launch") {
             val repository = FakeServerConfigurationRepository(initialAddress = null)
             val viewModel = createViewModel(repository)

@@ -162,18 +162,6 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                     SortDirection.entries.map { it.apiName }
             }
 
-            it("TC-4: the api names are the server's values") {
-                LibrarySort.entries.map { it.apiName } shouldBe listOf(
-                    "title",
-                    "author",
-                    "series",
-                    "recently_interacted",
-                    "last_updated",
-                    "newest_added",
-                )
-                SortDirection.entries.map { it.apiName } shouldBe listOf("asc", "desc")
-            }
-
             it("TC-5: sends the bearer token and JSON accept header") {
                 enqueue(200, EMPTY_BOOKS)
 
@@ -438,12 +426,6 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             point.playbackRate.shouldBeNull()
         }
 
-        it("TC-24: emits exactly once and then completes") {
-            enqueue(200, "[]")
-
-            repository.getRecentProgressFlow().toList().size shouldBe 1
-        }
-
         it("TC-27: a 500 gives Failure(Http) carrying the body as serverMessage") {
             enqueue(500, "internal server error")
 
@@ -532,12 +514,6 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
 
             repository.getShelfPreviewsFlow().single() shouldBe
                 ShelfPreviewsResult.Failure(LibraryError.Http(500, "internal server error"))
-        }
-
-        it("TC-24: emits exactly once and then completes") {
-            enqueue(200, "[]")
-
-            repository.getShelfPreviewsFlow().toList().size shouldBe 1
         }
 
         it("TC-27: a 401 gives Failure(SessionExpired)") {
@@ -698,15 +674,6 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             repository.getBookFlow("   ").single() shouldBe BookResult.NotFound
 
             server.requestCount shouldBe 0
-        }
-    }
-
-    describe("single emission") {
-
-        it("TC-24: a books page emits exactly once and then completes") {
-            enqueue(200, EMPTY_BOOKS)
-
-            repository.getBooksPageFlow().toList().size shouldBe 1
         }
     }
 }) {

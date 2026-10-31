@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import java.io.File
@@ -129,7 +130,7 @@ class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
                 },
             )
 
-            failingStore.save(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
+            shouldNotThrowAny { failingStore.save(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc)) }
         }
     }
 })

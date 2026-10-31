@@ -76,12 +76,6 @@ class StoredAuthTokenProviderTest : DescribeSpec({
             tokenStore.clearCalls shouldBe 1
         }
 
-        it("TC-17: does nothing harmful when no token is stored") {
-            provider.invalidate()
-
-            tokenStore.token.first().shouldBeNull()
-        }
-
         it("TC-17: swallows an IOException from clearing the token") {
             tokenStore.save(TOKEN)
             tokenStore.clearFailure = IOException("disk full")

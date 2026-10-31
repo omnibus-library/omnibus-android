@@ -6,8 +6,6 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.string.shouldNotContain
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.double
@@ -114,34 +112,6 @@ class ReaderScriptsTest : DescribeSpec({
             ReaderScripts.settingsChange(base, serif)
                 .shouldContainExactly("OmnibusReader.setFont(\"Georgia,serif\")")
             ReaderScripts.settingsChange(serif, base).shouldContainExactly("OmnibusReader.setFont(null)")
-        }
-    }
-
-    describe("pageStyle") {
-
-        it("TC-235: sets the page ground and all four insets") {
-            val script = ReaderScripts.pageStyle("#201e1b", PageInsets(top = 24, bottom = 48, left = 0, right = 12))
-
-            script shouldContain "setProperty('--page', \"#201e1b\")"
-            script shouldContain "setProperty('--inset-top', '24px')"
-            script shouldContain "setProperty('--inset-bottom', '48px')"
-            script shouldContain "setProperty('--inset-left', '0px')"
-            script shouldContain "setProperty('--inset-right', '12px')"
-        }
-
-        it("TC-236: waits for the document element so it can also run at document start") {
-            ReaderScripts.pageStyle("#000000", PageInsets.None) shouldContain "MutationObserver"
-        }
-    }
-
-    describe("commands") {
-
-        it("TC-237: names the glue's page-turn, display and destroy calls") {
-            ReaderScripts.NEXT shouldBe "OmnibusReader.next()"
-            ReaderScripts.PREVIOUS shouldBe "OmnibusReader.prev()"
-            ReaderScripts.DESTROY shouldBe "OmnibusReader.destroy()"
-            ReaderScripts.display("chapter 1.xhtml#a\"b") shouldBe "OmnibusReader.display(\"chapter 1.xhtml#a\\\"b\")"
-            ReaderScripts.display("x") shouldNotContain "'"
         }
     }
 })

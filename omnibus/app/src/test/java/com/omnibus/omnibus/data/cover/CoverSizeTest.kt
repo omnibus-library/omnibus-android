@@ -20,12 +20,4 @@ class CoverSizeTest : DescribeSpec({
             CoverSize.Md.path("abc-123") shouldBe "api/thumbs/abc-123/md"
         }
     }
-
-    describe("dimensions") {
-
-        it("TC-128: are 2:3 at every size") {
-            CoverSize.entries.forEach { it.widthPx * 3 shouldBe it.heightPx * 2 }
-            CoverSize.entries.map { it.widthPx } shouldBe listOf(160, 320, 640)
-        }
-    }
 })

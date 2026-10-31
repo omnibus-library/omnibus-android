@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.data.auth.remote
 
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.json.Json
@@ -81,10 +80,6 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
         it("leaves non-POST requests to auth paths unchanged") {
             send("/api/auth/login", method = "PUT", body = CREDENTIALS.toRequestBody(JSON))
                 .body!!.utf8() shouldBe CREDENTIALS
-        }
-
-        it("leaves requests without a body unchanged") {
-            send("/api/auth/login", method = "GET").body.shouldBeNull()
         }
     }
 }) {

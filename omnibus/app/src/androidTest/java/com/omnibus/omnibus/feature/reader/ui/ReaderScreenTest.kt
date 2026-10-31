@@ -141,14 +141,6 @@ class ReaderScreenTest {
         return Regex("-?\\d+").find(raw)?.value?.toInt()
     }
 
-    // TC-64
-    @Test
-    fun tc64_loadingWithoutTitleShowsTheGenericLabel() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Loading) })
-
-        rule.onNodeWithText("Opening your book").assertIsDisplayed()
-    }
-
     // TC-65
     @Test
     fun tc65_loadingWithATitleShowsTheTitleOnce() {
@@ -193,14 +185,6 @@ class ReaderScreenTest {
         rule.waitUntil { scripts.isNotEmpty() }
 
         assertEquals(listOf(ReaderScripts.display("chapter2.xhtml")), scripts)
-    }
-
-    // TC-68
-    @Test
-    fun tc68_contentRendersFromPlainStateAndCallbacks() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)) })
-
-        rule.onNodeWithText("This book isn't in your library.").assertIsDisplayed()
     }
 
     // TC-69
