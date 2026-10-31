@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -73,7 +75,15 @@ private data class ChromeInputs(
     val rootWidth: Dp? = null,
 )
 
-// RC-25 to RC-43. Tests use tags, text and relative bounds only, and size the root with fillMaxSize()
+/** One preview under test: a theme and chrome state. */
+private data class PreviewCase(
+    val theme: ReaderTheme,
+    val chromeVisible: Boolean,
+    val menuOpen: Boolean = false,
+    val menuRows: List<ReaderMenuRow> = emptyList(),
+)
+
+// RC-25 to RC-44. Tests use tags, text and relative bounds only, and size the root with fillMaxSize()
 // or requiredWidth, so they hold on the 320dp CI AVD.
 class ReaderChromeTest {
 
@@ -513,6 +523,39 @@ class ReaderChromeTest {
         for (row in ReaderMenuRow.entries) {
             val bounds = rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).getUnclippedBoundsInRoot()
             assertTrue("$row stays within its 272dp maximum on a wide window", bounds.width() <= 272.dp + tolerance)
+        }
+    }
+
+    // RC-44
+    @Test
+    fun rc44_previewHelperComposesForEveryThemeAndState() {
+        val menu = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+        val cases = ReaderTheme.entries.flatMap { theme ->
+            listOf(
+                PreviewCase(theme, chromeVisible = false),
+                PreviewCase(theme, chromeVisible = true),
+            )
+        } + listOf(
+            PreviewCase(ReaderTheme.Light, chromeVisible = true, menuOpen = true, menuRows = menu),
+            PreviewCase(ReaderTheme.Dark, chromeVisible = true, menuOpen = true, menuRows = menu),
+        )
+        val index = mutableStateOf(0)
+        rule.setContent {
+            val case = cases[index.value]
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                ReaderChromePreview(
+                    theme = case.theme,
+                    chromeVisible = case.chromeVisible,
+                    menuOpen = case.menuOpen,
+                    menuRows = case.menuRows,
+                )
+            }
+        }
+
+        cases.indices.forEach { i ->
+            rule.runOnIdle { index.value = i }
+            rule.waitForIdle()
+            rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertExists()
         }
     }
 
