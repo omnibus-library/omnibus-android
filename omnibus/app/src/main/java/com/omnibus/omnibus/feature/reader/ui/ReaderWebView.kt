@@ -91,6 +91,7 @@ fun ReaderWebView(
                     controller.reset()
                     generation++
                 },
+                background = Color(settings.theme.groundArgb),
             )
         } else {
             key(generation) {
