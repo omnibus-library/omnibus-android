@@ -793,9 +793,11 @@ class ReaderScreenTest {
     private fun pageSnapshot(): PageSnapshot {
         val size = rule.runOnUiThread { findWebView()?.let { it.width to it.height } }
         assertNotNull("the page is a WebView", size)
+        // `systemBars()` also includes the caption bar, which a phone never shows, so check the two bars that exist.
         val barsVisible = rule.runOnUiThread {
-            ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
-                ?.isVisible(WindowInsetsCompat.Type.systemBars()) == true
+            val insets = ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+            insets?.isVisible(WindowInsetsCompat.Type.statusBars()) == true &&
+                insets.isVisible(WindowInsetsCompat.Type.navigationBars())
         }
         assertTrue("the system bars stay visible", barsVisible)
         return PageSnapshot(
