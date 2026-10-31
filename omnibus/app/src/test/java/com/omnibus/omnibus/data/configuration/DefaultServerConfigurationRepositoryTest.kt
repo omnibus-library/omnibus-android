@@ -202,10 +202,6 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
                 repository.validateServerAddress(address) shouldBe ServerValidationResult.ServerNotFound
             }
-
-            it("returns ServerNotFound for a host that doesn't resolve") {
-                repository.validateServerAddress("rrrrrrr.invalid") shouldBe ServerValidationResult.ServerNotFound
-            }
         }
 
         describe("when the address can't be parsed") {

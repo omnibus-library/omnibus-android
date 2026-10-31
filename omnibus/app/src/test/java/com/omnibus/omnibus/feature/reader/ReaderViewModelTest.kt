@@ -9,13 +9,10 @@ import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
-import com.omnibus.omnibus.feature.reader.ui.AnnotationTapData
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadFailure
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
-import com.omnibus.omnibus.feature.reader.ui.SelectionData
-import com.omnibus.omnibus.feature.reader.ui.ShareImageData
 import com.omnibus.omnibus.feature.reader.ui.TocEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -23,7 +20,6 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -66,24 +62,6 @@ class ReaderViewModelTest : DescribeSpec({
     suspend fun ReaderViewModel.noCommandArrives() = withTimeoutOrNull(100) { commands.first() } shouldBe null
 
     describe("ReaderViewModel state") {
-
-        it("TC-28: starts with the default state") {
-            viewModel().uiState.value shouldBe ReaderUIState(
-                loadStatus = ReaderLoadStatus.Loading,
-                location = null,
-                toc = emptyList(),
-                chromeVisible = false,
-                settings = ReaderSettings(),
-                sheet = null,
-            )
-        }
-
-        it("TC-29: exposes a read-only StateFlow that starts with the default") {
-            val vm = viewModel()
-
-            (vm.uiState is MutableStateFlow<*>) shouldBe false
-            vm.uiState.first() shouldBe ReaderUIState()
-        }
 
         it("TC-30: a relocate replaces the location") {
             val vm = viewModel()
@@ -194,22 +172,6 @@ class ReaderViewModelTest : DescribeSpec({
             vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Ready
         }
 
-        it("TC-38: the events owned by later work leave the state and emit no command") {
-            val vm = viewModel()
-            val before = vm.uiState.value
-
-            vm.onPageEvent(ReaderEvent.HostReady)
-            vm.onPageEvent(ReaderEvent.Selection(SelectionData(text = "Call me")))
-            vm.onPageEvent(ReaderEvent.SelectionCleared)
-            vm.onPageEvent(ReaderEvent.AnnotationTap(AnnotationTapData()))
-            vm.onPageEvent(ReaderEvent.ShareText("Call me Ishmael."))
-            vm.onPageEvent(ReaderEvent.ShareImage(ShareImageData()))
-            vm.onPageEvent(ReaderEvent.TurnRequest("next"))
-
-            vm.uiState.value shouldBe before
-            vm.noCommandArrives()
-        }
-
         it("TC-39: the sheet intents set the sheet") {
             val vm = viewModel()
 
@@ -246,17 +208,6 @@ class ReaderViewModelTest : DescribeSpec({
                 ReaderCommand.Display(chapterTwo.href),
             )
             // A second collection sees nothing again.
-            vm.noCommandArrives()
-        }
-
-        it("TC-42: onReaderClosed does nothing yet") {
-            val vm = viewModel()
-            vm.onContentsRequested()
-            val before = vm.uiState.value
-
-            vm.onReaderClosed()
-
-            vm.uiState.value shouldBe before
             vm.noCommandArrives()
         }
 

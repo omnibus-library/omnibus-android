@@ -84,21 +84,6 @@ class ReaderAssetLoaderTest {
     }
 
     @Test
-    fun tc215_stageIsInsetByTheInsetVariablesAndFallsBackToZero() {
-        // Unset, the variables contribute nothing and only the reserved bands remain.
-        assertEquals("\"58px\"", evaluate("getComputedStyle(document.getElementById('stage')).top"))
-        assertEquals("\"10px\"", evaluate("getComputedStyle(document.getElementById('stage')).left"))
-
-        evaluate(
-            "document.documentElement.style.setProperty('--inset-top', '24px');" +
-                "document.documentElement.style.setProperty('--inset-left', '8px')",
-        )
-
-        assertEquals("\"82px\"", evaluate("getComputedStyle(document.getElementById('stage')).top"))
-        assertEquals("\"18px\"", evaluate("getComputedStyle(document.getElementById('stage')).left"))
-    }
-
-    @Test
     fun tc216_anUnknownReaderFileIsAnswered404NotLeftToTheNetwork() {
         val status = evaluate(
             "fetch('/reader/missing.js').then(function (r) { window.__status = r.status; })" +

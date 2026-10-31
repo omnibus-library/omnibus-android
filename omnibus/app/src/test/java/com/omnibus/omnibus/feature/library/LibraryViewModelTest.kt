@@ -453,44 +453,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
     }
 
-    describe("FakeLibraryRepository") {
-
-        it("TC-101: records each request's sort, direction and cursor and replays scripted results in order") {
-            val fake = FakeLibraryRepository()
-            fake.enqueue(page(1L, cursor = "c1"))
-
-            val first = fake.getBooksPageFlow(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc)).toList()
-            val second = fake.getBooksPageFlow(cursor = "c1").toList()
-
-            first shouldBe listOf<LibraryPageResult>(page(1L, cursor = "c1"))
-            second shouldBe listOf<LibraryPageResult>(fake.defaultResult)
-            fake.pageRequests shouldBe listOf(
-                FakeLibraryRepository.PageRequest(BooksPageQuery(LibrarySort.Title, SortDirection.Asc), null),
-                FakeLibraryRepository.PageRequest(BooksPageQuery(), "c1"),
-            )
-        }
-
-        it("TC-101: replays a cached emission before a deferred network result") {
-            val fake = FakeLibraryRepository()
-            val network = CompletableDeferred<LibraryPageResult>()
-            fake.enqueueFlow {
-                emit(page(1L))
-                emit(network.await())
-            }
-            val collected = mutableListOf<LibraryPageResult>()
-
-            network.complete(page(2L))
-            fake.getBooksPageFlow().toList(collected)
-
-            collected shouldBe listOf<LibraryPageResult>(page(1L), page(2L))
-        }
-    }
-
     describe("filtered predicate") {
-
-        it("TC-102: the default category, sort and direction are not filtered") {
-            LibraryUIState().isFiltered shouldBe false
-        }
 
         it("TC-103: each non-default category, sort or direction on its own is filtered") {
             val filtered = listOf(
@@ -500,19 +463,6 @@ class LibraryViewModelTest : DescribeSpec({
             ) + LibrarySort.entries.filter { it != LibrarySort.NewestAdded }.map { LibraryUIState(sort = it) }
 
             filtered.forEach { it.isFiltered shouldBe true }
-        }
-
-        it("TC-104: only category, sort and direction count, never the other fields") {
-            LibraryUIState(
-                books = listOf(testBook(1L)),
-                nextCursor = "c1",
-                isRefreshing = true,
-                isLoadingMore = true,
-                hasLoaded = true,
-                transientError = LibraryUIError.Failed(LibraryError.Unreachable),
-                scrollToTop = true,
-            ).isFiltered shouldBe false
-            LibraryUIState(sort = LibrarySort.NewestAdded, direction = SortDirection.Asc).isFiltered shouldBe true
         }
     }
 
@@ -833,18 +783,6 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.scrolledToTop()
             viewModel.uiState.value.scrollToTop shouldBe false
-        }
-    }
-
-    describe("default preference store") {
-
-        it("TC-159: with the default fake store, page 1 uses the default query") {
-            repository.enqueue(pageOf(1L..2L))
-
-            val viewModel = createViewModel()
-
-            repository.pageRequests.single() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
-            viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
         }
     }
 

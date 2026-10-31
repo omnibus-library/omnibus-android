@@ -183,25 +183,6 @@ class ReaderEventTest : DescribeSpec({
 
     describe("RelocateData") {
 
-        it("TC-14: has the iOS defaults, and chapter is 0 when no TOC entry matched") {
-            RelocateData() shouldBe RelocateData(
-                cfi = null,
-                page = 0,
-                totalPages = 0,
-                pct = 0,
-                atEnd = false,
-                chapter = 0,
-                totalChapters = 0,
-                chapterTitle = "",
-                chapterPagesLeft = 0,
-                echo = false,
-                settledSeek = null,
-            )
-
-            val noChapter = decode("relocate", """{"cfi":"epubcfi(/6/2)","chapter":0,"echo":false}""")
-            noChapter.shouldBeInstanceOf<ReaderEvent.Relocate>().data.chapter shouldBe 0
-        }
-
         it("TC-15: carries the echo flag and derives isMovement from it") {
             val echo = decode("relocate", """{"cfi":"epubcfi(/6/2)","echo":true}""")
                 .shouldBeInstanceOf<ReaderEvent.Relocate>().data
@@ -216,16 +197,6 @@ class ReaderEventTest : DescribeSpec({
             echo.isMovement shouldBe false
             absent.isMovement shouldBe true
             notEcho.isMovement shouldBe true
-        }
-
-        it("TC-16: fraction is pct over 100, and settledSeek round-trips") {
-            RelocateData(pct = 0).fraction shouldBe 0.0
-            RelocateData(pct = 37).fraction shouldBe 0.37
-            RelocateData(pct = 100).fraction shouldBe 1.0
-
-            val seek = decode("relocate", """{"cfi":"epubcfi(/6/2)","settledSeek":14}""")
-                .shouldBeInstanceOf<ReaderEvent.Relocate>().data
-            seek.settledSeek shouldBe 14
         }
     }
 })

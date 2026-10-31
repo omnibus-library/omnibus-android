@@ -274,19 +274,20 @@ class ReaderWebViewTest {
         val controller = ReaderController()
         showReader(controller)
         awaitReady(controller)
+        fun ticks() = evaluate("String(window.__ticks)").trim('"').toInt()
         evaluate("window.__ticks = 0; setInterval(function () { window.__ticks++; }, 20); 0")
-        Thread.sleep(500)
-        assertTrue("timers should run while resumed", evaluate("String(window.__ticks)").trim('"').toInt() > 0)
+        rule.waitUntil(timeoutMillis = 15_000) { ticks() > 5 }
 
         rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        val atPause = evaluate("String(window.__ticks)").trim('"').toInt()
+        val atPause = ticks()
+        // A running 20 ms timer would tick about 35 times in this window. Proving that it stays
+        // still needs elapsed time; a slow device can only make this pass, never fail.
         Thread.sleep(700)
-        val whilePaused = evaluate("String(window.__ticks)").trim('"').toInt()
+        val whilePaused = ticks()
         assertTrue("timers should stop while paused ($atPause -> $whilePaused)", whilePaused - atPause <= 3)
 
         rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        Thread.sleep(700)
-        assertTrue("timers should run again once resumed", evaluate("String(window.__ticks)").trim('"').toInt() > whilePaused + 5)
+        rule.waitUntil(timeoutMillis = 15_000) { ticks() > whilePaused + 5 }
     }
 
     @Test
@@ -330,7 +331,7 @@ class ReaderWebViewTest {
     }
 
     @Test
-    fun tc227_aRecreatedActivityBootsAtTheSavedPosition() {
+    fun tc227_theReadingPositionSurvivesSavedStateRestore() {
         val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(rule)
         lateinit var controller: ReaderController
         restoration.setContent {
@@ -340,9 +341,10 @@ class ReaderWebViewTest {
             }
         }
         awaitReady(controller)
-        controller.next()
-        controller.next()
         rule.waitUntil(timeoutMillis = 15_000) { controller.restoreCfi != null }
+        val firstPage = controller.restoreCfi
+        controller.next()
+        rule.waitUntil(timeoutMillis = 15_000) { controller.restoreCfi != firstPage }
         val saved = controller.restoreCfi
 
         restoration.emulateSavedInstanceStateRestore()

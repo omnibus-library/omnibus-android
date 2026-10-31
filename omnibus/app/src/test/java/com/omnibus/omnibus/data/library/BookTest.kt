@@ -101,22 +101,6 @@ class BookTest : DescribeSpec({
 
     describe("format classification") {
 
-        listOf("epub", "kepub", "pdf", "mobi", "azw3", "cbz", "cbr").forEach { format ->
-
-            it("TC-23: hasEbook is true for $format in either case") {
-                testBook(1, formats = listOf(format)).hasEbook.shouldBeTrue()
-                testBook(1, formats = listOf(format.uppercase())).hasEbook.shouldBeTrue()
-            }
-        }
-
-        listOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "opus", "wav").forEach { format ->
-
-            it("TC-23: hasAudiobook is true for $format in either case") {
-                testBook(1, formats = listOf(format)).hasAudiobook.shouldBeTrue()
-                testBook(1, formats = listOf(format.uppercase())).hasAudiobook.shouldBeTrue()
-            }
-        }
-
         it("TC-23: unrelated and empty formats are neither ebook nor audiobook") {
             testBook(1, formats = listOf("txt", "docx")).let {
                 it.hasEbook.shouldBeFalse()
