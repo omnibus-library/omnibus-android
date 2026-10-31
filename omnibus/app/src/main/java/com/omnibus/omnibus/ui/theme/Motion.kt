@@ -1,10 +1,15 @@
 package com.omnibus.omnibus.ui.theme
 
+import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 
 /**
  * Named springs shared with the iOS client's `Motion`. Stiffness is derived from the iOS spring
@@ -30,4 +35,20 @@ object Motion {
     /** Page turns and large transitions; deliberately not a spring so it never overshoots. */
     fun <T> page(): TweenSpec<T> =
         tween(durationMillis = 400, easing = CubicBezierEasing(0.2f, 0.6f, 0.3f, 1f))
+}
+
+/** True when the system "Remove animations" setting is on (animator duration scale 0). */
+fun isReducedMotion(animatorDurationScale: Float): Boolean = animatorDurationScale == 0f
+
+/**
+ * Whether the system asks for no animation. Read once when the caller enters composition, so a
+ * change made while reading applies the next time the reader opens. Always false in previews.
+ */
+@Composable
+fun rememberReducedMotion(): Boolean {
+    if (LocalInspectionMode.current) return false
+    val resolver = LocalContext.current.contentResolver
+    return remember(resolver) {
+        isReducedMotion(Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f))
+    }
 }

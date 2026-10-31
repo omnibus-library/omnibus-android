@@ -39,5 +39,11 @@ class MotionTest : DescribeSpec({
             settle.dampingRatio shouldBe (0.82f plusOrMinus 0.001f)
             settle.stiffness shouldBe (204f plusOrMinus 1f)
         }
+
+        it("RC-23: reduced motion is an animator scale of 0") {
+            isReducedMotion(0f) shouldBe true
+            isReducedMotion(0.5f) shouldBe false
+            isReducedMotion(1f) shouldBe false
+        }
     }
 })
