@@ -101,4 +101,5 @@
     <string name="book_detail_stub_title">Book detail</string>
     <!-- %1$s is the book's uuid. -->
     <string name="book_detail_stub_uuid" translatable="false">uuid: %1$s</string>
+    <string name="book_detail_stub_read">Read</string>
 </resources>

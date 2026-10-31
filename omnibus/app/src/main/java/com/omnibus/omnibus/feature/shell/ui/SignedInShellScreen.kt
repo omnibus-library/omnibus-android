@@ -53,9 +53,15 @@ data object SignedInShellRoute : NavKey
  *
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
+ *
+ * @param onOpenReader opens the reader for a book over the shell. The Book Detail Read button calls
+ *   it today, and the real Book Detail screen and the Continue card (#22) must call it too.
  */
 @Composable
-fun SignedInShellScreen(modifier: Modifier = Modifier) {
+fun SignedInShellScreen(
+    onOpenReader: (bookUuid: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val navigator = rememberShellNavigator()
     val activity = LocalActivity.current
 
@@ -63,6 +69,7 @@ fun SignedInShellScreen(modifier: Modifier = Modifier) {
         navigator = navigator,
         // Back from the first tab's root leaves the app, as it would without the shell.
         onBack = { if (!navigator.back()) activity?.finish() },
+        onOpenReader = onOpenReader,
         modifier = modifier,
     )
 }
@@ -79,6 +86,7 @@ private fun rememberShellNavigator(): ShellNavigator {
 private fun SignedInShellContent(
     navigator: ShellNavigator,
     onBack: () -> Unit,
+    onOpenReader: (bookUuid: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -114,7 +122,7 @@ private fun SignedInShellContent(
                         onAddBooks = { /* Add books sheet: later ticket */ },
                     )
                 }
-                entry<BookDetailRoute> { key -> BookDetailStubScreen(uuid = key.uuid) }
+                entry<BookDetailRoute> { key -> BookDetailStubScreen(uuid = key.uuid, onRead = onOpenReader) }
                 entry<AuthorsRoot> { EmptyTabRoot(ShellTab.Authors) }
                 entry<SeriesRoot> { EmptyTabRoot(ShellTab.Series) }
                 entry<StatsRoot> { EmptyTabRoot(ShellTab.Stats) }
@@ -147,6 +155,6 @@ private fun EmptyTabRoot(tab: ShellTab, modifier: Modifier = Modifier) {
 @PreviewLightDark
 private fun SignedInShellScreenPreview() {
     OmnibusTheme {
-        SignedInShellScreen()
+        SignedInShellScreen(onOpenReader = {})
     }
 }
