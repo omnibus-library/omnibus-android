@@ -33,11 +33,13 @@ import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
+import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.ReaderViewModel
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -78,6 +80,9 @@ fun ReaderScreen(
         commands = viewModel.commands,
         onPageEvent = viewModel::onPageEvent,
         onSheetDismissed = viewModel::onSheetDismissed,
+        onMenuOpened = viewModel::onMenuOpened,
+        onMenuDismissed = viewModel::onMenuDismissed,
+        onMenuRowChosen = viewModel::onMenuRowChosen,
         onRetryBookRequested = viewModel::onRetryBookRequested,
         onReaderClosed = viewModel::onReaderClosed,
         onClose = onClose,
@@ -92,8 +97,15 @@ fun ReaderScreen(
  * Nothing here pads the page for the system bars. The reader fills the window, and the page takes
  * the insets as CSS variables, so only the state views are inset.
  *
+ * The chrome is an overlay sibling of the page and never resizes it. Sheets opened from the menu
+ * (#47, #48) must use the app theme, so host them outside this function's
+ * `OmnibusTheme(darkTheme = !theme.isLight)` or re-wrap them in `OmnibusTheme()`.
+ *
  * @param commands page commands from the ViewModel, each applied to [controller] once.
  * @param onPageEvent receives every event the page reports, and the host's load status.
+ * @param onMenuOpened the menu button was tapped.
+ * @param onMenuDismissed a tap or back dismissed the open menu.
+ * @param onMenuRowChosen a menu row was chosen.
  * @param onClose called after [onReaderClosed] when the reader is left.
  */
 @Composable
@@ -105,6 +117,9 @@ internal fun ReaderScreenContent(
     commands: Flow<ReaderCommand>,
     onPageEvent: (ReaderEvent) -> Unit,
     onSheetDismissed: () -> Unit,
+    onMenuOpened: () -> Unit,
+    onMenuDismissed: () -> Unit,
+    onMenuRowChosen: (ReaderMenuRow) -> Unit,
     onRetryBookRequested: () -> Unit,
     onReaderClosed: () -> Unit,
     onClose: () -> Unit,
@@ -116,7 +131,11 @@ internal fun ReaderScreenContent(
     }
     // Always enabled, so back takes this path in every state, and it outranks the root NavDisplay's handler.
     BackHandler {
-        if (uiState.sheet != null) onSheetDismissed() else leave()
+        when {
+            uiState.sheet != null -> onSheetDismissed()
+            uiState.menuOpen -> onMenuDismissed()
+            else -> leave()
+        }
     }
 
     LaunchedEffect(controller, commands) {
@@ -124,6 +143,7 @@ internal fun ReaderScreenContent(
     }
 
     val theme = uiState.settings.theme
+    val reduceMotion = rememberReducedMotion()
     val window = if (LocalInspectionMode.current) null else LocalActivity.current?.window
     if (window != null) {
         DisposableEffect(window, theme) {
@@ -195,6 +215,22 @@ internal fun ReaderScreenContent(
                             background = ground,
                         )
                     }
+                    if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                        ReaderChrome(
+                            indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
+                            chromeVisible = uiState.chromeVisible,
+                            menuOpen = uiState.menuOpen,
+                            menuRows = uiState.menuRows,
+                            percent = uiState.location?.pct ?: 0,
+                            colors = readerChromeColors(theme),
+                            reduceMotion = reduceMotion,
+                            insets = ReaderWebViewDefaults.insets,
+                            onClose = leave,
+                            onMenuOpened = onMenuOpened,
+                            onMenuDismissed = onMenuDismissed,
+                            onMenuRowChosen = onMenuRowChosen,
+                        )
+                    }
                 }
             }
         }
@@ -237,6 +273,9 @@ private fun ReaderPreview(book: ReaderBookState, loadStatus: ReaderLoadStatus = 
         commands = emptyFlow(),
         onPageEvent = {},
         onSheetDismissed = {},
+        onMenuOpened = {},
+        onMenuDismissed = {},
+        onMenuRowChosen = {},
         onRetryBookRequested = {},
         onReaderClosed = {},
         onClose = {},
