@@ -1,6 +1,14 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.data.library.BookResult
+import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.LibraryError
+import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.reader.BookFileResult
+import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ui.AnnotationTapData
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadFailure
@@ -11,6 +19,8 @@ import com.omnibus.omnibus.feature.reader.ui.ShareImageData
 import com.omnibus.omnibus.feature.reader.ui.TocEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,8 +38,23 @@ class ReaderViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    lateinit var repository: FakeLibraryRepository
+
+    beforeEach {
+        // The book stays Loading here, so the layer-1 cases only see page state.
+        repository = FakeLibraryRepository().apply { pendingBook = CompletableDeferred() }
+    }
+
     /** The one place a test builds the ViewModel, so later layers only change this helper. */
-    fun viewModel() = ReaderViewModel(bookUuid = "book-1")
+    fun viewModel() = ReaderViewModel(
+        bookUuid = "book-1",
+        libraryRepository = repository,
+        assetLoaderFactory = ReaderAssetLoaderFactory(
+            mockk(relaxed = true),
+            Dispatchers.Unconfined,
+            BookFileSource { BookFileResult.NotFound },
+        ),
+    )
 
     val chapterOne = TocEntry(label = "Loomings", href = "chapter1.xhtml", level = 0)
     val chapterTwo = TocEntry(label = "The Carpet-Bag", href = "chapter2.xhtml#carpet", level = 1)
@@ -272,6 +297,114 @@ class ReaderViewModelTest : DescribeSpec({
                 settings = ReaderSettings(),
                 sheet = null,
             )
+        }
+    }
+
+    describe("ReaderViewModel book") {
+
+        beforeEach {
+            // These cases start from the fake's own result instead of holding the book in Loading.
+            repository.pendingBook = null
+        }
+
+        it("TC-50: loads an EPUB book into Ready") {
+            val gate = CompletableDeferred<BookResult>()
+            repository.pendingBook = gate
+            val vm = viewModel()
+
+            vm.uiState.value.book shouldBe ReaderBookState.Loading
+
+            gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
+
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Moby Dick")
+        }
+
+        it("TC-51: a book with no epub is Unavailable NoEpub") {
+            repository.bookResult = BookResult.Success(testBook(1, formats = listOf("pdf")))
+
+            viewModel().uiState.value.book shouldBe ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub)
+        }
+
+        it("TC-52: a 404 is Unavailable NotFound") {
+            repository.bookResult = BookResult.NotFound
+
+            viewModel().uiState.value.book shouldBe ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)
+        }
+
+        it("TC-53: no server is Failed with LibraryUIError.NoServer") {
+            repository.bookResult = BookResult.NoServer
+
+            viewModel().uiState.value.book shouldBe ReaderBookState.Failed(LibraryUIError.NoServer)
+        }
+
+        it("TC-53: a failure is Failed with the error") {
+            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
+
+            viewModel().uiState.value.book shouldBe
+                ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
+        }
+
+        it("TC-54: retry after Failed goes Loading, then Ready") {
+            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
+            val vm = viewModel()
+            vm.uiState.value.book shouldBe ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
+
+            val gate = CompletableDeferred<BookResult>()
+            repository.pendingBook = gate
+            vm.onRetryBookRequested()
+
+            vm.uiState.value.book shouldBe ReaderBookState.Loading
+
+            gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
+
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Moby Dick")
+            repository.bookRequests shouldBe listOf("book-1", "book-1")
+        }
+
+        it("TC-54: retry while Ready does not refetch or reset to Loading") {
+            val vm = viewModel()
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1")
+
+            vm.onRetryBookRequested()
+
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1")
+            repository.bookRequests shouldBe listOf("book-1")
+        }
+
+        it("TC-55: loads the book for its uuid on creation, exactly once") {
+            viewModel()
+
+            repository.bookRequests shouldBe listOf("book-1")
+        }
+
+        it("TC-56: page events before Ready still reduce location, toc and chrome, and leave book Loading") {
+            val gate = CompletableDeferred<BookResult>()
+            repository.pendingBook = gate
+            val vm = viewModel()
+
+            vm.onPageEvent(ReaderEvent.ToggleChrome)
+            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 3, totalPages = 310, pct = 2)))
+            vm.onPageEvent(ReaderEvent.Toc(listOf(chapterOne)))
+
+            vm.uiState.value.book shouldBe ReaderBookState.Loading
+            vm.uiState.value.chromeVisible shouldBe true
+            vm.uiState.value.location?.cfi shouldBe "epubcfi(/6/8)"
+            vm.uiState.value.toc shouldBe listOf(chapterOne)
+        }
+
+        it("TC-56: page events while Failed leave book Failed") {
+            val failed = ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
+            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
+            val vm = viewModel()
+
+            vm.onPageEvent(ReaderEvent.ToggleChrome)
+            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 3, totalPages = 310, pct = 2)))
+            vm.onPageEvent(ReaderEvent.Toc(listOf(chapterOne)))
+
+            vm.uiState.value.book shouldBe failed
+            vm.uiState.value.chromeVisible shouldBe true
+            vm.uiState.value.location?.cfi shouldBe "epubcfi(/6/8)"
+            vm.uiState.value.toc shouldBe listOf(chapterOne)
         }
     }
 })

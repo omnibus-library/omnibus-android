@@ -14,6 +14,7 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.ui.components.StateActionButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.monoTextStyle
@@ -31,9 +32,11 @@ data class BookDetailRoute(val uuid: String) : NavKey
  * Placeholder detail screen. It has no back button: system back pops it, as for any pushed entry.
  *
  * @param uuid The book to show once the detail screen exists.
+ * @param onRead Called with [uuid] when the Read button is tapped. The real Book Detail Read button
+ *   and the Continue card (#22) call the same reader hook.
  */
 @Composable
-fun BookDetailStubScreen(uuid: String, modifier: Modifier = Modifier) {
+fun BookDetailStubScreen(uuid: String, onRead: (uuid: String) -> Unit, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
 
     Column(
@@ -50,6 +53,11 @@ fun BookDetailStubScreen(uuid: String, modifier: Modifier = Modifier) {
             text = stringResource(R.string.book_detail_stub_uuid, uuid),
             style = monoTextStyle(12, palette.ink3),
         )
+        Spacer(Modifier.height(20.dp))
+        StateActionButton(
+            label = stringResource(R.string.book_detail_stub_read),
+            onClick = { onRead(uuid) },
+        )
     }
 }
 
@@ -57,6 +65,6 @@ fun BookDetailStubScreen(uuid: String, modifier: Modifier = Modifier) {
 @Composable
 private fun BookDetailStubScreenPreview() {
     OmnibusTheme {
-        BookDetailStubScreen(uuid = "7f3c2a9e-preview")
+        BookDetailStubScreen(uuid = "7f3c2a9e-preview", onRead = {})
     }
 }

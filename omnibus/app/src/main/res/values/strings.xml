@@ -92,9 +92,14 @@
     <string name="reader_error_render">Something went wrong showing this book.</string>
     <string name="reader_error_renderer_crashed">The page viewer stopped working.</string>
     <string name="reader_try_again">Try again</string>
+    <string name="reader_opening_title">Opening %1$s</string>
+    <string name="reader_error_book_missing">This book isn\'t in your library.</string>
+    <string name="reader_error_no_epub">This book has no EPUB to read.</string>
+    <string name="reader_back">Back</string>
 
     <!-- Book detail -->
     <string name="book_detail_stub_title">Book detail</string>
     <!-- %1$s is the book's uuid. -->
     <string name="book_detail_stub_uuid" translatable="false">uuid: %1$s</string>
+    <string name="book_detail_stub_read">Read</string>
 </resources>

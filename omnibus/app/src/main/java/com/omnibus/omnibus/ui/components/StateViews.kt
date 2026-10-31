@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -53,12 +54,13 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 fun LoadingStateView(
     label: String,
     modifier: Modifier = Modifier,
+    background: Color = OmnibusTheme.palette.bg0,
 ) {
     val palette = OmnibusTheme.palette
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(palette.bg0),
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -92,12 +94,13 @@ fun ErrorStateView(
     actionLabel: String,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    background: Color = OmnibusTheme.palette.bg0,
 ) {
     val palette = OmnibusTheme.palette
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(palette.bg0),
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
         Column(

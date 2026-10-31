@@ -1,7 +1,12 @@
 package com.omnibus.omnibus.feature.reader
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.library.BookResult
+import com.omnibus.omnibus.data.library.LibraryRepository
+import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
@@ -10,6 +15,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,26 +23,39 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * Owns the reader's state for one book. The screen reads [uiState], forwards the page's events to
  * [onPageEvent] and sends user intents back. Imperative page commands go out on [commands], so a
  * re-collected state can't re-navigate the page.
+ *
+ * The book is read when the ViewModel is created, into [ReaderUIState.book].
+ *
+ * @property assetLoaderFactory builds the WebView's asset loader for the screen. It isn't state.
  */
 @HiltViewModel(assistedFactory = ReaderViewModel.Factory::class)
 class ReaderViewModel @AssistedInject constructor(
     @Assisted val bookUuid: String,
+    private val libraryRepository: LibraryRepository,
+    val assetLoaderFactory: ReaderAssetLoaderFactory,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUIState())
 
-    /** The reader's state. It changes only through [onPageEvent] and the intents below. */
+    /** The reader's state. It changes only through [onPageEvent], the book load and the intents below. */
     val uiState: StateFlow<ReaderUIState> = _uiState.asStateFlow()
 
     private val _commands = Channel<ReaderCommand>(Channel.BUFFERED)
 
     /** Commands for the screen to apply to the page. Each is delivered once, to one collector. */
     val commands: Flow<ReaderCommand> = _commands.receiveAsFlow()
+
+    private var bookJob: Job? = null
+
+    init {
+        loadBook()
+    }
 
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
     @AssistedFactory
@@ -99,10 +118,39 @@ class ReaderViewModel @AssistedInject constructor(
      * session (#51). It does nothing yet.
      */
     fun onReaderClosed() = Unit
+
+    /** Reads the book again after it failed to load. Does nothing in any other state. */
+    fun onRetryBookRequested() {
+        if (_uiState.value.book is ReaderBookState.Failed) loadBook()
+    }
+
+    /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
+    private fun loadBook() {
+        bookJob?.cancel()
+        _uiState.update { it.copy(book = ReaderBookState.Loading) }
+        bookJob = viewModelScope.launch {
+            libraryRepository.getBookFlow(bookUuid).collect { result ->
+                _uiState.update { it.copy(book = result.toBookState()) }
+            }
+        }
+    }
+
+    private fun BookResult.toBookState(): ReaderBookState = when (this) {
+        is BookResult.Success ->
+            if (book.hasEpub) {
+                ReaderBookState.Ready(title = book.displayTitle)
+            } else {
+                ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub)
+            }
+        BookResult.NotFound -> ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)
+        BookResult.NoServer -> ReaderBookState.Failed(LibraryUIError.NoServer)
+        is BookResult.Failure -> ReaderBookState.Failed(LibraryUIError.Failed(error))
+    }
 }
 
 /** What the reader shows. The defaults are the state before the first page event. */
 data class ReaderUIState(
+    val book: ReaderBookState = ReaderBookState.Loading,
     val loadStatus: ReaderLoadStatus = ReaderLoadStatus.Loading,
     val location: RelocateData? = null,
     val toc: List<TocEntry> = emptyList(),
@@ -110,6 +158,31 @@ data class ReaderUIState(
     val settings: ReaderSettings = ReaderSettings(),
     val sheet: ReaderSheet? = null,
 )
+
+/** Whether the book for the reader could be read. */
+sealed interface ReaderBookState {
+
+    /** The book is being read from the library. */
+    data object Loading : ReaderBookState
+
+    /** The book can be read. [title] is its display title. */
+    data class Ready(val title: String) : ReaderBookState
+
+    /** The book is in the library but can't be opened here, or isn't there at all. */
+    data class Unavailable(val reason: ReaderUnavailableReason) : ReaderBookState
+
+    /** The read failed. [error] is what the Library screen would show for it. */
+    data class Failed(val error: LibraryUIError) : ReaderBookState
+}
+
+/** Why a book is [ReaderBookState.Unavailable]. */
+enum class ReaderUnavailableReason {
+    /** The server has no book with this uuid. */
+    NotFound,
+
+    /** The book has no EPUB, so the reader can't open it. */
+    NoEpub,
+}
 
 /** A sheet the reader can show over the page. */
 enum class ReaderSheet { Contents, Settings }
