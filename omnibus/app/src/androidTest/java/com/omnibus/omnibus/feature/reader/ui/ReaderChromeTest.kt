@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +48,9 @@ import org.junit.Test
 
 private const val TITLE = "Nineteen Eighty-Four"
 private const val ROOT_TAG = "reader_chrome_test_root"
+
+/** A window narrow enough that 272dp menu rows plus their 28dp insets do not fit on a phone. */
+private const val NARROW_WINDOW = 0.6f
 private const val UNDERLAY_TAG = "reader_chrome_test_underlay"
 
 /** A mid-book location: page 361 of 661, seven pages left in chapter 3 of 12, 54%. */
@@ -72,7 +75,7 @@ private data class ChromeInputs(
     val reduceMotion: Boolean = true,
     val insets: WindowInsets = WindowInsets(),
     /** The width of the window the chrome sits in, or null to fill the test's window. */
-    val rootWidth: Dp? = null,
+    val rootWidthFraction: Float? = null,
 )
 
 /** One preview under test: a theme and chrome state. */
@@ -83,8 +86,8 @@ private data class PreviewCase(
     val menuRows: List<ReaderMenuRow> = emptyList(),
 )
 
-// RC-25 to RC-44. Tests use tags, text and relative bounds only, and size the root with fillMaxSize()
-// or requiredWidth, so they hold on the 320dp CI AVD.
+// RC-25 to RC-44. Tests use tags, text and relative bounds only, and size the root as a fraction of the
+// window (never in fixed dp), so they hold on the 320dp CI AVD and on a phone-sized one.
 class ReaderChromeTest {
 
     @get:Rule
@@ -97,7 +100,7 @@ class ReaderChromeTest {
     private fun setChrome(inputs: MutableState<ChromeInputs>, events: MutableList<String>) {
         rule.setContent {
             val i = inputs.value
-            val root = i.rootWidth?.let { Modifier.requiredWidth(it).fillMaxHeight() } ?: Modifier.fillMaxSize()
+            val root = i.rootWidthFraction?.let { Modifier.fillMaxWidth(it).fillMaxHeight() } ?: Modifier.fillMaxSize()
             // The chrome's app theme is the opposite of the page's, as in the reader.
             OmnibusTheme(darkTheme = i.theme.isLight) {
                 Box(root.testTag(ROOT_TAG)) {
@@ -227,7 +230,7 @@ class ReaderChromeTest {
     @Test
     fun rc30_longTitleEllipsizesClearOfTheClose() {
         val longTitle = "Long title ".repeat(20).trim()
-        val inputs = mutableStateOf(ChromeInputs(title = longTitle, rootWidth = 320.dp))
+        val inputs = mutableStateOf(ChromeInputs(title = longTitle))
         setChrome(inputs, mutableListOf())
 
         // Hidden chrome shows the title, so the one-line ellipsis is checked there.
@@ -499,7 +502,7 @@ class ReaderChromeTest {
                 menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
                 percent = 100,
                 insets = WindowInsets(),
-                rootWidth = 320.dp,
+                rootWidthFraction = NARROW_WINDOW,
             ),
         )
         val events = mutableListOf<String>()
@@ -518,11 +521,11 @@ class ReaderChromeTest {
         rule.waitForIdle()
         assertEquals(listOf("row:Settings"), events)
 
-        rule.runOnIdle { inputs.value = inputs.value.copy(rootWidth = 600.dp) }
+        rule.runOnIdle { inputs.value = inputs.value.copy(rootWidthFraction = null) }
         rule.waitForIdle()
         for (row in ReaderMenuRow.entries) {
             val bounds = rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).getUnclippedBoundsInRoot()
-            assertTrue("$row stays within its 272dp maximum on a wide window", bounds.width() <= 272.dp + tolerance)
+            assertTrue("$row stays within its 272dp maximum at full window width", bounds.width() <= 272.dp + tolerance)
         }
     }
 

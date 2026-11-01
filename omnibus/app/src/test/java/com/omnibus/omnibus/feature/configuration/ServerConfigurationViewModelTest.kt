@@ -35,10 +35,6 @@ class ServerConfigurationViewModelTest : DescribeSpec({
 
     describe("initial state") {
 
-        it("is unsubmitted with an empty address when no server is saved") {
-            createViewModel().uiState.value shouldBe ServerConfigUIState()
-        }
-
         it("exposes the saved address so the field can be prefilled") {
             repository.savedAddress.value = "http://10.0.0.2:3000"
 

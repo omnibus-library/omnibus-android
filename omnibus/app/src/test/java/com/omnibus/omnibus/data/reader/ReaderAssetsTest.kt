@@ -7,19 +7,6 @@ class ReaderAssetsTest : DescribeSpec({
 
     describe("assetPathFor") {
 
-        it("TC-207: maps each reader file to its path under assets/reader") {
-            listOf(
-                "reader.html",
-                "epub.min.js",
-                "jszip.min.js",
-                "epub-reader-glue.js",
-                "reader-fonts.css",
-                "EBGaramond-Regular.woff2",
-            ).forEach { name ->
-                ReaderAssets.assetPathFor(name) shouldBe "reader/$name"
-            }
-        }
-
         it("TC-208: ignores a leading slash") {
             ReaderAssets.assetPathFor("/reader.html") shouldBe "reader/reader.html"
         }

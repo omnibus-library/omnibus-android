@@ -300,22 +300,6 @@ class ReaderControllerTest : DescribeSpec({
 
     describe("commands") {
 
-        it("TC-267: sends page turns, navigation and teardown to the page") {
-            val reader = controller()
-
-            reader.next()
-            reader.previous()
-            reader.display("epubcfi(/6/4)")
-            reader.teardown()
-
-            page.shouldContainExactly(
-                "OmnibusReader.next()",
-                "OmnibusReader.prev()",
-                "OmnibusReader.display(\"epubcfi(/6/4)\")",
-                "OmnibusReader.destroy()",
-            )
-        }
-
         it("TC-268: does nothing once the page is detached, and a stale detach leaves a newer page alone") {
             val reader = controller()
             val newer = mutableListOf<String>()

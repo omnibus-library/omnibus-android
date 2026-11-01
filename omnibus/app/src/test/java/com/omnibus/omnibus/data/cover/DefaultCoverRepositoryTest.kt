@@ -27,12 +27,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
 import okio.ByteString.Companion.encodeUtf8
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class DefaultCoverRepositoryTest : DescribeSpec({
@@ -63,6 +66,28 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
     fun found(body: String, size: CoverSize, fromCache: Boolean) =
         CoverImageResult.Found(body.encodeUtf8(), size, fromCache)
+
+    /**
+     * Fetches [uuid] at [size] while the server holds its 200 [body] response, runs [whileInFlight]
+     * once the request has reached the server, then releases the response and returns the result.
+     */
+    suspend fun fetchHeldOpen(uuid: String, size: CoverSize, body: String, whileInFlight: suspend () -> Unit) =
+        coroutineScope {
+            val arrived = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    arrived.countDown()
+                    release.await(10, TimeUnit.SECONDS)
+                    return MockResponse.Builder().code(200).body(body).build()
+                }
+            }
+            val fetch = async(Dispatchers.IO) { repository.thumbnail(uuid, size) }
+            withContext(Dispatchers.IO) { arrived.await(10, TimeUnit.SECONDS) } shouldBe true
+            whileInFlight()
+            release.countDown()
+            fetch.await()
+        }
 
     beforeSpec { mockAndroidLog() }
 
@@ -379,14 +404,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
         }
 
         it("TC-173: refuses to store a fetch that was already in flight, but still returns its bytes") {
-            server.enqueue(MockResponse.Builder().code(200).body("superseded").headersDelay(500, TimeUnit.MILLISECONDS).build())
-
-            val result = coroutineScope {
-                val fetch = async(Dispatchers.IO) { repository.thumbnail("book", CoverSize.Md) }
-                while (server.requestCount == 0) delay(5)
-                repository.invalidate("book")
-                fetch.await()
-            }
+            val result = fetchHeldOpen("book", CoverSize.Md, "superseded") { repository.invalidate("book") }
 
             result shouldBe found("superseded", CoverSize.Md, fromCache = false)
             cached("book", CoverSize.Md).shouldBeNull()
@@ -434,14 +452,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
         }
 
         it("TC-179: refuses to store a fetch that was already in flight, but still returns its bytes") {
-            server.enqueue(MockResponse.Builder().code(200).body("superseded").headersDelay(500, TimeUnit.MILLISECONDS).build())
-
-            val result = coroutineScope {
-                val fetch = async(Dispatchers.IO) { repository.thumbnail("book", CoverSize.Md) }
-                while (server.requestCount == 0) delay(5)
-                repository.clear()
-                fetch.await()
-            }
+            val result = fetchHeldOpen("book", CoverSize.Md, "superseded") { repository.clear() }
 
             result shouldBe found("superseded", CoverSize.Md, fromCache = false)
             cached("book", CoverSize.Md).shouldBeNull()

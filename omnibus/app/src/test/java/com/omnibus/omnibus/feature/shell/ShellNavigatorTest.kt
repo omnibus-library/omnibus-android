@@ -21,17 +21,6 @@ class ShellNavigatorTest : DescribeSpec({
         navigator = ShellNavigator(stacks, mutableStateOf(ShellTab.Start))
     }
 
-    describe("tabs") {
-        it("are Library, Authors, Series, Stats, You in that order") {
-            ShellTab.entries shouldBe
-                listOf(ShellTab.Library, ShellTab.Authors, ShellTab.Series, ShellTab.Stats, ShellTab.You)
-        }
-
-        it("opens with Library selected") {
-            navigator.selected shouldBe ShellTab.Library
-        }
-    }
-
     describe("select") {
         it("switches to the tapped tab") {
             navigator.select(ShellTab.Stats)

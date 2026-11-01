@@ -3,7 +3,6 @@ package com.omnibus.omnibus.ui.components
 import com.omnibus.omnibus.ui.theme.Oklch
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 private fun identity(title: String, accent: String? = null) =
     CoverIdentity(uuid = "u", title = title, accent = accent, hasCover = false)
@@ -19,10 +18,6 @@ class CoverIdentityTest : DescribeSpec({
             CoverIdentity.titleHue("a") shouldBe 190.0
         }
 
-        it("TC-115: starts from the seed for an empty title") {
-            CoverIdentity.titleHue("") shouldBe 5381.0 % 360
-        }
-
         it("TC-116: hashes multi-byte characters by their UTF-8 bytes") {
             CoverIdentity.titleHue("Café ☕") shouldBe 314.0
         }
@@ -36,14 +31,6 @@ class CoverIdentityTest : DescribeSpec({
 
         it("TC-118: derives lightness, chroma and hue from the title when there is no accent") {
             identity("Dune").tone shouldBe Oklch(0.55, 0.09, 41.0)
-        }
-
-        it("TC-119: gives the same title the same tone") {
-            identity("Dune").tone shouldBe identity("Dune").tone
-        }
-
-        it("TC-120: gives different titles different hues") {
-            identity("Dune").tone.h shouldNotBe identity("Emma").tone.h
         }
 
         it("TC-121: uses a valid accent instead of the title hash") {

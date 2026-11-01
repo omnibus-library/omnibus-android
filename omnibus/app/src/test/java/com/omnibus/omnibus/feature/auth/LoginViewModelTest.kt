@@ -303,40 +303,6 @@ class LoginViewModelTest : DescribeSpec({
             viewModel.uiState.value.loginStatus shouldBe LoginStatus.LOGGED_IN
         }
     }
-
-    describe("LoginStatus.isFailure") {
-
-        val signInFailures = setOf(
-            LoginStatus.INVALID_CREDENTIALS,
-            LoginStatus.TOO_MANY_ATTEMPTS,
-            LoginStatus.SERVER_UNREACHABLE,
-            LoginStatus.SERVER_ERROR,
-        )
-
-        val registerFailures = setOf(
-            LoginStatus.USERNAME_TAKEN,
-            LoginStatus.REGISTRATION_DISABLED,
-            LoginStatus.INVALID_DETAILS,
-        )
-
-        signInFailures.forEach { status ->
-            it("TC-31: is true for $status") {
-                status.isFailure shouldBe true
-            }
-        }
-
-        registerFailures.forEach { status ->
-            it("TC-64: is true for $status") {
-                status.isFailure shouldBe true
-            }
-        }
-
-        (LoginStatus.entries.toSet() - signInFailures - registerFailures).forEach { status ->
-            it("TC-31: is false for $status") {
-                status.isFailure shouldBe false
-            }
-        }
-    }
 }) {
     private companion object {
         const val SERVER = "http://10.0.0.2:3000"

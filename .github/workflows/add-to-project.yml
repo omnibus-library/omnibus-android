@@ -1,0 +1,17 @@
+name: Add to project
+
+# The org is on GitHub Free, whose single built-in auto-add workflow is spent on omnibus.
+on:
+  issues:
+    types: [opened, transferred]
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v2
+        with:
+          project-url: https://github.com/orgs/omnibus-library/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}

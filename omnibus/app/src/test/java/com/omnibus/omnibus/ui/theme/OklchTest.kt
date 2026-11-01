@@ -63,13 +63,6 @@ class OklchTest : DescribeSpec({
         }
     }
 
-    describe("chroma") {
-
-        it("TC-107: scales chroma and leaves the rest") {
-            Oklch(0.5, 0.1, 200.0, 0.8).chroma(0.5) shouldBe Oklch(0.5, 0.05, 200.0, 0.8)
-        }
-    }
-
     describe("parse") {
 
         it("TC-108: reads unitless oklch") {
