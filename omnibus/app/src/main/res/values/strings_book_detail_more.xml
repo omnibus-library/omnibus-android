@@ -1,0 +1,77 @@
+<resources>
+    <!-- The three-dot More button in the Book Detail top bar. -->
+    <string name="book_detail_more">More</string>
+    <!-- A menu row, and its sub-line, while the connection is down. -->
+    <string name="book_detail_more_needs_connection">Needs a connection</string>
+    <!-- The Add to shelf menu row, and the sheet title. -->
+    <string name="book_detail_more_add_to_shelf">Add to shelf</string>
+    <string name="book_detail_more_shelf_close">Close</string>
+    <string name="book_detail_more_shelf_intro">Tap a shelf to add or remove this book.</string>
+    <string name="book_detail_more_shelf_empty">You have no hand-picked shelves yet.</string>
+    <string name="book_detail_more_shelf_loading">Loading shelves</string>
+    <string name="book_detail_more_shelf_error">Couldn\'t load your shelves.</string>
+    <string name="book_detail_more_shelf_retry">Try again</string>
+    <!-- %1$s is the book count, %2$s the rule text. -->
+    <string name="book_detail_more_shelf_meta">%1$s · %2$s</string>
+    <plurals name="book_detail_more_shelf_book_count">
+        <item quantity="one">%d book</item>
+        <item quantity="other">%d books</item>
+    </plurals>
+    <string name="book_detail_more_shelf_smart_title">Smart shelves</string>
+    <string name="book_detail_more_shelf_smart_note">These follow each shelf’s rules, so they can’t be changed here.</string>
+    <!-- %1$s is the shelf name. -->
+    <string name="book_detail_more_shelf_add_failed">Couldn\'t add this book to %1$s.</string>
+    <string name="book_detail_more_shelf_remove_failed">Couldn\'t remove this book from %1$s.</string>
+    <string name="book_detail_more_shelf_add_action">Add to shelf</string>
+    <string name="book_detail_more_shelf_remove_action">Remove from shelf</string>
+    <!-- Smart shelf rule words. The field name leads a clause; the op text follows it. -->
+    <string name="book_detail_more_rule_field_tag">tag</string>
+    <string name="book_detail_more_rule_field_genre">genre</string>
+    <string name="book_detail_more_rule_field_author">author</string>
+    <string name="book_detail_more_rule_field_series">series</string>
+    <string name="book_detail_more_rule_field_rating">rating</string>
+    <string name="book_detail_more_rule_field_status">status</string>
+    <string name="book_detail_more_rule_field_format">format</string>
+    <string name="book_detail_more_rule_field_year">year</string>
+    <string name="book_detail_more_rule_field_date_added">added</string>
+    <string name="book_detail_more_rule_field_date_updated">updated</string>
+    <!-- %1$s is the rule's value. -->
+    <string name="book_detail_more_rule_op_is">is %1$s</string>
+    <string name="book_detail_more_rule_op_is_not">is not %1$s</string>
+    <string name="book_detail_more_rule_op_contains">contains %1$s</string>
+    <string name="book_detail_more_rule_op_starts_with">starts with %1$s</string>
+    <string name="book_detail_more_rule_op_gte">is at least %1$s</string>
+    <string name="book_detail_more_rule_op_includes">includes %1$s</string>
+    <!-- %1$s is the window, such as "2 weeks". -->
+    <string name="book_detail_more_rule_op_in_last">in the last %1$s</string>
+    <string name="book_detail_more_rule_op_before">before %1$s</string>
+    <string name="book_detail_more_rule_op_after">after %1$s</string>
+    <!-- %1$s and %2$s are the range's dates. -->
+    <string name="book_detail_more_rule_op_between">between %1$s and %2$s</string>
+    <plurals name="book_detail_more_rule_unit_days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <plurals name="book_detail_more_rule_unit_weeks">
+        <item quantity="one">%d week</item>
+        <item quantity="other">%d weeks</item>
+    </plurals>
+    <plurals name="book_detail_more_rule_unit_months">
+        <item quantity="one">%d month</item>
+        <item quantity="other">%d months</item>
+    </plurals>
+    <plurals name="book_detail_more_rule_unit_years">
+        <item quantity="one">%d year</item>
+        <item quantity="other">%d years</item>
+    </plurals>
+    <string name="book_detail_more_rule_status_unread">Unread</string>
+    <string name="book_detail_more_rule_status_reading">Reading</string>
+    <string name="book_detail_more_rule_status_finished">Finished</string>
+    <!-- %1$s is the field, %2$s the op text. -->
+    <string name="book_detail_more_rule_clause">%1$s %2$s</string>
+    <!-- Joins two clauses. -->
+    <string name="book_detail_more_rule_and">%1$s and %2$s</string>
+    <string name="book_detail_more_rule_or">%1$s or %2$s</string>
+    <!-- %1$s is the first clause, %2$d how many rules follow it. -->
+    <string name="book_detail_more_rule_more">%1$s + %2$d more</string>
+</resources>
