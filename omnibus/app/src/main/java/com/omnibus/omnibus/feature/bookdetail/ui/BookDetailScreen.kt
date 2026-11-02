@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -25,6 +23,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,10 +54,14 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailScreenState
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.BookDetailViewModel
-import com.omnibus.omnibus.feature.bookdetail.rememberBookDetailTabController
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.stage.BookStage
+import com.omnibus.omnibus.feature.bookdetail.stage.LocalBookStageWashPose
 import com.omnibus.omnibus.feature.bookdetail.stage.rememberBookAccent
+import com.omnibus.omnibus.feature.bookdetail.tabs.BookDetailTabHost
+import com.omnibus.omnibus.feature.bookdetail.tabs.rememberBookDetailTabController
+import com.omnibus.omnibus.feature.bookdetail.tabs.rememberTabWashPose
+import com.omnibus.omnibus.feature.bookdetail.tabs.tabHostMinHeight
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
 import com.omnibus.omnibus.ui.components.ErrorStateView
@@ -153,9 +156,10 @@ internal fun BookDetailScreenContent(
 
     // One context per (book, accent, reloadKey, tabs); callbacks go through rememberUpdatedState so the context never
     // changes on recomposition or scroll.
+    val tabState = if (content != null) rememberBookDetailTabController(scrollState, reducedMotion) else null
     val context: BookDetailSectionContext? = content?.let { c ->
         val accent = rememberBookAccent(c.book)
-        val tabs = rememberBookDetailTabController()
+        val tabs = checkNotNull(tabState)
         val navigate by rememberUpdatedState(onNavigate)
         val changed by rememberUpdatedState(onBookChanged)
         val reload by rememberUpdatedState(onReloadBook)
@@ -219,10 +223,23 @@ internal fun BookDetailScreenContent(
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         val viewportHeight = maxHeight
                         Column(Modifier.fillMaxSize().verticalScroll(scrollState).testTag(BookDetailTestTags.SCROLL)) {
-                            if (context != null) BookStage(context, slots, reducedMotion)
-                            BookDetailTabArea(
-                                minHeight = (viewportHeight - statusTop - TopBarRowHeight - actionAreaDp).coerceAtLeast(0.dp),
-                            )
+                            if (context != null && tabState != null) {
+                                CompositionLocalProvider(
+                                    LocalBookStageWashPose provides rememberTabWashPose({ tabState.selected }, reducedMotion),
+                                ) {
+                                    BookStage(context, slots, reducedMotion)
+                                }
+                                val pinTop = statusTop + TopBarRowHeight
+                                BookDetailTabHost(
+                                    state = tabState,
+                                    context = context,
+                                    slots = slots,
+                                    scrollState = scrollState,
+                                    pinTop = pinTop,
+                                    minHeight = tabHostMinHeight(viewportHeight, pinTop, actionAreaDp),
+                                    reducedMotion = reducedMotion,
+                                )
+                            }
                             Spacer(Modifier.height(actionAreaDp))
                         }
                     }
@@ -266,16 +283,6 @@ internal fun BookDetailScreenContent(
                 .padding(start = 12.dp, end = 12.dp, bottom = actionAreaDp + 12.dp),
         )
     }
-}
-
-/**
- * The tab mount point below the stage. #94 mounts the tab strip and panel host here (overviewSections,
- * reviewsSections, highlightsSections, filesSections); #93 renders none of them. The minimum height lets the stage
- * scroll fully under the top bar with no tab content (R16).
- */
-@Composable
-private fun BookDetailTabArea(minHeight: Dp, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().heightIn(min = minHeight).testTag(BookDetailTestTags.TAB_AREA))
 }
 
 /** The user-facing text for [error]. */

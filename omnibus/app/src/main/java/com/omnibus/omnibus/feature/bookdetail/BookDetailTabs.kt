@@ -1,6 +1,5 @@
 package com.omnibus.omnibus.feature.bookdetail
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 import com.omnibus.omnibus.feature.bookdetail.tabs.BookDetailAnchorElement
@@ -37,7 +36,3 @@ internal object InertBookDetailTabController : BookDetailTabController {
     override fun jumpTo(tab: BookDetailTab) = Unit
     override fun scrollTo(anchor: BookDetailAnchor) = Unit
 }
-
-/** The tab controller the page hands to its sections. */
-@Composable
-fun rememberBookDetailTabController(): BookDetailTabController = InertBookDetailTabController
