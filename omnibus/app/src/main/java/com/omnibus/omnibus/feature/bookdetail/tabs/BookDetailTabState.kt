@@ -1,10 +1,34 @@
 package com.omnibus.omnibus.feature.bookdetail.tabs
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.feature.bookdetail.BookDetailAnchor
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
+import com.omnibus.omnibus.feature.bookdetail.BookDetailTabController
+import com.omnibus.omnibus.ui.theme.Motion
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** The height of the tab strip, below the stage. */
 internal val TabStripHeight = 50.dp
@@ -58,6 +82,123 @@ internal fun anchorScrollTarget(
     clearance: Int,
     maxScroll: Int,
 ): Int = (anchorContentY - pinTop - stripHeight - clearance).coerceIn(0, max(0, maxScroll))
+
+/** Moves the page's scroll value. Suspends so an animated scroll can be awaited and cancelled. */
+fun interface PageScroller {
+    suspend fun scrollTo(valuePx: Int)
+}
+
+/**
+ * The page's tab controller. It owns the selected tab, the entry direction of the last change, and the anchor
+ * registry the panels report into. Positions are in pixels: the host writes the strip's and the pin's geometry, and
+ * [anchorTopInHost] is a test seam for an anchor's position (null uses the registry).
+ */
+@Stable
+internal class BookDetailTabState(
+    private val selectedState: MutableState<BookDetailTab>,
+    private val scope: CoroutineScope,
+    private val scroller: PageScroller,
+    private val maxScroll: () -> Int,
+    anchorTopInHost: ((BookDetailAnchor) -> Int?)? = null,
+) : BookDetailTabController, BookDetailAnchorRegistry {
+
+    override val selected: BookDetailTab get() = selectedState.value
+
+    /** +1 when the last change moved right, -1 when it moved left, 0 when there was no entrance (open or restore). */
+    var entryDirection by mutableIntStateOf(0)
+        private set
+
+    /** The tab whose panel is at rest, or null while its entrance runs. A cancelled entrance never sets it. */
+    var settledTab: BookDetailTab? by mutableStateOf(selectedState.value)
+
+    /** The strip's top in the page's content, or -1 until the host is placed. */
+    var stripTopPx by mutableIntStateOf(-1)
+    var pinTopPx by mutableIntStateOf(0)
+    var stripHeightPx by mutableIntStateOf(0)
+    var clearancePx by mutableIntStateOf(0)
+
+    /** The host's coordinates, from which anchor positions are measured. Not state: only read when scrolling. */
+    var hostCoordinates: LayoutCoordinates? = null
+
+    private val anchors = mutableStateMapOf<BookDetailAnchor, LayoutCoordinates>()
+    private val locate: (BookDetailAnchor) -> Int? = anchorTopInHost ?: { registryTop(it) }
+    private var pending: Job? = null
+
+    override fun select(tab: BookDetailTab) {
+        pending?.cancel()
+        change(tab)
+    }
+
+    override fun jumpTo(tab: BookDetailTab) {
+        pending?.cancel()
+        change(tab)
+        pending = scope.launch { scrollStripToPin() }
+    }
+
+    override fun scrollTo(anchor: BookDetailAnchor) {
+        pending?.cancel()
+        val tab = anchor.tab
+        change(tab)
+        pending = scope.launch {
+            val top = withTimeoutOrNull(ANCHOR_WAIT_MILLIS) {
+                snapshotFlow { if (settledTab == tab) locate(anchor) else null }.filterNotNull().first()
+            }
+            if (top == null) {
+                scrollStripToPin()
+            } else {
+                scroller.scrollTo(anchorScrollTarget(stripTopPx + top, pinTopPx, stripHeightPx, clearancePx, maxScroll()))
+            }
+        }
+    }
+
+    override fun register(anchor: BookDetailAnchor, coordinates: LayoutCoordinates) {
+        anchors[anchor] = coordinates
+    }
+
+    override fun unregister(anchor: BookDetailAnchor, coordinates: LayoutCoordinates) {
+        if (anchors[anchor] === coordinates) anchors.remove(anchor)
+    }
+
+    /** The coordinates currently registered for [anchor], or null. */
+    fun registeredCoordinates(anchor: BookDetailAnchor): LayoutCoordinates? = anchors[anchor]
+
+    private fun change(tab: BookDetailTab) {
+        val direction = tabEntryDirection(selected, tab) ?: return
+        entryDirection = direction
+        settledTab = null
+        selectedState.value = tab
+    }
+
+    private suspend fun scrollStripToPin() {
+        if (stripTopPx >= 0) scroller.scrollTo(jumpScrollTarget(stripTopPx, pinTopPx, maxScroll()))
+    }
+
+    private fun registryTop(anchor: BookDetailAnchor): Int? {
+        val host = hostCoordinates?.takeIf { it.isAttached } ?: return null
+        val target = anchors[anchor]?.takeIf { it.isAttached } ?: return null
+        return host.localPositionOf(target, Offset.Zero).y.roundToInt()
+    }
+}
+
+/**
+ * The page's real tab controller, kept for the life of the screen's nav entry. The selected tab is saved, so it
+ * survives configuration change and returning from the reader; [reducedMotion] makes scrolls instant.
+ */
+@Composable
+internal fun rememberBookDetailTabController(scrollState: ScrollState, reducedMotion: Boolean): BookDetailTabState {
+    val selected = rememberSaveable { mutableStateOf(BookDetailTab.Overview) }
+    val scope = rememberCoroutineScope()
+    return remember(selected, scope, scrollState, reducedMotion) {
+        BookDetailTabState(
+            selectedState = selected,
+            scope = scope,
+            scroller = PageScroller { value ->
+                if (reducedMotion) scrollState.scrollTo(value) else scrollState.animateScrollTo(value, Motion.settle())
+            },
+            maxScroll = { scrollState.maxValue },
+        )
+    }
+}
 
 /**
  * The minimum height of the tab host. It is the viewport minus the top bar and the action area, plus a little slack,
