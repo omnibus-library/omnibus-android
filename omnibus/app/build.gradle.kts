@@ -6,6 +6,32 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// The app version. release-please rewrites the version on this line in each release PR
+// (see the Releases section of the repo README); do not edit it by hand.
+val appVersionName = "0.0.0" // x-release-please-version
+
+// versionCode = major * 10000 + minor * 100 + patch, so it grows with every release.
+// minor and patch must stay below 100 or two versions would share a code.
+val appVersionCode: Int = run {
+    val match = requireNotNull(Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(appVersionName)) {
+        "appVersionName must be X.Y.Z, was '$appVersionName'"
+    }
+    val (major, minor, patch) = match.destructured.toList().map(String::toInt)
+    require(minor in 0..99 && patch in 0..99) {
+        "appVersionName '$appVersionName': minor and patch must be 0..99 for versionCode"
+    }
+    (major * 10000 + minor * 100 + patch).coerceAtLeast(1)
+}
+
+// Release signing comes from the environment (CI secrets, or a local keystore). Without all
+// four values the release build is left unsigned, so builds and tests need no secrets.
+val releaseKeystore = providers.environmentVariable("OMNIBUS_RELEASE_KEYSTORE").orNull
+val releaseKeystorePassword = providers.environmentVariable("OMNIBUS_RELEASE_KEYSTORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("OMNIBUS_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("OMNIBUS_RELEASE_KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(releaseKeystore, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.omnibus.omnibus"
     compileSdk {
@@ -16,14 +42,28 @@ android {
         applicationId = "com.omnibus.omnibus"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystore!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             optimization {
                 enable = false
             }
