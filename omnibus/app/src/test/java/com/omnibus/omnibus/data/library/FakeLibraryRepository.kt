@@ -43,7 +43,29 @@ class FakeLibraryRepository : LibraryRepository {
         if (script != null) script(this) else emit(defaultResult)
     }
 
-    override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flowOf(RecentProgressResult.Success(emptyList()))
+    /** The number of [getRecentProgressFlow] calls, in call order. */
+    var recentProgressRequests = 0
+
+    private val recentScripts = ArrayDeque<suspend FlowCollector<RecentProgressResult>.() -> Unit>()
+
+    /** Emitted by [getRecentProgressFlow] when no script is queued. */
+    var defaultRecentProgress: RecentProgressResult = RecentProgressResult.Success(emptyList())
+
+    /** Queues a [getRecentProgressFlow] call that emits [result] once. */
+    fun enqueueRecent(result: RecentProgressResult) {
+        recentScripts.addLast { emit(result) }
+    }
+
+    /** Queues a [getRecentProgressFlow] call that holds until [deferred] completes. */
+    fun enqueueRecent(deferred: CompletableDeferred<RecentProgressResult>) {
+        recentScripts.addLast { emit(deferred.await()) }
+    }
+
+    override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flow {
+        recentProgressRequests++
+        val script = recentScripts.removeFirstOrNull()
+        if (script != null) script(this) else emit(defaultRecentProgress)
+    }
 
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.Success(emptyList()))
 

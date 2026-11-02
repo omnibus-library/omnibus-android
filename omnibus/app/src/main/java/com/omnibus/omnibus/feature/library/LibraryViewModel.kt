@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
@@ -10,9 +11,12 @@ import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
+import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.data.library.RecentProgressResult
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
+import com.omnibus.omnibus.di.TimeSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +38,8 @@ class LibraryViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val sortPreferenceStore: LibrarySortPreferenceStore,
     private val connectivityMonitor: ConnectivityMonitor,
+    private val bookAvailability: BookAvailability,
+    private val timeSource: TimeSource,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -47,6 +53,10 @@ class LibraryViewModel @Inject constructor(
     private var reloadToken = 0
     private var reloadJob: Job? = null
     private var loadMoreJob: Job? = null
+
+    /** Bumped by every resume-point load, so a superseded load cannot overwrite a newer one. */
+    private var resumeToken = 0
+    private var resumeJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -64,8 +74,55 @@ class LibraryViewModel @Inject constructor(
     /** Reloads the first page after a full-screen error. */
     fun retry() = reload(refreshing = false)
 
-    /** Reloads the first page for pull to refresh. The result replaces the list wholesale. */
-    fun refresh() = reload(refreshing = true)
+    /** Reloads the first page and the Continue cards for pull to refresh. The result replaces the list wholesale. */
+    fun refresh() {
+        reload(refreshing = true)
+        loadResumePoints()
+    }
+
+    /** Loads the Continue cards. Called each time the Library is shown, so returning from the reader shows the new position. */
+    fun libraryShown() = loadResumePoints()
+
+    /**
+     * Selects the card at the pager's settled page. Ignored for an unknown id, and for the card that
+     * is already selected.
+     */
+    fun continueCardSettled(cardId: String) {
+        val state = _uiState.value
+        if (cardId == state.continueSelectedId) return
+        if (state.continueCards.none { it.id == cardId }) return
+        _uiState.update { it.copy(continueSelectedId = cardId) }
+    }
+
+    /**
+     * Opens the card [cardId] when its book can be opened for its medium, and otherwise raises
+     * [LibraryUIState.unavailableBook]. Does nothing for an unknown card id.
+     */
+    fun resume(cardId: String) {
+        val card = _uiState.value.continueCards.firstOrNull { it.id == cardId } ?: return
+        viewModelScope.launch {
+            if (bookAvailability.canOpen(card.book.uuid, card.medium)) {
+                val target = if (card.medium == ProgressFormat.Reading) {
+                    ResumeTarget.Reader(card.book.uuid)
+                } else {
+                    ResumeTarget.Player(card.book.uuid, card.resumeFileId)
+                }
+                _uiState.update { it.copy(pendingResume = target) }
+            } else {
+                _uiState.update { it.copy(unavailableBook = UnavailableBook(card.book.displayTitle, card.medium)) }
+            }
+        }
+    }
+
+    /** Clears the one-shot [LibraryUIState.pendingResume] once the screen has opened the destination. */
+    fun resumeHandled() {
+        _uiState.update { it.copy(pendingResume = null) }
+    }
+
+    /** Clears the one-shot [LibraryUIState.unavailableBook] once the alert is dismissed. */
+    fun unavailableDismissed() {
+        _uiState.update { it.copy(unavailableBook = null) }
+    }
 
     /**
      * Fetches the next page when [lastVisibleIndex] is close enough to the end of the loaded books.
@@ -162,6 +219,27 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Loads the recent progress into the Continue cards. A failure keeps the cards already shown and
+     * raises no error, since the grid reports server trouble itself. Only the newest load may apply.
+     */
+    private fun loadResumePoints() {
+        val token = ++resumeToken
+        resumeJob?.cancel()
+        resumeJob = viewModelScope.launch {
+            val result = libraryRepository.getRecentProgressFlow().last()
+            if (token != resumeToken) return@launch
+            if (result !is RecentProgressResult.Success) return@launch
+            val cards = continueCardsOf(result.points, timeSource.nowMillis())
+            _uiState.update {
+                it.copy(
+                    continueCards = cards,
+                    continueSelectedId = selectionAfterRefresh(it.continueSelectedId, cards.map(ContinueCard::id)),
+                )
+            }
+        }
+    }
+
     /** Saves the current sort and direction. The category is never saved. */
     private fun persistSort() {
         val state = _uiState.value
@@ -221,6 +299,10 @@ class LibraryViewModel @Inject constructor(
  * @property direction The order the sort key runs in.
  * @property scrollToTop A one-shot request to scroll the grid to its first item after a query change. Cleared by [LibraryViewModel.scrolledToTop].
  * @property isOffline Whether the device has no validated network. Drives the masthead's Offline pill.
+ * @property continueCards The Continue carousel's cards, in server order, at most five.
+ * @property continueSelectedId The id of the card the carousel is on, kept across reloads while the card is still listed.
+ * @property pendingResume A one-shot request to open a reader or player for a card. Cleared by [LibraryViewModel.resumeHandled].
+ * @property unavailableBook A one-shot request to show the "can't open offline" alert. Cleared by [LibraryViewModel.unavailableDismissed].
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -236,6 +318,10 @@ data class LibraryUIState(
     val direction: SortDirection = SortDirection.Desc,
     val scrollToTop: Boolean = false,
     val isOffline: Boolean = false,
+    val continueCards: List<ContinueCard> = emptyList(),
+    val continueSelectedId: String? = null,
+    val pendingResume: ResumeTarget? = null,
+    val unavailableBook: UnavailableBook? = null,
 ) {
 
     /** Whether the books are narrowed or reordered from the default view. Hidden formats never count. */
@@ -282,3 +368,16 @@ sealed interface LibraryUIError {
     /** The repository reported [error]. */
     data class Failed(val error: LibraryError) : LibraryUIError
 }
+
+/** Where a Continue card's resume leads. The screen opens the reader or the player stub for it. */
+sealed interface ResumeTarget {
+
+    /** Opens the EPUB reader for [bookUuid]. */
+    data class Reader(val bookUuid: String) : ResumeTarget
+
+    /** Opens the player stub for [bookUuid], with the saved file when there is one. */
+    data class Player(val bookUuid: String, val bookFileId: Long?) : ResumeTarget
+}
+
+/** A card that cannot open right now: its [title] and the [medium] that was asked for. */
+data class UnavailableBook(val title: String, val medium: ProgressFormat)

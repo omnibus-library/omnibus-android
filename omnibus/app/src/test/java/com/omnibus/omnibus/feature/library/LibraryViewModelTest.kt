@@ -1,19 +1,26 @@
 package com.omnibus.omnibus.feature.library
 
+import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
+import com.omnibus.omnibus.data.library.FakeBookAvailability
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
+import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.data.library.RecentProgressResult
+import com.omnibus.omnibus.data.library.ResumePoint
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.FakeLibrarySortPreferenceStore
 import com.omnibus.omnibus.data.library.page
 import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.testResumePoint
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -27,6 +34,9 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
+/** The fixed "now" the Continue cards' relative times are measured from, in milliseconds. */
+private const val NOW = 1_780_000_000_000L
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModelTest : DescribeSpec({
 
@@ -39,7 +49,9 @@ class LibraryViewModelTest : DescribeSpec({
         repo: FakeLibraryRepository,
         store: FakeLibrarySortPreferenceStore = FakeLibrarySortPreferenceStore(),
         monitor: ConnectivityMonitor = FakeConnectivityMonitor(),
-    ) = LibraryViewModel(repo, store, monitor).also {
+        availability: BookAvailability = FakeBookAvailability(),
+        time: TimeSource = TimeSource { NOW },
+    ) = LibraryViewModel(repo, store, monitor, availability, time).also {
         collecting.collect(it.uiState)
     }
 
@@ -830,4 +842,247 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.uiState.value.isOffline shouldBe true
         }
     }
+    describe("#22 continue cards") {
+
+        /** A reading record for book [id], uuid `b<id>`. */
+        fun reading(id: Long, formats: List<String> = listOf("epub")) =
+            testResumePoint(book = testBook(id, uniqueIdentifier = "b$id", formats = formats), progressPercent = 10.0)
+
+        /** A listening record for book [id], uuid `b<id>`. */
+        fun listening(id: Long, formats: List<String>, fileId: Long? = null) = testResumePoint(
+            book = testBook(id, uniqueIdentifier = "b$id", formats = formats),
+            format = ProgressFormat.Listening,
+            audioPositionSeconds = 600.0,
+            totalDurationSeconds = 3600.0,
+            bookFileId = fileId,
+        )
+
+        fun success(vararg points: ResumePoint) = RecentProgressResult.Success(points.toList())
+
+        /** A VM whose first load of the Continue cards has completed with [points]. */
+        fun loadedWith(vararg points: ResumePoint): LibraryViewModel {
+            repository.enqueueRecent(success(*points))
+            return createViewModel().also { it.libraryShown() }
+        }
+
+        val both = listOf("epub", "m4b")
+
+        it("#22 TC-18: keeps the first five cards in server order, with distinct ids for one book's two media") {
+            repository.enqueueRecent(
+                success(
+                    reading(1, both),
+                    listening(1, both),
+                    reading(2),
+                    reading(3),
+                    reading(4),
+                    reading(5),
+                    reading(6),
+                ),
+            )
+            val viewModel = createViewModel()
+
+            viewModel.libraryShown()
+
+            val state = viewModel.uiState.value
+            state.continueCards.map { it.id } shouldBe listOf("b1:epub", "b1:audio", "b2:epub", "b3:epub", "b4:epub")
+            state.continueSelectedId shouldBe "b1:epub"
+        }
+
+        it("#22 TC-19: an empty list clears the cards and the selection") {
+            val viewModel = loadedWith(reading(1), reading(2))
+            viewModel.uiState.value.continueSelectedId shouldBe "b1:epub"
+
+            repository.enqueueRecent(success())
+            viewModel.libraryShown()
+
+            viewModel.uiState.value.continueCards shouldBe emptyList()
+            viewModel.uiState.value.continueSelectedId shouldBe null
+        }
+
+        val failures = listOf(RecentProgressResult.Failure(LibraryError.Unreachable), RecentProgressResult.NoServer)
+        failures.forEach { failure ->
+            it("#22 TC-20: a failed load ($failure) keeps the cards it had and raises no error") {
+                val viewModel = createViewModel()
+                repository.enqueueRecent(failure)
+                viewModel.libraryShown()
+
+                viewModel.uiState.value.continueCards shouldBe emptyList()
+                viewModel.uiState.value.error shouldBe null
+                viewModel.uiState.value.transientError shouldBe null
+
+                repository.enqueueRecent(success(reading(1), reading(2)))
+                viewModel.libraryShown()
+                val before = viewModel.uiState.value
+
+                repository.enqueueRecent(failure)
+                viewModel.libraryShown()
+
+                viewModel.uiState.value.continueCards shouldBe before.continueCards
+                viewModel.uiState.value.continueSelectedId shouldBe before.continueSelectedId
+                viewModel.uiState.value.error shouldBe null
+                viewModel.uiState.value.transientError shouldBe null
+            }
+        }
+
+        it("#22 TC-21: showing the Library again reloads the cards and applies the second result") {
+            val viewModel = loadedWith(reading(1))
+
+            repository.enqueueRecent(success(reading(2)))
+            viewModel.libraryShown()
+
+            repository.recentProgressRequests shouldBe 2
+            viewModel.uiState.value.continueCards.map { it.id } shouldBe listOf("b2:epub")
+        }
+
+        it("#22 TC-21: refresh reloads the books and the cards, and each load is independent of the other") {
+            repository.enqueue(page(1L, 2L))
+            val viewModel = createViewModel()
+            viewModel.libraryShown()
+            val booksBefore = repository.pageRequests.size
+            val cardsBefore = repository.recentProgressRequests
+
+            repository.enqueue(page(1L, 2L))
+            repository.enqueueRecent(success(reading(3)))
+            viewModel.refresh()
+
+            repository.pageRequests.size shouldBe booksBefore + 1
+            repository.recentProgressRequests shouldBe cardsBefore + 1
+            viewModel.uiState.value.continueCards.map { it.id } shouldBe listOf("b3:epub")
+
+            repository.enqueue(LibraryPageResult.Failure(LibraryError.Unreachable))
+            repository.enqueueRecent(success(reading(3)))
+            viewModel.refresh()
+            viewModel.uiState.value.continueCards.map { it.id } shouldBe listOf("b3:epub")
+
+            repository.enqueueRecent(RecentProgressResult.Failure(LibraryError.Unreachable))
+            val booksShown = viewModel.uiState.value.books
+            val errorShown = viewModel.uiState.value.error
+            viewModel.libraryShown()
+            viewModel.uiState.value.books shouldBe booksShown
+            viewModel.uiState.value.error shouldBe errorShown
+        }
+
+        it("#22 TC-22: a stale load cannot overwrite a newer one") {
+            val viewModel = createViewModel()
+            val first = CompletableDeferred<RecentProgressResult>()
+            repository.enqueueRecent(first)
+            repository.enqueueRecent(success(reading(2)))
+
+            viewModel.libraryShown()
+            viewModel.libraryShown()
+            first.complete(success(reading(1)))
+
+            viewModel.uiState.value.continueCards.map { it.id } shouldBe listOf("b2:epub")
+        }
+
+        it("#22 TC-23: a refresh that moves the visible card keeps it selected") {
+            val viewModel = loadedWith(reading(0), reading(1), reading(2))
+            viewModel.continueCardSettled("b2:epub")
+
+            repository.enqueueRecent(success(reading(2), reading(0)))
+            viewModel.libraryShown()
+
+            viewModel.uiState.value.continueSelectedId shouldBe "b2:epub"
+        }
+
+        it("#22 TC-23: a refresh that drops the visible card selects the new first card") {
+            val viewModel = loadedWith(reading(0), reading(1), reading(2))
+            viewModel.continueCardSettled("b2:epub")
+
+            repository.enqueueRecent(success(reading(0), reading(1)))
+            viewModel.libraryShown()
+
+            viewModel.uiState.value.continueSelectedId shouldBe "b0:epub"
+        }
+
+        it("#22 TC-23: the last of three selected, then a list of one, selects that one") {
+            val viewModel = loadedWith(reading(0), reading(1), reading(2))
+            viewModel.continueCardSettled("b2:epub")
+
+            repository.enqueueRecent(success(reading(5)))
+            viewModel.libraryShown()
+
+            viewModel.uiState.value.continueSelectedId shouldBe "b5:epub"
+        }
+
+        it("#22 TC-24: settling selects the card, and an unknown id is ignored") {
+            val viewModel = loadedWith(reading(1), reading(2))
+
+            viewModel.continueCardSettled("b2:epub")
+            viewModel.uiState.value.continueSelectedId shouldBe "b2:epub"
+
+            viewModel.continueCardSettled("missing:epub")
+            viewModel.uiState.value.continueSelectedId shouldBe "b2:epub"
+        }
+
+        val resumeRows = listOf(
+            ResumeRow("reading card, can open", reading(1), answer = true, target = ResumeTarget.Reader("b1"), unavailable = null, medium = ProgressFormat.Reading),
+            ResumeRow("reading card, cannot open", reading(1), answer = false, target = null, unavailable = UnavailableBook("Book 1", ProgressFormat.Reading), medium = ProgressFormat.Reading),
+            ResumeRow("listening card, can open", listening(3, listOf("m4b"), fileId = 20), answer = true, target = ResumeTarget.Player("b3", 20), unavailable = null, medium = ProgressFormat.Listening),
+            ResumeRow("listening card, cannot open", listening(3, listOf("m4b"), fileId = 20), answer = false, target = null, unavailable = UnavailableBook("Book 3", ProgressFormat.Listening), medium = ProgressFormat.Listening),
+            ResumeRow("listening record on an ebook-only book", listening(4, listOf("epub")), answer = true, target = ResumeTarget.Reader("b4"), unavailable = null, medium = ProgressFormat.Reading),
+        )
+        resumeRows.forEach { row ->
+            it("#22 TC-25: ${row.name} routes to ${row.target ?: row.unavailable}") {
+                val availability = FakeBookAvailability(row.answer)
+                val viewModel = viewModelFor(repository, sortStore, availability = availability)
+                repository.enqueueRecent(success(row.point))
+                viewModel.libraryShown()
+
+                viewModel.resume(viewModel.uiState.value.continueCards.single().id)
+
+                val state = viewModel.uiState.value
+                state.pendingResume shouldBe row.target
+                state.unavailableBook shouldBe row.unavailable
+                availability.calls shouldBe listOf(row.point.book.uuid to row.medium)
+            }
+        }
+
+        it("#22 TC-25: an unknown card id changes nothing and does not ask the guard") {
+            val availability = FakeBookAvailability()
+            val viewModel = viewModelFor(repository, sortStore, availability = availability)
+            repository.enqueueRecent(success(reading(1)))
+            viewModel.libraryShown()
+            val before = viewModel.uiState.value
+
+            viewModel.resume("missing:epub")
+
+            viewModel.uiState.value shouldBe before
+            availability.calls shouldBe emptyList()
+        }
+
+        it("#22 TC-26: resumeHandled clears the pending resume") {
+            val viewModel = viewModelFor(repository, sortStore, availability = FakeBookAvailability(true))
+            repository.enqueueRecent(success(reading(1)))
+            viewModel.libraryShown()
+            viewModel.resume("b1:epub")
+            viewModel.uiState.value.pendingResume shouldBe ResumeTarget.Reader("b1")
+
+            viewModel.resumeHandled()
+
+            viewModel.uiState.value.pendingResume shouldBe null
+        }
+
+        it("#22 TC-26: unavailableDismissed clears the alert") {
+            val viewModel = viewModelFor(repository, sortStore, availability = FakeBookAvailability(false))
+            repository.enqueueRecent(success(reading(1)))
+            viewModel.libraryShown()
+            viewModel.resume("b1:epub")
+            viewModel.uiState.value.unavailableBook shouldBe UnavailableBook("Book 1", ProgressFormat.Reading)
+
+            viewModel.unavailableDismissed()
+
+            viewModel.uiState.value.unavailableBook shouldBe null
+        }
+    }
 })
+
+/** One TC-25 row: the card to resume and the result it should produce. */
+private data class ResumeRow(
+    val name: String,
+    val point: ResumePoint,
+    val answer: Boolean,
+    val target: ResumeTarget?,
+    val unavailable: UnavailableBook?,
+    val medium: ProgressFormat,
+)
