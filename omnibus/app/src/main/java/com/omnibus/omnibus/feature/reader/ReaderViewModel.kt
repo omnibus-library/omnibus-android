@@ -97,6 +97,12 @@ class ReaderViewModel @AssistedInject constructor(
     /** Whether a sync offer was accepted or dismissed. Neither re-arms for this open. */
     private var offerSettled = false
 
+    /** Holds back a percent-only open's writes until the reader moves. */
+    private var gate = PersistGate(held = false)
+
+    /** Keeps the stored percent from falling while reading forward from the opened position. */
+    private var floor = PercentFloor(openedPercent = null)
+
     init {
         loadBook()
         resolveOpening()
@@ -195,13 +201,15 @@ class ReaderViewModel @AssistedInject constructor(
     private fun record(data: RelocateData) {
         val first = !sawFirstRelocate
         sawFirstRelocate = true
+        if (!gate.admit(data)) return
+        val percent = floor.percentFor(data)
         val cfi = data.cfi?.takeIf { it.isNotBlank() } ?: return
         if (first || data.echo || cfi == lastSaved?.cfi) return
         persist(
             ReadingPosition(
                 bookUuid = bookUuid,
                 cfi = cfi,
-                percent = data.pct.takeIf { data.totalPages > 0 },
+                percent = percent,
                 clientUpdatedAt = timeSource.nowMillis() / 1000,
             ),
         )
@@ -238,6 +246,7 @@ class ReaderViewModel @AssistedInject constructor(
         val start = openingStart as? ReaderStart.AtPercent ?: return
         if (openingSeekSent || start.bootCfi != null) return
         openingSeekSent = true
+        gate.onSeekSent()
         _commands.trySend(ReaderCommand.Seek(start.fraction))
     }
 
@@ -246,6 +255,8 @@ class ReaderViewModel @AssistedInject constructor(
         val offer = _uiState.value.syncOffer ?: return
         offerSettled = true
         _uiState.update { it.copy(syncOffer = null) }
+        // The reader's own choice, so a held percent-only open may now be written.
+        gate.release()
         when (val target = offer.target) {
             is ReaderStart.AtCfi -> _commands.trySend(ReaderCommand.Display(target.cfi))
             is ReaderStart.AtPercent -> _commands.trySend(ReaderCommand.Seek(target.fraction))
@@ -311,6 +322,8 @@ class ReaderViewModel @AssistedInject constructor(
     private fun begin(start: ReaderStart, openedPercent: Int?) {
         openingStart = start
         this.openedPercent = openedPercent
+        gate = PersistGate(held = start is ReaderStart.AtPercent)
+        floor = PercentFloor(openedPercent)
         _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
     }
 

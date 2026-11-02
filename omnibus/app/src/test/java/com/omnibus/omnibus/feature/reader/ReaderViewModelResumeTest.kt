@@ -440,4 +440,104 @@ class ReaderViewModelResumeTest : DescribeSpec({
             commands shouldContainExactly listOf(ReaderCommand.Seek(0.4))
         }
     }
+
+    describe("percent-only hold and floor") {
+
+        fun ReaderViewModel.at(cfi: String?, pct: Int, echo: Boolean = false, settled: Int? = null) =
+            onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = cfi, pct = pct, totalPages = 100, echo = echo, settledSeek = settled)))
+
+        // TC-98: a percent-only open writes nothing until the reader moves off the landing.
+        it("TC-98: a percent-only open writes nothing until the reader moves") {
+            // Seek path: a local percent-only position (nothing adopted), the boot landing, then the seek's own landing.
+            fake.stored["book-1"] = ReadingPosition("book-1", null, 57, 100)
+            val seekVm = openedViewModel()
+            advance(0)
+            seekVm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
+            seekVm.at("epubcfi(/6/2)", pct = 3)
+            seekVm.at("epubcfi(/6/20)", pct = 57, settled = 1)
+            seekVm.onReaderStopped()
+            seekVm.onReaderClosed()
+            scheduler.runCurrent()
+            fake.saves.shouldBeEmpty()
+
+            // Derived path: a server percent-only record with a derived CFI. Adopting it at open saves it
+            // once (R17, with the server's own value and clock, not pushed). The page's echo landing, the
+            // same-CFI relocate and the close add nothing.
+            fake = FakeProgressRepository().apply {
+                serverResult = ServerPositionResult.Found(
+                    ServerReadingPosition(cfi = null, percent = 57, derivedCfi = "epubcfi(/6/9)", updatedAt = 0, clientUpdatedAt = 200),
+                )
+                serverDelayMillis = 100
+            }
+            val derivedVm = openedViewModel()
+            advance(100)
+            derivedVm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
+            derivedVm.at("epubcfi(/6/9)", pct = 57, echo = true)
+            derivedVm.at("epubcfi(/6/9)", pct = 57)
+            derivedVm.onReaderStopped()
+            derivedVm.onReaderClosed()
+            scheduler.runCurrent()
+            fake.saves shouldBe listOf(
+                FakeProgressRepository.Save(ReadingPosition("book-1", null, 57, 200), push = false),
+            )
+        }
+
+        // TC-99: the reader's own move releases the hold and is pushed on close; an accepted offer
+        // releases it too, and the landing of that move is saved.
+        it("TC-99: the reader's own move or an accepted offer releases the hold") {
+            fake.stored["book-1"] = ReadingPosition("book-1", null, 57, 100)
+            val vm = openedViewModel()
+            advance(0)
+            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
+            vm.at("epubcfi(/6/2)", pct = 3)
+            vm.at("epubcfi(/6/20)", pct = 57, settled = 1)
+            vm.at("epubcfi(/6/24)", pct = 60)
+            vm.onReaderClosed()
+            scheduler.runCurrent()
+
+            fake.saves.map { it.position.cfi }.distinct() shouldContainExactly listOf("epubcfi(/6/24)")
+            fake.saves.last() shouldBe FakeProgressRepository.Save(
+                ReadingPosition("book-1", "epubcfi(/6/24)", 60, 5_000),
+                push = true,
+            )
+
+            // Accepting a CFI offer during the hold releases it, and the landing is saved.
+            fake = FakeProgressRepository().apply {
+                stored["book-1"] = ReadingPosition("book-1", null, 57, 100)
+                serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/30)", client = 200))
+                serverDelayMillis = 1300
+            }
+            val offered = openedViewModel()
+            val commands = offered.collectCommands()
+            advance(1200)
+            // The deadline passed, so the page opens at the local percent-only position and holds it.
+            offered.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
+            offered.at("epubcfi(/6/2)", pct = 3)
+            advance(100)
+            offered.uiState.value.syncOffer shouldBe SyncOffer(ReaderStart.AtCfi("epubcfi(/6/30)"))
+            offered.onSyncOfferAccepted()
+            offered.at("epubcfi(/6/30)", pct = 60)
+            scheduler.runCurrent()
+
+            commands shouldContainExactly listOf(ReaderCommand.Seek(0.57), ReaderCommand.Display("epubcfi(/6/30)"))
+            fake.saves.map { it.position.cfi } shouldContainExactly listOf("epubcfi(/6/30)")
+        }
+
+        // TC-105: reading forward from an in-time server position never lowers its stored percent.
+        it("TC-105: reading forward never lowers the stored percent") {
+            fake.serverResult = ServerPositionResult.Found(
+                ServerReadingPosition(cfi = "epubcfi(/6/30)", percent = 57, derivedCfi = null, updatedAt = 0, clientUpdatedAt = 200),
+            )
+            fake.serverDelayMillis = 100
+            val vm = openedViewModel()
+            advance(100)
+
+            vm.at("epubcfi(/6/30)", pct = 50, echo = true)
+            vm.at("epubcfi(/6/32)", pct = 52)
+            vm.onReaderClosed()
+            scheduler.runCurrent()
+
+            fake.saves.last().position.percent shouldBe 57
+        }
+    }
 })
