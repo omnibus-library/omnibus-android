@@ -1,0 +1,16 @@
+<resources>
+    <!-- The read status pill's label while the status is not known yet, or the last read failed. -->
+    <string name="book_detail_status_unknown">Reading status</string>
+    <string name="book_detail_status_unread">Unread</string>
+    <string name="book_detail_status_reading">Reading</string>
+    <string name="book_detail_status_finished">Finished</string>
+    <!-- %1$s is the status label, such as Reading. -->
+    <string name="book_detail_status_cd">Read status: %1$s</string>
+    <string name="book_detail_status_cd_unknown">Read status</string>
+    <string name="book_detail_status_menu_label">Read status</string>
+    <string name="book_detail_status_open_menu">Change read status</string>
+    <!-- %1$s is the date the book was finished, such as Oct 29. -->
+    <string name="book_detail_status_finished_on_cd">Finished, %1$s</string>
+    <string name="book_detail_status_save_failed">Your read status wasn\'t saved.</string>
+    <string name="book_detail_status_save_failed_offline">No connection. Your read status wasn\'t saved.</string>
+</resources>
