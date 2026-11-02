@@ -12,6 +12,7 @@ import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.matchers.string.shouldNotContain
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
@@ -159,6 +160,96 @@ class DefaultProgressRepositoryTest : DescribeSpec({
             Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject["epub_cfi"]!!.jsonPrimitive.content shouldBe
                 "epubcfi(/6/8)"
             store.getPositionFlow("book-1").first() shouldBe second
+        }
+    }
+
+    describe("getServerPosition") {
+
+        /** The epub record of a book, as `GET api/progress/{uuid}?format=epub` answers it. */
+        val fullRecord = """
+            {"format":"epub","epub_cfi":"epubcfi(/6/8)","progress_percent":57,"updated_at":1700000500,
+             "client_updated_at":1700000400,"derived_epub_cfi":"epubcfi(/6/8!/4)","kobo_location":null,
+             "resolved":true,"cross_format":false,"furthest":true,"linked":["mobi"]}
+        """.trimIndent()
+
+        it("TC-47: the read requests the epub progress for the uuid, with the uuid as one encoded segment") {
+            server.enqueue(MockResponse.Builder().code(200).body("null").build())
+
+            repositoryFor(server.url("/")).getServerPosition("a b/c") shouldBe ServerPositionResult.None
+
+            server.requestCount shouldBe 1
+            val request = server.takeRequest()
+            request.method shouldBe "GET"
+            request.url.encodedPath shouldBe "/api/progress/a%20b%2Fc"
+            request.url.queryParameter("format") shouldBe "epub"
+        }
+
+        it("TC-48: a body with no epub record is None") {
+            val bodies = listOf(
+                "null",
+                """{"book_uuid":"b","records":[]}""",
+                """{"book_uuid":"b","records":[{"format":"audio","progress_percent":10,"updated_at":1}]}""",
+            )
+            bodies.forEach { body ->
+                server.enqueue(MockResponse.Builder().code(200).body(body).build())
+
+                repositoryFor(server.url("/")).getServerPosition("book-1") shouldBe ServerPositionResult.None
+            }
+        }
+
+        it("TC-50: a record decodes to its domain position, ignoring fields the app does not read") {
+            server.enqueue(MockResponse.Builder().code(200).body("""{"book_uuid":"book-1","records":[$fullRecord]}""").build())
+
+            repositoryFor(server.url("/")).getServerPosition("book-1") shouldBe ServerPositionResult.Found(
+                ServerReadingPosition(
+                    cfi = "epubcfi(/6/8)",
+                    percent = 57,
+                    derivedCfi = "epubcfi(/6/8!/4)",
+                    updatedAt = 1_700_000_500,
+                    clientUpdatedAt = 1_700_000_400,
+                ),
+            )
+
+            // A percent-only record: no own CFI, and the server's derived CFI is kept.
+            val percentOnly = """{"format":"epub","epub_cfi":null,"progress_percent":57,"updated_at":1700000500,""" +
+                """"client_updated_at":1700000400,"derived_epub_cfi":"epubcfi(/6/4)"}"""
+            server.enqueue(MockResponse.Builder().code(200).body("""{"records":[$percentOnly]}""").build())
+            val percentFound = repositoryFor(server.url("/")).getServerPosition("book-1")
+            percentFound.shouldBeInstanceOf<ServerPositionResult.Found>().position.apply {
+                cfi shouldBe null
+                percent shouldBe 57
+                derivedCfi shouldBe "epubcfi(/6/4)"
+            }
+
+            // An old server's record has no client_updated_at, so the ordering clock is updated_at.
+            server.enqueue(
+                MockResponse.Builder().code(200)
+                    .body("""{"records":[{"format":"epub","epub_cfi":"epubcfi(/6/2)","progress_percent":3,"updated_at":1700000600}]}""")
+                    .build(),
+            )
+            val oldServer = repositoryFor(server.url("/")).getServerPosition("book-1")
+            oldServer.shouldBeInstanceOf<ServerPositionResult.Found>().position.apply {
+                clientUpdatedAt shouldBe null
+                orderingClock shouldBe 1_700_000_600
+            }
+        }
+
+        it("TC-53: failed reads return Error without throwing") {
+            val rows = listOf(
+                MockResponse.Builder().code(404).build(),
+                MockResponse.Builder().code(500).build(),
+                MockResponse.Builder().code(401).build(),
+                MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build(),
+                MockResponse.Builder().code(200).body("{not json").build(),
+            )
+            rows.forEach { response ->
+                server.enqueue(response)
+
+                repositoryFor(server.url("/")).getServerPosition("book-1") shouldBe ServerPositionResult.Error
+            }
+
+            // No server saved.
+            repositoryFor(null).getServerPosition("book-1") shouldBe ServerPositionResult.Error
         }
     }
 })

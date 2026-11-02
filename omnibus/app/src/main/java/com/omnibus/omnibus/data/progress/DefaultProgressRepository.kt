@@ -3,6 +3,8 @@ package com.omnibus.omnibus.data.progress
 import android.util.Log
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.progress.local.ReadingPositionStore
+import com.omnibus.omnibus.data.progress.remote.BookProgressResponseDto
+import com.omnibus.omnibus.data.progress.remote.ProgressJson
 import com.omnibus.omnibus.data.progress.remote.ProgressUpdateRequestDto
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.IOException
@@ -35,6 +37,48 @@ class DefaultProgressRepository @Inject constructor(
             store.save(position)
             if (push) push(position) else PositionSaveResult.NotPushed
         }
+
+    /**
+     * One GET of the book's epub record. Not taken under [mutex]: a read never waits for a save, and
+     * a save never waits for a read.
+     */
+    override suspend fun getServerPosition(bookUuid: String): ServerPositionResult = withContext(ioDispatcher) {
+        if (bookUuid.isBlank()) return@withContext ServerPositionResult.None
+        val builder = omnibusHttpClient.request(PROGRESS_PATH) ?: return@withContext ServerPositionResult.Error
+        val url = builder.build().url.newBuilder()
+            .addPathSegment(bookUuid)
+            .addQueryParameter("format", FORMAT_EPUB)
+            .build()
+        val request = builder.url(url).get().build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                if (!response.isSuccessful) {
+                    ServerPositionResult.Error
+                } else {
+                    val body = ProgressJson.decodeFromString<BookProgressResponseDto?>(response.body.string())
+                    val record = body?.records?.firstOrNull { it.format == FORMAT_EPUB }
+                    when {
+                        body == null -> ServerPositionResult.None
+                        record == null -> ServerPositionResult.None
+                        else -> ServerPositionResult.Found(record.toDomain())
+                    }
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server to read a position", ex)
+            ServerPositionResult.Error
+        } catch (ex: IllegalArgumentException) {
+            // SerializationException is a subtype, so a body that doesn't decode lands here too.
+            Log.w(TAG, "Unexpected response to a position read", ex)
+            ServerPositionResult.Error
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure reading a position", ex)
+            ServerPositionResult.Error
+        }
+    }
 
     /** One POST of [position]. The response body is not read. */
     private suspend fun push(position: ReadingPosition): PositionSaveResult = withContext(ioDispatcher) {

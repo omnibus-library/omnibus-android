@@ -8,6 +8,24 @@ interface ProgressRepository {
 
     /** Writes [position] locally, then pushes it when [push]. Calls are applied in call order. Never throws. */
     suspend fun savePosition(position: ReadingPosition, push: Boolean): PositionSaveResult
+
+    /**
+     * The server's epub position for [bookUuid], from `GET api/progress/{uuid}?format=epub`. Never throws.
+     * Without a saved server it is [ServerPositionResult.Error].
+     */
+    suspend fun getServerPosition(bookUuid: String): ServerPositionResult
+}
+
+/** What [ProgressRepository.getServerPosition] found. */
+sealed interface ServerPositionResult {
+    /** The server has an epub record for the book. */
+    data class Found(val position: ServerReadingPosition) : ServerPositionResult
+
+    /** The server has no epub record for the book. */
+    data object None : ServerPositionResult
+
+    /** The read failed: no server is saved, the server answered with an error, or the answer didn't decode. */
+    data object Error : ServerPositionResult
 }
 
 /** What [ProgressRepository.savePosition] did. The local write happens in every case. */
