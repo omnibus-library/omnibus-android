@@ -93,4 +93,133 @@ class BookDecodingTest : DescribeSpec({
             )
         }
     }
+
+    describe("#93 book detail fields") {
+
+        val file = BookFile(
+            id = 1,
+            format = "epub",
+            filename = "a.epub",
+            ordinal = 0,
+            label = null,
+            sizeBytes = 1,
+            etag = null,
+        )
+
+        it("#93 TC-1: year parses an ISO date") {
+            testBook(1, publishedDate = "1925-04-10").year shouldBe 1925
+        }
+
+        it("#93 TC-2: year parses d/m/yyyy") {
+            testBook(1, publishedDate = "8/4/2015").year shouldBe 2015
+        }
+
+        it("#93 TC-3: year is null without a four-digit run") {
+            listOf<String?>("unknown", "", "   ", "99", null).forEach { published ->
+                testBook(1, publishedDate = published).year.shouldBeNull()
+            }
+        }
+
+        it("#93 TC-4: first run of exactly four ASCII digits") {
+            yearIn("12345").shouldBeNull()
+            yearIn("12345 and 1999") shouldBe 1999
+            yearIn("Published 1925 (rev. 1999)") shouldBe 1925
+            yearIn("١٩٢٥").shouldBeNull()
+        }
+
+        it("#93 TC-5: new fields default") {
+            val book = testBook(1)
+
+            book.description.shouldBeNull()
+            book.genres.shouldBeEmpty()
+            book.subjects.shouldBeEmpty()
+            book.publisher.shouldBeNull()
+            book.publishedDate.shouldBeNull()
+            book.language.shouldBeNull()
+            book.isbn13.shouldBeNull()
+            book.seriesId.shouldBeNull()
+            book.isWishlisted shouldBe false
+            book.wishlistSource.shouldBeNull()
+        }
+
+        it("#93 TC-6: isWishlistOnly") {
+            testBook(1, isWishlisted = true).isWishlistOnly shouldBe true
+            testBook(1, isWishlisted = true, bookFiles = listOf(file)).isWishlistOnly shouldBe false
+            testBook(1, bookFiles = listOf(file)).isWishlistOnly shouldBe false
+            testBook(1).isWishlistOnly shouldBe false
+        }
+
+        it("#93 TC-7: testBook carries the new fields") {
+            val book = testBook(
+                1,
+                genres = listOf("Fantasy"),
+                subjects = listOf("t"),
+                publishedDate = "2001",
+                description = "<p>x</p>",
+                seriesId = 4,
+                isWishlisted = true,
+            )
+
+            book.genres shouldBe listOf("Fantasy")
+            book.subjects shouldBe listOf("t")
+            book.publishedDate shouldBe "2001"
+            book.description shouldBe "<p>x</p>"
+            book.seriesId shouldBe 4
+            book.isWishlisted shouldBe true
+        }
+
+        it("#93 TC-8: decodes the new book fields") {
+            val book = LibraryJson.decodeFromString<BookDto>(
+                """
+                {
+                    "id": 9,
+                    "description": "<p>Hi</p>",
+                    "genres": ["Fantasy"],
+                    "subjects": ["tag"],
+                    "publisher": "Pub",
+                    "published": "1925-04-10",
+                    "language": "en",
+                    "isbn13": "9780000000001",
+                    "series_id": 4
+                }
+                """,
+            ).toDomain()
+
+            book.description shouldBe "<p>Hi</p>"
+            book.genres shouldBe listOf("Fantasy")
+            book.subjects shouldBe listOf("tag")
+            book.publisher shouldBe "Pub"
+            book.publishedDate shouldBe "1925-04-10"
+            book.language shouldBe "en"
+            book.isbn13 shouldBe "9780000000001"
+            book.seriesId shouldBe 4
+            book.year shouldBe 1925
+        }
+
+        it("#93 TC-9: missing new fields use defaults") {
+            val book = LibraryJson.decodeFromString<BookDto>("""{"id": 1}""").toDomain()
+
+            book.description.shouldBeNull()
+            book.genres.shouldBeEmpty()
+            book.subjects.shouldBeEmpty()
+            book.publisher.shouldBeNull()
+            book.publishedDate.shouldBeNull()
+            book.language.shouldBeNull()
+            book.isbn13.shouldBeNull()
+            book.seriesId.shouldBeNull()
+            book.isWishlisted shouldBe false
+            book.wishlistSource.shouldBeNull()
+        }
+
+        it("#93 TC-10: null new fields and unknown keys") {
+            val book = LibraryJson.decodeFromString<BookDto>(
+                """{"id": 1, "genres": null, "subjects": null, "description": null, "series_id": null, "unknown_key": 5}""",
+            ).toDomain()
+
+            book.genres.shouldBeEmpty()
+            book.subjects.shouldBeEmpty()
+            book.description.shouldBeNull()
+            book.seriesId.shouldBeNull()
+        }
+    }
 })
