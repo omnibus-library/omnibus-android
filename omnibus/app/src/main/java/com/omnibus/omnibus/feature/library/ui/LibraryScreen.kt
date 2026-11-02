@@ -64,6 +64,8 @@ import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
+import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.LibraryScreenState
@@ -360,6 +362,9 @@ private fun LibraryGrid(
     onShowContextMenu: (Book) -> Unit,
 ) {
     val palette = OmnibusTheme.palette
+    // Record which cover was tapped before the page opens, so the page's cover morphs from it.
+    val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
+    val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
     LaunchedEffect(gridState, uiState.books.size) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -402,7 +407,7 @@ private fun LibraryGrid(
                             selectedId = uiState.continueSelectedId,
                             state = continueState,
                             onSettled = onContinueSettled,
-                            onOpenBook = onOpenBook,
+                            onOpenBook = openFromContinue,
                             onResume = onResume,
                             onShowContextMenu = onShowContextMenu,
                         )
@@ -437,7 +442,7 @@ private fun LibraryGrid(
                 BookGridCell(
                     book = book,
                     width = cellWidth,
-                    onClick = { onOpenBook(book.uuid) },
+                    onClick = { openFromGrid(book.uuid) },
                     // Rows after the first get 26 dp above them, from the cells, so the heading gap stays 12 dp.
                     modifier = Modifier.padding(top = if (index >= columns) 26.dp else 0.dp),
                 )
