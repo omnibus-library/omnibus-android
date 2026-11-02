@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +23,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.core.view.WindowCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.LibraryError
@@ -34,9 +39,11 @@ import com.omnibus.omnibus.feature.library.ui.libraryErrorText
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
+import com.omnibus.omnibus.feature.reader.ReaderOpening
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.ReaderViewModel
+import com.omnibus.omnibus.feature.reader.bootCfi
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
@@ -69,7 +76,6 @@ fun ReaderScreen(
     ),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    // Starts at the beginning of the book. Resuming from a saved position is #49.
     val controller = rememberReaderController()
 
     ReaderScreenContent(
@@ -85,6 +91,7 @@ fun ReaderScreen(
         onMenuRowChosen = viewModel::onMenuRowChosen,
         onRetryBookRequested = viewModel::onRetryBookRequested,
         onReaderClosed = viewModel::onReaderClosed,
+        onReaderStopped = viewModel::onReaderStopped,
         onClose = onClose,
         modifier = modifier,
     )
@@ -106,6 +113,8 @@ fun ReaderScreen(
  * @param onMenuOpened the menu button was tapped.
  * @param onMenuDismissed a tap or back dismissed the open menu.
  * @param onMenuRowChosen a menu row was chosen.
+ * @param onReaderClosed called when the reader is left, or its composition is.
+ * @param onReaderStopped called when the activity stops, so the position is flushed before the app is backgrounded.
  * @param onClose called after [onReaderClosed] when the reader is left.
  */
 @Composable
@@ -122,6 +131,7 @@ internal fun ReaderScreenContent(
     onMenuRowChosen: (ReaderMenuRow) -> Unit,
     onRetryBookRequested: () -> Unit,
     onReaderClosed: () -> Unit,
+    onReaderStopped: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -141,6 +151,17 @@ internal fun ReaderScreenContent(
     LaunchedEffect(controller, commands) {
         commands.collect { controller.execute(it) }
     }
+
+    val currentOnStopped by rememberUpdatedState(onReaderStopped)
+    val currentOnClosed by rememberUpdatedState(onReaderClosed)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) currentOnStopped() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Leaving composition flushes too, for a dismissal that bypasses back. Repeated flushes are no-ops.
+    DisposableEffect(Unit) { onDispose { currentOnClosed() } }
 
     val theme = uiState.settings.theme
     val reduceMotion = rememberReducedMotion()
@@ -195,10 +216,13 @@ internal fun ReaderScreenContent(
                 )
 
                 is ReaderBookState.Ready -> {
+                    val opening = uiState.opening
                     if (LocalInspectionMode.current) {
                         // The WebView can't run in a preview, so the page is a plain ground.
                         Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
-                    } else {
+                    } else if (opening is ReaderOpening.Resolved) {
+                        // The page boots at the opening position, so it waits until that is known.
+                        SideEffect { controller.startAt(opening.start.bootCfi) }
                         ReaderWebView(
                             bookUuid = bookUuid,
                             settings = uiState.settings,
@@ -278,6 +302,7 @@ private fun ReaderPreview(book: ReaderBookState, loadStatus: ReaderLoadStatus = 
         onMenuRowChosen = {},
         onRetryBookRequested = {},
         onReaderClosed = {},
+        onReaderStopped = {},
         onClose = {},
     )
 }

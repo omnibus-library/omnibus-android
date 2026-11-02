@@ -4,10 +4,12 @@ import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.progress.FakeProgressRepository
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadFailure
@@ -18,8 +20,10 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -50,6 +54,9 @@ class ReaderViewModelTest : DescribeSpec({
             Dispatchers.Unconfined,
             BookFileSource { BookFileResult.NotFound },
         ),
+        progressRepository = FakeProgressRepository(),
+        timeSource = TimeSource { 0L },
+        persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     )
 
     val chapterOne = TocEntry(label = "Loomings", href = "chapter1.xhtml", level = 0)

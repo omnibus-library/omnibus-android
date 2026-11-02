@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import androidx.compose.runtime.saveable.SaverScope
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
@@ -314,6 +315,27 @@ class ReaderControllerTest : DescribeSpec({
             reader.next()
             newer.size shouldBe 1
             page.shouldBeEmpty()
+        }
+    }
+
+    describe("start") {
+
+        it("TC-44: startAt is one-shot and survives the saver") {
+            val reader = ReaderController()
+            reader.startAt("A")
+            reader.restoreCfi shouldBe "A"
+
+            reader.relocate("epubcfi(/6/8)")
+            reader.restoreCfi shouldBe "epubcfi(/6/8)"
+            reader.startAt("A")
+            reader.restoreCfi shouldBe "epubcfi(/6/8)"
+
+            // A rotation saves and restores the controller. The restored one keeps the moved position.
+            val saved = with(ReaderControllerSaver) { SaverScope { true }.save(reader) }!!
+            val restored = ReaderControllerSaver.restore(saved)!!
+            restored.restoreCfi shouldBe "epubcfi(/6/8)"
+            restored.startAt("A")
+            restored.restoreCfi shouldBe "epubcfi(/6/8)"
         }
     }
 })
