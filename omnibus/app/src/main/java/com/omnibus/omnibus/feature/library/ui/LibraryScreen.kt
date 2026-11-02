@@ -27,12 +27,15 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,12 +62,18 @@ import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibrarySort
+import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.LibraryViewModel
+import com.omnibus.omnibus.feature.library.PositionLabel
+import com.omnibus.omnibus.feature.library.RelativeAge
+import com.omnibus.omnibus.feature.library.ResumeTarget
+import com.omnibus.omnibus.feature.library.UnavailableBook
 import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
@@ -110,6 +119,8 @@ private const val HEADER_ITEM_COUNT = 1
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
  * @param onAddBooks Called when the masthead's add button is tapped.
+ * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
+ * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -117,10 +128,16 @@ fun LibraryScreen(
     onOpenBook: (uuid: String) -> Unit,
     onAddBooks: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenReader: (bookUuid: String) -> Unit = {},
+    onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val gridState = rememberLazyGridState()
+    val continueState = rememberContinueCarouselState(pageCount = { uiState.continueCards.size })
+
+    // Runs each time the entry is composed again, so returning from the reader, the player or detail reloads the cards.
+    LaunchedEffect(Unit) { viewModel.libraryShown() }
 
     // The shell consumes the navigation bar above the tab bar. Only the part it did not consume
     // is added as bottom padding here, so the last row clears the tab bar without a doubled inset.
@@ -142,6 +159,13 @@ fun LibraryScreen(
         onToggleDirection = viewModel::toggleDirection,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
+        continueState = continueState,
+        onContinueSettled = viewModel::continueCardSettled,
+        onResume = viewModel::resume,
+        onOpenReader = onOpenReader,
+        onOpenPlayer = onOpenPlayer,
+        onResumeHandled = viewModel::resumeHandled,
+        onUnavailableDismissed = viewModel::unavailableDismissed,
     )
 }
 
@@ -159,6 +183,14 @@ fun LibraryScreen(
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
+ * @param continueState The Continue carousel's pager and draw-in state. Hoist it outside the grid.
+ * @param onContinueSettled Called with the card id the carousel settled on.
+ * @param onResume Called with the card id when a Continue card is resumed.
+ * @param onShowContextMenu Called on a long press of a Continue card. A no-op until the book menu lands.
+ * @param onOpenReader Called with the uuid when a resume opens the reader.
+ * @param onOpenPlayer Called with the uuid and saved file id when a resume opens the player stub.
+ * @param onResumeHandled Called once a pending resume has been passed to [onOpenReader] or [onOpenPlayer].
+ * @param onUnavailableDismissed Called when the "can't open offline" alert is dismissed.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,6 +210,14 @@ internal fun LibraryScreenContent(
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    continueState: ContinueCarouselState = rememberContinueCarouselState(pageCount = { uiState.continueCards.size }),
+    onContinueSettled: (cardId: String) -> Unit = {},
+    onResume: (cardId: String) -> Unit = {},
+    onShowContextMenu: (Book) -> Unit = {},
+    onOpenReader: (bookUuid: String) -> Unit = {},
+    onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
+    onResumeHandled: () -> Unit = {},
+    onUnavailableDismissed: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
 
@@ -197,6 +237,15 @@ internal fun LibraryScreenContent(
             gridState.scrollToItem(0)
             onScrolledToTop()
         }
+    }
+
+    // A pending resume goes to the reader or the player once, then is cleared, so a recomposition can't open it twice.
+    LaunchedEffect(uiState.pendingResume) {
+        when (val target = uiState.pendingResume ?: return@LaunchedEffect) {
+            is ResumeTarget.Reader -> onOpenReader(target.bookUuid)
+            is ResumeTarget.Player -> onOpenPlayer(target.bookUuid, target.bookFileId)
+        }
+        onResumeHandled()
     }
 
     Box(modifier.fillMaxSize()) {
@@ -237,9 +286,15 @@ internal fun LibraryScreenContent(
                     onToggleDirection = onToggleDirection,
                     gridState = gridState,
                     bottomInset = bottomInset,
+                    continueState = continueState,
+                    onContinueSettled = onContinueSettled,
+                    onResume = onResume,
+                    onShowContextMenu = onShowContextMenu,
                 )
             }
         }
+
+        uiState.unavailableBook?.let { ContinueUnavailableDialog(book = it, onDismiss = onUnavailableDismissed) }
 
         SnackbarHost(
             hostState = snackbarHostState,
@@ -285,7 +340,8 @@ private fun EmptyLibrary() {
  * The column count and cell width come from [LibraryGridMetrics] for the width left after the
  * screen insets. Reports the last visible book index to [onLoadMore], which maps the grid index back
  * past the header and clamps it to the last book. The filter menu's choices go to the three
- * `onSelect*`/`onToggleDirection` callbacks.
+ * `onSelect*`/`onToggleDirection` callbacks. The Continue carousel sits between the masthead and the
+ * heading when there are cards.
  */
 @Composable
 private fun LibraryGrid(
@@ -298,6 +354,10 @@ private fun LibraryGrid(
     onToggleDirection: () -> Unit,
     gridState: LazyGridState,
     bottomInset: Dp,
+    continueState: ContinueCarouselState,
+    onContinueSettled: (cardId: String) -> Unit,
+    onResume: (cardId: String) -> Unit,
+    onShowContextMenu: (Book) -> Unit,
 ) {
     val palette = OmnibusTheme.palette
 
@@ -332,6 +392,21 @@ private fun LibraryGrid(
                     Masthead(title = stringResource(R.string.library_title)) {
                         OfflinePill(visible = uiState.isOffline)
                         MastheadAddButton(onAddBooks = onAddBooks)
+                    }
+                    if (uiState.continueCards.isNotEmpty()) {
+                        // 30 dp from the masthead's own bottom padding, and 30 dp from the card or its dots to the heading,
+                        // as iOS LibraryView's VStack(spacing: 30).
+                        Spacer(Modifier.height(30.dp))
+                        ContinueCarousel(
+                            cards = uiState.continueCards,
+                            selectedId = uiState.continueSelectedId,
+                            state = continueState,
+                            onSettled = onContinueSettled,
+                            onOpenBook = onOpenBook,
+                            onResume = onResume,
+                            onShowContextMenu = onShowContextMenu,
+                        )
+                        Spacer(Modifier.height(30.dp))
                     }
                     Column(Modifier.padding(horizontal = Spacing.screen)) {
                         Row(
@@ -384,6 +459,44 @@ private fun LibraryGrid(
             }
         }
     }
+}
+
+/**
+ * The "can't open offline" alert for a Continue card. Back and an outside tap dismiss it, as OK does.
+ */
+@Composable
+private fun ContinueUnavailableDialog(book: UnavailableBook, onDismiss: () -> Unit) {
+    val palette = OmnibusTheme.palette
+    val reading = book.medium == ProgressFormat.Reading
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = palette.ink0),
+            ) {
+                Text(stringResource(R.string.continue_ok))
+            }
+        },
+        title = {
+            Text(
+                stringResource(
+                    if (reading) R.string.continue_cant_read_offline else R.string.continue_cant_play_offline,
+                ),
+            )
+        },
+        text = {
+            Text(
+                stringResource(
+                    if (reading) R.string.continue_offline_book_message else R.string.continue_offline_audiobook_message,
+                    book.title,
+                ),
+            )
+        },
+        containerColor = palette.bg2,
+        titleContentColor = palette.ink0,
+        textContentColor = palette.ink1,
+    )
 }
 
 /**
@@ -493,4 +606,45 @@ private fun LibraryFilteredPreview() {
 @Composable
 private fun LibraryFilteredEmptyPreview() {
     LibraryPreviewContent(LibraryUIState(hasLoaded = true, category = LibraryCategory.Audiobooks))
+}
+
+@PreviewLightDark
+@Composable
+private fun LibraryContinuePreview() {
+    LibraryPreviewContent(
+        LibraryUIState(
+            books = previewBooks,
+            nextCursor = "c2",
+            continueCards = listOf(
+                ContinueCard(
+                    id = "1:epub",
+                    book = previewBooks[0],
+                    medium = ProgressFormat.Reading,
+                    fraction = 0.42,
+                    position = PositionLabel.PercentRead(42),
+                    lastOpened = RelativeAge.Hours(3),
+                    resumeFileId = null,
+                ),
+                ContinueCard(
+                    id = "2:epub",
+                    book = previewBooks[1],
+                    medium = ProgressFormat.Reading,
+                    fraction = null,
+                    position = PositionLabel.InProgress,
+                    lastOpened = RelativeAge.Days(3),
+                    resumeFileId = null,
+                ),
+                ContinueCard(
+                    id = "3:audio",
+                    book = previewBooks[2],
+                    medium = ProgressFormat.Listening,
+                    fraction = 0.6,
+                    position = PositionLabel.Chapter(7, 12),
+                    lastOpened = RelativeAge.Minutes(20),
+                    resumeFileId = 9L,
+                ),
+            ),
+            continueSelectedId = "1:epub",
+        ),
+    )
 }

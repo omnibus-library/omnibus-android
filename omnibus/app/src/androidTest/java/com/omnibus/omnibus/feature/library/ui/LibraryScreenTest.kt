@@ -30,6 +30,7 @@ import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -51,12 +52,19 @@ import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
+import com.omnibus.omnibus.feature.library.PositionLabel
+import com.omnibus.omnibus.feature.library.RelativeAge
+import com.omnibus.omnibus.feature.library.ResumeTarget
+import com.omnibus.omnibus.feature.library.UnavailableBook
 import com.omnibus.omnibus.ui.components.OfflinePillTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
+import androidx.test.espresso.Espresso
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -678,6 +686,140 @@ class LibraryScreenTest {
         rule.onNodeWithContentDescription(ADD_LABEL, useUnmergedTree = true).assertIsDisplayed()
     }
 
+    @Test
+    fun issue22_tc33_carouselSitsBetweenMastheadAndHeadingAndIsAbsentWithoutCards() {
+        val cards = listOf(continueCard(1L), continueCard(2L), continueCard(3L))
+        val uiState = mutableStateOf(
+            LibraryUIState(books = listOf(book(1L), book(2L)), hasLoaded = true, continueCards = cards, continueSelectedId = cards.first().id),
+        )
+        setLibraryState(uiState)
+
+        val masthead = rule.onNode(isHeading()).getUnclippedBoundsInRoot()
+        val card = rule.onNodeWithTag(ContinueTestTags.card(cards.first().id), useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val lastDot = rule.onNodeWithTag(ContinueTestTags.dot(2), useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val heading = heading().getUnclippedBoundsInRoot()
+        assertTrue("masthead sits above the carousel card", masthead.bottom <= card.top + HALF_DP)
+        assertTrue("the page dots sit above the heading", lastDot.bottom <= heading.top + HALF_DP)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(continueCards = emptyList(), continueSelectedId = null) }
+        rule.waitForIdle()
+        rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun issue22_tc34_scrollingTheCarouselOffAndBackKeepsTheCardAndDoesNotReplayTheBar() {
+        val cards = listOf(continueCard(1L), continueCard(2L), continueCard(3L))
+        val books = (1L..60L).map { book(it) }
+        val uiState = mutableStateOf(
+            LibraryUIState(books = books, hasLoaded = true, continueCards = cards, continueSelectedId = cards.first().id),
+        )
+        setLibraryState(
+            uiState,
+            onContinueSettled = { id -> uiState.value = uiState.value.copy(continueSelectedId = id) },
+        )
+
+        rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        rule.onNodeWithTag(ContinueTestTags.card(cards[1].id), useUnmergedTree = true).assertIsDisplayed()
+
+        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(60)
+        rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(0)
+        rule.waitForIdle()
+
+        rule.mainClock.autoAdvance = false
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithTag(ContinueTestTags.card(cards[1].id), useUnmergedTree = true).assertIsDisplayed()
+        val fill = rule.onNodeWithTag(ContinueTestTags.barFill(cards[1].id), useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val track = rule.onNodeWithTag(ContinueTestTags.barTrack(cards[1].id), useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val ratio = (fill.right - fill.left) / (track.right - track.left)
+        assertTrue("the bar is at its full length without replaying (ratio $ratio)", abs(ratio - 0.5f) <= 0.02f)
+    }
+
+    @Test
+    fun issue22_tc35_readingAlertCopyIsExact() {
+        setLibraryState(
+            mutableStateOf(
+                LibraryUIState(books = listOf(book(1L)), hasLoaded = true, unavailableBook = UnavailableBook("Annihilation", ProgressFormat.Reading)),
+            ),
+        )
+
+        rule.onNodeWithText("Can't read offline").assertIsDisplayed()
+        rule.onNodeWithText(READ_OFFLINE_MESSAGE).assertIsDisplayed()
+        rule.onNodeWithText("OK").assertIsDisplayed()
+    }
+
+    @Test
+    fun issue22_tc35_listeningAlertCopyIsExact() {
+        setLibraryState(
+            mutableStateOf(
+                LibraryUIState(books = listOf(book(1L)), hasLoaded = true, unavailableBook = UnavailableBook("Annihilation", ProgressFormat.Listening)),
+            ),
+        )
+
+        rule.onNodeWithText("Can't play offline").assertIsDisplayed()
+        rule.onNodeWithText(PLAY_OFFLINE_MESSAGE).assertIsDisplayed()
+        rule.onNodeWithText("OK").assertIsDisplayed()
+    }
+
+    @Test
+    fun issue22_tc35_noAlertWithoutAnUnavailableBook() {
+        setLibraryState(mutableStateOf(LibraryUIState(books = listOf(book(1L)), hasLoaded = true)))
+
+        rule.onNodeWithText("OK").assertDoesNotExist()
+    }
+
+    @Test
+    fun issue22_tc36_okAndBackDismissTheAlert() {
+        var dismissals = 0
+        val alert = UnavailableBook("Annihilation", ProgressFormat.Reading)
+        val uiState = mutableStateOf(LibraryUIState(books = listOf(book(1L)), hasLoaded = true, unavailableBook = alert))
+        setLibraryState(uiState, onUnavailableDismissed = { dismissals++ })
+
+        rule.onNodeWithText("OK").performClick()
+        rule.waitForIdle()
+        assertEquals(1, dismissals)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(unavailableBook = null) }
+        rule.runOnIdle { uiState.value = uiState.value.copy(unavailableBook = alert) }
+        rule.waitForIdle()
+        rule.onNodeWithText("OK").assertIsDisplayed()
+        Espresso.pressBack()
+        rule.waitForIdle()
+        assertEquals(2, dismissals)
+    }
+
+    @Test
+    fun issue22_tc37_pendingResumeOpensTheRightScreenOnce() {
+        val readers = mutableListOf<String>()
+        val players = mutableListOf<Pair<String, Long?>>()
+        var handled = 0
+        val uiState = mutableStateOf(
+            LibraryUIState(books = listOf(book(1L)), hasLoaded = true, pendingResume = ResumeTarget.Reader("u1")),
+        )
+        setLibraryState(
+            uiState,
+            onOpenReader = { readers += it },
+            onOpenPlayer = { uuid, fileId -> players += uuid to fileId },
+            onResumeHandled = { handled++ },
+        )
+        rule.waitForIdle()
+        assertEquals(listOf("u1"), readers)
+        assertEquals(1, handled)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(pendingResume = ResumeTarget.Player("u2", 20L)) }
+        rule.waitForIdle()
+        assertEquals(listOf("u2" to 20L), players)
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(pendingResume = ResumeTarget.Player("u3", null)) }
+        rule.waitForIdle()
+        assertEquals(listOf("u2" to 20L, "u3" to null), players)
+        assertEquals(listOf("u1"), readers)
+    }
+
     private fun heading() = rule.onNodeWithTag(LibraryTestTags.HEADING, useUnmergedTree = true)
 
     private fun filterButton() = rule.onNodeWithTag(LibraryTestTags.FILTER_BUTTON)
@@ -743,10 +885,16 @@ class LibraryScreenTest {
         onToggleDirection: () -> Unit = {},
         onScrolledToTop: () -> Unit = {},
         gridState: LazyGridState? = null,
+        onContinueSettled: (String) -> Unit = {},
+        onOpenReader: (String) -> Unit = {},
+        onOpenPlayer: (String, Long?) -> Unit = { _, _ -> },
+        onResumeHandled: () -> Unit = {},
+        onUnavailableDismissed: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 Box(Modifier.fillMaxSize()) {
+                    val continueState = rememberContinueCarouselState(pageCount = { uiState.value.continueCards.size })
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = {},
@@ -761,6 +909,12 @@ class LibraryScreenTest {
                         onToggleDirection = onToggleDirection,
                         onScrolledToTop = onScrolledToTop,
                         gridState = gridState ?: rememberLazyGridState(),
+                        continueState = continueState,
+                        onContinueSettled = onContinueSettled,
+                        onOpenReader = onOpenReader,
+                        onOpenPlayer = onOpenPlayer,
+                        onResumeHandled = onResumeHandled,
+                        onUnavailableDismissed = onUnavailableDismissed,
                     )
                 }
             }
@@ -799,6 +953,22 @@ class LibraryScreenTest {
 
         /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
         val HALF_DP = 0.5.dp
+
+        const val READ_OFFLINE_MESSAGE = "“Annihilation” isn't downloaded to this device, and the server can't be reached. " +
+            "Connect to the internet to stream it, or download the book while you're online to read it anywhere."
+        const val PLAY_OFFLINE_MESSAGE = "“Annihilation” isn't downloaded to this device, and the server can't be reached. " +
+            "Connect to the internet to stream it, or download the audiobook while you're online to read it anywhere."
+
+        /** A reading card for book [id], with a half-read bar. */
+        fun continueCard(id: Long) = ContinueCard(
+            id = "c$id:epub",
+            book = book(id),
+            medium = ProgressFormat.Reading,
+            fraction = 0.5,
+            position = PositionLabel.PercentRead(50),
+            lastOpened = RelativeAge.Hours(2),
+            resumeFileId = null,
+        )
 
         /** Grid index of the footer in tc84: one header item, six books, then the footer. */
         const val FOOTER_INDEX = 7
