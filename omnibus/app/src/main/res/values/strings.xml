@@ -82,6 +82,61 @@
     <string name="library_direction_ascending">Ascending</string>
     <string name="library_direction_descending">Descending</string>
     <string name="library_offline">Offline</string>
+    <string name="continue_eyebrow_reading">Continue reading</string>
+    <string name="continue_eyebrow_listening">Continue listening</string>
+    <string name="continue_read">Read</string>
+    <string name="continue_play">Play</string>
+    <string name="continue_open_details">Open book details</string>
+    <string name="continue_chapter_of">Chapter %1$d of %2$d</string>
+    <string name="continue_part_of">Part %1$d of %2$d</string>
+    <!-- %1$s is a duration such as "3h 5m". -->
+    <string name="continue_time_left">%1$s left</string>
+    <string name="continue_percent_read">%1$d%% read</string>
+    <string name="continue_in_progress">In progress</string>
+    <!-- %1$s is a relative time such as "5 min. ago" or "just now". -->
+    <string name="continue_last_opened">Last opened %1$s</string>
+    <string name="continue_just_now">just now</string>
+    <plurals name="continue_seconds_ago">
+        <item quantity="one">%1$d sec. ago</item>
+        <item quantity="other">%1$d sec. ago</item>
+    </plurals>
+    <plurals name="continue_minutes_ago">
+        <item quantity="one">%1$d min. ago</item>
+        <item quantity="other">%1$d min. ago</item>
+    </plurals>
+    <plurals name="continue_hours_ago">
+        <item quantity="one">%1$d hr. ago</item>
+        <item quantity="other">%1$d hr. ago</item>
+    </plurals>
+    <plurals name="continue_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <plurals name="continue_weeks_ago">
+        <item quantity="one">%1$d wk. ago</item>
+        <item quantity="other">%1$d wk. ago</item>
+    </plurals>
+    <plurals name="continue_months_ago">
+        <item quantity="one">%1$d mo. ago</item>
+        <item quantity="other">%1$d mo. ago</item>
+    </plurals>
+    <plurals name="continue_years_ago">
+        <item quantity="one">%1$d yr. ago</item>
+        <item quantity="other">%1$d yr. ago</item>
+    </plurals>
+    <string name="continue_cant_read_offline">Can\'t read offline</string>
+    <string name="continue_cant_play_offline">Can\'t play offline</string>
+    <!-- %1$s is the book\'s title. -->
+    <string name="continue_offline_book_message">“%1$s” isn\'t downloaded to this device, and the server can\'t be reached. Connect to the internet to stream it, or download the book while you\'re online to read it anywhere.</string>
+    <!-- %1$s is the book\'s title. -->
+    <string name="continue_offline_audiobook_message">“%1$s” isn\'t downloaded to this device, and the server can\'t be reached. Connect to the internet to stream it, or download the audiobook while you\'re online to read it anywhere.</string>
+    <string name="continue_ok">OK</string>
+    <string name="player_stub_title">Player</string>
+    <!-- %1$s is the book\'s uuid. -->
+    <string name="player_stub_uuid" translatable="false">uuid: %1$s</string>
+    <!-- %1$s is the file id, or player_stub_no_file. -->
+    <string name="player_stub_file_id" translatable="false">file id: %1$s</string>
+    <string name="player_stub_no_file">none</string>
 
     <!-- Reader -->
     <string name="reader_loading">Opening your book</string>
