@@ -257,17 +257,18 @@ private fun LabelText(text: String, colors: ReaderChromeColors) {
  * and hides it at once.
  */
 @Composable
-private fun ChromeVisibility(
+internal fun ChromeVisibility(
     visible: Boolean,
     reduceMotion: Boolean,
     enter: EnterTransition,
     exit: ExitTransition,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     if (reduceMotion) {
-        if (visible) content()
+        if (visible) Box(modifier) { content() }
     } else {
-        AnimatedVisibility(visible = visible, enter = enter, exit = exit) { content() }
+        AnimatedVisibility(visible = visible, modifier = modifier, enter = enter, exit = exit) { content() }
     }
 }
 

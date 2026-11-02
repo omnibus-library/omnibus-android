@@ -1,8 +1,10 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 
@@ -26,6 +28,26 @@ class ReaderChromeColorsTest : DescribeSpec({
                 colors.plate.alpha shouldBe 1f
                 colors.labelInk shouldBe ink.copy(alpha = 0.5f)
                 colors.border shouldBe ink.copy(alpha = 0.12f)
+            }
+        }
+    }
+
+    describe("readerSyncOfferActionColor") {
+
+        // TC-116: the Go action reaches WCAG AA (4.5:1) on every reading plate, in the colour its theme calls for.
+        it("TC-116: the Go action is legible on every plate") {
+            ReaderTheme.entries.forEach { theme ->
+                val action = readerSyncOfferActionColor(theme)
+                val plate = readerChromeColors(theme).plate
+                val lighter = maxOf(action.luminance(), plate.luminance())
+                val darker = minOf(action.luminance(), plate.luminance())
+                val contrast = (lighter + 0.05) / (darker + 0.05)
+                val expected = if (theme.isLight) readerChromeColors(theme).ink else OmnibusPalette.Atrium.accent
+
+                withClue("$theme contrast $contrast") {
+                    (contrast >= 4.5) shouldBe true
+                    action shouldBe expected
+                }
             }
         }
     }
