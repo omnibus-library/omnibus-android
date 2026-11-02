@@ -4,8 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryRepository
+import com.omnibus.omnibus.data.progress.PositionPushThrottle
+import com.omnibus.omnibus.data.progress.PositionSaveResult
+import com.omnibus.omnibus.data.progress.ProgressRepository
+import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.di.ApplicationScope
+import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
@@ -15,6 +21,8 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -32,16 +40,23 @@ import kotlinx.coroutines.launch
  *
  * The book is read when the ViewModel is created, into [ReaderUIState.book].
  *
+ * Each movement of the reader is saved locally, and pushed when the throttle allows. Closing or
+ * stopping the reader pushes the latest one.
+ *
  * @property assetLoaderFactory builds the WebView's asset loader for the screen. It isn't state.
+ * @property persistScope runs the saves, so a flush outlives this ViewModel.
  */
 @HiltViewModel(assistedFactory = ReaderViewModel.Factory::class)
 class ReaderViewModel @AssistedInject constructor(
     @Assisted val bookUuid: String,
     private val libraryRepository: LibraryRepository,
     val assetLoaderFactory: ReaderAssetLoaderFactory,
+    private val progressRepository: ProgressRepository,
+    private val timeSource: TimeSource,
+    @param:ApplicationScope private val persistScope: CoroutineScope,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ReaderUIState())
+    private val _uiState = MutableStateFlow(ReaderUIState(opening = ReaderOpening.Resolving))
 
     /** The reader's state. It changes only through [onPageEvent], the book load and the intents below. */
     val uiState: StateFlow<ReaderUIState> = _uiState.asStateFlow()
@@ -53,8 +68,21 @@ class ReaderViewModel @AssistedInject constructor(
 
     private var bookJob: Job? = null
 
+    /** Spaces unforced pushes of this open's positions. */
+    private val throttle = PositionPushThrottle()
+
+    /** Whether the open's landing (its first relocate) has been seen. */
+    private var sawFirstRelocate = false
+
+    /** The last position recorded, whether or not it was pushed. */
+    private var lastSaved: ReadingPosition? = null
+
+    /** The latest position not yet pushed. Null when everything recorded has gone out. */
+    private var pendingPush: ReadingPosition? = null
+
     init {
         loadBook()
+        resolveOpening()
     }
 
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
@@ -69,7 +97,10 @@ class ReaderViewModel @AssistedInject constructor(
      */
     fun onPageEvent(event: ReaderEvent) {
         when (event) {
-            is ReaderEvent.Relocate -> _uiState.update { it.copy(location = event.data) }
+            is ReaderEvent.Relocate -> {
+                _uiState.update { it.copy(location = event.data) }
+                record(event.data)
+            }
             is ReaderEvent.Toc -> _uiState.update { it.copy(toc = event.entries) }
             ReaderEvent.ToggleChrome -> onChromeToggled()
             is ReaderEvent.LoadStatusChanged -> _uiState.update { it.copy(loadStatus = event.status) }
@@ -129,14 +160,74 @@ class ReaderViewModel @AssistedInject constructor(
     }
 
     /**
-     * The reader is being left. This is the flush hook for saving the position (#50) and the
-     * session (#51). It does nothing yet.
+     * The reader is being left. Pushes the latest position if it hasn't gone out. The session (#51)
+     * will hook in here too.
      */
-    fun onReaderClosed() = Unit
+    fun onReaderClosed() = flush()
+
+    /** The reader stopped (the app went to the background). Pushes the latest position, as [onReaderClosed]. */
+    fun onReaderStopped() = flush()
+
+    /** Backstop for a dismissal that bypasses [onReaderClosed]. The view model's scope is already cancelled here. */
+    override fun onCleared() = flush()
+
+    /** Records a movement of the reader for saving. The landing, echoes and an unmoved spot are not movements. */
+    private fun record(data: RelocateData) {
+        val first = !sawFirstRelocate
+        sawFirstRelocate = true
+        val cfi = data.cfi?.takeIf { it.isNotBlank() } ?: return
+        if (first || data.echo || cfi == lastSaved?.cfi) return
+        persist(
+            ReadingPosition(
+                bookUuid = bookUuid,
+                cfi = cfi,
+                percent = data.pct.takeIf { data.totalPages > 0 },
+                clientUpdatedAt = timeSource.nowMillis() / 1000,
+            ),
+        )
+    }
+
+    /** Saves [position] locally, and pushes it only when the throttle allows an unforced push. */
+    private fun persist(position: ReadingPosition) {
+        lastSaved = position
+        val push = throttle.shouldPush(force = false, nowMillis = timeSource.nowMillis())
+        pendingPush = position
+        save(position, push)
+    }
+
+    /** Pushes the latest position that hasn't gone out, forced past the throttle. Does nothing when none is pending. */
+    private fun flush() {
+        val latest = pendingPush ?: return
+        throttle.shouldPush(force = true, nowMillis = timeSource.nowMillis())
+        save(latest, push = true)
+    }
+
+    /** Runs the save in [persistScope] so it finishes even after this view model is cleared. */
+    private fun save(position: ReadingPosition, push: Boolean) {
+        // Cleared optimistically, so a second flush while this one is in flight sends nothing.
+        if (push) pendingPush = null
+        persistScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val result = progressRepository.savePosition(position, push)
+            // A failed or skipped push stays pending, unless something newer is already waiting.
+            if (push && result != PositionSaveResult.Pushed && pendingPush == null) pendingPush = position
+        }
+    }
 
     /** Reads the book again after it failed to load. Does nothing in any other state. */
     fun onRetryBookRequested() {
         if (_uiState.value.book is ReaderBookState.Failed) loadBook()
+    }
+
+    /**
+     * Reads the book's stored position and records where the page boots. It doesn't wait for the
+     * book, and the book load doesn't wait for it.
+     */
+    private fun resolveOpening() {
+        viewModelScope.launch {
+            val local = progressRepository.getLocalPosition(bookUuid)
+            val start = local?.cfi?.takeIf { it.isNotBlank() }?.let { ReaderStart.AtCfi(it) } ?: ReaderStart.Beginning
+            _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
+        }
     }
 
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
@@ -179,6 +270,11 @@ data class ReaderUIState(
      * the menu button.
      */
     val menuRows: List<ReaderMenuRow> = emptyList(),
+    /**
+     * Where the page boots. The default is for previews and tests that build a state by hand; the
+     * ViewModel starts at [ReaderOpening.Resolving].
+     */
+    val opening: ReaderOpening = ReaderOpening.Resolved(ReaderStart.Beginning),
 )
 
 /** Whether the book for the reader could be read. */
