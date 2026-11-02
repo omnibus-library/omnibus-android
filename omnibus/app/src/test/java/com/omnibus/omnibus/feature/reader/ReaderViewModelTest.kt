@@ -358,4 +358,116 @@ class ReaderViewModelTest : DescribeSpec({
             vm.uiState.value.toc shouldBe listOf(chapterOne)
         }
     }
+
+    describe("ReaderViewModel menu") {
+
+        val contentsAndSettings = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+
+        it("RC-13: menu defaults to closed with no rows") {
+            val state = viewModel().uiState.value
+
+            state.menuOpen shouldBe false
+            state.menuRows shouldBe emptyList()
+        }
+
+        it("RC-14: opening the menu needs chrome up and rows") {
+            ReaderUIState(chromeVisible = false, menuRows = listOf(ReaderMenuRow.Contents))
+                .withMenuOpened().menuOpen shouldBe false
+            ReaderUIState(chromeVisible = true, menuRows = emptyList())
+                .withMenuOpened().menuOpen shouldBe false
+
+            val vm = viewModel()
+            vm.onChromeToggled()
+            vm.onMenuOpened()
+            vm.uiState.value.menuOpen shouldBe false
+        }
+
+        it("RC-15: the menu opens when chrome is up and rows exist") {
+            val state = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings)
+
+            state.withMenuOpened() shouldBe state.copy(menuOpen = true)
+        }
+
+        it("RC-16: dismissing the menu closes only the menu") {
+            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
+
+            open.withMenuDismissed() shouldBe open.copy(menuOpen = false)
+            open.withMenuDismissed().withMenuDismissed() shouldBe open.copy(menuOpen = false)
+            val closed = open.copy(menuOpen = false)
+            closed.withMenuDismissed() shouldBe closed
+
+            val vm = viewModel()
+            vm.onChromeToggled()
+            vm.onMenuDismissed()
+            vm.onMenuDismissed()
+            vm.uiState.value.menuOpen shouldBe false
+            vm.uiState.value.chromeVisible shouldBe true
+        }
+
+        it("RC-17: hiding the chrome closes the menu and showing never opens it") {
+            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
+
+            val hidden = open.withChromeToggled()
+            hidden.chromeVisible shouldBe false
+            hidden.menuOpen shouldBe false
+
+            val shown = hidden.withChromeToggled()
+            shown.chromeVisible shouldBe true
+            shown.menuOpen shouldBe false
+
+            val vm = viewModel()
+            vm.onChromeToggled()
+            vm.uiState.value.chromeVisible shouldBe true
+            vm.uiState.value.menuOpen shouldBe false
+            vm.onPageEvent(ReaderEvent.ToggleChrome)
+            vm.uiState.value.chromeVisible shouldBe false
+            vm.uiState.value.menuOpen shouldBe false
+        }
+
+        it("RC-18: choosing a row closes the menu and opens its sheet") {
+            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
+
+            val contents = open.withMenuRowChosen(ReaderMenuRow.Contents)
+            contents.menuOpen shouldBe false
+            contents.sheet shouldBe ReaderSheet.Contents
+
+            val settings = open.withMenuRowChosen(ReaderMenuRow.Settings)
+            settings.menuOpen shouldBe false
+            settings.sheet shouldBe ReaderSheet.Settings
+        }
+
+        it("RC-19: sheet requests clear the menu and dismissing a sheet never reopens it") {
+            val open = ReaderUIState(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents), menuOpen = true)
+            open.withSheet(ReaderSheet.Contents).menuOpen shouldBe false
+            open.withSheet(ReaderSheet.Contents).sheet shouldBe ReaderSheet.Contents
+            open.withSheet(ReaderSheet.Settings).menuOpen shouldBe false
+            open.withSheet(ReaderSheet.Settings).sheet shouldBe ReaderSheet.Settings
+
+            val vm = viewModel()
+            vm.onChromeToggled()
+            vm.onContentsRequested()
+            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
+            vm.uiState.value.menuOpen shouldBe false
+            vm.uiState.value.chromeVisible shouldBe true
+
+            vm.onSheetDismissed()
+            vm.uiState.value.sheet shouldBe null
+            vm.uiState.value.menuOpen shouldBe false
+            vm.uiState.value.chromeVisible shouldBe true
+
+            vm.onSettingsRequested()
+            vm.uiState.value.sheet shouldBe ReaderSheet.Settings
+            vm.uiState.value.menuOpen shouldBe false
+        }
+
+        it("RC-20: menu intents emit no commands") {
+            val vm = viewModel()
+
+            vm.onMenuOpened()
+            vm.onMenuDismissed()
+            vm.onMenuRowChosen(ReaderMenuRow.Contents)
+
+            vm.noCommandArrives()
+        }
+    }
 })

@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,9 +38,13 @@ import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
+import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
+import com.omnibus.omnibus.feature.reader.withMenuDismissed
+import com.omnibus.omnibus.feature.reader.withMenuOpened
+import com.omnibus.omnibus.feature.reader.withMenuRowChosen
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
@@ -90,6 +95,9 @@ class ReaderScreenTest {
         inspection: Boolean = false,
         onPageEvent: (ReaderEvent) -> Unit = {},
         onSheetDismissed: () -> Unit = {},
+        onMenuOpened: () -> Unit = {},
+        onMenuDismissed: () -> Unit = {},
+        onMenuRowChosen: (ReaderMenuRow) -> Unit = {},
         onRetryBookRequested: () -> Unit = {},
         onReaderClosed: () -> Unit = {},
         onClose: () -> Unit = {},
@@ -105,6 +113,9 @@ class ReaderScreenTest {
                         commands = commands,
                         onPageEvent = onPageEvent,
                         onSheetDismissed = onSheetDismissed,
+                        onMenuOpened = onMenuOpened,
+                        onMenuDismissed = onMenuDismissed,
+                        onMenuRowChosen = onMenuRowChosen,
                         onRetryBookRequested = onRetryBookRequested,
                         onReaderClosed = onReaderClosed,
                         onClose = onClose,
@@ -209,6 +220,9 @@ class ReaderScreenTest {
                     commands = emptyFlow(),
                     onPageEvent = {},
                     onSheetDismissed = {},
+                    onMenuOpened = {},
+                    onMenuDismissed = {},
+                    onMenuRowChosen = {},
                     onRetryBookRequested = {},
                     onReaderClosed = {},
                     onClose = {},
@@ -290,6 +304,9 @@ class ReaderScreenTest {
                         commands = emptyFlow(),
                         onPageEvent = {},
                         onSheetDismissed = {},
+                        onMenuOpened = {},
+                        onMenuDismissed = {},
+                        onMenuRowChosen = {},
                         onRetryBookRequested = {},
                         onReaderClosed = {},
                         onClose = {},
@@ -498,5 +515,281 @@ class ReaderScreenTest {
 
         rule.onNodeWithTag(ReaderScreenTags.PREVIEW_PAGE).assertIsDisplayed()
         assertNull(findWebView())
+    }
+
+    /** The chrome's nodes, none of which may be drawn over a page that isn't Ready. */
+    private fun assertNoChrome() {
+        listOf(
+            ReaderChromeTags.CLOSE,
+            ReaderChromeTags.MENU,
+            ReaderChromeTags.LABEL_TOP,
+            ReaderChromeTags.LABEL_BOTTOM,
+            ReaderChromeTags.MENU_SCRIM,
+        ).forEach { rule.onNodeWithTag(it).assertDoesNotExist() }
+    }
+
+    // RC-45
+    @Test
+    fun rc45_closeButtonLeavesThroughTheBackPath() {
+        val events = mutableListOf<String>()
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    chromeVisible = true,
+                )
+            },
+            inspection = true,
+            onReaderClosed = { events += "closed" },
+            onClose = { events += "close" },
+        )
+
+        rule.onNodeWithTag(ReaderChromeTags.CLOSE).performClick()
+        rule.waitForIdle()
+
+        assertEquals(listOf("closed", "close"), events)
+    }
+
+    // RC-46
+    @Test
+    fun rc46_screenWiresIndicatorsIntoTheChrome() {
+        val chromeVisible = mutableStateOf(false)
+        val location = RelocateData(
+            page = 361,
+            totalPages = 661,
+            pct = 54,
+            chapter = 3,
+            totalChapters = 12,
+            chapterPagesLeft = 7,
+        )
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    location = location,
+                    chromeVisible = chromeVisible.value,
+                )
+            },
+            inspection = true,
+        )
+
+        rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals("Nineteen Eighty-Four")
+        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361")
+        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertDoesNotExist()
+
+        rule.runOnIdle { chromeVisible.value = true }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals("7 pages left in chapter")
+        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361 of 661")
+        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertIsDisplayed()
+    }
+
+    // RC-47
+    @Test
+    fun rc47_choosingARowClosesTheMenuAndRaisesTheSheet() {
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                chromeVisible = true,
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+            ),
+        )
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onMenuOpened = { state.value = state.value.withMenuOpened() },
+            onMenuDismissed = { state.value = state.value.withMenuDismissed() },
+            onMenuRowChosen = { state.value = state.value.withMenuRowChosen(it) },
+        )
+
+        rule.onNodeWithTag(ReaderChromeTags.MENU).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assertIsDisplayed()
+
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assertDoesNotExist()
+        assertEquals(ReaderSheet.Contents, state.value.sheet)
+        assertEquals(false, state.value.menuOpen)
+    }
+
+    // RC-48
+    @Test
+    fun rc48_backOrderIsSheetThenMenuThenLeave() {
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                chromeVisible = true,
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                menuOpen = true,
+                sheet = ReaderSheet.Settings,
+            ),
+        )
+        val events = mutableListOf<String>()
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onSheetDismissed = {
+                events += "sheet"
+                state.value = state.value.copy(sheet = null)
+            },
+            onMenuDismissed = {
+                events += "menu"
+                state.value = state.value.withMenuDismissed()
+            },
+            onReaderClosed = { events += "closed" },
+            onClose = { events += "close" },
+        )
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet"), events)
+        assertEquals(true, state.value.chromeVisible)
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet", "menu"), events)
+        assertEquals(true, state.value.chromeVisible)
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet", "menu", "closed", "close"), events)
+        assertEquals(true, state.value.chromeVisible)
+    }
+
+    // RC-49
+    @Test
+    fun rc49_chromeOnlyDrawsOverAReadyPage() {
+        val book = mutableStateOf<ReaderBookState>(ReaderBookState.Ready(title = "Nineteen Eighty-Four"))
+        val load = mutableStateOf<ReaderLoadStatus>(ReaderLoadStatus.Loading)
+        val location = RelocateData(
+            page = 361,
+            totalPages = 661,
+            pct = 54,
+            chapter = 3,
+            totalChapters = 12,
+            chapterPagesLeft = 7,
+        )
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = book.value,
+                    loadStatus = load.value,
+                    location = location,
+                    chromeVisible = true,
+                    menuOpen = true,
+                    menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                )
+            },
+            inspection = true,
+        )
+
+        assertNoChrome()
+
+        rule.runOnIdle { load.value = ReaderLoadStatus.Failed(ReaderLoadFailure.Render) }
+        rule.waitForIdle()
+        assertNoChrome()
+
+        rule.runOnIdle { load.value = ReaderLoadStatus.Ready }
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertIsDisplayed()
+        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361 of 661")
+
+        rule.runOnIdle { book.value = ReaderBookState.Loading }
+        rule.waitForIdle()
+        assertNoChrome()
+
+        rule.runOnIdle { book.value = ReaderBookState.Failed(LibraryUIError.NoServer) }
+        rule.waitForIdle()
+        assertNoChrome()
+
+        rule.runOnIdle { book.value = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound) }
+        rule.waitForIdle()
+        assertNoChrome()
+    }
+
+    // RC-50
+    @Test
+    fun rc50_togglingChromeNeverResizesThePage() {
+        val controller = ReaderController()
+        val chromeVisible = mutableStateOf(false)
+        val menuOpen = mutableStateOf(false)
+        val menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+        val movements = mutableListOf<RelocateData>()
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Test Book"),
+                    loadStatus = controller.status,
+                    chromeVisible = chromeVisible.value,
+                    menuOpen = menuOpen.value,
+                    menuRows = menuRows,
+                )
+            },
+            controller = controller,
+            assetLoaderFactory = epubLoader,
+            onPageEvent = { event ->
+                if (event is ReaderEvent.Relocate && event.data.isMovement) movements += event.data
+            },
+        )
+        rule.waitUntil(timeoutMillis = 30_000) { controller.status == ReaderLoadStatus.Ready }
+        rule.waitForIdle()
+        // Let the first layout and any first relocate settle before the baseline is taken.
+        Thread.sleep(1_000)
+        rule.waitForIdle()
+
+        val baseline = pageSnapshot()
+        val baselineMovements = movements.size
+
+        rule.runOnIdle { chromeVisible.value = true }
+        rule.waitForIdle()
+        assertEquals("chrome shown", baseline, pageSnapshot())
+
+        rule.runOnIdle { menuOpen.value = true }
+        rule.waitForIdle()
+        assertEquals("menu open", baseline, pageSnapshot())
+
+        rule.runOnIdle {
+            menuOpen.value = false
+            chromeVisible.value = false
+        }
+        rule.waitForIdle()
+        assertEquals("chrome hidden", baseline, pageSnapshot())
+
+        assertEquals("no new movement", baselineMovements, movements.size)
+    }
+
+    /** What a chrome toggle could change about the page: its size, the stage box, the insets and the system bars. */
+    private data class PageSnapshot(
+        val width: Int,
+        val height: Int,
+        val stage: String,
+        val insets: List<Int?>,
+        val bars: List<Boolean?>,
+    )
+
+    private fun pageSnapshot(): PageSnapshot {
+        val size = rule.runOnUiThread { findWebView()?.let { it.width to it.height } }
+        assertNotNull("the page is a WebView", size)
+        // Which bars exist depends on the device (the CI AVD has no navigation bar), so record each bar's state
+        // and compare it across the toggle rather than assuming it.
+        val bars = rule.runOnUiThread {
+            val insets = ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
+            listOf(WindowInsetsCompat.Type.statusBars(), WindowInsetsCompat.Type.navigationBars())
+                .map { insets?.isVisible(it) }
+        }
+        return PageSnapshot(
+            width = size!!.first,
+            height = size.second,
+            stage = evaluate("JSON.stringify(document.getElementById('stage').getBoundingClientRect())"),
+            insets = listOf("--inset-top", "--inset-bottom", "--inset-left", "--inset-right").map { cssInset(it) },
+            bars = bars,
+        )
     }
 }

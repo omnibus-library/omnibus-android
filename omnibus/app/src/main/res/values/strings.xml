@@ -96,6 +96,17 @@
     <string name="reader_error_book_missing">This book isn\'t in your library.</string>
     <string name="reader_error_no_epub">This book has no EPUB to read.</string>
     <string name="reader_back">Back</string>
+    <string name="reader_close_book">Close book</string>
+    <string name="reader_menu">Menu</string>
+    <string name="reader_menu_contents">Contents</string>
+    <string name="reader_menu_settings">Themes &amp; Settings</string>
+    <string name="reader_chapter_of">Chapter %1$d of %2$d</string>
+    <string name="reader_page_of">%1$d of %2$d</string>
+    <string name="reader_percent">%1$d%%</string>
+    <plurals name="reader_pages_left_in_chapter">
+        <item quantity="one">%1$d page left in chapter</item>
+        <item quantity="other">%1$d pages left in chapter</item>
+    </plurals>
 
     <!-- Book detail -->
     <string name="book_detail_stub_title">Book detail</string>
