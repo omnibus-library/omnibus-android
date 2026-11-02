@@ -1,0 +1,20 @@
+<resources>
+    <!-- Flag above the reading progress bar naming the reader's chapter. %1$d is the chapter number. -->
+    <string name="book_detail_progress_flag_chapter">Ch. %1$d</string>
+    <!-- A whole percentage through the book, such as 62%. Used in the flag when no chapter is known, and to start the line under the bar. -->
+    <string name="book_detail_progress_percent">%1$d%%</string>
+    <!-- Follows the percentage on the same line. Keep the leading space and middle dot. %1$s is a duration, such as 1 h 53 m. -->
+    <string name="book_detail_progress_left_at_pace">" · about %1$s left at your pace"</string>
+    <!-- Follows the percentage on the same line. Keep the leading space and middle dot. %1$s is the time left and %2$s the audiobook's length, such as 1 h 49 m and 4 h 49 m. -->
+    <string name="book_detail_progress_left_of">" · %1$s left of %2$s"</string>
+    <!-- A duration shorter than one minute. -->
+    <string name="book_detail_progress_under_a_minute">0 m</string>
+    <string name="book_detail_progress_in_progress">In progress</string>
+    <string name="book_detail_progress_offline">Offline. This book isn\'t downloaded.</string>
+    <!-- TalkBack name of the progress bar for an ebook. -->
+    <string name="book_detail_progress_reading_cd">Reading progress</string>
+    <!-- TalkBack name of the progress bar for an audiobook. -->
+    <string name="book_detail_progress_listening_cd">Listening progress</string>
+    <!-- TalkBack value of the progress bar. %1$d is a whole percentage. -->
+    <string name="book_detail_progress_percent_state">%1$d percent</string>
+</resources>
