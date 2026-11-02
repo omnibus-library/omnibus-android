@@ -23,7 +23,7 @@ internal val stageStatusEnd: List<BookDetailSection> = listOfNotNull(
 /** Under the byline, the full width of the stage. */
 internal val stageProgress: List<BookDetailSection> = listOfNotNull(
     // #96 See Reading Progress
-    null,
+    com.omnibus.omnibus.feature.bookdetail.progress.ReadingProgressSection,
     // #97 Finish Card and Celebration
     null,
 )
