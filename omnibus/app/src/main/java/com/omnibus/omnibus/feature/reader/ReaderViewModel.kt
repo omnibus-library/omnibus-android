@@ -332,4 +332,7 @@ internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState 
 sealed interface ReaderCommand {
     /** Shows the page at [target], an href from the contents or a CFI. */
     data class Display(val target: String) : ReaderCommand
+
+    /** Jumps to a whole-book [fraction] (0.0 to 1.0), for a percent-only position. */
+    data class Seek(val fraction: Double) : ReaderCommand
 }

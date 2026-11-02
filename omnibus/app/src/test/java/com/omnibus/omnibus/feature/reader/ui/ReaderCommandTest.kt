@@ -17,4 +17,17 @@ class ReaderCommandTest : DescribeSpec({
             scripts shouldContainExactly listOf(ReaderScripts.display("chapter2.xhtml"))
         }
     }
+
+    describe("seek") {
+
+        it("TC-107: seek commands reach the controller") {
+            val scripts = mutableListOf<String>()
+            val controller = ReaderController().apply { attach { scripts += it } }
+            ReaderEvent.decode(ReaderMessage("status", "ready"))?.let(controller::handle)
+
+            controller.execute(ReaderCommand.Seek(0.25))
+
+            scripts shouldContainExactly listOf(ReaderScripts.seek(0.25, 1))
+        }
+    }
 })

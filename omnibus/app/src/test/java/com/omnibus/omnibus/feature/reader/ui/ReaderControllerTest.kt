@@ -5,6 +5,7 @@ import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -336,6 +337,80 @@ class ReaderControllerTest : DescribeSpec({
             restored.restoreCfi shouldBe "epubcfi(/6/8)"
             restored.startAt("A")
             restored.restoreCfi shouldBe "epubcfi(/6/8)"
+        }
+    }
+
+    describe("seek") {
+
+        /** The seek scripts the page has been sent, in order. */
+        fun seeks(): List<String> = page.filter { it.startsWith("OmnibusReader.seek(") }
+
+        it("TC-89: seek is parked until ready and clamped") {
+            val reader = controller()
+
+            reader.seek(0.5)
+            page.shouldBeEmpty()
+
+            reader.send("status", "ready")
+            page shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
+
+            page.clear()
+            reader.seek(1.7)
+            reader.seek(-1.0)
+            reader.seek(Double.NaN)
+            page shouldContainExactly listOf(ReaderScripts.seek(1.0, 2), ReaderScripts.seek(0.0, 3))
+        }
+
+        it("TC-90: a pending seek is resent after a reboot until it settles") {
+            val reader = controller()
+            reader.send("hostReady")
+            reader.send("status", "ready")
+
+            reader.seek(0.5)
+            seeks() shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
+
+            // The page is replaced: the seek is sent to it once more, with the same id.
+            reader.send("hostReady")
+            reader.send("status", "ready")
+            seeks() shouldContainExactly listOf(ReaderScripts.seek(0.5, 1), ReaderScripts.seek(0.5, 1))
+
+            // The page reports the seek settled, so a further reboot does not resend it.
+            reader.send("relocate", """{"cfi":"epubcfi(/6/8)","settledSeek":1}""")
+            reader.send("hostReady")
+            reader.send("status", "ready")
+            seeks().size shouldBe 2
+
+            // A seek still pending when the controller is saved goes to the restored controller's page.
+            reader.seek(0.7)
+            val saved = with(ReaderControllerSaver) { SaverScope { true }.save(reader) }!!
+            val restored = ReaderControllerSaver.restore(saved)!!
+            val restoredPage = mutableListOf<String>()
+            restored.attach { restoredPage += it }
+            restored.configure("book-1", dark)
+            restored.send("hostReady")
+            restored.send("status", "ready")
+            restoredPage.filter { it.startsWith("OmnibusReader.seek(") } shouldContainExactly
+                listOf(ReaderScripts.seek(0.7, 2))
+        }
+
+        it("TC-91: navigation drops the pending seek") {
+            val navigations = listOf<Pair<String, (ReaderController) -> Unit>>(
+                "next" to { it.next() },
+                "previous" to { it.previous() },
+                "display" to { it.display("chapter2.xhtml") },
+            )
+            navigations.forEach { (label, navigate) ->
+                withClue(label) {
+                    val reader = controller()
+                    reader.seek(0.5)
+                    navigate(reader)
+
+                    reader.send("hostReady")
+                    reader.send("status", "ready")
+                    seeks().shouldBeEmpty()
+                    page.clear()
+                }
+            }
         }
     }
 })

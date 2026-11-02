@@ -264,6 +264,7 @@ internal fun ReaderScreenContent(
 /** Applies one [ReaderCommand] to the page. */
 internal fun ReaderController.execute(command: ReaderCommand) = when (command) {
     is ReaderCommand.Display -> display(command.target)
+    is ReaderCommand.Seek -> seek(command.fraction)
 }
 
 /** Test tags on the reader's own nodes, so tests can find them without depending on the layout. */
