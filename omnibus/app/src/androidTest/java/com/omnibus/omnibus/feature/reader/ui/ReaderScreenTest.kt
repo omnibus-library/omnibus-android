@@ -771,25 +771,25 @@ class ReaderScreenTest {
         val height: Int,
         val stage: String,
         val insets: List<Int?>,
-        val barsVisible: Boolean,
+        val bars: List<Boolean?>,
     )
 
     private fun pageSnapshot(): PageSnapshot {
         val size = rule.runOnUiThread { findWebView()?.let { it.width to it.height } }
         assertNotNull("the page is a WebView", size)
-        // `systemBars()` also includes the caption bar, which a phone never shows, so check the two bars that exist.
-        val barsVisible = rule.runOnUiThread {
+        // Which bars exist depends on the device (the CI AVD has no navigation bar), so record each bar's state
+        // and compare it across the toggle rather than assuming it.
+        val bars = rule.runOnUiThread {
             val insets = ViewCompat.getRootWindowInsets(rule.activity.window.decorView)
-            insets?.isVisible(WindowInsetsCompat.Type.statusBars()) == true &&
-                insets.isVisible(WindowInsetsCompat.Type.navigationBars())
+            listOf(WindowInsetsCompat.Type.statusBars(), WindowInsetsCompat.Type.navigationBars())
+                .map { insets?.isVisible(it) }
         }
-        assertTrue("the system bars stay visible", barsVisible)
         return PageSnapshot(
             width = size!!.first,
             height = size.second,
             stage = evaluate("JSON.stringify(document.getElementById('stage').getBoundingClientRect())"),
             insets = listOf("--inset-top", "--inset-bottom", "--inset-left", "--inset-right").map { cssInset(it) },
-            barsVisible = barsVisible,
+            bars = bars,
         )
     }
 }
