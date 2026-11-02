@@ -1,0 +1,5 @@
+<resources>
+    <!-- Labels of the Genres and Tags chip rows in the Overview tab. -->
+    <string name="book_detail_chips_genres">Genres</string>
+    <string name="book_detail_chips_tags">Tags</string>
+</resources>
