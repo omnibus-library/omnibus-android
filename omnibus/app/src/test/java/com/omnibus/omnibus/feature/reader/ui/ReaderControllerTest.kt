@@ -2,8 +2,10 @@ package com.omnibus.omnibus.feature.reader.ui
 
 import androidx.compose.runtime.saveable.SaverScope
 import com.omnibus.omnibus.data.reader.BookFileResult
+import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.data.reader.ReaderTypeface
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -268,6 +270,44 @@ class ReaderControllerTest : DescribeSpec({
             reader.configure("book-1", dark.copy(fontSize = 22))
 
             page.shouldBeEmpty()
+        }
+    }
+
+    describe("margins and reboots") {
+
+        it("applies a margins change alone, and sends nothing once the page shows it") {
+            val reader = controller()
+            reader.send("hostReady")
+            reader.send("status", "ready")
+            page.clear()
+
+            val wide = dark.copy(margins = ReaderMargins.Wide)
+            reader.configure("book-1", wide)
+            page.shouldContainExactly("OmnibusReader.setMargins(\"65%\")")
+
+            page.clear()
+            reader.configure("book-1", wide)
+            page.shouldBeEmpty()
+        }
+
+        it("reboots with the latest settings, including one set between boot and first paint") {
+            val reader = controller(startCfi = "start")
+            reader.send("hostReady")
+            page.clear()
+
+            // Set between boot and first paint, so the page never saw it.
+            val latest = dark.copy(typeface = ReaderTypeface.Classic, margins = ReaderMargins.Wide)
+            reader.configure("book-1", latest)
+            reader.onRendererGone() shouldBe true
+
+            val replacement = mutableListOf<String>()
+            reader.attach { replacement += it }
+            reader.send("hostReady")
+
+            replacement.size shouldBe 1
+            replacement[0] shouldContain "\"maxWidth\":\"65%\""
+            replacement[0] shouldContain "\"fontFamily\":\"'EB Garamond','Noto Serif',serif\""
+            replacement[0] shouldNotContain "\"maxWidth\":\"80%\""
         }
     }
 

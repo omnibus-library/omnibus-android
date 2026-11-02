@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -26,8 +27,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
+import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.data.reader.ReaderTypeface
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
@@ -72,13 +75,20 @@ class ReaderWebViewTest {
         controller: ReaderController,
         settings: ReaderSettings = ReaderSettings(),
         modifier: Modifier = Modifier.fillMaxSize(),
+    ) = showReaderState(controller, mutableStateOf(settings), modifier)
+
+    /** Shows the reader with [settings] read on every composition, so a change to it reaches the live page. */
+    private fun showReaderState(
+        controller: ReaderController,
+        settings: MutableState<ReaderSettings>,
+        modifier: Modifier = Modifier.fillMaxSize(),
     ) {
         rule.setContent {
             OmnibusTheme {
                 Box(modifier.testTag(READER)) {
                     ReaderWebView(
                         bookUuid = "test-book",
-                        settings = settings,
+                        settings = settings.value,
                         controller = controller,
                         assetLoaderFactory = assetLoaderFactory,
                         onEvent = { synchronized(messages) { messages += it } },
@@ -460,6 +470,156 @@ class ReaderWebViewTest {
     }
 
     /** The text that opens the page on screen, found by what the section's paragraphs occupy. */
+    /** The body's computed [property] as the page reports it, with the JSON quotes. */
+    private fun bodyStyle(property: String): String =
+        evaluate("getComputedStyle(document.querySelector('iframe').contentDocument.body).$property")
+
+    /** The body's computed [property] as a whole number, the way the existing size check reads it. */
+    private fun bodyNumber(property: String): String =
+        evaluate("String(parseFloat(getComputedStyle(document.querySelector('iframe').contentDocument.body).$property))")
+            .trim('"')
+
+    /**
+     * Whether some element of the section is laid out with a computed max-width of [css]. The column
+     * width is set by `themes.override`, which lands on the section's root, not on `body`, so the
+     * check looks through the section rather than at one element.
+     */
+    private fun someElementHasMaxWidth(css: String): Boolean =
+        evaluate(
+            """
+            (function () {
+              var doc = document.querySelector('iframe').contentDocument;
+              return Array.prototype.some.call(doc.querySelectorAll('*'), function (el) {
+                return getComputedStyle(el).maxWidth === '$css';
+              });
+            })()
+            """.trimIndent(),
+        ).trim('"') == "true"
+
+    /** The body's computed line height over its font size, which is the unitless multiplier. */
+    private fun bodyLineHeightRatio(): Double {
+        val raw = evaluate(
+            """
+            (function () {
+              var style = getComputedStyle(document.querySelector('iframe').contentDocument.body);
+              return String(parseFloat(style.lineHeight) / parseFloat(style.fontSize));
+            })()
+            """.trimIndent(),
+        ).trim('"')
+        return raw.toDouble()
+    }
+
+    /** The host page's `--page` ground, without the quotes the result is wrapped in. */
+    private fun pageGround(): String =
+        evaluate("getComputedStyle(document.documentElement).getPropertyValue('--page').trim()").trim('"')
+
+    /** Waits until [read] gives [expected], and says what it gave instead if it never does. */
+    private fun awaitValue(what: String, expected: String, read: () -> String) {
+        try {
+            rule.waitUntil(timeoutMillis = 10_000) { read() == expected }
+        } catch (e: Throwable) {
+            throw AssertionError("$what should be $expected but is ${read()}", e)
+        }
+    }
+
+    /** Waits until [read] satisfies [accept], and says what it gave instead if it never does. */
+    private fun awaitWhen(what: String, accept: (String) -> Boolean, read: () -> String) {
+        try {
+            rule.waitUntil(timeoutMillis = 10_000) { accept(read()) }
+        } catch (e: Throwable) {
+            throw AssertionError("$what was ${read()}", e)
+        }
+    }
+
+    private fun changeSettings(change: () -> Unit) = rule.runOnIdle(change)
+
+    private fun bootCount(): Int = synchronized(messages) { messages.count { it == ReaderEvent.HostReady } }
+
+    @Test
+    fun firstPaintUsesTheStoredSettingsWithoutAnyChange() {
+        val controller = ReaderController()
+        val settings = ReaderSettings(
+            theme = ReaderTheme.Sepia,
+            typeface = ReaderTypeface.Classic,
+            fontSize = 24,
+            margins = ReaderMargins.Wide,
+        )
+        showReader(controller, settings)
+        awaitReady(controller)
+
+        assertEquals(settings.theme.groundHex.lowercase(), pageGround())
+        assertEquals(settings.fontSize.toString(), bodyNumber("fontSize"))
+        assertTrue("some element of the section should have the Wide column width", someElementHasMaxWidth("65%"))
+        assertTrue(bodyStyle("fontFamily").contains("EB Garamond"))
+        assertEquals(1, bootCount())
+    }
+
+    @Test
+    fun aSettingChangeUpdatesThePaintedPageWithoutReloadingIt() {
+        val controller = ReaderController()
+        val settings = mutableStateOf(ReaderSettings())
+        showReaderState(controller, settings)
+        awaitReady(controller)
+        awaitMovementCount(1)
+        val bootsBefore = bootCount()
+        val shownBefore = firstVisibleParagraph()
+        val originalFace = bodyStyle("fontFamily")
+
+        changeSettings { settings.value = settings.value.copy(theme = ReaderTheme.Light) }
+        awaitValue("the page ground", ReaderTheme.Light.groundHex.lowercase(), ::pageGround)
+
+        changeSettings { settings.value = settings.value.copy(fontSize = 24) }
+        awaitValue("the font size", "24", { bodyNumber("fontSize") })
+
+        changeSettings { settings.value = settings.value.copy(lineHeight = 2.0) }
+        awaitWhen("the line height ratio", { kotlin.math.abs(it.toDouble() - 2.0) <= 0.05 }, { bodyLineHeightRatio().toString() })
+
+        changeSettings { settings.value = settings.value.copy(justify = false) }
+        awaitValue("the text alignment", "\"start\"", { bodyStyle("textAlign") })
+        changeSettings { settings.value = settings.value.copy(justify = true) }
+        awaitValue("the text alignment", "\"justify\"", { bodyStyle("textAlign") })
+
+        changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Wide) }
+        awaitWhen("the column width", { it == "true" }, { if (someElementHasMaxWidth("65%")) "true" else "false" })
+
+        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Mono) }
+        awaitWhen("the face", { it.contains("Droid Sans Mono") }, { bodyStyle("fontFamily") })
+        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Modern) }
+        awaitWhen("the face", { it.contains("Noto Serif") }, { bodyStyle("fontFamily") })
+        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Sans) }
+        awaitWhen("the face", { it.contains("Roboto") }, { bodyStyle("fontFamily") })
+        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Original) }
+        awaitValue("the book's own face", originalFace, { bodyStyle("fontFamily") })
+
+        assertEquals("the page must not reload for a change", bootsBefore, bootCount())
+        rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
+        assertEquals("the reader must keep its place", shownBefore, firstVisibleParagraph())
+    }
+
+    @Test
+    fun aSettingChangedJustBeforeARendererDeathIsTheOneTheRebootBoots() {
+        val settings = mutableStateOf(ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 24))
+        val controller = ReaderController()
+        showReaderState(controller, settings)
+        awaitReady(controller)
+        awaitMovementCount(1)
+        controller.next()
+        awaitMovementCount(2)
+        val lastPage = controller.restoreCfi
+        val requestsBefore = bookRequests
+
+        changeSettings { settings.value = settings.value.copy(theme = ReaderTheme.Light, fontSize = 27) }
+        awaitValue("the new size", "27", { bodyNumber("fontSize") })
+
+        rule.runOnUiThread { findWebView()!!.loadUrl("chrome://crash") }
+        rule.waitUntil(timeoutMillis = 30_000) { bookRequests > requestsBefore && controller.status == ReaderLoadStatus.Ready }
+
+        assertEquals("the reboot must not lose the reader's place", lastPage, controller.restoreCfi)
+        rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
+        assertEquals("27", bodyNumber("fontSize"))
+        assertEquals(ReaderTheme.Light.groundHex.lowercase(), pageGround())
+    }
+
     private fun firstVisibleParagraph(): String =
         evaluate(
             """
