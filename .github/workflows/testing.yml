@@ -1,9 +1,17 @@
+name: Testing
+
+# Both jobs run on every PR, whatever its base branch, so a stacked PR gets CI
+# from the start. The jobs are the required status checks and must never be
+# skipped: a required check that doesn't report blocks the merge forever.
+# Runs on main as well, to catch what the PR runs missed after a merge.
 on:
-  workflow_call:
-    inputs:
-      head_sha:
-        required: true
-        type: string
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: testing-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -15,9 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.head_sha }}
           persist-credentials: false
-          allow-unsafe-pr-checkout: true
 
       - uses: actions/setup-java@v6
         with:
@@ -44,9 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.head_sha }}
           persist-credentials: false
-          allow-unsafe-pr-checkout: true
 
       - uses: actions/setup-java@v6
         with:
