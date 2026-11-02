@@ -15,10 +15,12 @@ import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
 import com.omnibus.omnibus.feature.reader.ui.TocEntry
+import com.omnibus.omnibus.ui.components.CoverIdentity
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -61,7 +63,9 @@ class ReaderViewModel @AssistedInject constructor(
     @param:ApplicationScope private val persistScope: CoroutineScope,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ReaderUIState(opening = ReaderOpening.Resolving))
+    private val _uiState = MutableStateFlow(
+        ReaderUIState(opening = ReaderOpening.Resolving, menuRows = listOf(ReaderMenuRow.Contents)),
+    )
 
     /** The reader's state. It changes only through [onPageEvent], the book load and the intents below. */
     val uiState: StateFlow<ReaderUIState> = _uiState.asStateFlow()
@@ -341,7 +345,7 @@ class ReaderViewModel @AssistedInject constructor(
     private fun BookResult.toBookState(): ReaderBookState = when (this) {
         is BookResult.Success ->
             if (book.hasEpub) {
-                ReaderBookState.Ready(title = book.displayTitle)
+                ReaderBookState.Ready(title = book.displayTitle, cover = book.coverIdentity())
             } else {
                 ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub)
             }
@@ -363,8 +367,8 @@ data class ReaderUIState(
     /** Whether the chrome's menu is open. It only opens when the chrome is up and [menuRows] is non-empty. */
     val menuOpen: Boolean = false,
     /**
-     * The rows for reader features that exist. #47 adds `Settings`, #48 adds `Contents`. Empty hides
-     * the menu button.
+     * The rows for reader features that exist. The ViewModel starts with `Contents` (#48); #47 appends
+     * `Settings`. Empty hides the menu button, which is the default for hand-built states.
      */
     val menuRows: List<ReaderMenuRow> = emptyList(),
     /**
@@ -382,8 +386,14 @@ sealed interface ReaderBookState {
     /** The book is being read from the library. */
     data object Loading : ReaderBookState
 
-    /** The book can be read. [title] is its display title. */
-    data class Ready(val title: String) : ReaderBookState
+    /**
+     * The book can be read. [title] is its display title. [cover] draws the book in the contents
+     * sheet's header.
+     */
+    data class Ready(
+        val title: String,
+        val cover: CoverIdentity = CoverIdentity(uuid = "", title = title, hasCover = false),
+    ) : ReaderBookState
 
     /** The book is in the library but can't be opened here, or isn't there at all. */
     data class Unavailable(val reason: ReaderUnavailableReason) : ReaderBookState

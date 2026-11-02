@@ -69,6 +69,7 @@ internal fun ReaderChromePreview(
             commands = emptyFlow(),
             onPageEvent = {},
             onSheetDismissed = {},
+            onTocEntryChosen = {},
             onMenuOpened = {},
             onMenuDismissed = {},
             onMenuRowChosen = {},

@@ -111,6 +111,13 @@
         <item quantity="one">%1$d page left in chapter</item>
         <item quantity="other">%1$d pages left in chapter</item>
     </plurals>
+    <string name="reader_contents_tab_contents">Contents</string>
+    <string name="reader_contents_page_of">Page %1$d of %2$d</string>
+    <string name="reader_contents_percent_through">%1$d%% through</string>
+    <string name="reader_contents_empty_title">No table of contents</string>
+    <string name="reader_contents_empty_message">This edition ships without one.</string>
+    <string name="reader_contents_done">Done</string>
+    <string name="reader_contents_current_chapter">Current chapter</string>
 
     <!-- Book detail -->
     <string name="book_detail_stub_title">Book detail</string>

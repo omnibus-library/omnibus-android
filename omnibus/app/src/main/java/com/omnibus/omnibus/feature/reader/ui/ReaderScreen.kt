@@ -50,6 +50,7 @@ import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.feature.reader.ReaderOpening
+import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.ReaderViewModel
@@ -98,6 +99,7 @@ fun ReaderScreen(
         commands = viewModel.commands,
         onPageEvent = viewModel::onPageEvent,
         onSheetDismissed = viewModel::onSheetDismissed,
+        onTocEntryChosen = viewModel::onTocEntryChosen,
         onMenuOpened = viewModel::onMenuOpened,
         onMenuDismissed = viewModel::onMenuDismissed,
         onMenuRowChosen = viewModel::onMenuRowChosen,
@@ -123,6 +125,8 @@ fun ReaderScreen(
  * `OmnibusTheme(darkTheme = !theme.isLight)` or re-wrap them in `OmnibusTheme()`.
  *
  * @param commands page commands from the ViewModel, each applied to [controller] once.
+ * @param onSheetDismissed a sheet was dismissed by any means, including back.
+ * @param onTocEntryChosen a contents entry was chosen.
  * @param onPageEvent receives every event the page reports, and the host's load status.
  * @param onMenuOpened the menu button was tapped.
  * @param onMenuDismissed a tap or back dismissed the open menu.
@@ -142,6 +146,7 @@ internal fun ReaderScreenContent(
     commands: Flow<ReaderCommand>,
     onPageEvent: (ReaderEvent) -> Unit,
     onSheetDismissed: () -> Unit,
+    onTocEntryChosen: (TocEntry) -> Unit,
     onMenuOpened: () -> Unit,
     onMenuDismissed: () -> Unit,
     onMenuRowChosen: (ReaderMenuRow) -> Unit,
@@ -181,6 +186,8 @@ internal fun ReaderScreenContent(
     // Leaving composition flushes too, for a dismissal that bypasses back. Repeated flushes are no-ops.
     DisposableEffect(Unit) { onDispose { currentOnClosed() } }
 
+    // Read outside the reading theme, so sheets follow the app's own dark setting.
+    val appDark = isSystemInDarkTheme()
     val theme = uiState.settings.theme
     val reduceMotion = rememberReducedMotion()
     val window = if (LocalInspectionMode.current) null else LocalActivity.current?.window
@@ -299,6 +306,19 @@ internal fun ReaderScreenContent(
                             onMenuRowChosen = onMenuRowChosen,
                         )
                     }
+                    if (uiState.sheet == ReaderSheet.Contents) {
+                        // The app theme, not the reading theme: a dark-app reader on a Light page gets a dark sheet.
+                        OmnibusTheme(darkTheme = appDark) {
+                            ReaderContentsSheet(
+                                title = book.title,
+                                cover = book.cover,
+                                toc = uiState.toc,
+                                location = uiState.location,
+                                onEntryChosen = onTocEntryChosen,
+                                onDismiss = onSheetDismissed,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -342,6 +362,7 @@ private fun ReaderPreview(book: ReaderBookState, loadStatus: ReaderLoadStatus = 
         commands = emptyFlow(),
         onPageEvent = {},
         onSheetDismissed = {},
+        onTocEntryChosen = {},
         onMenuOpened = {},
         onMenuDismissed = {},
         onMenuRowChosen = {},
