@@ -12,6 +12,8 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.FakeLibrarySortPreferenceStore
 import com.omnibus.omnibus.data.library.page
 import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
+import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -36,7 +38,8 @@ class LibraryViewModelTest : DescribeSpec({
     fun viewModelFor(
         repo: FakeLibraryRepository,
         store: FakeLibrarySortPreferenceStore = FakeLibrarySortPreferenceStore(),
-    ) = LibraryViewModel(repo, store).also {
+        monitor: ConnectivityMonitor = FakeConnectivityMonitor(),
+    ) = LibraryViewModel(repo, store, monitor).also {
         collecting.collect(it.uiState)
     }
 
@@ -809,6 +812,22 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.uiState.value.category shouldBe LibraryCategory.Audiobooks
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+        }
+    }
+
+    describe("#21 connectivity") {
+
+        it("#21 TC-3: isOffline follows the monitor from the first state") {
+            val monitor = FakeConnectivityMonitor(online = false)
+            val viewModel = viewModelFor(repository, sortStore, monitor)
+
+            viewModel.uiState.value.isOffline shouldBe true
+
+            monitor.isOnline.value = true
+            viewModel.uiState.value.isOffline shouldBe false
+
+            monitor.isOnline.value = false
+            viewModel.uiState.value.isOffline shouldBe true
         }
     }
 })

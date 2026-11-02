@@ -12,6 +12,7 @@ import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,9 +33,12 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val sortPreferenceStore: LibrarySortPreferenceStore,
+    private val connectivityMonitor: ConnectivityMonitor,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LibraryUIState(isInitialLoading = true))
+    private val _uiState = MutableStateFlow(
+        LibraryUIState(isInitialLoading = true, isOffline = !connectivityMonitor.isOnline.value),
+    )
 
     /** The screen's state. Shows the first page's loading state until the first result arrives. */
     val uiState: StateFlow<LibraryUIState> = _uiState.asStateFlow()
@@ -51,6 +55,9 @@ class LibraryViewModel @Inject constructor(
             val saved = sortPreferenceStore.preference.first()
             _uiState.update { it.copy(sort = saved.sort, direction = saved.direction) }
             reload(refreshing = false)
+        }
+        viewModelScope.launch {
+            connectivityMonitor.isOnline.collect { online -> _uiState.update { it.copy(isOffline = !online) } }
         }
     }
 
@@ -213,6 +220,7 @@ class LibraryViewModel @Inject constructor(
  * @property sort The sort key the books are ordered by.
  * @property direction The order the sort key runs in.
  * @property scrollToTop A one-shot request to scroll the grid to its first item after a query change. Cleared by [LibraryViewModel.scrolledToTop].
+ * @property isOffline Whether the device has no validated network. Drives the masthead's Offline pill.
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -227,6 +235,7 @@ data class LibraryUIState(
     val sort: LibrarySort = LibrarySort.NewestAdded,
     val direction: SortDirection = SortDirection.Desc,
     val scrollToTop: Boolean = false,
+    val isOffline: Boolean = false,
 ) {
 
     /** Whether the books are narrowed or reordered from the default view. Hidden formats never count. */
