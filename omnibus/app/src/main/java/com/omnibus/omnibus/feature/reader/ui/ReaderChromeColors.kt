@@ -27,3 +27,10 @@ fun readerChromeColors(theme: ReaderTheme): ReaderChromeColors {
     }
     return ReaderChromeColors(ink, ink.copy(alpha = 0.5f), plate, ink.copy(alpha = 0.12f))
 }
+
+/**
+ * The colour of the sync offer's "Go" action on [theme]'s plate. The accent is only about 1.8:1 on
+ * the light plates, so they use the chrome ink, and the dark plates use the accent (6.9:1 and 8.6:1).
+ */
+fun readerSyncOfferActionColor(theme: ReaderTheme): Color =
+    if (theme.isLight) readerChromeColors(theme).ink else OmnibusPalette.Atrium.accent

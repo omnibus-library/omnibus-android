@@ -84,6 +84,9 @@ internal object ReaderScripts {
 
     fun display(target: String) = "OmnibusReader.display(${quote(target)})"
 
+    /** Jumps the page to [fraction] of the book, tagged [id] so the page can report it settled. */
+    fun seek(fraction: Double, id: Int) = "OmnibusReader.seek(${JsonPrimitive(fraction)}, $id)"
+
     private fun quote(value: String) = JsonPrimitive(value).toString()
 
 }

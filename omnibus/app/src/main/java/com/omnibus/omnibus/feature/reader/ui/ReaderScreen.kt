@@ -4,8 +4,16 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -14,6 +22,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +30,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -46,8 +56,10 @@ import com.omnibus.omnibus.feature.reader.ReaderViewModel
 import com.omnibus.omnibus.feature.reader.bootCfi
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
-import com.omnibus.omnibus.ui.theme.rememberReducedMotion
+import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import com.omnibus.omnibus.ui.theme.Spacing
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -92,6 +104,8 @@ fun ReaderScreen(
         onRetryBookRequested = viewModel::onRetryBookRequested,
         onReaderClosed = viewModel::onReaderClosed,
         onReaderStopped = viewModel::onReaderStopped,
+        onSyncOfferAccepted = viewModel::onSyncOfferAccepted,
+        onSyncOfferDismissed = viewModel::onSyncOfferDismissed,
         onClose = onClose,
         modifier = modifier,
     )
@@ -115,6 +129,8 @@ fun ReaderScreen(
  * @param onMenuRowChosen a menu row was chosen.
  * @param onReaderClosed called when the reader is left, or its composition is.
  * @param onReaderStopped called when the activity stops, so the position is flushed before the app is backgrounded.
+ * @param onSyncOfferAccepted the reader chose "Go" on the sync offer.
+ * @param onSyncOfferDismissed the reader dismissed the sync offer.
  * @param onClose called after [onReaderClosed] when the reader is left.
  */
 @Composable
@@ -132,6 +148,8 @@ internal fun ReaderScreenContent(
     onRetryBookRequested: () -> Unit,
     onReaderClosed: () -> Unit,
     onReaderStopped: () -> Unit,
+    onSyncOfferAccepted: () -> Unit,
+    onSyncOfferDismissed: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -240,6 +258,32 @@ internal fun ReaderScreenContent(
                         )
                     }
                     if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                        // Anchored above the bottom band whatever the chrome does, so it never moves when the chrome toggles.
+                        ChromeVisibility(
+                            visible = uiState.syncOffer != null,
+                            reduceMotion = reduceMotion,
+                            enter = fadeIn(Motion.settle()) + slideInVertically { it / 2 },
+                            exit = fadeOut(Motion.settle()),
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        ) {
+                            ReaderSyncOfferBanner(
+                                title = stringResource(R.string.reader_sync_offer_title),
+                                detail = stringResource(R.string.reader_sync_offer_detail),
+                                goLabel = stringResource(R.string.reader_sync_offer_go),
+                                dismissLabel = stringResource(R.string.reader_sync_offer_dismiss),
+                                colors = readerChromeColors(theme),
+                                actionColor = readerSyncOfferActionColor(theme),
+                                onAccept = onSyncOfferAccepted,
+                                onDismiss = onSyncOfferDismissed,
+                                modifier = Modifier
+                                    .windowInsetsPadding(
+                                        ReaderWebViewDefaults.insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                                    )
+                                    .padding(start = Spacing.md, end = Spacing.md, bottom = ReaderBands.Bottom + Spacing.sm)
+                                    .widthIn(max = 560.dp)
+                                    .fillMaxWidth(),
+                            )
+                        }
                         ReaderChrome(
                             indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
                             chromeVisible = uiState.chromeVisible,
@@ -264,6 +308,7 @@ internal fun ReaderScreenContent(
 /** Applies one [ReaderCommand] to the page. */
 internal fun ReaderController.execute(command: ReaderCommand) = when (command) {
     is ReaderCommand.Display -> display(command.target)
+    is ReaderCommand.Seek -> seek(command.fraction)
 }
 
 /** Test tags on the reader's own nodes, so tests can find them without depending on the layout. */
@@ -303,6 +348,8 @@ private fun ReaderPreview(book: ReaderBookState, loadStatus: ReaderLoadStatus = 
         onRetryBookRequested = {},
         onReaderClosed = {},
         onReaderStopped = {},
+        onSyncOfferAccepted = {},
+        onSyncOfferDismissed = {},
         onClose = {},
     )
 }

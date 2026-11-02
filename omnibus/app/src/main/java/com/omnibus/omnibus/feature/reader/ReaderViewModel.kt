@@ -7,7 +7,9 @@ import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.progress.PositionPushThrottle
 import com.omnibus.omnibus.data.progress.PositionSaveResult
 import com.omnibus.omnibus.data.progress.ProgressRepository
+import com.omnibus.omnibus.data.progress.PositionSync
 import com.omnibus.omnibus.data.progress.ReadingPosition
+import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.di.ApplicationScope
@@ -24,7 +26,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 
 /**
  * Owns the reader's state for one book. The screen reads [uiState], forwards the page's events to
@@ -80,6 +85,24 @@ class ReaderViewModel @AssistedInject constructor(
     /** The latest position not yet pushed. Null when everything recorded has gone out. */
     private var pendingPush: ReadingPosition? = null
 
+    /** Where the page booted. */
+    private var openingStart: ReaderStart = ReaderStart.Beginning
+
+    /** The percent of the record the open started from, or null. */
+    private var openedPercent: Int? = null
+
+    /** Whether the seek for a percent-only opening has been sent. It is sent once, when the page is first ready. */
+    private var openingSeekSent = false
+
+    /** Whether a sync offer was accepted or dismissed. Neither re-arms for this open. */
+    private var offerSettled = false
+
+    /** Holds back a percent-only open's writes until the reader moves. */
+    private var gate = PersistGate(held = false)
+
+    /** Keeps the stored percent from falling while reading forward from the opened position. */
+    private var floor = PercentFloor(openedPercent = null)
+
     init {
         loadBook()
         resolveOpening()
@@ -103,7 +126,10 @@ class ReaderViewModel @AssistedInject constructor(
             }
             is ReaderEvent.Toc -> _uiState.update { it.copy(toc = event.entries) }
             ReaderEvent.ToggleChrome -> onChromeToggled()
-            is ReaderEvent.LoadStatusChanged -> _uiState.update { it.copy(loadStatus = event.status) }
+            is ReaderEvent.LoadStatusChanged -> {
+                _uiState.update { it.copy(loadStatus = event.status) }
+                if (event.status == ReaderLoadStatus.Ready) sendOpeningSeek()
+            }
             // Status is ignored: the controller owns load status, and LoadStatusChanged reports it.
             is ReaderEvent.Status,
             // The rest belong to later work (#54, #55, #63), so they leave the state alone.
@@ -175,13 +201,15 @@ class ReaderViewModel @AssistedInject constructor(
     private fun record(data: RelocateData) {
         val first = !sawFirstRelocate
         sawFirstRelocate = true
+        if (!gate.admit(data)) return
+        val percent = floor.percentFor(data)
         val cfi = data.cfi?.takeIf { it.isNotBlank() } ?: return
         if (first || data.echo || cfi == lastSaved?.cfi) return
         persist(
             ReadingPosition(
                 bookUuid = bookUuid,
                 cfi = cfi,
-                percent = data.pct.takeIf { data.totalPages > 0 },
+                percent = percent,
                 clientUpdatedAt = timeSource.nowMillis() / 1000,
             ),
         )
@@ -213,21 +241,90 @@ class ReaderViewModel @AssistedInject constructor(
         }
     }
 
+    /** Sends the seek of a percent-only opening that boots at the cover, once the page is ready. */
+    private fun sendOpeningSeek() {
+        val start = openingStart as? ReaderStart.AtPercent ?: return
+        if (openingSeekSent || start.bootCfi != null) return
+        openingSeekSent = true
+        gate.onSeekSent()
+        _commands.trySend(ReaderCommand.Seek(start.fraction))
+    }
+
+    /** The reader chose the offered position. Moves to it once, and the offer is gone for this open. */
+    fun onSyncOfferAccepted() {
+        val offer = _uiState.value.syncOffer ?: return
+        offerSettled = true
+        _uiState.update { it.copy(syncOffer = null) }
+        // The reader's own choice, so a held percent-only open may now be written.
+        gate.release()
+        when (val target = offer.target) {
+            is ReaderStart.AtCfi -> _commands.trySend(ReaderCommand.Display(target.cfi))
+            is ReaderStart.AtPercent -> _commands.trySend(ReaderCommand.Seek(target.fraction))
+            ReaderStart.Beginning -> Unit
+        }
+    }
+
+    /** The reader dismissed the offer. It does not come back for this open. */
+    fun onSyncOfferDismissed() {
+        if (_uiState.value.syncOffer == null) return
+        offerSettled = true
+        _uiState.update { it.copy(syncOffer = null) }
+    }
+
     /** Reads the book again after it failed to load. Does nothing in any other state. */
     fun onRetryBookRequested() {
         if (_uiState.value.book is ReaderBookState.Failed) loadBook()
     }
 
     /**
-     * Reads the book's stored position and records where the page boots. It doesn't wait for the
-     * book, and the book load doesn't wait for it.
+     * Works out where the page boots. The local position and the server's are read at once, and the
+     * server has [PositionSync.OPEN_DEADLINE] to answer. A newer answer in time is the opening
+     * position. Otherwise the page opens at the local one, and a newer answer that arrives late is
+     * offered (never applied). The book load doesn't wait for this, and this doesn't wait for the book.
      */
-    private fun resolveOpening() {
-        viewModelScope.launch {
-            val local = progressRepository.getLocalPosition(bookUuid)
-            val start = local?.cfi?.takeIf { it.isNotBlank() }?.let { ReaderStart.AtCfi(it) } ?: ReaderStart.Beginning
-            _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
+    private fun resolveOpening() = viewModelScope.launch {
+        // Started before the read, so an answer at exactly the deadline loses the tie and is offered (TC-65).
+        val deadline = async { delay(PositionSync.OPEN_DEADLINE) }
+        val remote = async { progressRepository.getServerPosition(bookUuid) }
+        val local = progressRepository.getLocalPosition(bookUuid)
+        val early: ServerPositionResult? = select {
+            remote.onAwait { it }
+            deadline.onAwait { null }
         }
+        deadline.cancel()
+
+        val adopted = (early as? ServerPositionResult.Found)?.position?.takeIf { PositionSync.isNewer(it, local) }
+        val start = adopted?.let { readerStartOf(it.cfi, it.derivedCfi, it.percent) }
+            ?: readerStartOf(local?.cfi, null, local?.percent)
+        begin(start, openedPercent = (adopted?.percent ?: local?.percent)?.takeIf { it > 0 })
+
+        if (adopted != null) {
+            // An adopted position is kept on this device, with the server's own clock, and not pushed back.
+            val saved = ReadingPosition(
+                bookUuid = bookUuid,
+                cfi = adopted.cfi?.trim()?.takeIf { PositionSync.isEpubCfi(it) },
+                percent = adopted.percent,
+                clientUpdatedAt = adopted.orderingClock,
+            )
+            persistScope.launch(start = CoroutineStart.UNDISPATCHED) { progressRepository.savePosition(saved, push = false) }
+        }
+        if (early != null) return@launch
+
+        // Late: the read is not cancelled. A newer position that starts somewhere else becomes an offer.
+        val record = (remote.await() as? ServerPositionResult.Found)?.position ?: return@launch
+        if (!PositionSync.isNewer(record, local)) return@launch
+        val target = readerStartOf(record.cfi, record.derivedCfi, record.percent)
+        if (target == start || offerSettled) return@launch
+        _uiState.update { it.copy(syncOffer = SyncOffer(target)) }
+    }
+
+    /** Records where the page boots, and that it is now open. */
+    private fun begin(start: ReaderStart, openedPercent: Int?) {
+        openingStart = start
+        this.openedPercent = openedPercent
+        gate = PersistGate(held = start is ReaderStart.AtPercent)
+        floor = PercentFloor(openedPercent)
+        _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
     }
 
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
@@ -275,6 +372,8 @@ data class ReaderUIState(
      * ViewModel starts at [ReaderOpening.Resolving].
      */
     val opening: ReaderOpening = ReaderOpening.Resolved(ReaderStart.Beginning),
+    /** A newer position from another device, offered once the page is ready. Null when there is none to offer. */
+    val syncOffer: SyncOffer? = null,
 )
 
 /** Whether the book for the reader could be read. */
@@ -332,4 +431,7 @@ internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState 
 sealed interface ReaderCommand {
     /** Shows the page at [target], an href from the contents or a CFI. */
     data class Display(val target: String) : ReaderCommand
+
+    /** Jumps to a whole-book [fraction] (0.0 to 1.0), for a percent-only position. */
+    data class Seek(val fraction: Double) : ReaderCommand
 }

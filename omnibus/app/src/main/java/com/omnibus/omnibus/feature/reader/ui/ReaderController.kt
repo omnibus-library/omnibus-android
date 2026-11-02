@@ -72,6 +72,14 @@ class ReaderController(startCfi: String? = null) {
 
     private var evaluator: ((String) -> Unit)? = null
     private var bookUuid: String? = null
+
+    /** The id of the last [seek], which the page echoes back in `settledSeek` once it has moved there. */
+    internal var seekId = 0
+        private set
+
+    /** The fraction of a seek the page hasn't settled yet, or null. Re-sent after a reboot until it settles. */
+    internal var pendingSeek: Double? = null
+        private set
     private var settings = ReaderSettings()
 
     /** The typography the page was last handed, or null when no page is holding ours. */
@@ -79,12 +87,33 @@ class ReaderController(startCfi: String? = null) {
     private var isReady = false
     private var consecutiveRendererLosses = 0
 
-    fun next() = run(ReaderScripts.NEXT)
+    fun next() {
+        pendingSeek = null
+        run(ReaderScripts.NEXT)
+    }
 
-    fun previous() = run(ReaderScripts.PREVIOUS)
+    fun previous() {
+        pendingSeek = null
+        run(ReaderScripts.PREVIOUS)
+    }
 
     /** Navigates to a contents entry's href or to a CFI. */
-    fun display(target: String) = run(ReaderScripts.display(target))
+    fun display(target: String) {
+        pendingSeek = null
+        run(ReaderScripts.display(target))
+    }
+
+    /**
+     * Jumps to a whole-book [fraction] (0.0 to 1.0, clamped). Parked until the page is ready, and
+     * re-sent after a reboot until a relocate reports it settled. NaN does nothing.
+     */
+    fun seek(fraction: Double) {
+        if (fraction.isNaN()) return
+        val clamped = fraction.coerceIn(0.0, 1.0)
+        seekId++
+        pendingSeek = clamped
+        if (isReady) run(ReaderScripts.seek(clamped, seekId))
+    }
 
     /** Tells the page to release the book. Called as the reader goes away. */
     fun teardown() {
@@ -107,6 +136,12 @@ class ReaderController(startCfi: String? = null) {
     /** Marks the start as already chosen, for a controller restored from [ReaderControllerSaver]. */
     internal fun markStarted() {
         started = true
+    }
+
+    /** Restores a seek that was pending when the controller was saved, with its id. */
+    internal fun restoreSeek(pending: Double?, id: Int) {
+        pendingSeek = pending
+        seekId = id
     }
 
     internal fun attach(evaluate: (String) -> Unit) {
@@ -207,9 +242,12 @@ class ReaderController(startCfi: String? = null) {
         // A setting changed between the boot snapshot and first paint reaches the page here, or
         // not until the next reboot.
         syncSettings()
+        // A seek that hadn't settled before the page was replaced goes to the new page too.
+        pendingSeek?.let { run(ReaderScripts.seek(it, seekId)) }
     }
 
     private fun onRelocate(data: RelocateData) {
+        if (data.settledSeek != null && data.settledSeek == seekId) pendingSeek = null
         if (!data.isMovement) return
         data.cfi?.takeIf { it.isNotBlank() }?.let { restoreCfi = it }
     }
@@ -248,15 +286,16 @@ fun rememberReaderController(startCfi: String? = null): ReaderController =
     rememberSaveable(saver = ReaderControllerSaver) { ReaderController(startCfi) }
 
 /**
- * Saves the position and whether the start was chosen across activity recreation, so a rotation
- * reboots at the same page and never resets it to the opening one.
+ * Saves the position, whether the start was chosen and any pending seek across activity
+ * recreation, so a rotation reboots at the same page and never resets it to the opening one.
  */
 internal val ReaderControllerSaver: Saver<ReaderController, Any> =
     listSaver<ReaderController, Any>(
-        save = { listOf(it.restoreCfi ?: "", it.started) },
+        save = { listOf(it.restoreCfi ?: "", it.started, it.pendingSeek ?: -1.0, it.seekId) },
         restore = {
             ReaderController(startCfi = (it[0] as String).ifEmpty { null }).apply {
                 if (it[1] as Boolean) markStarted()
+                restoreSeek(pending = (it[2] as Double).takeIf { fraction -> fraction >= 0.0 }, id = it[3] as Int)
             }
         },
     )

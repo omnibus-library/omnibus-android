@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import java.util.Locale
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.double
@@ -112,6 +113,19 @@ class ReaderScriptsTest : DescribeSpec({
             ReaderScripts.settingsChange(base, serif)
                 .shouldContainExactly("OmnibusReader.setFont(\"Georgia,serif\")")
             ReaderScripts.settingsChange(serif, base).shouldContainExactly("OmnibusReader.setFont(null)")
+        }
+    }
+
+    describe("seek") {
+
+        it("TC-92: seek script uses locale-independent numbers") {
+            val previous = Locale.getDefault()
+            try {
+                Locale.setDefault(Locale.GERMANY)
+                ReaderScripts.seek(0.57, 3) shouldBe "OmnibusReader.seek(0.57, 3)"
+            } finally {
+                Locale.setDefault(previous)
+            }
         }
     }
 })

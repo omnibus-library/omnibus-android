@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.progress
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 
 /**
  * In-memory [ProgressRepository] for the ViewModel tests. Every [savePosition] call is recorded
@@ -29,6 +30,18 @@ class FakeProgressRepository : ProgressRepository {
     /** When set, [getLocalPosition] suspends on it before answering. */
     var pendingLocal: CompletableDeferred<Unit>? = null
 
+    /** What [getServerPosition] returns, unless [serverAnswer] is set. */
+    var serverResult: ServerPositionResult = ServerPositionResult.None
+
+    /** Virtual milliseconds [getServerPosition] takes before answering. */
+    var serverDelayMillis = 0L
+
+    /** When set, [getServerPosition] answers with this instead, once it completes. */
+    var serverAnswer: CompletableDeferred<ServerPositionResult>? = null
+
+    /** The uuid of every [getServerPosition] call, in call order. */
+    val serverReads = mutableListOf<String>()
+
     override suspend fun getLocalPosition(bookUuid: String): ReadingPosition? {
         pendingLocal?.await()
         return stored[bookUuid]
@@ -41,5 +54,11 @@ class FakeProgressRepository : ProgressRepository {
         holdSaves?.await()
         completedSaves += save
         return if (push) pushResult else PositionSaveResult.NotPushed
+    }
+
+    override suspend fun getServerPosition(bookUuid: String): ServerPositionResult {
+        serverReads += bookUuid
+        if (serverDelayMillis > 0) delay(serverDelayMillis)
+        return serverAnswer?.await() ?: serverResult
     }
 }

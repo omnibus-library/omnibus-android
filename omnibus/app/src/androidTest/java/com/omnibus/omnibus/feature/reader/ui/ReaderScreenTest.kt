@@ -104,6 +104,8 @@ class ReaderScreenTest {
         onRetryBookRequested: () -> Unit = {},
         onReaderClosed: () -> Unit = {},
         onReaderStopped: () -> Unit = {},
+        onSyncOfferAccepted: () -> Unit = {},
+        onSyncOfferDismissed: () -> Unit = {},
         onClose: () -> Unit = {},
     ) {
         rule.setContent {
@@ -123,6 +125,8 @@ class ReaderScreenTest {
                         onRetryBookRequested = onRetryBookRequested,
                         onReaderClosed = onReaderClosed,
                         onReaderStopped = onReaderStopped,
+                        onSyncOfferAccepted = onSyncOfferAccepted,
+                        onSyncOfferDismissed = onSyncOfferDismissed,
                         onClose = onClose,
                     )
                 }
@@ -231,6 +235,8 @@ class ReaderScreenTest {
                     onRetryBookRequested = {},
                     onReaderClosed = {},
                     onReaderStopped = {},
+                    onSyncOfferAccepted = {},
+                    onSyncOfferDismissed = {},
                     onClose = {},
                 )
             }
@@ -316,6 +322,8 @@ class ReaderScreenTest {
                         onRetryBookRequested = {},
                         onReaderClosed = {},
                         onReaderStopped = {},
+                        onSyncOfferAccepted = {},
+                        onSyncOfferDismissed = {},
                         onClose = {},
                     )
                 }
@@ -815,6 +823,8 @@ class ReaderScreenTest {
                         onRetryBookRequested = {},
                         onReaderClosed = { closed++ },
                         onReaderStopped = { stopped++ },
+                        onSyncOfferAccepted = {},
+                        onSyncOfferDismissed = {},
                         onClose = {},
                     )
                 }
