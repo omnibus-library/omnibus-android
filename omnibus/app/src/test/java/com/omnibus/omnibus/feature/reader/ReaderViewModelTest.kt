@@ -11,6 +11,7 @@ import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadFailure
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
@@ -203,6 +204,19 @@ class ReaderViewModelTest : DescribeSpec({
             vm.noCommandArrives()
         }
 
+        it("CS-16: a second toc event keeps the sheet open") {
+            val vm = viewModel()
+            val bare = listOf(TocEntry(label = "A", href = "a.xhtml", level = 0))
+            val enriched = listOf(TocEntry(label = "A", href = "a.xhtml", level = 0, page = 1, pct = 0))
+            vm.onContentsRequested()
+
+            vm.onPageEvent(ReaderEvent.Toc(bare))
+            vm.onPageEvent(ReaderEvent.Toc(enriched))
+
+            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
+            vm.uiState.value.toc shouldBe enriched
+        }
+
         it("TC-41: commands are delivered exactly once, in order, and not re-delivered") {
             val vm = viewModel()
 
@@ -240,6 +254,7 @@ class ReaderViewModelTest : DescribeSpec({
             // Status is not load status, so the load status stays Loading here.
             vm.uiState.value shouldBe ReaderUIState(
                 loadStatus = ReaderLoadStatus.Loading,
+                menuRows = listOf(ReaderMenuRow.Contents),
                 location = RelocateData(
                     cfi = "epubcfi(/6/14!/4/2/1:0)",
                     page = 12,
@@ -274,7 +289,11 @@ class ReaderViewModelTest : DescribeSpec({
 
             gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
 
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Moby Dick")
+            // CS-39
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(
+                title = "Moby Dick",
+                cover = testBook(1, title = "Moby Dick").coverIdentity(),
+            )
         }
 
         it("TC-51: a book with no epub is Unavailable NoEpub") {
@@ -315,17 +334,22 @@ class ReaderViewModelTest : DescribeSpec({
 
             gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
 
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Moby Dick")
+            // CS-39
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(
+                title = "Moby Dick",
+                cover = testBook(1, title = "Moby Dick").coverIdentity(),
+            )
             repository.bookRequests shouldBe listOf("book-1", "book-1")
         }
 
         it("TC-54: retry while Ready does not refetch or reset to Loading") {
             val vm = viewModel()
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1")
+            // CS-39
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1", cover = testBook(1).coverIdentity())
 
             vm.onRetryBookRequested()
 
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1")
+            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1", cover = testBook(1).coverIdentity())
             repository.bookRequests shouldBe listOf("book-1")
         }
 
@@ -370,11 +394,25 @@ class ReaderViewModelTest : DescribeSpec({
 
         val contentsAndSettings = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
 
-        it("RC-13: menu defaults to closed with no rows") {
+        it("CS-1: the reader offers the Contents row from the start") {
             val state = viewModel().uiState.value
 
             state.menuOpen shouldBe false
-            state.menuRows shouldBe emptyList()
+            state.menuRows shouldBe listOf(ReaderMenuRow.Contents)
+            state.toc shouldBe emptyList()
+            ReaderUIState().menuRows shouldBe emptyList()
+        }
+
+        it("CS-3: choosing the Contents row from the initial state opens the sheet") {
+            val vm = viewModel()
+            vm.onChromeToggled()
+
+            vm.onMenuOpened()
+            vm.uiState.value.menuOpen shouldBe true
+
+            vm.onMenuRowChosen(ReaderMenuRow.Contents)
+            vm.uiState.value.menuOpen shouldBe false
+            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
         }
 
         it("RC-14: opening the menu needs chrome up and rows") {
@@ -383,10 +421,7 @@ class ReaderViewModelTest : DescribeSpec({
             ReaderUIState(chromeVisible = true, menuRows = emptyList())
                 .withMenuOpened().menuOpen shouldBe false
 
-            val vm = viewModel()
-            vm.onChromeToggled()
-            vm.onMenuOpened()
-            vm.uiState.value.menuOpen shouldBe false
+            viewModel().apply { onMenuOpened() }.uiState.value.menuOpen shouldBe false
         }
 
         it("RC-15: the menu opens when chrome is up and rows exist") {
