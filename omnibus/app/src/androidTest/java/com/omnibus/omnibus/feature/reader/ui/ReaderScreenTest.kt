@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -15,20 +16,29 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -48,6 +58,7 @@ import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.withMenuDismissed
 import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
+import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
@@ -98,6 +109,7 @@ class ReaderScreenTest {
         inspection: Boolean = false,
         onPageEvent: (ReaderEvent) -> Unit = {},
         onSheetDismissed: () -> Unit = {},
+        onTocEntryChosen: (TocEntry) -> Unit = {},
         onMenuOpened: () -> Unit = {},
         onMenuDismissed: () -> Unit = {},
         onMenuRowChosen: (ReaderMenuRow) -> Unit = {},
@@ -107,9 +119,20 @@ class ReaderScreenTest {
         onSyncOfferAccepted: () -> Unit = {},
         onSyncOfferDismissed: () -> Unit = {},
         onClose: () -> Unit = {},
+        /** The app's dark setting for the test, or null to keep the device's. */
+        appNight: Boolean? = null,
     ) {
         rule.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides inspection) {
+            val configuration = appNight?.let { night ->
+                Configuration(LocalConfiguration.current).apply {
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        (if (night) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
+                }
+            } ?: LocalConfiguration.current
+            CompositionLocalProvider(
+                LocalInspectionMode provides inspection,
+                LocalConfiguration provides configuration,
+            ) {
                 OmnibusTheme {
                     ReaderScreenContent(
                         uiState = uiState(),
@@ -119,6 +142,7 @@ class ReaderScreenTest {
                         commands = commands,
                         onPageEvent = onPageEvent,
                         onSheetDismissed = onSheetDismissed,
+                        onTocEntryChosen = onTocEntryChosen,
                         onMenuOpened = onMenuOpened,
                         onMenuDismissed = onMenuDismissed,
                         onMenuRowChosen = onMenuRowChosen,
@@ -229,6 +253,7 @@ class ReaderScreenTest {
                     commands = emptyFlow(),
                     onPageEvent = {},
                     onSheetDismissed = {},
+                    onTocEntryChosen = {},
                     onMenuOpened = {},
                     onMenuDismissed = {},
                     onMenuRowChosen = {},
@@ -316,6 +341,7 @@ class ReaderScreenTest {
                         commands = emptyFlow(),
                         onPageEvent = {},
                         onSheetDismissed = {},
+                        onTocEntryChosen = {},
                         onMenuOpened = {},
                         onMenuDismissed = {},
                         onMenuRowChosen = {},
@@ -629,6 +655,8 @@ class ReaderScreenTest {
         rule.waitForIdle()
 
         rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assertDoesNotExist()
+        // CS-4
+        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
         assertEquals(ReaderSheet.Contents, state.value.sheet)
         assertEquals(false, state.value.menuOpen)
     }
@@ -817,6 +845,7 @@ class ReaderScreenTest {
                         commands = emptyFlow(),
                         onPageEvent = {},
                         onSheetDismissed = {},
+                        onTocEntryChosen = {},
                         onMenuOpened = {},
                         onMenuDismissed = {},
                         onMenuRowChosen = {},
@@ -842,6 +871,179 @@ class ReaderScreenTest {
         rule.runOnIdle { assertEquals("leaving composition flushes once", 1, closed) }
     }
 
+    /** The contents sheet open over a Ready book, with dismissals recorded in [events] and clearing the sheet. */
+    private fun showOpenContentsSheet(
+        events: MutableList<String>,
+        toc: List<TocEntry> = emptyList(),
+        readingTheme: ReaderTheme = ReaderTheme.Light,
+        appNight: Boolean? = null,
+    ) {
+        val sheet = mutableStateOf<ReaderSheet?>(ReaderSheet.Contents)
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    settings = ReaderSettings(theme = readingTheme),
+                    toc = toc,
+                    sheet = sheet.value,
+                )
+            },
+            inspection = true,
+            appNight = appNight,
+            onSheetDismissed = {
+                events += "sheet"
+                sheet.value = null
+            },
+            onClose = { events += "close" },
+            onReaderClosed = { events += "closed" },
+        )
+    }
+
+    // CS-20
+    @Test
+    fun cs20_tappingAContentsRowJumpsAndClosesTheSheet() {
+        val toc = listOf(
+            TocEntry(label = "One", href = "1.xhtml", level = 0),
+            TocEntry(label = "Two", href = "2.xhtml", level = 1),
+            TocEntry(label = "Three", href = "3.xhtml", level = 0),
+        )
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                chromeVisible = true,
+                toc = toc,
+                sheet = ReaderSheet.Contents,
+            ),
+        )
+        val chosen = mutableListOf<TocEntry>()
+        var closes = 0
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onTocEntryChosen = { entry ->
+                chosen += entry
+                state.value = state.value.copy(sheet = null)
+            },
+            onClose = { closes++ },
+        )
+
+        rule.onNodeWithTag(ReaderContentsTags.row(1)).performClick()
+        rule.waitForIdle()
+
+        assertEquals(listOf(toc[1]), chosen)
+        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertDoesNotExist()
+        rule.onNodeWithTag(ReaderScreenTags.ROOT).assertIsDisplayed()
+        assertEquals(true, state.value.chromeVisible)
+        assertEquals(0, closes)
+    }
+
+    // CS-43
+    @Test
+    fun cs43_sheetFollowsAppDarkThemeOverALightPage() {
+        showOpenContentsSheet(events = mutableListOf(), readingTheme = ReaderTheme.Light, appNight = true)
+
+        val pixels = rule.onNodeWithTag(ReaderContentsTags.SHEET).captureToImage().toPixelMap()
+        assertColourNear(OmnibusPalette.Atrium.bg0, pixels[4, pixels.height - 4], "dark app sheet over a Light page")
+    }
+
+    // CS-44
+    @Test
+    fun cs44_sheetFollowsAppLightThemeOverADarkPage() {
+        showOpenContentsSheet(events = mutableListOf(), readingTheme = ReaderTheme.Black, appNight = false)
+
+        val pixels = rule.onNodeWithTag(ReaderContentsTags.SHEET).captureToImage().toPixelMap()
+        assertColourNear(OmnibusPalette.Light.bg0, pixels[4, pixels.height - 4], "light app sheet over a Black page")
+    }
+
+    // CS-47
+    @Test
+    fun cs47_systemBackClosesTheSheetOnceAndStaysInTheReader() {
+        val events = mutableListOf<String>()
+        showOpenContentsSheet(events)
+        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
+
+        // The sheet's own window takes the system back, so the reader's handler never runs.
+        Espresso.pressBack()
+        rule.waitForIdle()
+
+        assertEquals(listOf("sheet"), events)
+        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertDoesNotExist()
+        rule.onNodeWithTag(ReaderScreenTags.ROOT).assertIsDisplayed()
+    }
+
+    // CS-48
+    @Test
+    fun cs48_tappingTheScrimDismissesTheSheet() {
+        val events = mutableListOf<String>()
+        showOpenContentsSheet(events)
+        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
+
+        rule.onNodeWithContentDescription("Close sheet").performTouchInput {
+            click(Offset(centerX, height * 0.03f))
+        }
+        rule.waitForIdle()
+
+        assertEquals(listOf("sheet"), events)
+        rule.onNodeWithTag(ReaderScreenTags.ROOT).assertIsDisplayed()
+    }
+
+    // CS-50
+    @Test
+    fun cs50_theCloseButtonLeavesTheReaderOpen() {
+        val events = mutableListOf<String>()
+        showOpenContentsSheet(events)
+
+        rule.onNodeWithTag(ReaderContentsTags.CLOSE).performClick()
+        rule.waitForIdle()
+
+        assertEquals(listOf("sheet"), events)
+        rule.onNodeWithTag(ReaderScreenTags.ROOT).assertIsDisplayed()
+    }
+
+    // CS-51
+    @Test
+    fun cs51_backOrderWithTheContentsSheetIsSheetThenMenuThenLeave() {
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                chromeVisible = true,
+                menuRows = listOf(ReaderMenuRow.Contents),
+                menuOpen = true,
+                sheet = ReaderSheet.Contents,
+            ),
+        )
+        val events = mutableListOf<String>()
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onSheetDismissed = {
+                events += "sheet"
+                state.value = state.value.copy(sheet = null)
+            },
+            onMenuDismissed = {
+                events += "menu"
+                state.value = state.value.withMenuDismissed()
+            },
+            onReaderClosed = { events += "closed" },
+            onClose = { events += "close" },
+        )
+
+        Espresso.pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet"), events)
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet", "menu"), events)
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet", "menu", "closed", "close"), events)
+    }
+
     /** What a chrome toggle could change about the page: its size, the stage box, the insets and the system bars. */
     private data class PageSnapshot(
         val width: Int,
@@ -850,6 +1052,17 @@ class ReaderScreenTest {
         val insets: List<Int?>,
         val bars: List<Boolean?>,
     )
+
+    /** Each channel within 3/255 of the expected colour, which absorbs the sRGB round trip. */
+    private fun assertColourNear(expected: Color, actual: Color, message: String) {
+        val tolerance = 3f / 255f
+        assertTrue(
+            "$message: expected $expected but was $actual",
+            abs(expected.red - actual.red) <= tolerance &&
+                abs(expected.green - actual.green) <= tolerance &&
+                abs(expected.blue - actual.blue) <= tolerance,
+        )
+    }
 
     private fun pageSnapshot(): PageSnapshot {
         val size = rule.runOnUiThread { findWebView()?.let { it.width to it.height } }

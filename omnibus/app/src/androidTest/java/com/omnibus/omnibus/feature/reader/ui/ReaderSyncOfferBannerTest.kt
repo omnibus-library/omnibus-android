@@ -111,6 +111,7 @@ class ReaderSyncOfferBannerTest {
                         commands = emptyFlow(),
                         onPageEvent = {},
                         onSheetDismissed = {},
+                        onTocEntryChosen = {},
                         onMenuOpened = {},
                         onMenuDismissed = {},
                         onMenuRowChosen = {},
