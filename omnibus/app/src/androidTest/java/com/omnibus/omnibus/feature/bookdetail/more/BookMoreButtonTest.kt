@@ -27,6 +27,7 @@ import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
+import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfSheetTestTags
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -128,5 +129,17 @@ class BookMoreButtonTest {
 
         rule.pressBackKey()
         rule.onNodeWithText("activated=true").assertIsDisplayed()
+    }
+
+    // TC-72
+    @Test
+    fun issue116_tc72_registeredMoreButtonRendersWithoutHiltUntilTheMenuOpens() {
+        rule.setDetailScreen(
+            BookDetailUIState(book = testDetailBook(), isLoading = false),
+            slots = BookDetailSlots(topBarActions = listOf(BookMoreButton)),
+        )
+
+        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON).assertIsDisplayed()
+        rule.onAllNodesWithTag(ShelfSheetTestTags.SHEET).assertCountEquals(0)
     }
 }
