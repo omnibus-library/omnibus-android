@@ -45,6 +45,8 @@ Run from the `omnibus/` directory:
 ./gradlew lint                   # Run Android lint
 ```
 
+Releases are automated with release-please; see [Releases](../README.md#releases) in the repo README. Never edit `appVersionName`, `versionName` or `versionCode` in `app/build.gradle.kts` by hand.
+
 ## Engineering Guidelines
 
 Follow the documents in `docs/engineering/`:
