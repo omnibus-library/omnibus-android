@@ -67,7 +67,7 @@ class ReaderControllerTest : DescribeSpec({
             reader.send("hostReady")
 
             page.size shouldBe 1
-            page[0] shouldContain "OmnibusReader.init('stage', \"https://appassets.androidplatform.net/book/book-1.epub\""
+            page[0] shouldContain "OmnibusReader.init('column', \"https://appassets.androidplatform.net/book/book-1.epub\""
             page[0] shouldContain "\"cfi\":\"epubcfi(/6/2)\""
             page[0] shouldContain "\"theme\":\"dark\""
         }
@@ -275,19 +275,17 @@ class ReaderControllerTest : DescribeSpec({
 
     describe("margins and reboots") {
 
-        it("applies a margins change alone, and sends nothing once the page shows it") {
+        it("a margins change runs no OmnibusReader script, and a later font-size change sends only its own setter") {
             val reader = controller()
             reader.send("hostReady")
             reader.send("status", "ready")
             page.clear()
 
-            val wide = dark.copy(margins = ReaderMargins.Wide)
-            reader.configure("book-1", wide)
-            page.shouldContainExactly("OmnibusReader.setMargins(\"65%\")")
-
-            page.clear()
-            reader.configure("book-1", wide)
+            reader.configure("book-1", dark.copy(margins = ReaderMargins.Wide))
             page.shouldBeEmpty()
+
+            reader.configure("book-1", dark.copy(margins = ReaderMargins.Wide, fontSize = 22))
+            page.shouldContainExactly("OmnibusReader.setFontSize(22)")
         }
 
         it("reboots with the latest settings, including one set between boot and first paint") {
@@ -305,9 +303,9 @@ class ReaderControllerTest : DescribeSpec({
             reader.send("hostReady")
 
             replacement.size shouldBe 1
-            replacement[0] shouldContain "\"maxWidth\":\"65%\""
             replacement[0] shouldContain "\"fontFamily\":\"'EB Garamond','Noto Serif',serif\""
-            replacement[0] shouldNotContain "\"maxWidth\":\"80%\""
+            // Margins are not in init: the measure reaches a rebooted page through its page style.
+            replacement[0] shouldNotContain "maxWidth"
         }
     }
 

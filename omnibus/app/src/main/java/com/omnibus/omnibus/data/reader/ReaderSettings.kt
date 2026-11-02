@@ -24,8 +24,8 @@ enum class ReaderTheme(val token: String, val groundHex: String, val isLight: Bo
 }
 
 /**
- * The text column width. [css] is assigned to CSS `max-width` by `OmnibusReader.setMargins`, so it
- * must be a CSS length: a bare number is silently dropped.
+ * The text column width. [css] is set as the page's `--measure` custom property, which sizes the
+ * reader's column, so it must be a CSS length: a bare number is silently dropped.
  */
 enum class ReaderMargins(val token: String, val css: String) {
     Narrow("narrow", "95%"),

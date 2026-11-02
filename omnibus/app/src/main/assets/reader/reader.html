@@ -40,8 +40,19 @@
       }
       /* epub.js sizes its iframe from the container, so the container has to
          be a definite box — not an auto-height flow element. */
-      #stage > div {
+      #column > div {
         height: 100% !important;
+      }
+      /* The text column. The host sets --measure from the reader's margins (a CSS percentage of the
+         stage); the stage stays full width so its gutters still take page gestures. */
+      #column {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        max-width: var(--measure, 100%);
       }
     </style>
     <script src="jszip.min.js"></script>
@@ -52,7 +63,8 @@
     <!-- `rd-stage` is the class the glue's host-level gesture handler tests for.
          Without it, swipes and taps that land on the stage margins rather than
          inside the section iframe are ignored. -->
-    <div id="stage" class="rd-stage"></div>
+    <!-- #column is the epub.js render target, sized by --measure. -->
+    <div id="stage" class="rd-stage"><div id="column"></div></div>
     <script>
       // Bridge the glue's window callbacks onto the host's web message
       // listener (`WebViewCompat.addWebMessageListener(..., "omnibus", ...)`)

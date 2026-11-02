@@ -13,6 +13,12 @@ internal object ReaderScripts {
     const val MIN_SPREAD_WIDTH = 800
 
     /**
+     * The element id epub.js renders into, the `#column` inside `reader.html`'s stage. It is sized by
+     * `--measure`, which is how margins reach the page.
+     */
+    const val RENDER_TARGET = "column"
+
+    /**
      * The `OmnibusReader.init` call that boots the page at [cfi] (when there is one) in [settings].
      * Read at boot time, so a reboot lands where the reader actually is.
      */
@@ -22,7 +28,6 @@ internal object ReaderScripts {
             put("fontSize", settings.fontSize)
             put("fontsHref", ReaderAssets.FONTS_URL)
             put("lineHeight", settings.lineHeight)
-            put("maxWidth", settings.margins.css)
             put("justify", settings.justify)
             put("spread", settings.spread)
             put("minSpreadWidth", MIN_SPREAD_WIDTH)
@@ -33,10 +38,13 @@ internal object ReaderScripts {
             // Absent, like cfi: the glue reads a missing fontFamily as "keep the book's face".
             settings.typeface.css?.let { put("fontFamily", it) }
         }
-        return "OmnibusReader.init('stage', ${quote(ReaderAssets.bookUrl(bookUuid))}, $options)"
+        return "OmnibusReader.init('$RENDER_TARGET', ${quote(ReaderAssets.bookUrl(bookUuid))}, $options)"
     }
 
-    /** The calls that bring a page showing [shown] up to [wanted]. */
+    /**
+     * The calls that bring a page showing [shown] up to [wanted]. Margins are not among them: they
+     * reach the page through [pageStyle]'s `--measure`, never through `OmnibusReader.setMargins`.
+     */
     fun settingsChange(shown: ReaderSettings, wanted: ReaderSettings): List<String> = buildList {
         if (wanted.fontSize != shown.fontSize) add("OmnibusReader.setFontSize(${wanted.fontSize})")
         if (wanted.theme != shown.theme) add("OmnibusReader.setTheme(${quote(wanted.theme.token)})")
@@ -45,25 +53,27 @@ internal object ReaderScripts {
             add("OmnibusReader.setFont(${wanted.typeface.css?.let(::quote) ?: "null"})")
         }
         if (wanted.lineHeight != shown.lineHeight) add("OmnibusReader.setLineHeight(${wanted.lineHeight})")
-        if (wanted.margins != shown.margins) add("OmnibusReader.setMargins(${quote(wanted.margins.css)})")
         if (wanted.justify != shown.justify) add("OmnibusReader.setJustify(${wanted.justify})")
         if (wanted.spread != shown.spread) add("OmnibusReader.setSpread(${quote(wanted.spread)})")
     }
 
     /**
-     * Hands the page the system-bar insets as `--inset-*` and the theme ground as `--page`, which
-     * `reader.html` reads. Waits for the document element, so it also runs as a document-start
-     * script and the first paint already has the right ground and bands.
+     * Hands the page the system-bar insets as `--inset-*`, the theme ground as `--page` and the text
+     * column's width as `--measure`, which `reader.html` reads. [measure] is a CSS percentage of the
+     * stage (the reader's margins). Waits for the document element, so it also runs as a document-start
+     * script and the first paint already has the right ground, bands and column.
      *
      * @param insets in CSS px, which are density-independent pixels in an Android WebView.
+     * @param measure a quoted CSS length, such as `"80%"`.
      */
-    fun pageStyle(groundHex: String, insets: PageInsets): String =
+    fun pageStyle(groundHex: String, insets: PageInsets, measure: String): String =
         """
         (function () {
           function apply() {
             var root = document.documentElement;
             if (!root) return false;
             root.style.setProperty('--page', ${quote(groundHex)});
+            root.style.setProperty('--measure', ${quote(measure)});
             root.style.setProperty('--inset-top', '${insets.top}px');
             root.style.setProperty('--inset-bottom', '${insets.bottom}px');
             root.style.setProperty('--inset-left', '${insets.left}px');

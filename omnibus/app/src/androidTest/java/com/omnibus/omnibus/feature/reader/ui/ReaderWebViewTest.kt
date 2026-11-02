@@ -34,6 +34,7 @@ import com.omnibus.omnibus.data.reader.ReaderTypeface
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -479,22 +480,26 @@ class ReaderWebViewTest {
         evaluate("String(parseFloat(getComputedStyle(document.querySelector('iframe').contentDocument.body).$property))")
             .trim('"')
 
-    /**
-     * Whether some element of the section is laid out with a computed max-width of [css]. The column
-     * width is set by `themes.override`, which lands on the section's root, not on `body`, so the
-     * check looks through the section rather than at one element.
-     */
-    private fun someElementHasMaxWidth(css: String): Boolean =
-        evaluate(
-            """
-            (function () {
-              var doc = document.querySelector('iframe').contentDocument;
-              return Array.prototype.some.call(doc.querySelectorAll('*'), function (el) {
-                return getComputedStyle(el).maxWidth === '$css';
-              });
-            })()
-            """.trimIndent(),
-        ).trim('"') == "true"
+    /** The text column's width as a fraction of the stage's, which the margins set. */
+    private fun columnRatio(): Double = evaluate(
+        "String(document.getElementById('column').getBoundingClientRect().width / " +
+            "document.getElementById('stage').getBoundingClientRect().width)",
+    ).trim('"').toDouble()
+
+    /** Waits until the column is within 0.02 of [expected] of the stage, since a resize settles after a debounce. */
+    private fun awaitColumnRatio(what: String, expected: Double) {
+        try {
+            rule.waitUntil(timeoutMillis = 15_000) { kotlin.math.abs(columnRatio() - expected) <= 0.02 }
+        } catch (e: Throwable) {
+            throw AssertionError("$what should be about $expected of the stage but is ${columnRatio()}", e)
+        }
+    }
+
+    /** Waits for a paragraph to be on screen, then checks it is the one [shownBefore] named. */
+    private fun assertKeptPlace(shownBefore: String) {
+        rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
+        assertEquals("the reader must keep its place", shownBefore, firstVisibleParagraph())
+    }
 
     /** The body's computed line height over its font size, which is the unitless multiplier. */
     private fun bodyLineHeightRatio(): Double {
@@ -549,7 +554,7 @@ class ReaderWebViewTest {
 
         assertEquals(settings.theme.groundHex.lowercase(), pageGround())
         assertEquals(settings.fontSize.toString(), bodyNumber("fontSize"))
-        assertTrue("some element of the section should have the Wide column width", someElementHasMaxWidth("65%"))
+        awaitColumnRatio("the Wide column", 0.65)
         assertTrue(bodyStyle("fontFamily").contains("EB Garamond"))
         assertEquals(1, bootCount())
     }
@@ -579,8 +584,22 @@ class ReaderWebViewTest {
         changeSettings { settings.value = settings.value.copy(justify = true) }
         awaitValue("the text alignment", "\"justify\"", { bodyStyle("textAlign") })
 
+        changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Narrow) }
+        awaitColumnRatio("the Narrow column", 0.95)
+        val narrow = columnRatio()
+        assertKeptPlace(shownBefore)
+
+        changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Normal) }
+        awaitColumnRatio("the Normal column", 0.80)
+        val normal = columnRatio()
+        assertKeptPlace(shownBefore)
+
         changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Wide) }
-        awaitWhen("the column width", { it == "true" }, { if (someElementHasMaxWidth("65%")) "true" else "false" })
+        awaitColumnRatio("the Wide column", 0.65)
+        val wide = columnRatio()
+        assertKeptPlace(shownBefore)
+        assertTrue("Narrow ($narrow) should leave a wider column than Normal ($normal)", narrow > normal)
+        assertTrue("Normal ($normal) should leave a wider column than Wide ($wide)", normal > wide)
 
         changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Mono) }
         awaitWhen("the face", { it.contains("Droid Sans Mono") }, { bodyStyle("fontFamily") })
@@ -592,8 +611,27 @@ class ReaderWebViewTest {
         awaitValue("the book's own face", originalFace, { bodyStyle("fontFamily") })
 
         assertEquals("the page must not reload for a change", bootsBefore, bootCount())
-        rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
-        assertEquals("the reader must keep its place", shownBefore, firstVisibleParagraph())
+        assertKeptPlace(shownBefore)
+    }
+
+    @Test
+    fun edgeTapsTurnPagesBesideANarrowedColumn() {
+        val settings = mutableStateOf(ReaderSettings(margins = ReaderMargins.Wide))
+        val controller = ReaderController()
+        showReaderState(controller, settings)
+        awaitReady(controller)
+        awaitColumnRatio("the Wide column", 0.65)
+        awaitMovementCount(1)
+
+        // Both taps land inside the stage (10px in from each edge on a 320dp window) and outside the
+        // narrowed column, so they reach the glue's gesture handler.
+        val beforeLeft = movements().size
+        moveBy { tap(0.04f) }
+        assertEquals("a left gutter tap should turn one page", beforeLeft + 1, movements().size)
+
+        val beforeRight = movements().size
+        moveBy { tap(0.96f) }
+        assertEquals("a right gutter tap should turn one page", beforeRight + 1, movements().size)
     }
 
     @Test
@@ -608,8 +646,9 @@ class ReaderWebViewTest {
         val lastPage = controller.restoreCfi
         val requestsBefore = bookRequests
 
-        changeSettings { settings.value = settings.value.copy(theme = ReaderTheme.Light, fontSize = 27) }
+        changeSettings { settings.value = settings.value.copy(theme = ReaderTheme.Light, fontSize = 27, margins = ReaderMargins.Wide) }
         awaitValue("the new size", "27", { bodyNumber("fontSize") })
+        awaitColumnRatio("the Wide column", 0.65)
 
         rule.runOnUiThread { findWebView()!!.loadUrl("chrome://crash") }
         rule.waitUntil(timeoutMillis = 30_000) { bookRequests > requestsBefore && controller.status == ReaderLoadStatus.Ready }
@@ -618,6 +657,7 @@ class ReaderWebViewTest {
         rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
         assertEquals("27", bodyNumber("fontSize"))
         assertEquals(ReaderTheme.Light.groundHex.lowercase(), pageGround())
+        awaitColumnRatio("the rebooted Wide column", 0.65)
     }
 
     private fun firstVisibleParagraph(): String =

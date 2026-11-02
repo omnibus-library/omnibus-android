@@ -18,10 +18,10 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class ReaderScriptsTest : DescribeSpec({
 
-    /** Splits `OmnibusReader.init('stage', "<url>", {…})` back into its URL and options. */
+    /** Splits `OmnibusReader.init('column', "<url>", {…})` back into its URL and options. */
     fun parseBoot(script: String): Pair<String, kotlinx.serialization.json.JsonObject> {
-        script.startsWith("OmnibusReader.init('stage', ") shouldBe true
-        val arguments = script.removePrefix("OmnibusReader.init('stage', ").removeSuffix(")")
+        script.startsWith("OmnibusReader.init('column', ") shouldBe true
+        val arguments = script.removePrefix("OmnibusReader.init('column', ").removeSuffix(")")
         val url = Json.parseToJsonElement(arguments.substringBefore(", {")).jsonPrimitive.content
         val options = Json.parseToJsonElement("{" + arguments.substringAfter(", {")).jsonObject
         return url to options
@@ -51,7 +51,7 @@ class ReaderScriptsTest : DescribeSpec({
             options["fontSize"]!!.jsonPrimitive.int shouldBe 22
             options["fontFamily"]!!.jsonPrimitive.content shouldBe "'EB Garamond','Noto Serif',serif"
             options["lineHeight"]!!.jsonPrimitive.double shouldBe 1.8
-            options["maxWidth"]!!.jsonPrimitive.content shouldBe "65%"
+            options.containsKey("maxWidth") shouldBe false
             options["justify"]!!.jsonPrimitive.boolean shouldBe false
             options["spread"]!!.jsonPrimitive.content shouldBe "none"
             options["minSpreadWidth"]!!.jsonPrimitive.int shouldBe 800
@@ -79,22 +79,14 @@ class ReaderScriptsTest : DescribeSpec({
             options["cfi"]!!.jsonPrimitive.content shouldBe cfi
         }
 
-        it("sends the default margins as a quoted CSS length") {
-            val (_, options) = parseBoot(ReaderScripts.boot("abc-123", ReaderSettings(), cfi = null))
-
-            options["maxWidth"]!!.jsonPrimitive.isString shouldBe true
-            options["maxWidth"]!!.jsonPrimitive.content shouldBe "80%"
-        }
-
-        it("boots every margin as a JSON string, never a number") {
+        it("TC-28: boot leaves margins to the page style, whichever margin is chosen") {
             ReaderMargins.entries.forEach { margins ->
                 val script = ReaderScripts.boot("abc-123", ReaderSettings(margins = margins), cfi = null)
                 val (_, options) = parseBoot(script)
 
-                options["maxWidth"]!!.jsonPrimitive.isString shouldBe true
-                options["maxWidth"]!!.jsonPrimitive.content shouldBe margins.css
-                script.contains("\"maxWidth\":\"${margins.css}\"") shouldBe true
-                script.contains("maxWidth:") shouldBe false
+                options.containsKey("maxWidth") shouldBe false
+                script.startsWith("OmnibusReader.init('column', ") shouldBe true
+                script.contains("maxWidth") shouldBe false
             }
         }
 
@@ -127,7 +119,7 @@ class ReaderScriptsTest : DescribeSpec({
             ReaderScripts.settingsChange(a, b).shouldBeEmpty()
         }
 
-        it("TC-233: sends one call per changed setting") {
+        it("TC-233: sends one call per changed setting, and none for margins") {
             val wanted = base.copy(
                 fontSize = 24,
                 theme = ReaderTheme.Light,
@@ -140,7 +132,6 @@ class ReaderScriptsTest : DescribeSpec({
                 "OmnibusReader.setFontSize(24)",
                 "OmnibusReader.setTheme(\"light\")",
                 "OmnibusReader.setLineHeight(2.0)",
-                "OmnibusReader.setMargins(\"95%\")",
                 "OmnibusReader.setJustify(false)",
             )
         }
@@ -155,12 +146,11 @@ class ReaderScriptsTest : DescribeSpec({
                 .shouldContainExactly("OmnibusReader.setFont(\"'Droid Sans Mono',monospace\")")
         }
 
-        it("sends setMargins with the quoted CSS length for each of the three margins") {
-            ReaderMargins.entries.forEach { margins ->
-                // Start from a different margin, so every target is a real change.
-                val shown = base.copy(margins = if (margins == ReaderMargins.Wide) ReaderMargins.Normal else ReaderMargins.Wide)
-                ReaderScripts.settingsChange(shown, shown.copy(margins = margins))
-                    .shouldContainExactly("OmnibusReader.setMargins(\"${margins.css}\")")
+        it("TC-29: a margins change never calls a setter, for any pair of margins") {
+            ReaderMargins.entries.forEach { from ->
+                ReaderMargins.entries.forEach { to ->
+                    ReaderScripts.settingsChange(base.copy(margins = from), base.copy(margins = to)).shouldBeEmpty()
+                }
             }
         }
 
@@ -173,6 +163,27 @@ class ReaderScriptsTest : DescribeSpec({
                 base.copy(theme = ReaderTheme.Sepia, typeface = ReaderTypeface.Sans),
                 base.copy(theme = ReaderTheme.Sepia, typeface = ReaderTypeface.Sans),
             ).shouldBeEmpty()
+        }
+    }
+
+    describe("pageStyle") {
+
+        val insets = PageInsets(top = 49, bottom = 24, left = 0, right = 0)
+
+        it("TC-29: the margin reaches the page only as a quoted CSS length in --measure") {
+            ReaderMargins.entries.forEach { margins ->
+                val script = ReaderScripts.pageStyle("#201e1b", insets, margins.css)
+
+                script.contains("root.style.setProperty('--measure', \"${margins.css}\");") shouldBe true
+            }
+            ReaderScripts.pageStyle("#201e1b", insets, "65%").contains("setProperty('--measure', \"65%\")") shouldBe true
+        }
+
+        it("keeps the ground and insets alongside the measure") {
+            val script = ReaderScripts.pageStyle("#fcfbfa", insets, "80%")
+
+            script.contains("setProperty('--page', \"#fcfbfa\")") shouldBe true
+            script.contains("setProperty('--inset-top', '49px')") shouldBe true
         }
     }
 
