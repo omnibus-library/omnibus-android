@@ -296,6 +296,7 @@ class ReaderSettingsSheetTest {
                             chosen += it
                             uiState.value = uiState.value.withMenuRowChosen(it)
                         },
+                        onTocEntryChosen = {},
                         onRetryBookRequested = {},
                         onReaderClosed = {},
                         onReaderStopped = {},

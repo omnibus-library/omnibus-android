@@ -60,11 +60,7 @@ import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.toPixelMap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onNodeWithTag
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
@@ -1114,6 +1110,7 @@ class ReaderScreenTest {
                     onMenuOpened = {},
                     onMenuDismissed = {},
                     onMenuRowChosen = {},
+                    onTocEntryChosen = {},
                     onRetryBookRequested = {},
                     onReaderClosed = {},
                     onReaderStopped = {},

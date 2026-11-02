@@ -256,7 +256,6 @@ class ReaderViewModelTest : DescribeSpec({
             // Status is not load status, so the load status stays Loading here.
             vm.uiState.value shouldBe ReaderUIState(
                 loadStatus = ReaderLoadStatus.Loading,
-                menuRows = listOf(ReaderMenuRow.Contents),
                 location = RelocateData(
                     cfi = "epubcfi(/6/14!/4/2/1:0)",
                     page = 12,
@@ -271,7 +270,7 @@ class ReaderViewModelTest : DescribeSpec({
                 chromeVisible = true,
                 settings = ReaderSettings(),
                 sheet = null,
-                menuRows = listOf(ReaderMenuRow.Settings),
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
             )
         }
     }
@@ -522,9 +521,9 @@ class ReaderViewModelTest : DescribeSpec({
     }
     describe("settings menu row") {
 
-        it("offers the settings row first and opens and closes the settings sheet") {
+        it("offers the settings row after contents and opens and closes the settings sheet") {
             val vm = viewModel()
-            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Settings)
+            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
 
             vm.onSettingsRequested()
             vm.uiState.value.sheet shouldBe ReaderSheet.Settings
