@@ -32,6 +32,8 @@ import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.feature.library.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.library.ui.BookDetailStubScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
+import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
+import com.omnibus.omnibus.feature.library.ui.PlayerStubScreen
 import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
 import com.omnibus.omnibus.feature.shell.SeriesRoot
@@ -120,9 +122,12 @@ private fun SignedInShellContent(
                     LibraryScreen(
                         onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
                         onAddBooks = { /* Add books sheet: later ticket */ },
+                        onOpenReader = onOpenReader,
+                        onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
                     )
                 }
                 entry<BookDetailRoute> { key -> BookDetailStubScreen(uuid = key.uuid, onRead = onOpenReader) }
+                entry<PlayerStubRoute> { key -> PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId) }
                 entry<AuthorsRoot> { EmptyTabRoot(ShellTab.Authors) }
                 entry<SeriesRoot> { EmptyTabRoot(ShellTab.Series) }
                 entry<StatsRoot> { EmptyTabRoot(ShellTab.Stats) }
