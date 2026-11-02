@@ -22,7 +22,7 @@ internal object ReaderScripts {
             put("fontSize", settings.fontSize)
             put("fontsHref", ReaderAssets.FONTS_URL)
             put("lineHeight", settings.lineHeight)
-            put("maxWidth", settings.maxWidth)
+            put("maxWidth", settings.margins.css)
             put("justify", settings.justify)
             put("spread", settings.spread)
             put("minSpreadWidth", MIN_SPREAD_WIDTH)
@@ -31,7 +31,7 @@ internal object ReaderScripts {
             put("locationsKey", bookUuid)
             if (!cfi.isNullOrBlank()) put("cfi", cfi)
             // Absent, like cfi: the glue reads a missing fontFamily as "keep the book's face".
-            settings.fontFamily?.let { put("fontFamily", it) }
+            settings.typeface.css?.let { put("fontFamily", it) }
         }
         return "OmnibusReader.init('stage', ${quote(ReaderAssets.bookUrl(bookUuid))}, $options)"
     }
@@ -40,12 +40,12 @@ internal object ReaderScripts {
     fun settingsChange(shown: ReaderSettings, wanted: ReaderSettings): List<String> = buildList {
         if (wanted.fontSize != shown.fontSize) add("OmnibusReader.setFontSize(${wanted.fontSize})")
         if (wanted.theme != shown.theme) add("OmnibusReader.setTheme(${quote(wanted.theme.token)})")
-        if (wanted.fontFamily != shown.fontFamily) {
+        if (wanted.typeface != shown.typeface) {
             // Null clears the override rather than setting one.
-            add("OmnibusReader.setFont(${wanted.fontFamily?.let(::quote) ?: "null"})")
+            add("OmnibusReader.setFont(${wanted.typeface.css?.let(::quote) ?: "null"})")
         }
         if (wanted.lineHeight != shown.lineHeight) add("OmnibusReader.setLineHeight(${wanted.lineHeight})")
-        if (wanted.maxWidth != shown.maxWidth) add("OmnibusReader.setMargins(${quote(wanted.maxWidth)})")
+        if (wanted.margins != shown.margins) add("OmnibusReader.setMargins(${quote(wanted.margins.css)})")
         if (wanted.justify != shown.justify) add("OmnibusReader.setJustify(${wanted.justify})")
         if (wanted.spread != shown.spread) add("OmnibusReader.setSpread(${quote(wanted.spread)})")
     }
