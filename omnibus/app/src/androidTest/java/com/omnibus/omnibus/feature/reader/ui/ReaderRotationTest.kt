@@ -85,19 +85,20 @@ class ReaderRotationTest {
             """
             (function () {
               var frame = document.querySelector('iframe');
-              var stage = document.getElementById('stage').getBoundingClientRect();
+              // The column is what the reader sees: epub.js clips the neighbouring pages lying under the stage's gutters.
+              var column = document.getElementById('column').getBoundingClientRect();
               var offset = frame.getBoundingClientRect();
               var out = [];
               var paragraphs = frame.contentDocument.querySelectorAll('p');
               for (var i = 0; i < paragraphs.length; i++) {
                 var r = paragraphs[i].getBoundingClientRect();
                 var left = r.left + offset.left, right = r.right + offset.left;
-                if (right > stage.left + 1 && left < stage.right - 1) out.push(paragraphs[i].textContent.substring(0, 24));
+                if (right > column.left + 1 && left < column.right - 1) out.push(paragraphs[i].textContent.substring(0, 24));
               }
               return out.join('|');
             })()
             """.trimIndent(),
-        ).trim('"').split('|').filter { it.isNotEmpty() }
+        ).trim('"').takeIf { it != "null" }.orEmpty().split('|').filter { it.isNotEmpty() }
 
     private fun awaitReady() {
         val deadline = System.currentTimeMillis() + 30_000

@@ -614,6 +614,30 @@ class ReaderWebViewTest {
         assertKeptPlace(shownBefore)
     }
 
+    /**
+     * The midpoints of the stage's two gutters beside the column, as fractions of the page width.
+     * Asserts each point lies in its gutter: inside the stage and outside the column.
+     */
+    private fun gutterFractions(): Pair<Float, Float> {
+        val raw = evaluate(
+            """
+            (function () {
+              var s = document.getElementById('stage').getBoundingClientRect();
+              var c = document.getElementById('column').getBoundingClientRect();
+              var w = window.innerWidth;
+              var leftPoint = (s.left + c.left) / 2;
+              var rightPoint = (c.right + s.right) / 2;
+              return [leftPoint / w, rightPoint / w,
+                      s.left < leftPoint && leftPoint < c.left,
+                      c.right < rightPoint && rightPoint < s.right].join(',');
+            })()
+            """.trimIndent(),
+        ).trim('"').split(',')
+        assertTrue("the left point should sit in the left gutter", raw[2] == "true")
+        assertTrue("the right point should sit in the right gutter", raw[3] == "true")
+        return raw[0].toFloat() to raw[1].toFloat()
+    }
+
     @Test
     fun edgeTapsTurnPagesBesideANarrowedColumn() {
         val settings = mutableStateOf(ReaderSettings(margins = ReaderMargins.Wide))
@@ -623,15 +647,17 @@ class ReaderWebViewTest {
         awaitColumnRatio("the Wide column", 0.65)
         awaitMovementCount(1)
 
-        // Both taps land inside the stage (10px in from each edge on a 320dp window) and outside the
-        // narrowed column, so they reach the glue's gesture handler.
-        val beforeLeft = movements().size
-        moveBy { tap(0.04f) }
-        assertEquals("a left gutter tap should turn one page", beforeLeft + 1, movements().size)
+        val (left, right) = gutterFractions()
+        val start = movements().last()
 
-        val beforeRight = movements().size
-        moveBy { tap(0.96f) }
-        assertEquals("a right gutter tap should turn one page", beforeRight + 1, movements().size)
+        // Right first: a left tap on the book's first page has nowhere to go.
+        moveBy { tap(right) }
+        assertNotEquals("a right gutter tap should move forward", start, movements().last())
+        val forward = movements().last()
+
+        moveBy { tap(left) }
+        assertEquals("a left gutter tap should move back", start, movements().last())
+        assertNotEquals("the left tap should undo the right one", forward, movements().last())
     }
 
     @Test
@@ -660,23 +686,25 @@ class ReaderWebViewTest {
         awaitColumnRatio("the rebooted Wide column", 0.65)
     }
 
+    /** The first paragraph on the column, or "" when none is: a null result means the page was mid-relayout. */
     private fun firstVisibleParagraph(): String =
         evaluate(
             """
             (function () {
               var frame = document.querySelector('iframe');
-              var stage = document.getElementById('stage').getBoundingClientRect();
+              // The column is what the reader sees: epub.js clips the neighbouring pages lying under the stage's gutters.
+              var column = document.getElementById('column').getBoundingClientRect();
               var offset = frame.getBoundingClientRect();
               var paragraphs = frame.contentDocument.querySelectorAll('p');
               for (var i = 0; i < paragraphs.length; i++) {
                 var r = paragraphs[i].getBoundingClientRect();
                 var left = r.left + offset.left, right = r.right + offset.left;
-                if (right > stage.left + 1 && left < stage.right - 1) return paragraphs[i].textContent.substring(0, 24);
+                if (right > column.left + 1 && left < column.right - 1) return paragraphs[i].textContent.substring(0, 24);
               }
               return '';
             })()
             """.trimIndent(),
-        ).trim('"')
+        ).trim('"').takeIf { it != "null" }.orEmpty()
 
     private fun evaluate(script: String): String {
         val result = arrayOfNulls<String>(1)
