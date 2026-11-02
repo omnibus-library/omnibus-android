@@ -108,6 +108,7 @@ fun ReaderScreen(
         onReaderStopped = viewModel::onReaderStopped,
         onSyncOfferAccepted = viewModel::onSyncOfferAccepted,
         onSyncOfferDismissed = viewModel::onSyncOfferDismissed,
+        onSettingsChanged = viewModel::onSettingsChanged,
         onClose = onClose,
         modifier = modifier,
     )
@@ -136,6 +137,7 @@ fun ReaderScreen(
  * @param onSyncOfferAccepted the reader chose "Go" on the sync offer.
  * @param onSyncOfferDismissed the reader dismissed the sync offer.
  * @param onClose called after [onReaderClosed] when the reader is left.
+ * @param onSettingsChanged the reader changed a setting in the settings sheet.
  */
 @Composable
 internal fun ReaderScreenContent(
@@ -156,6 +158,7 @@ internal fun ReaderScreenContent(
     onSyncOfferAccepted: () -> Unit,
     onSyncOfferDismissed: () -> Unit,
     onClose: () -> Unit,
+    onSettingsChanged: (ReaderSettings) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val leave = {
@@ -319,6 +322,16 @@ internal fun ReaderScreenContent(
                             )
                         }
                     }
+                }
+            }
+            // The sheet is app-themed, never the reading theme (R13), so it re-wraps outside the reader's theme.
+            if (uiState.sheet == ReaderSheet.Settings) {
+                OmnibusTheme {
+                    ReaderSettingsSheet(
+                        settings = uiState.settings,
+                        onSettingsChanged = onSettingsChanged,
+                        onDismiss = onSheetDismissed,
+                    )
                 }
             }
         }

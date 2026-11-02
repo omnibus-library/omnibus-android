@@ -60,6 +60,11 @@ import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
@@ -1081,5 +1086,124 @@ class ReaderScreenTest {
             insets = listOf("--inset-top", "--inset-bottom", "--inset-left", "--inset-right").map { cssInset(it) },
             bars = bars,
         )
+    }
+
+    private fun webViewPresent(): Boolean {
+        var found = false
+        rule.runOnUiThread { found = findWebView() != null }
+        return found
+    }
+
+    @Test
+    fun webViewWaitsForTheStoredSettings() {
+        val loaded = mutableStateOf(false)
+        rule.setContent {
+            OmnibusTheme {
+                ReaderScreenContent(
+                    uiState = ReaderUIState(
+                        book = ReaderBookState.Ready(title = "Moby Dick"),
+                        opening = ReaderOpening.Resolved(ReaderStart.Beginning),
+                        settingsLoaded = loaded.value,
+                    ),
+                    bookUuid = "book-1",
+                    controller = ReaderController(),
+                    assetLoaderFactory = epubLoader,
+                    commands = emptyFlow(),
+                    onPageEvent = {},
+                    onSheetDismissed = {},
+                    onMenuOpened = {},
+                    onMenuDismissed = {},
+                    onMenuRowChosen = {},
+                    onRetryBookRequested = {},
+                    onReaderClosed = {},
+                    onReaderStopped = {},
+                    onSyncOfferAccepted = {},
+                    onSyncOfferDismissed = {},
+                    onClose = {},
+                )
+            }
+        }
+        rule.waitForIdle()
+        assertEquals(false, webViewPresent())
+
+        rule.runOnIdle { loaded.value = true }
+        rule.waitUntil(timeoutMillis = 10_000) { webViewPresent() }
+    }
+
+    @Test
+    fun themeChangeRepaintsTheHostGroundAndTheSystemBars() {
+        val window = rule.activity.window
+        val bars = WindowCompat.getInsetsController(window, window.decorView)
+        val theme = mutableStateOf(ReaderTheme.Dark)
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound),
+                    settings = ReaderSettings(theme = theme.value),
+                )
+            },
+        )
+        rule.waitForIdle()
+        assertEquals(ReaderTheme.Dark.groundArgb, rule.onNodeWithTag(ReaderScreenTags.ROOT).captureToImage().toPixelMap()[2, 2].toArgb())
+        assertEquals(false, bars.isAppearanceLightStatusBars)
+
+        rule.runOnIdle { theme.value = ReaderTheme.Light }
+        rule.waitForIdle()
+        assertEquals(ReaderTheme.Light.groundArgb, rule.onNodeWithTag(ReaderScreenTags.ROOT).captureToImage().toPixelMap()[2, 2].toArgb())
+        assertEquals(true, bars.isAppearanceLightStatusBars)
+    }
+
+    @Test
+    fun sheetKeepsTheAppPaletteOverEveryReadingTheme() {
+        val configuration = context.resources.configuration
+        val systemDark = (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val appPalette = if (systemDark) OmnibusPalette.Atrium else OmnibusPalette.Light
+        // Precondition: the app palette differs from the reading one for at least one of the two themes.
+        val readingThemes = listOf(ReaderTheme.Sepia, ReaderTheme.Black)
+        assertTrue(readingThemes.any { (if (it.isLight) OmnibusPalette.Light else OmnibusPalette.Atrium) != appPalette })
+
+        val theme = mutableStateOf(ReaderTheme.Sepia)
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Moby Dick"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    sheet = ReaderSheet.Settings,
+                    settings = ReaderSettings(theme = theme.value),
+                )
+            },
+            inspection = true,
+        )
+        rule.waitForIdle()
+
+        readingThemes.forEach { reading ->
+            rule.runOnIdle { theme.value = reading }
+            rule.waitForIdle()
+            val pixel = rule.onNodeWithTag(ReaderSettingsSheetTags.SHEET).captureToImage().toPixelMap()[2, 2]
+            assertEquals(appPalette.bg0.toArgb(), pixel.toArgb())
+            assertTrue(pixel.toArgb() != Color(reading.groundArgb).toArgb())
+        }
+    }
+
+    @Test
+    fun backClosesTheSettingsSheetWithoutLeavingTheReader() {
+        val sheet = mutableStateOf<ReaderSheet?>(ReaderSheet.Settings)
+        val events = mutableListOf<String>()
+        show(
+            uiState = {
+                ReaderUIState(book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound), sheet = sheet.value)
+            },
+            onSheetDismissed = {
+                events += "dismissed"
+                sheet.value = null
+            },
+            onClose = { events += "close" },
+        )
+
+        pressBack()
+        rule.waitForIdle()
+
+        assertEquals(listOf("dismissed"), events)
     }
 }
