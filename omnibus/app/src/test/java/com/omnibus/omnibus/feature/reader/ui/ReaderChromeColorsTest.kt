@@ -32,6 +32,22 @@ class ReaderChromeColorsTest : DescribeSpec({
         }
     }
 
+    describe("readerSwatchInk") {
+
+        it("is the light palette's ink on light pages and the Atrium ink on dark pages") {
+            readerSwatchInk(ReaderTheme.Light) shouldBe OmnibusPalette.Light.ink0
+            readerSwatchInk(ReaderTheme.Sepia) shouldBe OmnibusPalette.Light.ink0
+            readerSwatchInk(ReaderTheme.Dark) shouldBe OmnibusPalette.Atrium.ink0
+            readerSwatchInk(ReaderTheme.Black) shouldBe OmnibusPalette.Atrium.ink0
+        }
+
+        it("is the same ink the chrome uses on every reading theme") {
+            ReaderTheme.entries.forEach { theme ->
+                readerSwatchInk(theme) shouldBe readerChromeColors(theme).ink
+            }
+        }
+    }
+
     describe("readerSyncOfferActionColor") {
 
         // TC-116: the Go action reaches WCAG AA (4.5:1) on every reading plate, in the colour its theme calls for.

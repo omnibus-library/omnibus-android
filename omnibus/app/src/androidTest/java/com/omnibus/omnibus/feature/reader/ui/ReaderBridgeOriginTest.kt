@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderAssets
+import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class ReaderBridgeOriginTest {
                 controller = ReaderController(),
                 assetLoaderFactory = factory,
                 initialTheme = ReaderTheme.Dark,
+                initialMargins = ReaderMargins.Normal,
                 initialInsets = PageInsets.None,
                 onEvent = { synchronized(events) { events += it } },
                 onRebuild = {},

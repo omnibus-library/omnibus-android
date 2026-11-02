@@ -18,7 +18,7 @@ data class ReaderChromeColors(
  * literal plates are reader-only tones from the design's chrome table.
  */
 fun readerChromeColors(theme: ReaderTheme): ReaderChromeColors {
-    val ink = if (theme.isLight) OmnibusPalette.Light.ink0 else OmnibusPalette.Atrium.ink0
+    val ink = readerSwatchInk(theme)
     val plate = when (theme) {
         ReaderTheme.Light -> OmnibusPalette.Light.bg1
         ReaderTheme.Sepia -> Color(0xFFF6F0E2)
@@ -27,6 +27,13 @@ fun readerChromeColors(theme: ReaderTheme): ReaderChromeColors {
     }
     return ReaderChromeColors(ink, ink.copy(alpha = 0.5f), plate, ink.copy(alpha = 0.12f))
 }
+
+/**
+ * The ink for text and lines drawn on [theme]'s page: the chrome ink, and the ink of the settings
+ * sheet's page swatches. Light pages take the light palette's ink, dark ones the Atrium ink.
+ */
+fun readerSwatchInk(theme: ReaderTheme): Color =
+    if (theme.isLight) OmnibusPalette.Light.ink0 else OmnibusPalette.Atrium.ink0
 
 /**
  * The colour of the sync offer's "Go" action on [theme]'s plate. The accent is only about 1.8:1 on

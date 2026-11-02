@@ -142,13 +142,14 @@ private fun ReaderPage(
             controller = controller,
             assetLoaderFactory = assetLoaderFactory,
             initialTheme = settings.theme,
+            initialMargins = settings.margins,
             initialInsets = pageInsets,
             onEvent = { currentOnEvent(it) },
             onRebuild = { currentOnRebuild() },
         )
     }
 
-    SideEffect { host.applyPageStyle(settings.theme, pageInsets) }
+    SideEffect { host.applyPageStyle(settings.theme, pageInsets, settings.margins) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, host) {

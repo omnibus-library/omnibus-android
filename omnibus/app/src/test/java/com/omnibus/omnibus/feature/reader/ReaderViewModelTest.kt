@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.progress.FakeProgressRepository
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
@@ -56,6 +57,7 @@ class ReaderViewModelTest : DescribeSpec({
             BookFileSource { BookFileResult.NotFound },
         ),
         progressRepository = FakeProgressRepository(),
+        settingsStore = FakeReaderSettingsStore(),
         timeSource = TimeSource { 0L },
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     )
@@ -254,7 +256,6 @@ class ReaderViewModelTest : DescribeSpec({
             // Status is not load status, so the load status stays Loading here.
             vm.uiState.value shouldBe ReaderUIState(
                 loadStatus = ReaderLoadStatus.Loading,
-                menuRows = listOf(ReaderMenuRow.Contents),
                 location = RelocateData(
                     cfi = "epubcfi(/6/14!/4/2/1:0)",
                     page = 12,
@@ -269,6 +270,7 @@ class ReaderViewModelTest : DescribeSpec({
                 chromeVisible = true,
                 settings = ReaderSettings(),
                 sheet = null,
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
             )
         }
     }
@@ -394,11 +396,11 @@ class ReaderViewModelTest : DescribeSpec({
 
         val contentsAndSettings = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
 
-        it("CS-1: the reader offers the Contents row from the start") {
+        it("CS-1: the reader offers the Contents and Settings rows from the start") {
             val state = viewModel().uiState.value
 
             state.menuOpen shouldBe false
-            state.menuRows shouldBe listOf(ReaderMenuRow.Contents)
+            state.menuRows shouldBe contentsAndSettings
             state.toc shouldBe emptyList()
             ReaderUIState().menuRows shouldBe emptyList()
         }
@@ -421,7 +423,12 @@ class ReaderViewModelTest : DescribeSpec({
             ReaderUIState(chromeVisible = true, menuRows = emptyList())
                 .withMenuOpened().menuOpen shouldBe false
 
-            viewModel().apply { onMenuOpened() }.uiState.value.menuOpen shouldBe false
+            val vm = viewModel()
+            vm.onMenuOpened()
+            vm.uiState.value.menuOpen shouldBe false
+            vm.onChromeToggled()
+            vm.onMenuOpened()
+            vm.uiState.value.menuOpen shouldBe true
         }
 
         it("RC-15: the menu opens when chrome is up and rows exist") {
@@ -510,6 +517,19 @@ class ReaderViewModelTest : DescribeSpec({
             vm.onMenuRowChosen(ReaderMenuRow.Contents)
 
             vm.noCommandArrives()
+        }
+    }
+    describe("settings menu row") {
+
+        it("offers the settings row after contents and opens and closes the settings sheet") {
+            val vm = viewModel()
+            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+
+            vm.onSettingsRequested()
+            vm.uiState.value.sheet shouldBe ReaderSheet.Settings
+
+            vm.onSheetDismissed()
+            vm.uiState.value.sheet shouldBe null
         }
     }
 })

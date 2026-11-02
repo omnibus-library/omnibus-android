@@ -12,6 +12,7 @@ import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.data.reader.local.ReaderSettingsStore
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -50,6 +52,9 @@ import kotlinx.coroutines.selects.select
  * Each movement of the reader is saved locally, and pushed when the throttle allows. Closing or
  * stopping the reader pushes the latest one.
  *
+ * The stored reader settings are read once, before the page boots, and then owned here: each
+ * change is applied to the page and saved for every book.
+ *
  * @property assetLoaderFactory builds the WebView's asset loader for the screen. It isn't state.
  * @property persistScope runs the saves, so a flush outlives this ViewModel.
  */
@@ -59,12 +64,17 @@ class ReaderViewModel @AssistedInject constructor(
     private val libraryRepository: LibraryRepository,
     val assetLoaderFactory: ReaderAssetLoaderFactory,
     private val progressRepository: ProgressRepository,
+    private val settingsStore: ReaderSettingsStore,
     private val timeSource: TimeSource,
     @param:ApplicationScope private val persistScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        ReaderUIState(opening = ReaderOpening.Resolving, menuRows = listOf(ReaderMenuRow.Contents)),
+        ReaderUIState(
+            opening = ReaderOpening.Resolving,
+            settingsLoaded = false,
+            menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+        ),
     )
 
     /** The reader's state. It changes only through [onPageEvent], the book load and the intents below. */
@@ -108,6 +118,7 @@ class ReaderViewModel @AssistedInject constructor(
     private var floor = PercentFloor(openedPercent = null)
 
     init {
+        loadSettings()
         loadBook()
         resolveOpening()
     }
@@ -176,6 +187,15 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader asked for the settings sheet. */
     fun onSettingsRequested() {
         _uiState.update { it.withSheet(ReaderSheet.Settings) }
+    }
+
+    /** The reader changed a setting in the sheet. The page applies it live, and it is saved for every book. */
+    fun onSettingsChanged(settings: ReaderSettings) {
+        val next = settings.normalized()
+        if (next == _uiState.value.settings) return
+        _uiState.update { it.copy(settings = next) }
+        // Application scope so the save outlives the reader; UNDISPATCHED so rapid taps reach DataStore in order.
+        persistScope.launch(start = CoroutineStart.UNDISPATCHED) { settingsStore.save(next) }
     }
 
     /** The open sheet was dismissed. */
@@ -331,6 +351,15 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
     }
 
+    /**
+     * Reads the stored settings once, before the page boots. Not collected again: the ViewModel owns
+     * the settings from here, so a late store emission can't undo a newer tap.
+     */
+    private fun loadSettings() = viewModelScope.launch {
+        val stored = settingsStore.settings.first()
+        _uiState.update { it.copy(settings = stored, settingsLoaded = true) }
+    }
+
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
     private fun loadBook() {
         bookJob?.cancel()
@@ -367,10 +396,15 @@ data class ReaderUIState(
     /** Whether the chrome's menu is open. It only opens when the chrome is up and [menuRows] is non-empty. */
     val menuOpen: Boolean = false,
     /**
-     * The rows for reader features that exist. The ViewModel starts with `Contents` (#48); #47 appends
-     * `Settings`. Empty hides the menu button, which is the default for hand-built states.
+     * The rows for reader features that exist. The ViewModel offers `Contents` and `Settings`. Empty
+     * hides the menu button, which is the default for hand-built states.
      */
     val menuRows: List<ReaderMenuRow> = emptyList(),
+    /**
+     * False only while the ViewModel reads the stored settings. The page isn't booted until it is
+     * true, so its first paint already has them. Defaults to true for previews and hand-built states.
+     */
+    val settingsLoaded: Boolean = true,
     /**
      * Where the page boots. The default is for previews and tests that build a state by hand; the
      * ViewModel starts at [ReaderOpening.Resolving].

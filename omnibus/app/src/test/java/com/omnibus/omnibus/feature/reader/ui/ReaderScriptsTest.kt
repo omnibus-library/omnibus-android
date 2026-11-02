@@ -1,7 +1,9 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.data.reader.ReaderTypeface
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -16,10 +18,10 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class ReaderScriptsTest : DescribeSpec({
 
-    /** Splits `OmnibusReader.init('stage', "<url>", {…})` back into its URL and options. */
+    /** Splits `OmnibusReader.init('column', "<url>", {…})` back into its URL and options. */
     fun parseBoot(script: String): Pair<String, kotlinx.serialization.json.JsonObject> {
-        script.startsWith("OmnibusReader.init('stage', ") shouldBe true
-        val arguments = script.removePrefix("OmnibusReader.init('stage', ").removeSuffix(")")
+        script.startsWith("OmnibusReader.init('column', ") shouldBe true
+        val arguments = script.removePrefix("OmnibusReader.init('column', ").removeSuffix(")")
         val url = Json.parseToJsonElement(arguments.substringBefore(", {")).jsonPrimitive.content
         val options = Json.parseToJsonElement("{" + arguments.substringAfter(", {")).jsonObject
         return url to options
@@ -36,23 +38,22 @@ class ReaderScriptsTest : DescribeSpec({
         it("TC-229: carries the settings, the fonts sheet, scripted content and the locations key") {
             val settings = ReaderSettings(
                 theme = ReaderTheme.Sepia,
+                typeface = ReaderTypeface.Classic,
                 fontSize = 22,
-                fontFamily = "'EB Garamond',Georgia,serif",
                 lineHeight = 1.8,
-                maxWidth = "65%",
+                margins = ReaderMargins.Wide,
                 justify = false,
-                spread = "auto",
             )
 
             val (_, options) = parseBoot(ReaderScripts.boot("abc-123", settings, cfi = "epubcfi(/6/4!/4/2)"))
 
             options["theme"]!!.jsonPrimitive.content shouldBe "sepia"
             options["fontSize"]!!.jsonPrimitive.int shouldBe 22
-            options["fontFamily"]!!.jsonPrimitive.content shouldBe "'EB Garamond',Georgia,serif"
+            options["fontFamily"]!!.jsonPrimitive.content shouldBe "'EB Garamond','Noto Serif',serif"
             options["lineHeight"]!!.jsonPrimitive.double shouldBe 1.8
-            options["maxWidth"]!!.jsonPrimitive.content shouldBe "65%"
+            options.containsKey("maxWidth") shouldBe false
             options["justify"]!!.jsonPrimitive.boolean shouldBe false
-            options["spread"]!!.jsonPrimitive.content shouldBe "auto"
+            options["spread"]!!.jsonPrimitive.content shouldBe "none"
             options["minSpreadWidth"]!!.jsonPrimitive.int shouldBe 800
             options["allowScriptedContent"]!!.jsonPrimitive.boolean shouldBe true
             options["locationsKey"]!!.jsonPrimitive.content shouldBe "abc-123"
@@ -77,6 +78,30 @@ class ReaderScriptsTest : DescribeSpec({
 
             options["cfi"]!!.jsonPrimitive.content shouldBe cfi
         }
+
+        it("TC-28: boot leaves margins to the page style, whichever margin is chosen") {
+            ReaderMargins.entries.forEach { margins ->
+                val script = ReaderScripts.boot("abc-123", ReaderSettings(margins = margins), cfi = null)
+                val (_, options) = parseBoot(script)
+
+                options.containsKey("maxWidth") shouldBe false
+                script.startsWith("OmnibusReader.init('column', ") shouldBe true
+                script.contains("maxWidth") shouldBe false
+            }
+        }
+
+        it("sends the typeface stack as fontFamily for any face other than Original") {
+            ReaderTypeface.entries.filter { it != ReaderTypeface.Original }.forEach { face ->
+                val (_, options) = parseBoot(
+                    ReaderScripts.boot("abc-123", ReaderSettings(typeface = face), cfi = null),
+                )
+                options["fontFamily"]!!.jsonPrimitive.content shouldBe face.css
+            }
+            val (_, original) = parseBoot(
+                ReaderScripts.boot("abc-123", ReaderSettings(typeface = ReaderTypeface.Original), cfi = null),
+            )
+            original.containsKey("fontFamily") shouldBe false
+        }
     }
 
     describe("settingsChange") {
@@ -87,32 +112,78 @@ class ReaderScriptsTest : DescribeSpec({
             ReaderScripts.settingsChange(base, base).shouldBeEmpty()
         }
 
-        it("TC-233: sends one call per changed setting") {
+        it("sends nothing for two equal settings built separately") {
+            val a = ReaderSettings(fontSize = 22, lineHeight = 1.8, margins = ReaderMargins.Wide)
+            val b = ReaderSettings(fontSize = 22, lineHeight = 1.8, margins = ReaderMargins.Wide)
+
+            ReaderScripts.settingsChange(a, b).shouldBeEmpty()
+        }
+
+        it("TC-233: sends one call per changed setting, and none for margins") {
             val wanted = base.copy(
                 fontSize = 24,
                 theme = ReaderTheme.Light,
                 lineHeight = 2.0,
-                maxWidth = "95%",
+                margins = ReaderMargins.Narrow,
                 justify = false,
-                spread = "auto",
             )
 
             ReaderScripts.settingsChange(base, wanted).shouldContainExactly(
                 "OmnibusReader.setFontSize(24)",
                 "OmnibusReader.setTheme(\"light\")",
                 "OmnibusReader.setLineHeight(2.0)",
-                "OmnibusReader.setMargins(\"95%\")",
                 "OmnibusReader.setJustify(false)",
-                "OmnibusReader.setSpread(\"auto\")",
             )
         }
 
         it("TC-234: clears the face override with null and sets it with a quoted stack") {
-            val serif = base.copy(fontFamily = "Georgia,serif")
+            val classic = base.copy(typeface = ReaderTypeface.Classic)
 
-            ReaderScripts.settingsChange(base, serif)
-                .shouldContainExactly("OmnibusReader.setFont(\"Georgia,serif\")")
-            ReaderScripts.settingsChange(serif, base).shouldContainExactly("OmnibusReader.setFont(null)")
+            ReaderScripts.settingsChange(base, classic)
+                .shouldContainExactly("OmnibusReader.setFont(\"'EB Garamond','Noto Serif',serif\")")
+            ReaderScripts.settingsChange(classic, base).shouldContainExactly("OmnibusReader.setFont(null)")
+            ReaderScripts.settingsChange(classic, base.copy(typeface = ReaderTypeface.Mono))
+                .shouldContainExactly("OmnibusReader.setFont(\"'Droid Sans Mono',monospace\")")
+        }
+
+        it("TC-29: a margins change never calls a setter, for any pair of margins") {
+            ReaderMargins.entries.forEach { from ->
+                ReaderMargins.entries.forEach { to ->
+                    ReaderScripts.settingsChange(base.copy(margins = from), base.copy(margins = to)).shouldBeEmpty()
+                }
+            }
+        }
+
+        it("sends only the changed setters, and line height as an exact one-decimal literal") {
+            val stepped = base.withLineHeightStep(+1)
+
+            ReaderScripts.settingsChange(base, stepped).shouldContainExactly("OmnibusReader.setLineHeight(1.7)")
+            ReaderScripts.settingsChange(base, stepped).joinToString().contains("1.7000000000000002") shouldBe false
+            ReaderScripts.settingsChange(
+                base.copy(theme = ReaderTheme.Sepia, typeface = ReaderTypeface.Sans),
+                base.copy(theme = ReaderTheme.Sepia, typeface = ReaderTypeface.Sans),
+            ).shouldBeEmpty()
+        }
+    }
+
+    describe("pageStyle") {
+
+        val insets = PageInsets(top = 49, bottom = 24, left = 0, right = 0)
+
+        it("TC-29: the margin reaches the page only as a quoted CSS length in --measure") {
+            ReaderMargins.entries.forEach { margins ->
+                val script = ReaderScripts.pageStyle("#201e1b", insets, margins.css)
+
+                script.contains("root.style.setProperty('--measure', \"${margins.css}\");") shouldBe true
+            }
+            ReaderScripts.pageStyle("#201e1b", insets, "65%").contains("setProperty('--measure', \"65%\")") shouldBe true
+        }
+
+        it("keeps the ground and insets alongside the measure") {
+            val script = ReaderScripts.pageStyle("#fcfbfa", insets, "80%")
+
+            script.contains("setProperty('--page', \"#fcfbfa\")") shouldBe true
+            script.contains("setProperty('--inset-top', '49px')") shouldBe true
         }
     }
 

@@ -17,7 +17,7 @@ reader depends on its additions (`seek(fraction)`, `chapterPagesLeft`, `applyHos
 ## What differs in `reader.html`
 
 Everything else in the file is the iOS page, so a later sync can diff against the source commit and
-re-apply just these two changes:
+re-apply just these three changes:
 
 1. **Message bridge.** `window.webkit.messageHandlers.omnibus.postMessage({type, payload})` became
    `window.omnibus.postMessage(JSON.stringify({type, payload}))`, the object that
@@ -25,6 +25,11 @@ re-apply just these two changes:
 2. **Insets.** `env(safe-area-inset-*)` became `var(--inset-*, 0px)`. `env()` is unreliable in an
    Android WebView, so the host pushes the system-bar insets in as `--inset-top`, `--inset-bottom`,
    `--inset-left` and `--inset-right` (CSS px). The 58px / 10px reserved bands are unchanged.
+3. **Column measure.** The epub.js render target is a new `#column` inside `#stage`, sized by
+   `--measure`, which the host sets from the reader's margins. The glue's `setMargins` has no effect
+   in paginated layout, and when its `margin: 0 auto` override survives a relayout it blanks the page,
+   so margins never go through it. The right home for a real fix is the upstream glue, which iOS and
+   web share: a fix there can replace this change on the next sync.
 
 ## Syncing from iOS
 

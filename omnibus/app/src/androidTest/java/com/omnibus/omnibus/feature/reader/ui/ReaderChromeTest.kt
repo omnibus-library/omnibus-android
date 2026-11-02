@@ -286,6 +286,20 @@ class ReaderChromeTest {
         }
     }
 
+    @Test
+    fun menuOffersThemesAndSettingsAndTappingItOpensTheSheetOnce() {
+        val events = mutableListOf<String>()
+        setChrome(
+            mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = listOf(ReaderMenuRow.Settings))),
+            events,
+        )
+
+        rule.onNodeWithText("Themes & Settings").assertIsDisplayed()
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Settings)).performClick()
+
+        assertEquals(listOf("row:Settings"), events)
+    }
+
     // RC-34
     @Test
     fun rc34_menuButtonOpensTheMenu() {

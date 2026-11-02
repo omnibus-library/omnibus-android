@@ -19,6 +19,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderAssets
+import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderTheme
 
 /**
@@ -44,6 +45,7 @@ internal class ReaderWebHost(
     private val controller: ReaderController,
     assetLoaderFactory: ReaderAssetLoaderFactory,
     initialTheme: ReaderTheme,
+    initialMargins: ReaderMargins,
     initialInsets: PageInsets,
     private val onEvent: (ReaderEvent) -> Unit,
     private val onRebuild: () -> Unit,
@@ -66,6 +68,7 @@ internal class ReaderWebHost(
     }
 
     private var theme = initialTheme
+    private var margins = initialMargins
     private var insets = initialInsets
     private var documentStartScript: ScriptHandler? = null
     private var released = false
@@ -84,13 +87,14 @@ internal class ReaderWebHost(
 
     override fun onAbandoned() = release()
 
-    /** Repaints the host ground and re-pushes the insets, when either changed. */
-    fun applyPageStyle(theme: ReaderTheme, insets: PageInsets) {
-        if (released || (theme == this.theme && insets == this.insets)) return
+    /** Repaints the host ground, and re-pushes the insets and the column measure, when any of them changed. */
+    fun applyPageStyle(theme: ReaderTheme, insets: PageInsets, margins: ReaderMargins) {
+        if (released || (theme == this.theme && insets == this.insets && margins == this.margins)) return
         this.theme = theme
         this.insets = insets
+        this.margins = margins
         webView.setBackgroundColor(theme.groundArgb)
-        evaluate(ReaderScripts.pageStyle(theme.groundHex, insets))
+        evaluate(ReaderScripts.pageStyle(theme.groundHex, insets, margins.css))
         registerDocumentStartScript()
     }
 
@@ -199,7 +203,7 @@ internal class ReaderWebHost(
         documentStartScript?.remove()
         documentStartScript = WebViewCompat.addDocumentStartJavaScript(
             webView,
-            ReaderScripts.pageStyle(theme.groundHex, insets),
+            ReaderScripts.pageStyle(theme.groundHex, insets, margins.css),
             READER_MESSAGE_ORIGINS,
         )
     }
