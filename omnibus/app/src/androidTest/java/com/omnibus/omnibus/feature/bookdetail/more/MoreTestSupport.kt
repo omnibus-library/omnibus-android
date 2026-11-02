@@ -13,8 +13,12 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
+import com.omnibus.omnibus.data.shelves.ShelfRules
+import com.omnibus.omnibus.feature.bookdetail.more.shelves.ManualShelfRow
+import com.omnibus.omnibus.feature.bookdetail.more.shelves.SmartShelfRow
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
@@ -84,3 +88,27 @@ fun ComposeContentTestRule.pressBackKey() {
     Espresso.pressBack()
     waitForIdle()
 }
+
+/** A hand-picked shelf row for sheet tests. */
+fun manualShelfRow(
+    id: Long,
+    name: String = "Shelf $id",
+    count: Long = 0,
+    covers: List<String> = emptyList(),
+    isOn: Boolean = false,
+    isPending: Boolean = false,
+): ManualShelfRow = ManualShelfRow(id, name, count, covers, isOn, isPending)
+
+/** A read-only smart shelf row for sheet tests. */
+fun smartShelfRow(
+    id: Long,
+    name: String = "Smart $id",
+    count: Long = 0,
+    covers: List<String> = emptyList(),
+    rules: ShelfRules? = null,
+): SmartShelfRow = SmartShelfRow(id, name, count, covers, rules)
+
+/** A shelf's count text, such as "9 books", from the app's plurals. */
+fun countText(count: Int): String =
+    InstrumentationRegistry.getInstrumentation().targetContext.resources
+        .getQuantityString(R.plurals.book_detail_more_shelf_book_count, count, count)
