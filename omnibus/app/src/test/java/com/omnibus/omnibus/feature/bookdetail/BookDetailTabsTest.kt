@@ -5,7 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.types.shouldBeSameInstanceAs
+import io.kotest.matchers.shouldNotBe
 
 class BookDetailTabsTest : DescribeSpec({
 
@@ -28,11 +28,15 @@ class BookDetailTabsTest : DescribeSpec({
             controller.selected shouldBe BookDetailTab.Overview
         }
 
-        it("#93 TC-49: anchor modifier returns the receiver") {
-            Modifier.bookDetailAnchor(BookDetailAnchor.Series) shouldBeSameInstanceAs Modifier
+        it("#93 TC-49 (updated by #94): anchor modifier adds one element, equal per anchor") {
+            val anchored = Modifier.bookDetailAnchor(BookDetailAnchor.Series)
+            anchored.foldIn(0) { n, _ -> n + 1 } shouldBe 1
+            anchored shouldBe Modifier.bookDetailAnchor(BookDetailAnchor.Series)
+            anchored.hashCode() shouldBe Modifier.bookDetailAnchor(BookDetailAnchor.Series).hashCode()
+            anchored shouldNotBe Modifier
 
-            val padded = Modifier.padding(1.dp)
-            padded.bookDetailAnchor(BookDetailAnchor.Series) shouldBeSameInstanceAs padded
+            val padded = Modifier.padding(1.dp).bookDetailAnchor(BookDetailAnchor.Series)
+            padded.foldIn(0) { n, _ -> n + 1 } shouldBe 2
         }
     }
 })

@@ -5,7 +5,7 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 /** The Overview tab, in display order. */
 internal val overviewSections: List<BookDetailSection> = listOfNotNull(
     // #94 Book Tabs and Description
-    null,
+    com.omnibus.omnibus.feature.bookdetail.overview.description.BookDescriptionSection,
     // #100 Genres and Tags
     null,
     // #102 Your Reading Card

@@ -12,6 +12,7 @@ import com.omnibus.omnibus.feature.bookdetail.slots.stageCoverOverlay
 import com.omnibus.omnibus.feature.bookdetail.slots.stageProgress
 import com.omnibus.omnibus.feature.bookdetail.slots.stageStatusEnd
 import com.omnibus.omnibus.feature.bookdetail.slots.stageStatusStart
+import com.omnibus.omnibus.feature.bookdetail.overview.description.BookDescriptionSection
 import com.omnibus.omnibus.feature.bookdetail.slots.topBarActions
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -53,18 +54,34 @@ private val registries = listOf(
     Registry("OverlaySlots", "screenOverlays", listOf("#109 Write and Edit a Review")),
 )
 
+/** The body lines of a registry in its slot file: the lines between its declaration and the closing paren, trimmed. */
+private fun seededBody(registry: Registry): List<String> {
+    val slotsDir = File(System.getProperty("user.dir"), "src/main/java/com/omnibus/omnibus/feature/bookdetail/slots")
+    val lines = File(slotsDir, "${registry.file}.kt").readLines()
+    val start = lines.indexOfFirst { it == "internal val ${registry.name}: List<BookDetailSection> = listOfNotNull(" }
+    check(start >= 0) { "${registry.name} is not declared in ${registry.file}.kt" }
+    return lines.drop(start + 1).takeWhile { it.trim() != ")" }.map { it.trim() }
+}
+
+/** A seeded block's section line: a single fully qualified or simple reference followed by a comma. */
+private val sectionLine = Regex("""^[A-Za-z_][A-Za-z0-9_.]*,$""")
+
 class BookDetailSlotsTest : DescribeSpec({
 
     describe("slot registries") {
 
-        it("#93 TC-39: registries are empty typed lists") {
+        it("#93 TC-39 (updated by #94): registries hold one section per activated seeded line") {
             val lists: List<List<BookDetailSection>> = listOf(
                 stageAboveTitle, stageStatusStart, stageStatusEnd, stageProgress, stageCoverOverlay,
                 topBarActions, overviewSections, reviewsSections, highlightsSections, filesSections,
                 actionBar, screenOverlays,
             )
             lists.size shouldBe 12
-            lists.forEach { it.shouldBeEmpty() }
+            lists.zip(registries).forEach { (list, registry) ->
+                val activated = seededBody(registry).filterIndexed { i, _ -> i % 2 == 1 }.count { it != "null," }
+                list.size shouldBe activated
+            }
+            overviewSections.first() shouldBeSameInstanceAs BookDescriptionSection
         }
 
         it("#93 TC-40: Registered aggregates the registries") {
@@ -89,19 +106,26 @@ class BookDetailSlotsTest : DescribeSpec({
             slots.screenOverlays.shouldBeEmpty()
         }
 
-        it("#93 TC-41: slot files hold the seeded blocks in order") {
-            val slotsDir = File(System.getProperty("user.dir"), "src/main/java/com/omnibus/omnibus/feature/bookdetail/slots")
+        it("#93 TC-41 (updated by #94): slot files hold the seeded blocks in order") {
             for (registry in registries) {
-                val lines = File(slotsDir, "${registry.file}.kt").readLines()
-                val start = lines.indexOfFirst {
-                    it == "internal val ${registry.name}: List<BookDetailSection> = listOfNotNull("
+                val body = seededBody(registry)
+                body.size shouldBe registry.tickets.size * 2
+                body.filterIndexed { i, _ -> i % 2 == 0 } shouldBe registry.tickets.map { "// $it" }
+                body.filterIndexed { i, _ -> i % 2 == 1 }.forEach { line ->
+                    (line == "null," || sectionLine.matches(line)) shouldBe true
                 }
-                check(start >= 0) { "${registry.name} is not declared in ${registry.file}.kt" }
-
-                val body = lines.drop(start + 1).takeWhile { it.trim() != ")" }.map { it.trim() }
-                val expected = registry.tickets.flatMap { listOf("// $it", "null,") }
-                body shouldBe expected
             }
+
+            sectionLine.matches("Foo, bar()") shouldBe false
+            sectionLine.matches("null") shouldBe false
+
+            val overview = File(
+                System.getProperty("user.dir"),
+                "src/main/java/com/omnibus/omnibus/feature/bookdetail/slots/OverviewSections.kt",
+            ).readLines().map { it.trim() }
+            val descriptionLine = overview.indexOf("// #94 Book Tabs and Description") + 1
+            overview[descriptionLine] shouldBe
+                "com.omnibus.omnibus.feature.bookdetail.overview.description.BookDescriptionSection,"
         }
     }
 })

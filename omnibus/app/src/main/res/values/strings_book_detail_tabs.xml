@@ -1,0 +1,10 @@
+<resources>
+    <!-- Tab names on the book detail page's tab strip. -->
+    <string name="book_detail_tabs_overview">Overview</string>
+    <string name="book_detail_tabs_reviews">Reviews</string>
+    <string name="book_detail_tabs_highlights">Highlights</string>
+    <string name="book_detail_tabs_files">Files</string>
+    <!-- Toggles a long book description between its clamped and full text. -->
+    <string name="book_detail_tabs_show_more">Show more</string>
+    <string name="book_detail_tabs_show_less">Show less</string>
+</resources>

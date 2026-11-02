@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -78,11 +80,22 @@ private fun washMatrix(lightGround: Boolean): ColorMatrix = ColorMatrix().apply 
 }
 
 /**
+ * The per-tab pan and glow that the stage reads at draw time. A tab change then redraws the wash without recomposing
+ * the stage. The lambdas read animated state, so the values change between frames.
+ */
+@Stable
+internal class BookStageWashPose(val pan: () -> Float, val warmth: () -> Float)
+
+/** The wash pose the stage reads at draw time. Null means the stage uses its own `panFraction` and `warmth` parameters. */
+internal val LocalBookStageWashPose = staticCompositionLocalOf<BookStageWashPose?> { null }
+
+/**
  * The blurred, drifting cover behind the stage, with a warm glow and a scrim into bg0. Without a cover, or
  * below API 31, the stage shows the book's tone ground instead.
  *
- * @param panFraction How far the image is panned, as a fraction of the width. #94 changes it per tab.
- * @param warmth The glow's opacity. #94 changes it per tab.
+ * @param panFraction How far the image is panned, as a fraction of the width. Used when no [LocalBookStageWashPose] is
+ * provided.
+ * @param warmth The glow's opacity. Used when no [LocalBookStageWashPose] is provided.
  */
 @Composable
 internal fun BookStageWash(
@@ -107,6 +120,7 @@ internal fun BookStageWash(
     } else {
         remember { mutableFloatStateOf(0f) }
     }
+    val pose = LocalBookStageWashPose.current
     val context = LocalPlatformContext.current
     val request = remember(identity.uuid, context) {
         ImageRequest.Builder(context).data(CoverThumbnail(identity.uuid, CoverSize.Md)).build()
@@ -130,7 +144,7 @@ internal fun BookStageWash(
                         val t = washTransform(phase.value, reducedMotion)
                         scaleX = 1.4f * t.scale
                         scaleY = 1.4f * t.scale
-                        translationX = size.width * (panFraction + t.dxFraction)
+                        translationX = size.width * ((pose?.pan?.invoke() ?: panFraction) + t.dxFraction)
                         translationY = size.height * t.dyFraction
                     }
                     .blur(20.dp, BlurredEdgeTreatment.Rectangle),
@@ -153,7 +167,7 @@ internal fun BookStageWash(
                             ),
                             radius = ry,
                             center = center,
-                            alpha = warmth,
+                            alpha = pose?.warmth?.invoke() ?: warmth,
                         )
                     }
                 },

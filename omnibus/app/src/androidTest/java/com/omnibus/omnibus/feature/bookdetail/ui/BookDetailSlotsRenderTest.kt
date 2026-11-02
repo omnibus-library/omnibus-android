@@ -109,7 +109,9 @@ class BookDetailSlotsRenderTest {
         rule.onNodeWithTag("fake-overlay-screen").assertIsDisplayed()
         assertTrue(root.contains(rule.onNodeWithTag("fake-overlay-screen").bounds().center))
 
-        listOf("fake-overview", "fake-reviews", "fake-highlights", "fake-files").forEach {
+        // #94: only the selected tab's panel is composed
+        rule.onAllNodesWithTag("fake-overview").assertCountEquals(1)
+        listOf("fake-reviews", "fake-highlights", "fake-files").forEach {
             rule.onAllNodesWithTag(it).assertCountEquals(0)
         }
     }
