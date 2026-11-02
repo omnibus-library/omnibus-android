@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.Lifecycle
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.systemBars
@@ -39,7 +40,9 @@ import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
+import com.omnibus.omnibus.feature.reader.ReaderOpening
 import com.omnibus.omnibus.feature.reader.ReaderSheet
+import com.omnibus.omnibus.feature.reader.ReaderStart
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.withMenuDismissed
@@ -100,6 +103,7 @@ class ReaderScreenTest {
         onMenuRowChosen: (ReaderMenuRow) -> Unit = {},
         onRetryBookRequested: () -> Unit = {},
         onReaderClosed: () -> Unit = {},
+        onReaderStopped: () -> Unit = {},
         onClose: () -> Unit = {},
     ) {
         rule.setContent {
@@ -118,6 +122,7 @@ class ReaderScreenTest {
                         onMenuRowChosen = onMenuRowChosen,
                         onRetryBookRequested = onRetryBookRequested,
                         onReaderClosed = onReaderClosed,
+                        onReaderStopped = onReaderStopped,
                         onClose = onClose,
                     )
                 }
@@ -225,6 +230,7 @@ class ReaderScreenTest {
                     onMenuRowChosen = {},
                     onRetryBookRequested = {},
                     onReaderClosed = {},
+                    onReaderStopped = {},
                     onClose = {},
                 )
             }
@@ -309,6 +315,7 @@ class ReaderScreenTest {
                         onMenuRowChosen = {},
                         onRetryBookRequested = {},
                         onReaderClosed = {},
+                        onReaderStopped = {},
                         onClose = {},
                     )
                 }
@@ -763,6 +770,66 @@ class ReaderScreenTest {
         assertEquals("chrome hidden", baseline, pageSnapshot())
 
         assertEquals("no new movement", baselineMovements, movements.size)
+    }
+
+    // TC-43
+    @Test
+    fun tc43_pageWaitsForTheOpeningPosition() {
+        val opening = mutableStateOf<ReaderOpening>(ReaderOpening.Resolving)
+        val controller = ReaderController()
+        show(
+            uiState = { ReaderUIState(book = ReaderBookState.Ready(title = "Test Book"), opening = opening.value) },
+            controller = controller,
+            assetLoaderFactory = epubLoader,
+        )
+
+        rule.onNodeWithText("Opening Test Book").assertIsDisplayed()
+        assertNull("no page while the opening position is unknown", rule.runOnUiThread { findWebView() })
+
+        opening.value = ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/4)"))
+
+        rule.waitUntil(timeoutMillis = 30_000) { rule.runOnUiThread { findWebView() } != null }
+        assertEquals("epubcfi(/6/4)", controller.restoreCfi)
+    }
+
+    // TC-45
+    @Test
+    fun tc45_stoppingAndLeavingCallTheFlushCallbacks() {
+        val visible = mutableStateOf(true)
+        var stopped = 0
+        var closed = 0
+        rule.setContent {
+            if (visible.value) {
+                OmnibusTheme {
+                    ReaderScreenContent(
+                        uiState = ReaderUIState(book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)),
+                        bookUuid = "book-1",
+                        controller = ReaderController(),
+                        assetLoaderFactory = noBookLoader,
+                        commands = emptyFlow(),
+                        onPageEvent = {},
+                        onSheetDismissed = {},
+                        onMenuOpened = {},
+                        onMenuDismissed = {},
+                        onMenuRowChosen = {},
+                        onRetryBookRequested = {},
+                        onReaderClosed = { closed++ },
+                        onReaderStopped = { stopped++ },
+                        onClose = {},
+                    )
+                }
+            }
+        }
+
+        rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.runOnIdle {
+            assertEquals("stopping flushes once", 1, stopped)
+            assertEquals("stopping does not close the reader", 0, closed)
+        }
+
+        rule.runOnIdle { visible.value = false }
+        rule.runOnIdle { assertEquals("leaving composition flushes once", 1, closed) }
     }
 
     /** What a chrome toggle could change about the page: its size, the stage box, the insets and the system bars. */

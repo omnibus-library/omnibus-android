@@ -56,7 +56,7 @@ class ReaderViewModel @AssistedInject constructor(
     @param:ApplicationScope private val persistScope: CoroutineScope,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ReaderUIState())
+    private val _uiState = MutableStateFlow(ReaderUIState(opening = ReaderOpening.Resolving))
 
     /** The reader's state. It changes only through [onPageEvent], the book load and the intents below. */
     val uiState: StateFlow<ReaderUIState> = _uiState.asStateFlow()
@@ -82,6 +82,7 @@ class ReaderViewModel @AssistedInject constructor(
 
     init {
         loadBook()
+        resolveOpening()
     }
 
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
@@ -217,6 +218,18 @@ class ReaderViewModel @AssistedInject constructor(
         if (_uiState.value.book is ReaderBookState.Failed) loadBook()
     }
 
+    /**
+     * Reads the book's stored position and records where the page boots. It doesn't wait for the
+     * book, and the book load doesn't wait for it.
+     */
+    private fun resolveOpening() {
+        viewModelScope.launch {
+            val local = progressRepository.getLocalPosition(bookUuid)
+            val start = local?.cfi?.takeIf { it.isNotBlank() }?.let { ReaderStart.AtCfi(it) } ?: ReaderStart.Beginning
+            _uiState.update { it.copy(opening = ReaderOpening.Resolved(start)) }
+        }
+    }
+
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
     private fun loadBook() {
         bookJob?.cancel()
@@ -257,6 +270,11 @@ data class ReaderUIState(
      * the menu button.
      */
     val menuRows: List<ReaderMenuRow> = emptyList(),
+    /**
+     * Where the page boots. The default is for previews and tests that build a state by hand; the
+     * ViewModel starts at [ReaderOpening.Resolving].
+     */
+    val opening: ReaderOpening = ReaderOpening.Resolved(ReaderStart.Beginning),
 )
 
 /** Whether the book for the reader could be read. */

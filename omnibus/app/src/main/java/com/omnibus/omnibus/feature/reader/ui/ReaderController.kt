@@ -66,6 +66,10 @@ class ReaderController(startCfi: String? = null) {
     var restoreCfi: String? = startCfi
         private set
 
+    /** Whether [startAt] has set the opening position, so it can't be set again. */
+    var started: Boolean = false
+        private set
+
     private var evaluator: ((String) -> Unit)? = null
     private var bookUuid: String? = null
     private var settings = ReaderSettings()
@@ -88,7 +92,22 @@ class ReaderController(startCfi: String? = null) {
         appliedSettings = null
     }
 
+    /**
+     * Sets where a fresh page boots, once. Later calls (a recreated screen after rotation) are
+     * ignored, so a moved restore point is never reset.
+     */
+    fun startAt(cfi: String?) {
+        if (started) return
+        started = true
+        restoreCfi = cfi?.takeIf { it.isNotBlank() }
+    }
+
     // Everything below is the host's side of the conversation, driven by ReaderWebView.
+
+    /** Marks the start as already chosen, for a controller restored from [ReaderControllerSaver]. */
+    internal fun markStarted() {
+        started = true
+    }
 
     internal fun attach(evaluate: (String) -> Unit) {
         evaluator = evaluate
@@ -228,9 +247,16 @@ class ReaderController(startCfi: String? = null) {
 fun rememberReaderController(startCfi: String? = null): ReaderController =
     rememberSaveable(saver = ReaderControllerSaver) { ReaderController(startCfi) }
 
-/** Saves the position across activity recreation, so a rotation reboots at the same page. */
-private val ReaderControllerSaver: Saver<ReaderController, Any> =
-    listSaver(
-        save = { listOf(it.restoreCfi ?: "") },
-        restore = { ReaderController(startCfi = it[0].ifEmpty { null }) },
+/**
+ * Saves the position and whether the start was chosen across activity recreation, so a rotation
+ * reboots at the same page and never resets it to the opening one.
+ */
+internal val ReaderControllerSaver: Saver<ReaderController, Any> =
+    listSaver<ReaderController, Any>(
+        save = { listOf(it.restoreCfi ?: "", it.started) },
+        restore = {
+            ReaderController(startCfi = (it[0] as String).ifEmpty { null }).apply {
+                if (it[1] as Boolean) markStarted()
+            }
+        },
     )

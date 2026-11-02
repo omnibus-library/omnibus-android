@@ -74,6 +74,7 @@ internal fun ReaderChromePreview(
             onMenuRowChosen = {},
             onRetryBookRequested = {},
             onReaderClosed = {},
+            onReaderStopped = {},
             onClose = {},
         )
     }

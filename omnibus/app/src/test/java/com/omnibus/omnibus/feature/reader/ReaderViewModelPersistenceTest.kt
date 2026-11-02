@@ -17,6 +17,7 @@ import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.types.shouldBeTypeOf
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -252,6 +253,57 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = false),
                 FakeProgressRepository.Save(position("epubcfi(/6/10)", at = 5_004), push = true),
             )
+        }
+    }
+
+    describe("opening") {
+
+        it("TC-39: the page opens at the stored cfi, or at the beginning when there is none or only a percent") {
+            val rows = listOf(
+                ReadingPosition("book-1", "epubcfi(/6/14)", 40, 5_000) to ReaderStart.AtCfi("epubcfi(/6/14)"),
+                null to ReaderStart.Beginning,
+                ReadingPosition("book-1", null, 40, 5_000) to ReaderStart.Beginning,
+            )
+            rows.forEach { (stored, start) ->
+                fake = FakeProgressRepository().apply { stored?.let { this.stored["book-1"] = it } }
+
+                viewModel().uiState.value.opening shouldBe ReaderOpening.Resolved(start)
+            }
+        }
+
+        it("TC-41: opening resolves independently of the book load") {
+            // The local read is held while the book is Ready: opening waits for the read, and the book is unaffected.
+            fake = FakeProgressRepository().apply { pendingLocal = CompletableDeferred() }
+            library.pendingBook = null
+            val vm = viewModel()
+            vm.uiState.value.book.shouldBeTypeOf<ReaderBookState.Ready>()
+            vm.uiState.value.opening shouldBe ReaderOpening.Resolving
+
+            fake.pendingLocal!!.complete(Unit)
+            vm.uiState.value.opening shouldBe ReaderOpening.Resolved(ReaderStart.Beginning)
+            vm.uiState.value.book.shouldBeTypeOf<ReaderBookState.Ready>()
+
+            // The book is still loading when the local read answers: opening doesn't wait for the book.
+            fake = FakeProgressRepository().apply { stored["book-1"] = position("epubcfi(/6/14)") }
+            library.pendingBook = CompletableDeferred()
+            val loading = viewModel()
+            loading.uiState.value.book shouldBe ReaderBookState.Loading
+            loading.uiState.value.opening shouldBe ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/14)"))
+        }
+
+        it("TC-42: reopening lands on the last page reached") {
+            val store = ViewModelStore()
+            val provider = ViewModelProvider.create(store, viewModelFactory { initializer { viewModel() } })
+            val first = provider[ReaderViewModel::class]
+            first.land()
+            first.move("epubcfi(/6/8)")
+            first.move("epubcfi(/6/10)")
+            // Inside the throttle window, so this movement is written locally but not pushed.
+            first.move("epubcfi(/6/12)")
+            store.clear()
+
+            viewModel().uiState.value.opening shouldBe
+                ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/12)"))
         }
     }
 })
