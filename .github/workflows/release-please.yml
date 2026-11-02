@@ -1,0 +1,97 @@
+name: Release
+
+# release-please turns the Conventional Commits on main into a release PR (version bump +
+# CHANGELOG.md). Merging that PR tags vX.Y.Z and creates the GitHub Release, and publish-apk
+# then attaches a signed APK to it. The PAT, not GITHUB_TOKEN, opens the release PR: events
+# from GITHUB_TOKEN don't trigger workflows, and the PR needs the Testing checks to merge.
+on:
+  push:
+    branches: [main]
+
+# Never cancel a run: it may be midway through creating a release.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-apk:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Decode release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::error::Secret RELEASE_KEYSTORE_BASE64 is not set. See the Releases section of README.md."
+            exit 1
+          fi
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed release APK
+        working-directory: omnibus
+        env:
+          OMNIBUS_RELEASE_KEYSTORE: ${{ runner.temp }}/release.jks
+          OMNIBUS_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          OMNIBUS_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          OMNIBUS_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify APK signature and version
+        run: |
+          APK=omnibus/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then
+            echo "::error::$APK is missing, so the build was not signed. Check the RELEASE_* secrets."
+            exit 1
+          fi
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | grep -F "versionName='$VERSION'"
+
+      - name: Upload APK to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp omnibus/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/omnibus-$VERSION.apk"
+          gh release upload "$TAG" "$RUNNER_TEMP/omnibus-$VERSION.apk" --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
