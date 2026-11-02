@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import com.omnibus.omnibus.data.progress.DefaultProgressRepository
+import com.omnibus.omnibus.data.progress.ProgressRepository
 import com.omnibus.omnibus.data.progress.local.DefaultReadingPositionStore
 import com.omnibus.omnibus.data.progress.local.ReadingPositionStore
 import com.omnibus.omnibus.di.IoDispatcher
@@ -29,6 +31,12 @@ abstract class ProgressModule {
     abstract fun bindReadingPositionStore(
         store: DefaultReadingPositionStore,
     ): ReadingPositionStore
+
+    @Binds
+    @Singleton
+    abstract fun bindProgressRepository(
+        repository: DefaultProgressRepository,
+    ): ProgressRepository
 
     companion object {
         // A file of its own: two DataStores must never share one file.
