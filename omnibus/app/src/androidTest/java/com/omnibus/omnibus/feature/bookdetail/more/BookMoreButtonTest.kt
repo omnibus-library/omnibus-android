@@ -1,0 +1,132 @@
+package com.omnibus.omnibus.feature.bookdetail.more
+
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.R
+import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
+import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
+import com.omnibus.omnibus.feature.bookdetail.bounds
+import com.omnibus.omnibus.feature.bookdetail.detailText
+import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
+import com.omnibus.omnibus.feature.bookdetail.testDetailBook
+import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
+import com.omnibus.omnibus.feature.bookdetail.testSectionContext
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
+import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+
+class BookMoreButtonTest {
+
+    @get:Rule
+    val rule = createComposeRule()
+
+    // TC-1
+    @Test
+    fun issue116_tc1_moreButtonIsA44dpSquareButton() {
+        rule.setMoreButton(listOf(FakeEntry("Row")))
+
+        val button = rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON)
+        button.assertIsDisplayed()
+        button.assert(hasContentDescription(detailText(R.string.book_detail_more)))
+        button.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        button.assertHasClickAction()
+
+        val bounds = button.bounds()
+        val minimum = with(rule.density) { 44.dp.toPx() }
+        assertTrue("width ${bounds.width}", bounds.width >= minimum - 1f)
+        assertTrue("height ${bounds.height}", bounds.height >= minimum - 1f)
+        assertEquals(bounds.width, bounds.height, 1f)
+    }
+
+    // TC-2
+    @Test
+    fun issue116_tc2_moreButtonSitsAtTheTrailingEndOfTheTopBar() {
+        assertMoreAtTrailingEnd(testDetailBook())
+    }
+
+    // TC-2
+    @Test
+    fun issue116_tc2_moreButtonSitsAtTheTrailingEndOfTheTopBarForWishlistedBooks() {
+        assertMoreAtTrailingEnd(testDetailBook().copy(isWishlisted = true))
+    }
+
+    private fun assertMoreAtTrailingEnd(book: com.omnibus.omnibus.data.library.Book) {
+        val more = BookDetailSection { context, modifier ->
+            BookMoreButtonContent(context, listOf(FakeEntry("Row")), modifier)
+        }
+        rule.setDetailScreen(
+            BookDetailUIState(book = book, isLoading = false),
+            slots = BookDetailSlots(topBarActions = listOf(more)),
+        )
+
+        val bar = rule.onNodeWithTag(BookDetailTestTags.TOP_BAR).bounds()
+        val button = rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON).assertIsDisplayed().bounds()
+        val disc = rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).bounds()
+        val title = rule.onNodeWithTag(BookDetailTestTags.BAR_TITLE).bounds()
+
+        assertTrue("More starts after the back disc", button.left > disc.right)
+        assertTrue("More starts after the title", button.left >= title.right - 1f)
+        assertTrue("More is the rightmost child", button.right >= title.right && button.right <= bar.right + 1f)
+        assertTrue(
+            "More sits at the bar's trailing end",
+            bar.right - button.right <= with(rule.density) { 17.dp.toPx() },
+        )
+    }
+
+    // TC-67
+    @Test
+    fun issue116_tc67_menuOpenStateIsRestored() {
+        val tester = StateRestorationTester(rule)
+        tester.setContent {
+            OmnibusTheme(darkTheme = true) {
+                BookMoreButtonContent(testSectionContext(), listOf(FakeEntry("Row")))
+            }
+        }
+        rule.onAllNodesWithTag(BookMoreTestTags.MENU).assertCountEquals(0)
+
+        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON).performClick()
+        rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()
+
+        tester.emulateSavedInstanceStateRestore()
+        rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()
+    }
+
+    // TC-71
+    @Test
+    fun issue116_tc71_entriesAreActivatedOnceTheMenuHasOpened() {
+        rule.setMoreButton(
+            listOf(
+                FakeEntry(
+                    label = "Row",
+                    overlay = { Text("activated=${LocalMoreMenuActivated.current}") },
+                ),
+            ),
+        )
+        rule.onNodeWithText("activated=false").assertIsDisplayed()
+
+        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON).performClick()
+        rule.onNodeWithText("activated=true").assertIsDisplayed()
+
+        rule.pressBackKey()
+        rule.onNodeWithText("activated=true").assertIsDisplayed()
+    }
+}
