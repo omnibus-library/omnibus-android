@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
+import com.omnibus.omnibus.feature.bookdetail.transition.bookCoverSourceModifier
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.components.coverShadow
@@ -60,7 +62,7 @@ internal fun BookGridCell(
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {},
     ) {
-        Box(Modifier.testTag(LibraryTestTags.cover(book.id))) {
+        Box(bookCoverSourceModifier(book.uuid, BookCoverOrigin.Grid).testTag(LibraryTestTags.cover(book.id))) {
             BookCover(
                 identity = book.coverIdentity(),
                 modifier = Modifier.fillMaxWidth().coverShadow(5.dp),

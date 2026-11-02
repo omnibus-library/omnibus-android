@@ -84,6 +84,8 @@ import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
+import com.omnibus.omnibus.feature.bookdetail.transition.bookCoverSourceModifier
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
@@ -318,7 +320,7 @@ private fun ContinueCardView(
     ) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(
-                Modifier
+                bookCoverSourceModifier(book.uuid, BookCoverOrigin.Continue)
                     .width(96.dp)
                     .testTag(ContinueTestTags.cover(card.id))
                     .clickable(onClickLabel = openDetails, onClick = openBook)

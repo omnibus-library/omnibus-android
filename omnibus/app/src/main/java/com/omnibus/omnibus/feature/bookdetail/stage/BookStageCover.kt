@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.feature.bookdetail.transition.bookCoverStageModifier
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.components.BookCover
@@ -61,6 +62,7 @@ internal fun BookStageCover(
         Box(
             Modifier
                 .matchParentSize()
+                .then(bookCoverStageModifier(book.uuid))
                 .graphicsLayer {
                     rotationZ = -2.5f
                     rotationX = 2f

@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.shell.ui
 
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -36,6 +37,7 @@ import com.omnibus.omnibus.feature.bookdetail.PlaceholderTitles
 import com.omnibus.omnibus.feature.bookdetail.dispatch
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderScreen
+import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransition
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
@@ -122,54 +124,58 @@ private fun SignedInShellContent(
             .fillMaxSize()
             .background(palette.bg0),
     ) {
-        NavDisplay(
-            modifier = Modifier
-                .weight(1f)
-                // Book Detail draws under the status bar, so each entry pads it (see StatusBarPadded).
-                // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
-                .consumeWindowInsets(WindowInsets.navigationBars),
-            backStack = navigator.backStack,
-            onBack = onBack,
-            // Switching tabs moves between stacks, which a slide would read as a push or pop.
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            popTransitionSpec = { fadeIn() togetherWith fadeOut() },
-            predictivePopTransitionSpec = { fadeIn() togetherWith fadeOut() },
-            entryDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator(),
-                rememberViewModelStoreNavEntryDecorator(),
-            ),
-            entryProvider = entryProvider {
-                entry<LibraryRoot> {
-                    StatusBarPadded {
-                        LibraryScreen(
-                            onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
-                            onAddBooks = { /* Add books sheet: later ticket */ },
-                            onOpenReader = onOpenReader,
-                            onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
-                        )
-                    }
-                }
-                entry<BookDetailRoute> { key ->
-                    BookDetailScreen(
-                        uuid = key.uuid,
-                        onNavigate = openDestination,
-                        onClose = { navigator.back() },
-                    )
-                }
-                entry<BookDetailPlaceholderRoute> { key ->
-                    StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
-                }
-                entry<PlayerStubRoute> { key ->
-                    StatusBarPadded {
-                        PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId)
-                    }
-                }
-                entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
-                entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
-                entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
-                entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
-            },
-        )
+        SharedTransitionLayout(Modifier.weight(1f)) {
+            ProvideBookCoverTransition(this) {
+                NavDisplay(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Book Detail draws under the status bar, so each entry pads it (see StatusBarPadded).
+                        // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
+                        .consumeWindowInsets(WindowInsets.navigationBars),
+                    backStack = navigator.backStack,
+                    onBack = onBack,
+                    // Switching tabs moves between stacks, which a slide would read as a push or pop.
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    popTransitionSpec = { fadeIn() togetherWith fadeOut() },
+                    predictivePopTransitionSpec = { fadeIn() togetherWith fadeOut() },
+                    entryDecorators = listOf(
+                        rememberSaveableStateHolderNavEntryDecorator(),
+                        rememberViewModelStoreNavEntryDecorator(),
+                    ),
+                    entryProvider = entryProvider {
+                        entry<LibraryRoot> {
+                            StatusBarPadded {
+                                LibraryScreen(
+                                    onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                                    onAddBooks = { /* Add books sheet: later ticket */ },
+                                    onOpenReader = onOpenReader,
+                                    onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
+                                )
+                            }
+                        }
+                        entry<BookDetailRoute> { key ->
+                            BookDetailScreen(
+                                uuid = key.uuid,
+                                onNavigate = openDestination,
+                                onClose = { navigator.back() },
+                            )
+                        }
+                        entry<BookDetailPlaceholderRoute> { key ->
+                            StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
+                        }
+                        entry<PlayerStubRoute> { key ->
+                            StatusBarPadded {
+                                PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId)
+                            }
+                        }
+                        entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
+                        entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
+                        entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
+                        entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
+                    },
+                )
+            }
+        }
         OmnibusTabBar(
             items = tabBarItems,
             selectedIndex = ShellTab.entries.indexOf(navigator.selected),
