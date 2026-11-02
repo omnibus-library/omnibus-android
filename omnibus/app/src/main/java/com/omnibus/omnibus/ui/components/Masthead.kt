@@ -39,7 +39,6 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
-import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /** Test tags for the two segments of the masthead rule. */
 internal object MastheadTestTags {
@@ -173,30 +172,8 @@ private fun MastheadPreview() {
 private fun MastheadWithTrailingPreview() {
     OmnibusTheme {
         Masthead(title = "Library") {
-            OfflinePillStandIn()
+            OfflinePill(visible = true)
             MastheadAddButton(onAddBooks = {})
         }
-    }
-}
-
-/** A stand-in for the later offline pill, so the trailing slot's spacing can be previewed. */
-@Composable
-private fun OfflinePillStandIn() {
-    val palette = OmnibusTheme.palette
-
-    Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(palette.bg2)
-            .border(0.5.dp, palette.line2, CircleShape)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(palette.warn))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = "Offline",
-            style = uiTextStyle(12, FontWeight.Medium, palette.warn),
-        )
     }
 }

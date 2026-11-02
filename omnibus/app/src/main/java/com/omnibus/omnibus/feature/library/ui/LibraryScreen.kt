@@ -70,6 +70,7 @@ import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.components.Masthead
 import com.omnibus.omnibus.ui.components.MastheadAddButton
+import com.omnibus.omnibus.ui.components.OfflinePill
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
@@ -329,6 +330,7 @@ private fun LibraryGrid(
                 // The masthead and heading carry their own 20 dp inset, so the header undoes the grid's padding.
                 Column(Modifier.bleedHorizontally(Spacing.screen)) {
                     Masthead(title = stringResource(R.string.library_title)) {
+                        OfflinePill(visible = uiState.isOffline)
                         MastheadAddButton(onAddBooks = onAddBooks)
                     }
                     Column(Modifier.padding(horizontal = Spacing.screen)) {

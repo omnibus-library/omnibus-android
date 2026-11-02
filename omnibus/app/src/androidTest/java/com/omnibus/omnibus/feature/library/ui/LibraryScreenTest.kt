@@ -53,6 +53,7 @@ import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
+import com.omnibus.omnibus.ui.components.OfflinePillTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
@@ -647,6 +648,34 @@ class LibraryScreenTest {
 
         openMenu()
         rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsDisplayed()
+    }
+
+    @Test
+    fun issue21_tc4_pillShowsOnlyWhileOfflineLeftOfAddButton() {
+        val uiState = mutableStateOf(
+            LibraryUIState(books = listOf(book(1L), book(2L)), hasLoaded = true, isOffline = true),
+        )
+        setLibraryState(uiState)
+
+        val pill = rule.onNodeWithTag(OfflinePillTestTags.PILL, useUnmergedTree = true)
+        pill.assertIsDisplayed()
+        val pillBounds = pill.getUnclippedBoundsInRoot()
+        val addBounds = rule.onNodeWithContentDescription(ADD_LABEL, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        assertTrue("pill sits left of the add button", pillBounds.right <= addBounds.left + HALF_DP)
+        val pillCentre = (pillBounds.top + pillBounds.bottom) / 2
+        val addCentre = (addBounds.top + addBounds.bottom) / 2
+        // One device pixel, in dp.
+        val onePixel = 1f / rule.density.density
+        assertTrue(
+            "pill and add button share a centre line",
+            abs((pillCentre - addCentre).value) <= onePixel,
+        )
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(isOffline = false) }
+        rule.waitForIdle()
+        rule.onNodeWithTag(OfflinePillTestTags.PILL, useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithContentDescription(ADD_LABEL, useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun heading() = rule.onNodeWithTag(LibraryTestTags.HEADING, useUnmergedTree = true)

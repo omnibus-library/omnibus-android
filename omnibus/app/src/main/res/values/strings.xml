@@ -81,6 +81,7 @@
     <string name="library_sort_newest_added">Newest added</string>
     <string name="library_direction_ascending">Ascending</string>
     <string name="library_direction_descending">Descending</string>
+    <string name="library_offline">Offline</string>
 
     <!-- Reader -->
     <string name="reader_loading">Opening your book</string>
