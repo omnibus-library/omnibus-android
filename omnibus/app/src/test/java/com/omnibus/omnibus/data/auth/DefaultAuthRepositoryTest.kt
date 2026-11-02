@@ -4,6 +4,7 @@ import com.omnibus.omnibus.data.auth.local.FakeAuthTokenStore
 import com.omnibus.omnibus.data.auth.local.StoredAuthTokenProvider
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.UserInfoDto
 import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
@@ -804,6 +805,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 id = 1,
                 canEdit = true,
                 canUpload = true,
+                canDownload = true,
                 hiddenFormats = setOf("cbz"),
             )
             server.requestCount shouldBe 1
@@ -818,6 +820,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 id = 1,
                 canEdit = true,
                 canUpload = true,
+                canDownload = true,
                 hiddenFormats = emptySet(),
             )
         }
@@ -849,6 +852,43 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             repository.verifySession() shouldBe AuthSessionResult.Valid
 
             repository.currentUser.first().shouldBeNull()
+        }
+    }
+
+    describe("#93 toCurrentUser") {
+
+        it("#93 TC-12: maps isAdmin, canDownload and kindleEmail") {
+            val user = UserInfoDto(
+                id = 1,
+                username = USERNAME,
+                isAdmin = true,
+                canUpload = false,
+                canEdit = false,
+                canDownload = true,
+                kindleEmail = "me@kindle.com",
+            ).toCurrentUser()
+
+            user.isAdmin shouldBe true
+            user.canDownload shouldBe true
+            user.kindleEmail shouldBe "me@kindle.com"
+        }
+
+        it("#93 TC-13: new CurrentUser fields default") {
+            val user = CurrentUser(id = 1, canEdit = true, canUpload = true, hiddenFormats = emptySet())
+
+            user.isAdmin shouldBe false
+            user.canDownload shouldBe false
+            user.kindleEmail.shouldBeNull()
+
+            UserInfoDto(
+                id = 1,
+                username = USERNAME,
+                isAdmin = false,
+                canUpload = true,
+                canEdit = true,
+                canDownload = false,
+                kindleEmail = null,
+            ).toCurrentUser().kindleEmail.shouldBeNull()
         }
     }
 }) {

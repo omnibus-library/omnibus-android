@@ -9,6 +9,12 @@ data class CurrentUser(
     val canUpload: Boolean,
     /** Lowercase names of the formats this user has hidden. */
     val hiddenFormats: Set<String>,
+    /** Whether this user is an administrator. */
+    val isAdmin: Boolean = false,
+    /** Whether this user may download books. */
+    val canDownload: Boolean = false,
+    /** The user's Kindle address for sending books, if one is set. */
+    val kindleEmail: String? = null,
 )
 
 internal fun UserInfoDto.toCurrentUser(): CurrentUser = CurrentUser(
@@ -16,4 +22,7 @@ internal fun UserInfoDto.toCurrentUser(): CurrentUser = CurrentUser(
     canEdit = canEdit,
     canUpload = canUpload,
     hiddenFormats = hiddenFormats.map { it.lowercase() }.toSet(),
+    isAdmin = isAdmin,
+    canDownload = canDownload,
+    kindleEmail = kindleEmail,
 )

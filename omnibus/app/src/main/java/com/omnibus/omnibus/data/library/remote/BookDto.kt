@@ -37,6 +37,15 @@ internal data class BookDto(
     val lastInteractedAt: String? = null,
     @SerialName("book_files")
     val bookFiles: List<BookFileDto> = emptyList(),
+    val description: String? = null,
+    val genres: List<String> = emptyList(),
+    val subjects: List<String> = emptyList(),
+    val publisher: String? = null,
+    val published: String? = null,
+    val language: String? = null,
+    val isbn13: String? = null,
+    @SerialName("series_id")
+    val seriesId: Long? = null,
 ) {
     fun toDomain(): Book = Book(
         id = id,
@@ -53,6 +62,14 @@ internal data class BookDto(
         addedAt = addedAt,
         lastInteractedAt = lastInteractedAt,
         bookFiles = bookFiles.map { it.toDomain() },
+        description = description,
+        genres = genres,
+        subjects = subjects,
+        publisher = publisher,
+        publishedDate = published,
+        language = language,
+        isbn13 = isbn13,
+        seriesId = seriesId,
     )
 }
 
