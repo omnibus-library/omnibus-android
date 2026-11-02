@@ -27,7 +27,7 @@ class BookDetailReloadOnReturnTest {
     // TC-109
     @Test
     fun issue93_tc109_returningReloadsSilently() {
-        val book = testDetailBook()
+        val book = testDetailBook(formats = emptyList()) // nothing to track: the Hilt-only read-status section stays out
         val repository = FakeBookDetailRepository(bookResult = BookResult.Success(book))
         val viewModel = BookDetailViewModel("uuid-1", repository)
         val shown = mutableStateOf(true)

@@ -153,6 +153,7 @@ class RootNavDisplayTest {
                     onReloadBook = {},
                     onBookChanged = {},
                     onTransientErrorShown = {},
+                    slots = com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots(),
                 )
             },
         )

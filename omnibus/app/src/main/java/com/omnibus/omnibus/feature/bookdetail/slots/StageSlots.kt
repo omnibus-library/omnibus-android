@@ -11,7 +11,7 @@ internal val stageAboveTitle: List<BookDetailSection> = listOfNotNull(
 /** The start of the status row under the byline. */
 internal val stageStatusStart: List<BookDetailSection> = listOfNotNull(
     // #95 Set Reading Status
-    null,
+    com.omnibus.omnibus.feature.bookdetail.status.ReadStatusSection,
 )
 
 /** The end of the status row under the byline. */
