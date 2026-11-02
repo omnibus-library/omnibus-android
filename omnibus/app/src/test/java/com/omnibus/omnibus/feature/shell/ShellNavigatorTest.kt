@@ -2,7 +2,7 @@ package com.omnibus.omnibus.feature.shell
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import com.omnibus.omnibus.feature.library.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import androidx.navigation3.runtime.NavKey
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe

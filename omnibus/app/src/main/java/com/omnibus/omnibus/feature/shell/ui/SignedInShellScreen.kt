@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -29,8 +30,14 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
-import com.omnibus.omnibus.feature.library.ui.BookDetailRoute
-import com.omnibus.omnibus.feature.library.ui.BookDetailStubScreen
+import com.omnibus.omnibus.R
+import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.bookdetail.PlaceholderTitles
+import com.omnibus.omnibus.feature.bookdetail.dispatch
+import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
+import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderScreen
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
 import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 import com.omnibus.omnibus.feature.library.ui.PlayerStubScreen
@@ -56,8 +63,8 @@ data object SignedInShellRoute : NavKey
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
  *
- * @param onOpenReader opens the reader for a book over the shell. The Book Detail Read button calls
- *   it today, and the real Book Detail screen and the Continue card (#22) must call it too.
+ * @param onOpenReader opens the reader for a book over the shell. The Book Detail page reaches it through
+ *   `BookDetailDestination.Reader`; the Continue card calls it too.
  */
 @Composable
 fun SignedInShellScreen(
@@ -95,6 +102,20 @@ private fun SignedInShellContent(
     val tabBarItems = ShellTab.entries.map {
         OmnibusTabBarItem(stringResource(it.label), it.icon, it.selectedIcon)
     }
+    val uriHandler = LocalUriHandler.current
+    val titles = PlaceholderTitles(
+        checkIn = stringResource(R.string.book_detail_placeholder_check_in),
+        settings = stringResource(R.string.book_detail_placeholder_settings),
+    )
+    val openDestination: (BookDetailDestination) -> Unit = { destination ->
+        destination.dispatch(
+            top = navigator.backStack.lastOrNull(),
+            titles = titles,
+            push = { navigator.navigateTo(it) },
+            openReader = onOpenReader,
+            openUri = { uriHandler.openUri(it) },
+        )
+    }
 
     Column(
         modifier = modifier
@@ -104,7 +125,7 @@ private fun SignedInShellContent(
         NavDisplay(
             modifier = Modifier
                 .weight(1f)
-                .windowInsetsPadding(WindowInsets.statusBars)
+                // Book Detail draws under the status bar, so each entry pads it (see StatusBarPadded).
                 // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
                 .consumeWindowInsets(WindowInsets.navigationBars),
             backStack = navigator.backStack,
@@ -119,19 +140,34 @@ private fun SignedInShellContent(
             ),
             entryProvider = entryProvider {
                 entry<LibraryRoot> {
-                    LibraryScreen(
-                        onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
-                        onAddBooks = { /* Add books sheet: later ticket */ },
-                        onOpenReader = onOpenReader,
-                        onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
+                    StatusBarPadded {
+                        LibraryScreen(
+                            onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                            onAddBooks = { /* Add books sheet: later ticket */ },
+                            onOpenReader = onOpenReader,
+                            onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
+                        )
+                    }
+                }
+                entry<BookDetailRoute> { key ->
+                    BookDetailScreen(
+                        uuid = key.uuid,
+                        onNavigate = openDestination,
+                        onClose = { navigator.back() },
                     )
                 }
-                entry<BookDetailRoute> { key -> BookDetailStubScreen(uuid = key.uuid, onRead = onOpenReader) }
-                entry<PlayerStubRoute> { key -> PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId) }
-                entry<AuthorsRoot> { EmptyTabRoot(ShellTab.Authors) }
-                entry<SeriesRoot> { EmptyTabRoot(ShellTab.Series) }
-                entry<StatsRoot> { EmptyTabRoot(ShellTab.Stats) }
-                entry<YouRoot> { EmptyTabRoot(ShellTab.You) }
+                entry<BookDetailPlaceholderRoute> { key ->
+                    StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
+                }
+                entry<PlayerStubRoute> { key ->
+                    StatusBarPadded {
+                        PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId)
+                    }
+                }
+                entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
+                entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
+                entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
+                entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
             },
         )
         OmnibusTabBar(
@@ -140,6 +176,12 @@ private fun SignedInShellContent(
             onSelect = { navigator.select(ShellTab.entries[it]) },
         )
     }
+}
+
+/** Pads the status bar for an entry. Book Detail draws under it, so the shell can't pad the whole NavDisplay. */
+@Composable
+private fun StatusBarPadded(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) { content() }
 }
 
 /** Placeholder root until the tab's own ticket supplies its content. */

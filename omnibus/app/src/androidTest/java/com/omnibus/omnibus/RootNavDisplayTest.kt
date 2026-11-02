@@ -29,8 +29,11 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
-import com.omnibus.omnibus.feature.library.ui.BookDetailStubScreen
+import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -39,7 +42,7 @@ import org.junit.Rule
 import org.junit.Test
 
 // TC-58 to TC-62 and TC-82. The shell, reader and sign-in screens are fakes with test tags, so the
-// navigation is what's under test. The real BookDetailStubScreen is used only for TC-62.
+// navigation is what's under test. The real BookDetailScreenContent is used only for TC-62 (#93 TC-126).
 class RootNavDisplayTest {
 
     @get:Rule
@@ -120,10 +123,39 @@ class RootNavDisplayTest {
         assertEquals(root.bottom, reader.bottom, 1f)
     }
 
-    // TC-62
+    // #93 TC-126
     @Test
     fun tc62_theDetailReadButtonOpensTheReaderForThatBook() {
-        setRoot(shell = { BookDetailStubScreen(uuid = "book-1", onRead = { stack.openReader(it) }) })
+        val book = Book(
+            id = 1,
+            uniqueIdentifier = "book-1",
+            filename = "book-1.epub",
+            title = "Book One",
+            creators = emptyList(),
+            coverUrl = null,
+            accent = null,
+            formats = listOf("epub"),
+            series = null,
+            seriesIndex = null,
+            hasPhysical = false,
+            addedAt = null,
+            lastInteractedAt = null,
+            bookFiles = emptyList(),
+        )
+        setRoot(
+            shell = {
+                BookDetailScreenContent(
+                    uiState = BookDetailUIState(book = book, isLoading = false),
+                    onNavigate = { if (it is BookDetailDestination.Reader) stack.openReader(it.bookUuid) },
+                    onClose = {},
+                    onRetry = {},
+                    onRefresh = {},
+                    onReloadBook = {},
+                    onBookChanged = {},
+                    onTransientErrorShown = {},
+                )
+            },
+        )
 
         rule.onNodeWithText("Read").performClick()
         rule.waitForIdle()
