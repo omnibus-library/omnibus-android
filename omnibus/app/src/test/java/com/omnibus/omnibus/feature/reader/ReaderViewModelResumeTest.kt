@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.progress.ServerReadingPosition
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
+import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
@@ -72,6 +73,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             BookFileSource { BookFileResult.NotFound },
         ),
         progressRepository = fake,
+        settingsStore = FakeReaderSettingsStore(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
     )

@@ -10,7 +10,10 @@ import com.omnibus.omnibus.data.progress.PositionSaveResult
 import com.omnibus.omnibus.data.progress.ProgressError
 import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.reader.BookFileResult
+import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
+import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
@@ -26,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -53,7 +57,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
     afterEach { persistScope.cancel() }
 
     /** The one place these cases build the ViewModel. Reads [fake], [now] and [persistScope] when called. */
-    fun viewModel() = ReaderViewModel(
+    fun viewModel(settings: FakeReaderSettingsStore = FakeReaderSettingsStore()) = ReaderViewModel(
         bookUuid = "book-1",
         libraryRepository = library,
         assetLoaderFactory = ReaderAssetLoaderFactory(
@@ -62,6 +66,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             BookFileSource { BookFileResult.NotFound },
         ),
         progressRepository = fake,
+        settingsStore = settings,
         timeSource = TimeSource { now },
         persistScope = persistScope,
     )
@@ -304,6 +309,22 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
             viewModel().uiState.value.opening shouldBe
                 ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/12)"))
+        }
+    }
+    describe("settings") {
+
+        it("a settings save still completes after the view model is cleared") {
+            val settings = FakeReaderSettingsStore().apply { holdSaves = CompletableDeferred() }
+            val store = ViewModelStore()
+            val vm = ViewModelProvider.create(store, viewModelFactory { initializer { viewModel(settings) } })[ReaderViewModel::class]
+
+            vm.onSettingsChanged(ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 22))
+            store.clear()
+            settings.saves.size shouldBe 1
+
+            settings.holdSaves!!.complete(Unit)
+
+            settings.settings.first() shouldBe ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 22)
         }
     }
 })

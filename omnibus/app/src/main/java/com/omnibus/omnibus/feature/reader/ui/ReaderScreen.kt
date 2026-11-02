@@ -245,8 +245,8 @@ internal fun ReaderScreenContent(
                     if (LocalInspectionMode.current) {
                         // The WebView can't run in a preview, so the page is a plain ground.
                         Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
-                    } else if (opening is ReaderOpening.Resolved) {
-                        // The page boots at the opening position, so it waits until that is known.
+                    } else if (opening is ReaderOpening.Resolved && uiState.settingsLoaded) {
+                        // The page boots at the opening position and the stored settings, so it waits for both.
                         SideEffect { controller.startAt(opening.start.bootCfi) }
                         ReaderWebView(
                             bookUuid = bookUuid,
