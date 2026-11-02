@@ -1,0 +1,23 @@
+<resources>
+    <!-- Spoken while the book detail page loads. -->
+    <string name="book_detail_loading">Loading book</string>
+    <string name="book_detail_error_title">Couldn\'t open this book</string>
+    <string name="book_detail_error_not_found">This book is no longer in your library.</string>
+    <string name="book_detail_retry">Try again</string>
+    <string name="book_detail_back">Back</string>
+    <!-- %1$s is the book\'s title. -->
+    <string name="book_detail_cover_description">%1$s cover</string>
+    <!-- %1$s is the author\'s name. -->
+    <string name="book_detail_author_description">Author: %1$s</string>
+    <string name="book_detail_author_click_label">Open author</string>
+    <!-- %1$s is the series name, %2$s is the book\'s number in it. -->
+    <string name="book_detail_series_line">%1$s, book %2$s</string>
+    <!-- %1$s is the series name. -->
+    <string name="book_detail_series_description">Series: %1$s</string>
+    <!-- %1$s is the publication year. -->
+    <string name="book_detail_year_beside">· %1$s</string>
+    <string name="book_detail_read">Read</string>
+    <string name="book_detail_placeholder_check_in">Check in</string>
+    <string name="book_detail_placeholder_settings">Settings</string>
+    <string name="book_detail_placeholder_message">Coming soon</string>
+</resources>

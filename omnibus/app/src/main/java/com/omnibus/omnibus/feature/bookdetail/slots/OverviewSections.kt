@@ -1,0 +1,21 @@
+package com.omnibus.omnibus.feature.bookdetail.slots
+
+import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
+
+/** The Overview tab, in display order. */
+internal val overviewSections: List<BookDetailSection> = listOfNotNull(
+    // #94 Book Tabs and Description
+    null,
+    // #100 Genres and Tags
+    null,
+    // #102 Your Reading Card
+    null,
+    // #103 Household Activity
+    null,
+    // #104 Series Fan
+    null,
+    // #105 More by This Author
+    null,
+    // #106 Readers Also Read
+    null,
+)
