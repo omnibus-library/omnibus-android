@@ -4,7 +4,9 @@ import android.util.Log
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.reviews.remote.BookReviewsDto
+import com.omnibus.omnibus.data.reviews.remote.MyReviewDto
 import com.omnibus.omnibus.data.reviews.remote.ReviewsJson
+import com.omnibus.omnibus.data.reviews.remote.toJsonRequest
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.IOException
@@ -22,12 +24,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
  * Default [ReviewsRepository]. Keeps one hot state per book uuid, and every collector shares it. A fetch runs in the
- * application scope, so leaving the page cannot strand it, and concurrent requests for one uuid join one GET. A
- * failure becomes a state, so no exception leaves this class except cancellation.
+ * application scope, so leaving the page cannot strand it, and concurrent requests for one uuid join one GET. Writes to
+ * the reader's own review apply optimistically, run in the application scope, and roll back to the last server answer
+ * on failure. A failure becomes a state or a result, so no exception leaves this class except cancellation.
  */
 @Singleton
 class DefaultReviewsRepository @Inject constructor(
@@ -37,13 +42,31 @@ class DefaultReviewsRepository @Inject constructor(
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) : ReviewsRepository {
 
-    /** One book's state. Everything is guarded by [lock]. */
+    /** One book's state. Everything but [writeMutex] is guarded by [lock]. */
     private class Entry {
         val lock = Any()
         val state = MutableStateFlow<ReviewsState>(ReviewsState.Loading)
 
+        /** Serialises the writes for this book, so they reach the server in call order. */
+        val writeMutex = Mutex()
+
+        /** The last server answer, which is what a failed write rolls back to. */
+        var confirmed: ReviewsState = ReviewsState.Loading
+
+        /** The write sequence that [confirmed] belongs to, so an older answer never replaces a newer one. */
+        var confirmedSeq = 0L
+
+        /** Bumped by every write that makes a request. */
+        var writeSeq = 0L
+
+        /** Writes whose optimistic value is not yet resolved. When this is zero, [state] equals [confirmed]. */
+        var pendingWrites = 0
+
         /** The fetch in flight, which a new request joins instead of starting another GET. */
         var inFlight: Deferred<ReviewsState>? = null
+
+        /** The [writeSeq] when [inFlight] started, so a save can tell a GET that began before it from one after. */
+        var inFlightSeq = 0L
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -69,19 +92,93 @@ class DefaultReviewsRepository @Inject constructor(
         startFetch(bookUuid, entry(bookUuid)).await()
     }
 
+    override suspend fun updateMyReview(bookUuid: String, patch: ReviewPatch): ReviewWriteResult =
+        write(bookUuid, patch) { mine -> mine.applying(patch) }
+
+    override suspend fun deleteMyReview(bookUuid: String): ReviewWriteResult =
+        write(bookUuid, patch = null) { null }
+
+    /**
+     * One optimistic write. [patch] null is a DELETE. The rules are checked in order: a blank uuid, then a state that is
+     * not Loaded, then a patch that changes nothing.
+     */
+    private suspend fun write(uuid: String, patch: ReviewPatch?, optimistic: (Review?) -> Review?): ReviewWriteResult {
+        if (uuid.isBlank()) return ReviewWriteResult.Failed(ReviewError.BookNotFound)
+        val entry = entry(uuid)
+        val seq = synchronized(entry.lock) {
+            val current = entry.state.value as? ReviewsState.Loaded
+                ?: return ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            if (patch != null && patch.isNoOpFor(current.reviews.mine)) return ReviewWriteResult.Unchanged
+            entry.pendingWrites++
+            entry.state.value = ReviewsState.Loaded(current.reviews.copy(mine = optimistic(current.reviews.mine)))
+            ++entry.writeSeq
+        }
+        // UNDISPATCHED reaches the FIFO mutex before returning, so writes from one caller reach the server in call order.
+        return applicationScope.async(start = CoroutineStart.UNDISPATCHED) {
+            val result = entry.writeMutex.withLock { send(uuid, patch) }
+            synchronized(entry.lock) {
+                entry.pendingWrites--
+                val confirmed = entry.confirmed
+                if (result is ReviewWriteResult.Saved && seq >= entry.confirmedSeq && confirmed is ReviewsState.Loaded) {
+                    entry.confirmed = ReviewsState.Loaded(confirmed.reviews.copy(mine = result.mine))
+                    entry.confirmedSeq = seq
+                }
+                // Only the latest write sets the state: the server's answer on success, the confirmed one on failure.
+                if (seq == entry.writeSeq) entry.state.value = entry.confirmed
+            }
+            if (result is ReviewWriteResult.Saved) refetchAfterWrite(uuid, entry, seq)
+            result
+        }.await()
+    }
+
+    /**
+     * Refreshes summary and others after a save. A GET that began before the write is waited for, then one more runs.
+     * A GET that began after the write is joined.
+     */
+    private fun refetchAfterWrite(uuid: String, entry: Entry, seq: Long) {
+        val older = synchronized(entry.lock) {
+            entry.inFlight?.takeIf { !it.isCompleted && entry.inFlightSeq < seq }
+        }
+        if (older == null) {
+            startFetch(uuid, entry)
+        } else {
+            applicationScope.launch {
+                older.join()
+                startFetch(uuid, entry)
+            }
+        }
+    }
+
     /** Starts a GET, or returns the one already in flight. It runs in the application scope, not the caller's. */
     private fun startFetch(uuid: String, entry: Entry): Deferred<ReviewsState> {
         val deferred = synchronized(entry.lock) {
             entry.inFlight?.takeIf { !it.isCompleted }?.let { return it }
             // A Loaded state stays on screen while it refetches. Any other state shows Loading until the answer.
             if (entry.state.value !is ReviewsState.Loaded) entry.state.value = ReviewsState.Loading
+            val seqAtStart = entry.writeSeq
+            entry.inFlightSeq = seqAtStart
+            // The GET's own review is only trusted when no write was pending when it started and no write was
+            // confirmed while it ran. Otherwise the server may have answered it before a write was applied, and it
+            // would replace a newer answer with a stale one.
+            val quietAtStart = entry.pendingWrites == 0
+            val confirmedSeqAtStart = entry.confirmedSeq
             applicationScope.async(start = CoroutineStart.LAZY) {
                 val outcome = get(uuid)
                 synchronized(entry.lock) {
-                    // A failed refetch never replaces Loaded.
-                    if (outcome is ReviewsState.Loaded || entry.state.value !is ReviewsState.Loaded) {
-                        entry.state.value = outcome
+                    val confirmed = entry.confirmed
+                    val trusted = quietAtStart && entry.confirmedSeq == confirmedSeqAtStart
+                    when {
+                        outcome is ReviewsState.Loaded && trusted -> {
+                            entry.confirmed = outcome
+                            entry.confirmedSeq = seqAtStart
+                        }
+                        // Began before a newer write was confirmed: keep that write's mine, take the household's part.
+                        outcome is ReviewsState.Loaded && confirmed is ReviewsState.Loaded ->
+                            entry.confirmed = ReviewsState.Loaded(outcome.reviews.copy(mine = confirmed.reviews.mine))
+                        // A failed refetch never replaces Loaded; before anything loaded, the failure is the state.
+                        confirmed !is ReviewsState.Loaded -> entry.confirmed = outcome
                     }
+                    if (entry.pendingWrites == 0) entry.state.value = entry.confirmed
                 }
                 outcome
             }.also { entry.inFlight = it }
@@ -128,10 +225,59 @@ class DefaultReviewsRepository @Inject constructor(
         }
     }
 
+    /**
+     * One PATCH of [patch], or one DELETE when [patch] is null. A 2xx PATCH answers the review, or the JSON literal null
+     * when the patch left nothing; a DELETE answers null.
+     */
+    private suspend fun send(uuid: String, patch: ReviewPatch?): ReviewWriteResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(REVIEWS_PATH)
+            ?: return@withContext ReviewWriteResult.Failed(ReviewError.NoServer)
+        val url = builder.build().url.newBuilder()
+            .addPathSegment(uuid)
+            .build()
+        val request = if (patch == null) {
+            builder.url(url).delete().build()
+        } else {
+            builder.url(url).patch(patch.toJsonRequest()).build()
+        }
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                when {
+                    response.isSuccessful -> if (patch == null) {
+                        ReviewWriteResult.Saved(null)
+                    } else {
+                        ReviewWriteResult.Saved(
+                            ReviewsJson.decodeFromString<MyReviewDto?>(response.body.string())?.toDomain(),
+                        )
+                    }
+                    response.code == HTTP_UNAUTHORIZED -> ReviewWriteResult.Failed(ReviewError.SessionExpired)
+                    response.code == HTTP_NOT_FOUND -> ReviewWriteResult.Failed(ReviewError.BookNotFound)
+                    else -> ReviewWriteResult.Failed(ReviewError.Http(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server to write a review", ex)
+            ReviewWriteResult.Failed(ReviewError.Unreachable)
+        } catch (ex: IllegalArgumentException) {
+            // SerializationException is a subtype, so a body that doesn't decode lands here too.
+            Log.w(TAG, "Unexpected response to a review write", ex)
+            ReviewWriteResult.Failed(ReviewError.UnexpectedResponse)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure writing a review", ex)
+            ReviewWriteResult.Failed(ReviewError.UnexpectedResponse)
+        }
+    }
+
     internal companion object {
         const val TAG = "DefaultReviewsRepository"
 
         /** Relative, so it resolves beneath the server's base URL. */
         const val REVIEWS_PATH = "api/reviews"
+
+        const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_NOT_FOUND = 404
     }
 }

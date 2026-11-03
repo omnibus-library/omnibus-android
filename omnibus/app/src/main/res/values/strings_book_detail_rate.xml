@@ -1,0 +1,26 @@
+<resources>
+    <string name="book_detail_rate_title">Your review</string>
+    <string name="book_detail_rate_note_unrated">Not rated yet. Tap or drag the stars, half stars count.</string>
+    <!-- %1$s is a rating, such as 4.5. -->
+    <string name="book_detail_rate_note_rated">You rated it %1$s</string>
+    <string name="book_detail_rate_note_loading">Loading your review…</string>
+    <string name="book_detail_rate_note_offline">Loads when you\'re back online.</string>
+    <string name="book_detail_rate_note_failed">Couldn\'t load. Pull down to retry.</string>
+    <string name="book_detail_rate_write">Write review</string>
+    <string name="book_detail_rate_edit">Edit review</string>
+    <string name="book_detail_rate_delete">Delete review</string>
+    <string name="book_detail_rate_delete_title">Delete your review?</string>
+    <string name="book_detail_rate_delete_message">This removes your stars, your review and your private notes for good. This can\'t be undone.</string>
+    <string name="book_detail_rate_delete_confirm">Delete</string>
+    <string name="book_detail_rate_delete_cancel">Cancel</string>
+    <string name="book_detail_rate_private_notes">Private notes. Only you can see these.</string>
+    <string name="book_detail_rate_prompt">What did you make of it?</string>
+    <string name="book_detail_rate_stars_description">Your rating, in half stars</string>
+    <!-- %1$s is a rating, such as 4.5. -->
+    <string name="book_detail_rate_stars_state">%1$s of 5 stars</string>
+    <string name="book_detail_rate_stars_unrated">Not rated</string>
+    <string name="book_detail_rate_save_failed_offline">No connection. Your rating wasn\'t saved.</string>
+    <string name="book_detail_rate_save_failed">Your rating wasn\'t saved.</string>
+    <string name="book_detail_rate_delete_failed_offline">No connection. Your review wasn\'t deleted.</string>
+    <string name="book_detail_rate_delete_failed">Your review wasn\'t deleted.</string>
+</resources>
