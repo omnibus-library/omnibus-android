@@ -235,12 +235,18 @@ class MergeViewModelTest : DescribeSpec({
                     advanceTimeBy(MERGE_SEARCH_DEBOUNCE_MILLIS)
                     runCurrent()
 
-                    val stale = if (completeFirstOne) first else second
-                    val latest = if (completeFirstOne) second else first
-                    val latestResult = if (completeFirstOne) listOf(other) else listOf(another)
-                    stale.complete(MergeCandidatesResult.Success(listOf(mergeTestBook(9, uuid = "stale"))))
-                    runCurrent()
-                    latest.complete(MergeCandidatesResult.Success(latestResult))
+                    val staleResult = MergeCandidatesResult.Success(listOf(mergeTestBook(9, uuid = "stale")))
+                    val latestResult = listOf(other)
+                    // The first request is the superseded one; only the order the responses arrive in varies.
+                    if (completeFirstOne) {
+                        first.complete(staleResult)
+                        runCurrent()
+                        second.complete(MergeCandidatesResult.Success(latestResult))
+                    } else {
+                        second.complete(MergeCandidatesResult.Success(latestResult))
+                        runCurrent()
+                        first.complete(staleResult)
+                    }
                     runCurrent()
 
                     s.vm.uiState.value.candidates shouldBe latestResult
