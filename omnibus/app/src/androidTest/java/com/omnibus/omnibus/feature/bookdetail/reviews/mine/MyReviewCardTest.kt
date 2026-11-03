@@ -6,10 +6,12 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -24,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.test.espresso.Espresso
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.reviews.Review
@@ -146,12 +149,13 @@ class MyReviewCardTest {
         rule.onNodeWithText(detailText(R.string.book_detail_reviews_show_review)).assertDoesNotExist()
         rule.onNodeWithText(detailText(R.string.book_detail_reviews_spoiler_warning)).assertDoesNotExist()
 
-        val box = rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).bounds()
-        val label = rule.onNodeWithText(detailText(R.string.book_detail_rate_private_notes)).bounds()
-        val notes = rule.onNodeWithText("Only mine").bounds()
+        // The long text pushes the box below the window, where boundsInRoot is clipped, so compare layout bounds.
+        val box = rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).layoutBounds()
+        val label = rule.onNodeWithText(detailText(R.string.book_detail_rate_private_notes)).layoutBounds()
+        val notes = rule.onNodeWithText("Only mine").layoutBounds()
         assertTrue(label.top >= box.top && label.bottom <= box.bottom)
         assertTrue(notes.top >= label.bottom && notes.bottom <= box.bottom)
-        assertTrue(box.top >= rule.onNodeWithTag(MyReviewTestTags.TEXT).bounds().bottom)
+        assertTrue(box.top >= rule.onNodeWithTag(MyReviewTestTags.TEXT).layoutBounds().bottom)
     }
 
     // TC-67 (R14)
@@ -348,6 +352,8 @@ class MyReviewCardTest {
 
     /** Asserts whether the rating block is marked as breathing. */
     private fun assertBreathes(expected: Boolean) {
+        // The clock is paused (the breath never settles), so a state change needs a frame to recompose.
+        rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
         assertEquals(
             expected,
@@ -397,4 +403,8 @@ class MyReviewCardTest {
         rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).assertDoesNotExist()
         rule.onNodeWithTag(MyReviewTestTags.TRASH).assertDoesNotExist()
     }
+
+    /** The node's layout rectangle in the root, which unlike `boundsInRoot` is not clipped to the window. */
+    private fun SemanticsNodeInteraction.layoutBounds(): Rect =
+        fetchSemanticsNode().let { Rect(it.positionInRoot, it.size.toSize()) }
 }
