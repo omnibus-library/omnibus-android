@@ -421,5 +421,20 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             observed.states shouldNotContain presentDefault()
             observed.states shouldContainExactly listOf(WishlistState.Unknown)
         }
+
+        it("cachedState reads the current state with no request, through Unknown, Present and Absent") {
+            val repository = repositoryFor()
+            repository.cachedState(UUID) shouldBe WishlistState.Unknown
+            server.requestCount shouldBe 0
+
+            script.answer("GET", reply(200, entryBody()))
+            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
+            repository.cachedState(UUID) shouldBe presentDefault()
+
+            script.answer("DELETE", reply(200, "{\"book_deleted\":false}"))
+            repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Removed(bookDeleted = false)
+            repository.cachedState(UUID) shouldBe WishlistState.Absent
+            server.requestCount shouldBe 2
+        }
     }
 })

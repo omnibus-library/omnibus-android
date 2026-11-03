@@ -42,6 +42,13 @@ interface WishlistRepository {
      */
     fun getWishlistFlow(bookUuid: String): Flow<WishlistState>
 
+    /**
+     * The state [bookUuid] holds right now, read without starting a fetch. It is [WishlistState.Unknown] when nothing is
+     * known yet. A composition uses it as the first value, so a book whose answer is already known does not start from
+     * Unknown.
+     */
+    fun cachedState(bookUuid: String): WishlistState
+
     /** Fetches the entry again, unless a fetch for [bookUuid] is already in flight, which it joins. */
     suspend fun refresh(bookUuid: String)
 

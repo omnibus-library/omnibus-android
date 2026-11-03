@@ -59,6 +59,9 @@ class DefaultWishlistRepository @Inject constructor(
         }
     }
 
+    override fun cachedState(bookUuid: String): WishlistState =
+        entries[bookUuid]?.state?.value ?: WishlistState.Unknown
+
     override suspend fun refresh(bookUuid: String) {
         startFetch(bookUuid, entry(bookUuid)).await()
     }

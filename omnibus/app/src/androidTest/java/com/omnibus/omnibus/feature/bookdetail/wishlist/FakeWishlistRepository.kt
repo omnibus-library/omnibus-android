@@ -50,6 +50,8 @@ internal class FakeWishlistRepository : WishlistRepository {
         return stateFor(bookUuid)
     }
 
+    override fun cachedState(bookUuid: String): WishlistState = stateFor(bookUuid).value
+
     override suspend fun refresh(bookUuid: String) {
         refreshCalls += bookUuid
         refreshResults.removeFirstOrNull()?.let { stateFor(bookUuid).value = it }

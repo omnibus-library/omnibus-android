@@ -49,7 +49,7 @@ internal fun rememberWishlistState(book: Book): WishlistState {
     if (hasReadableCopy(book)) return WishlistState.Unknown
     val repository = rememberWishlistRepository() ?: return WishlistState.Unknown
     val flow = remember(repository, book.uuid) { repository.getWishlistFlow(book.uuid) }
-    return flow.collectAsState(initial = WishlistState.Unknown).value
+    return flow.collectAsState(initial = repository.cachedState(book.uuid)).value
 }
 
 /** Whether [book] is wishlist-only. A book with a readable copy is false without any repository access. */
