@@ -1,0 +1,22 @@
+<resources>
+    <!-- The Bookmarks menu row, and the sheet title. -->
+    <string name="book_detail_bookmarks_title">Bookmarks</string>
+    <!-- The sheet's close button. -->
+    <string name="book_detail_bookmarks_close">Close</string>
+    <!-- The sheet's empty state, when the book has no bookmarks. -->
+    <string name="book_detail_bookmarks_empty">No bookmarks yet. The ones you place while reading or listening gather here.</string>
+    <!-- The sheet's loading and error states. -->
+    <string name="book_detail_bookmarks_loading">Loading bookmarks</string>
+    <string name="book_detail_bookmarks_error">Couldn\'t load bookmarks.</string>
+    <string name="book_detail_bookmarks_retry">Try again</string>
+    <!-- A row's name when the bookmark has no title and no audio time. -->
+    <string name="book_detail_bookmarks_saved_position">Saved position</string>
+    <!-- %1$s is the listening time, such as "1 h 12 m". -->
+    <string name="book_detail_bookmarks_listening">Listening, %1$s in</string>
+    <!-- The listening time under one minute, inside the listening name. -->
+    <string name="book_detail_bookmarks_under_a_minute">under a minute</string>
+    <!-- %1$d is the chapter number. -->
+    <string name="book_detail_bookmarks_chapter">Chapter %1$d</string>
+    <!-- %1$d is the whole percent through the book. -->
+    <string name="book_detail_bookmarks_percent">%1$d%%</string>
+</resources>

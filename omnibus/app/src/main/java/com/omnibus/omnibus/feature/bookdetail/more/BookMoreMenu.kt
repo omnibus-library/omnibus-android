@@ -51,13 +51,16 @@ private val GroupRuleHeight = 8.dp
 private val GroupRuleColor = Color.Black.copy(alpha = 0.28f)
 
 /**
- * The indices of the groups that get a rule above them: every non-empty group after the first non-empty one. An
- * entry that emitted nothing (height 0) gets no rule, so rules never stack or lead the menu.
+ * The indices of the groups that get a rule above them: every non-empty group after the first non-empty one, except
+ * a group that [joinsPrevious] marks as joining the group above it. An entry that emitted nothing (height 0) gets no
+ * rule, so rules never stack or lead the menu.
  */
-internal fun menuRuleSlots(groupHeights: List<Int>): List<Int> {
+internal fun menuRuleSlots(groupHeights: List<Int>, joinsPrevious: List<Boolean> = emptyList()): List<Int> {
     val first = groupHeights.indexOfFirst { it > 0 }
     if (first < 0) return emptyList()
-    return groupHeights.indices.filter { it > first && groupHeights[it] > 0 }
+    return groupHeights.indices.filter {
+        it > first && groupHeights[it] > 0 && !joinsPrevious.getOrElse(it) { false }
+    }
 }
 
 /**
@@ -136,6 +139,7 @@ internal fun BookMoreMenuRow(
  */
 @Composable
 private fun MenuGroups(entries: List<BookMoreMenuEntry>, rows: @Composable (BookMoreMenuEntry) -> Unit) {
+    val joins = entries.map { it.joinsPreviousGroup }
     Layout(
         contents = listOf(
             {
@@ -166,7 +170,7 @@ private fun MenuGroups(entries: List<BookMoreMenuEntry>, rows: @Composable (Book
                     it.measure(if (bounded) Constraints.fixedWidth(constraints.maxWidth) else Constraints())
                 }
                 val width = if (bounded) constraints.maxWidth else placedGroups.maxOfOrNull { it.width } ?: 0
-                val slots = menuRuleSlots(placedGroups.map { it.height })
+                val slots = menuRuleSlots(placedGroups.map { it.height }, joins)
                 val ruleConstraints = Constraints.fixedWidth(width)
                 val placedRules = rules.take(slots.size).map { it.measure(ruleConstraints) }
                 val height = placedGroups.sumOf { it.height } + placedRules.sumOf { it.height }
@@ -200,7 +204,7 @@ private fun MenuGroups(entries: List<BookMoreMenuEntry>, rows: @Composable (Book
                 width: Int,
             ): Int {
                 val heights = measurables[0].map { it.minIntrinsicHeight(width) }
-                return heights.sum() + menuRuleSlots(heights).size * GroupRuleHeight.roundToPx()
+                return heights.sum() + menuRuleSlots(heights, joins).size * GroupRuleHeight.roundToPx()
             }
 
             override fun IntrinsicMeasureScope.maxIntrinsicHeight(

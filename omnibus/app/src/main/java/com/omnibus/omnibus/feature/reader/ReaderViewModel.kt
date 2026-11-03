@@ -62,10 +62,13 @@ import kotlinx.coroutines.selects.select
  *
  * @property assetLoaderFactory builds the WebView's asset loader for the screen. It isn't state.
  * @property persistScope runs the saves, so a flush outlives this ViewModel.
+ * @property startCfi An EPUB CFI to open at, such as a bookmark's, instead of the saved position. It skips the
+ *   server read and the sync offer. Progress then saves as for any open, so landing on an earlier bookmark saves
+ *   that place as progress, as iOS does.
  */
 @HiltViewModel(assistedFactory = ReaderViewModel.Factory::class)
 class ReaderViewModel @AssistedInject constructor(
-    @Assisted val bookUuid: String,
+    @Assisted("bookUuid") val bookUuid: String,
     private val libraryRepository: LibraryRepository,
     val assetLoaderFactory: ReaderAssetLoaderFactory,
     private val progressRepository: ProgressRepository,
@@ -73,6 +76,7 @@ class ReaderViewModel @AssistedInject constructor(
     private val bookmarksRepository: BookmarksRepository,
     private val timeSource: TimeSource,
     @param:ApplicationScope private val persistScope: CoroutineScope,
+    @Assisted("startCfi") private val startCfi: String? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -134,7 +138,7 @@ class ReaderViewModel @AssistedInject constructor(
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
     @AssistedFactory
     interface Factory {
-        fun create(bookUuid: String): ReaderViewModel
+        fun create(@Assisted("bookUuid") bookUuid: String, @Assisted("startCfi") startCfi: String?): ReaderViewModel
     }
 
     /**
@@ -342,6 +346,12 @@ class ReaderViewModel @AssistedInject constructor(
      * offered (never applied). The book load doesn't wait for this, and this doesn't wait for the book.
      */
     private fun resolveOpening() = viewModelScope.launch {
+        // An explicit start (a bookmark) wins: no server read, no sync offer. Progress then saves as for any open.
+        val explicit = startCfi?.trim()?.takeIf { PositionSync.isEpubCfi(it) }
+        if (explicit != null) {
+            begin(ReaderStart.AtCfi(explicit), openedPercent = null)
+            return@launch
+        }
         // Started before the read, so an answer at exactly the deadline loses the tie and is offered (TC-65).
         val deadline = async { delay(PositionSync.OPEN_DEADLINE) }
         val remote = async { progressRepository.getServerPosition(bookUuid) }

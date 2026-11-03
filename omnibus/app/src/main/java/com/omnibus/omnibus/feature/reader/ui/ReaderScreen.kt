@@ -72,21 +72,24 @@ import kotlinx.serialization.Serializable
  * the shell and leaving it returns to the shell with its tab stacks intact.
  *
  * @property bookUuid The book to open.
+ * @property startCfi An EPUB CFI to open at instead of the saved position, or null to resume.
  */
 @Serializable
-data class ReaderRoute(val bookUuid: String) : NavKey
+data class ReaderRoute(val bookUuid: String, val startCfi: String? = null) : NavKey
 
 /**
  * The reader for one book, over the shell. The ViewModel is created for [bookUuid] and is the only
- * thing here that sees its state. [onClose] leaves the reader.
+ * thing here that sees its state. [onClose] leaves the reader. [startCfi] opens at that place instead
+ * of the saved position.
  */
 @Composable
 fun ReaderScreen(
     bookUuid: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    startCfi: String? = null,
     viewModel: ReaderViewModel = hiltViewModel<ReaderViewModel, ReaderViewModel.Factory>(
-        creationCallback = { it.create(bookUuid) },
+        creationCallback = { it.create(bookUuid, startCfi) },
     ),
 ) {
     val uiState by viewModel.uiState.collectAsState()

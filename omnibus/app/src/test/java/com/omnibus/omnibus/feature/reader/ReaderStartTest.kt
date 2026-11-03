@@ -6,6 +6,14 @@ import io.kotest.matchers.shouldBe
 
 class ReaderStartTest : DescribeSpec({
 
+    describe("ReaderStart.AtCfi") {
+
+        it("#117 TC-52: at cfi start carries the cfi") {
+            ReaderStart.AtCfi("epubcfi(/6/8)").cfi shouldBe "epubcfi(/6/8)"
+            readerStartOf("epubcfi(/6/8)", null, null) shouldBe ReaderStart.AtCfi("epubcfi(/6/8)")
+        }
+    }
+
     describe("readerStartOf") {
 
         it("TC-62: a stored or server position resolves to its start") {

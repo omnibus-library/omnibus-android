@@ -21,6 +21,11 @@ class BookDetailDestinationTest : DescribeSpec({
             BookDetailDestination.Book("other").shellRoute(titles) shouldBe BookDetailRoute("other")
         }
 
+        it("#117 TC-56: player destination carries position seconds") {
+            BookDetailDestination.Player("b", null, 4332.5).shellRoute(titles) shouldBe PlayerStubRoute("b", null, 4332.5)
+            BookDetailDestination.Player("b", 9).shellRoute(titles) shouldBe PlayerStubRoute("b", 9, null)
+        }
+
         it("#93 TC-43: browse destinations go to the placeholder") {
             BookDetailDestination.Author(3, "Ursula K. Le Guin").shellRoute(titles) shouldBe
                 BookDetailPlaceholderRoute("Ursula K. Le Guin")
@@ -82,6 +87,21 @@ class BookDetailDestinationTest : DescribeSpec({
             BookDetailDestination.Genre("X").pushTarget(placeholderTop, titles).shouldBeNull()
         }
 
+        it("#117 TC-57: reader dispatch carries the start cfi") {
+            val opened = mutableListOf<Pair<String, String?>>()
+            fun dispatch(destination: BookDetailDestination) = destination.dispatch(
+                top = null,
+                titles = titles,
+                push = {},
+                openReader = { uuid, cfi -> opened += uuid to cfi },
+                openUri = {},
+            )
+
+            dispatch(BookDetailDestination.Reader("u"))
+            dispatch(BookDetailDestination.Reader("u", "epubcfi(/6/8)"))
+            opened shouldContainExactly listOf("u" to null, "u" to "epubcfi(/6/8)")
+        }
+
         it("#93 TC-134: dispatch routes each destination") {
             val pushed = mutableListOf<NavKey>()
             val readers = mutableListOf<String>()
@@ -90,7 +110,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 top = top,
                 titles = titles,
                 push = { pushed += it },
-                openReader = { readers += it },
+                openReader = { uuid, _ -> readers += uuid },
                 openUri = { uris += it },
             )
 
@@ -115,7 +135,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 top = null,
                 titles = titles,
                 push = {},
-                openReader = {},
+                openReader = { _, _ -> },
                 openUri = { error("no app can open this") },
             )
         }

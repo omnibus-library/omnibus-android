@@ -4,6 +4,7 @@ import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.progress.FakeProgressRepository
+import com.omnibus.omnibus.data.progress.PositionSync
 import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.progress.ServerReadingPosition
@@ -65,7 +66,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
     }
 
     /** The one place these cases build the ViewModel. Reads [fake], [library], [now] and [persistScope] when called. */
-    fun viewModel() = ReaderViewModel(
+    fun viewModel(startCfi: String? = null) = ReaderViewModel(
         bookUuid = "book-1",
         libraryRepository = library,
         assetLoaderFactory = ReaderAssetLoaderFactory(
@@ -78,10 +79,11 @@ class ReaderViewModelResumeTest : DescribeSpec({
         bookmarksRepository = FakeBookmarksRepository(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
+        startCfi = startCfi,
     )
 
     /** Starts a ViewModel and lets its init run up to the first suspension. */
-    fun openedViewModel(): ReaderViewModel = viewModel().also { scheduler.runCurrent() }
+    fun openedViewModel(startCfi: String? = null): ReaderViewModel = viewModel(startCfi).also { scheduler.runCurrent() }
 
     /** Moves virtual time forward by [millis], running everything due at the new time. Scenarios share one clock, so each counts from its own open. */
     fun advance(millis: Long) {
@@ -542,6 +544,41 @@ class ReaderViewModelResumeTest : DescribeSpec({
             scheduler.runCurrent()
 
             fake.saves.last().position.percent shouldBe 57
+        }
+    }
+
+    describe("explicit start") {
+
+        // TC-49: an EPUB start cfi opens there, with no server read and no sync offer, even when a newer server position exists.
+        it("#117 TC-49: explicit start cfi skips saved progress and sync offer") {
+            fake.stored["book-1"] = local
+            fake.serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/10)"))
+            fake.serverDelayMillis = 1201
+
+            val vm = openedViewModel("epubcfi(/6/30)")
+            vm.uiState.value.opening shouldBe ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/30)"))
+            fake.serverReads.size shouldBe 0
+
+            advance(PositionSync.OPEN_DEADLINE.inWholeMilliseconds + 1_000)
+            vm.uiState.value.syncOffer shouldBe null
+            fake.serverReads.size shouldBe 0
+        }
+
+        // TC-50: a start that is not an EPUB cfi, or none, takes today's resume path.
+        it("#117 TC-50: non-cfi start cfi uses the normal resume path") {
+            for (start in listOf("chapter-3", null)) {
+                fake.stored["book-1"] = local
+                fake.serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/10)"))
+                fake.serverDelayMillis = 100
+                val vm = openedViewModel(start)
+                advance(100)
+
+                withClue("start=$start") {
+                    vm.uiState.value.opening shouldBe ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/10)"))
+                    fake.serverReads.size shouldBe 1
+                }
+                fake.serverReads.clear()
+            }
         }
     }
 })

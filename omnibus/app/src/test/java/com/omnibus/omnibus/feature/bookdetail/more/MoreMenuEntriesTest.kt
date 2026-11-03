@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.more
 
+import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksMenuEntry
 import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfMenuEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -82,10 +83,17 @@ class MoreMenuEntriesTest : DescribeSpec({
             moreMenuEntries.size shouldBe blocks.count { it.value != "null," }
         }
 
-        it("#116 TC-8: BookMoreMenuEntry declares only Rows and Overlay") {
-            val methods = BookMoreMenuEntry::class.java.declaredMethods
-            methods.map { it.name }.toSet() shouldBe setOf("Rows", "Overlay")
-            methods.size shouldBe 2
+        it("#116 TC-8, #117 TC-3: BookMoreMenuEntry declares Rows, Overlay and joinsPreviousGroup") {
+            // Kotlin adds a static `access$...` bridge for the default property; it is not part of the contract.
+            val names = BookMoreMenuEntry::class.java.declaredMethods.map { it.name }.filterNot { it.startsWith("access$") }
+            names.toSet() shouldBe setOf("Rows", "Overlay", "getJoinsPreviousGroup")
+            names.size shouldBe 3
+        }
+
+        it("#117 TC-3: registers the bookmarks entry after shelves, and only it joins the group above") {
+            moreMenuEntries[1] shouldBe BookmarksMenuEntry
+            BookmarksMenuEntry.joinsPreviousGroup shouldBe true
+            moreMenuEntries.filter { it.joinsPreviousGroup } shouldBe listOf(BookmarksMenuEntry)
         }
     }
 })
