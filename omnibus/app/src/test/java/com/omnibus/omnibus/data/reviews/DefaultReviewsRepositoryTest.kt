@@ -11,15 +11,19 @@ import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.feature.bookdetail.format.BookDetailFormat
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -72,20 +76,26 @@ private val EMPTY = ReviewsState.Loaded(BookReviews(mine = null, others = emptyL
 private fun reviewsOf(state: ReviewsState): BookReviews = (state as ReviewsState.Loaded).reviews
 
 /**
- * Answers requests from a script, in order. A step can hold its response until the test releases [CountDownLatch].
- * A request with no step gets a 500, so an unexpected call fails the test instead of hanging.
+ * Answers requests from a script. A step can hold its response until the test releases [CountDownLatch]. A step with a
+ * [method] answers only that method, so a GET and a PATCH in flight at once cannot take each other's answers. Otherwise
+ * the first step answers the next request. A request with no step gets a 500, so an unexpected call fails the test
+ * instead of hanging.
  */
 private class ScriptedDispatcher : Dispatcher() {
-    private class Step(val response: MockResponse, val gate: CountDownLatch?)
+    private class Step(val method: String?, val response: MockResponse, val gate: CountDownLatch?)
 
     private val steps = ArrayDeque<Step>()
 
-    fun answer(response: MockResponse, gate: CountDownLatch? = null) {
-        synchronized(steps) { steps.addLast(Step(response, gate)) }
+    fun answer(response: MockResponse, gate: CountDownLatch? = null, method: String? = null) {
+        synchronized(steps) { steps.addLast(Step(method, response, gate)) }
     }
 
     override fun dispatch(request: RecordedRequest): MockResponse {
-        val step = synchronized(steps) { steps.removeFirstOrNull() } ?: return reply(500, "unscripted")
+        val step = synchronized(steps) {
+            steps.indexOfFirst { it.method == null || it.method == request.method }
+                .takeIf { it >= 0 }
+                ?.let { steps.removeAt(it) }
+        } ?: return reply(500, "unscripted")
         step.gate?.await(5, TimeUnit.SECONDS)
         return step.response
     }
@@ -124,12 +134,13 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         baseUrl: HttpUrl? = server.url("/"),
         held: Boolean = false,
         monitor: ConnectivityMonitor = FakeConnectivityMonitor(online = true),
+        provider: FakeServerBaseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
     ): DefaultReviewsRepository {
         val scope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined)
         return DefaultReviewsRepository(
             ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
             omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
+                baseUrlProvider = provider,
                 authTokenProvider = FakeAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
                 authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
@@ -464,6 +475,514 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             val beforeCancelled = server.requestCount
             cancelledMonitor.isOnline.value = true
             server.requestCount shouldBe beforeCancelled
+        }
+    }
+
+    describe("writing my review") {
+
+        /** The signed-in reader's review with [rating], [text] and [notes], as the repository maps it. */
+        fun mine(rating: Float? = null, text: String? = null, notes: String? = null, updatedAt: Long = 100_000L) =
+            Review(0L, "", false, rating, text, notes, isSpoiler = false, updatedAtMillis = updatedAt)
+
+        /** A Loaded state whose reviews are [mine] and [others]. */
+        fun loaded(mine: Review?, others: List<Review> = emptyList(), summary: ReviewSummary? = null) =
+            ReviewsState.Loaded(BookReviews(mine, others, summary))
+
+        /** Loads [uuid] with one scripted GET, and takes that request from the server's queue. */
+        suspend fun load(
+            repository: ReviewsRepository,
+            uuid: String = UUID,
+            mine: JsonObject? = null,
+            others: List<JsonObject> = emptyList(),
+            summary: JsonObject? = null,
+        ) {
+            script.answer(reply(200, reviewsBody(mine, others, summary)), method = "GET")
+            repository.refresh(uuid)
+            nextRequest()
+        }
+
+        /** Waits until the repository's reviews for [UUID] satisfy [predicate]. */
+        suspend fun awaitReviews(repository: ReviewsRepository, predicate: (BookReviews) -> Boolean) {
+            withTimeout(5_000) {
+                while (!predicate(reviewsOf(repository.getReviewsFlow(UUID).first()))) delay(10)
+            }
+        }
+
+        /** A PATCH answer for a review with [stars], [text] and [notes], updated at [seconds]. */
+        fun patchAnswer(stars: Double? = null, text: String? = null, notes: String? = null, seconds: Long = 200L): String =
+            obj("stars" to stars, "body_md" to text, "notes_md" to notes, "updated_at" to seconds).toString()
+
+        it("TC-14: a rating PATCH sends the stars with the bearer token and returns the stored review") {
+            val repository = repositoryFor()
+            load(repository)
+            script.answer(reply(200, patchAnswer(stars = 4.5)), method = "PATCH")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 4.5, "updated_at" to 200L))), method = "GET")
+
+            val result = repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f)))
+
+            val patch = nextRequest()
+            patch.method shouldBe "PATCH"
+            patch.url.pathSegments shouldContainExactly listOf("api", "reviews", UUID)
+            patch.headers["Authorization"] shouldBe "Bearer secret"
+            patch.body!!.utf8() shouldBe """{"stars":4.5}"""
+            result shouldBe ReviewWriteResult.Saved(mine(rating = 4.5f, updatedAt = 200_000L))
+        }
+
+        it("TC-15: clearing the rating sends exactly {\"stars\":null} and keeps the text and notes") {
+            val repository = repositoryFor()
+            load(repository, mine = obj("stars" to 4.0, "body_md" to "Body", "notes_md" to "private", "updated_at" to 100L))
+            val kept = obj("body_md" to "Body", "notes_md" to "private", "updated_at" to 200L)
+            script.answer(reply(200, kept.toString()), method = "PATCH")
+            script.answer(reply(200, reviewsBody(mine = kept)), method = "GET")
+
+            val result = repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(null)))
+
+            nextRequest().body!!.utf8() shouldBe """{"stars":null}"""
+            val expected = mine(text = "Body", notes = "private", updatedAt = 200_000L)
+            result shouldBe ReviewWriteResult.Saved(expected)
+            reviewsOf(repository.getReviewsFlow(UUID).first()).mine shouldBe expected
+        }
+
+        it("TC-17: a patch that changes nothing returns Unchanged, sends nothing and leaves the state alone") {
+            val repository = repositoryFor()
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val state = repository.getReviewsFlow(UUID).first()
+            val before = server.requestCount
+
+            repository.updateMyReview(UUID, ReviewPatch()) shouldBe ReviewWriteResult.Unchanged
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4f))) shouldBe ReviewWriteResult.Unchanged
+            server.requestCount shouldBe before
+            repository.getReviewsFlow(UUID).first() shouldBe state
+
+            val blank = repositoryFor()
+            load(blank)
+            blank.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(null))) shouldBe ReviewWriteResult.Unchanged
+            server.requestCount shouldBe before + 1
+        }
+
+        it("TC-18: both collectors see the optimistic rating before the answer, then the server's review") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val gate = CountDownLatch(1)
+            script.answer(reply(200, patchAnswer(stars = 4.5, notes = "server notes", seconds = 300L)), gate, "PATCH")
+            script.answer(
+                reply(200, reviewsBody(mine = obj("stars" to 4.5, "notes_md" to "server notes", "updated_at" to 300L))),
+                method = "GET",
+            )
+            val first = Observed(repository, UUID, scope)
+            val second = Observed(repository, UUID, scope)
+
+            val write = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest()
+            first.awaitLast(loaded(mine(rating = 4.5f)))
+            second.awaitLast(loaded(mine(rating = 4.5f)))
+
+            gate.countDown()
+            write.await() shouldBe ReviewWriteResult.Saved(mine(4.5f, notes = "server notes", updatedAt = 300_000L))
+            first.awaitLast(loaded(mine(4.5f, notes = "server notes", updatedAt = 300_000L)))
+            second.awaitLast(loaded(mine(4.5f, notes = "server notes", updatedAt = 300_000L)))
+        }
+
+        it("TC-19: a patch that empties a stars-only review shows no review at once, and Saved(null) after the JSON null") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val gate = CountDownLatch(1)
+            script.answer(reply(200, "null"), gate, "PATCH")
+            script.answer(reply(200, reviewsBody()), method = "GET")
+            val observed = Observed(repository, UUID, scope)
+
+            val write = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(null))) }
+            nextRequest()
+            observed.awaitLast(EMPTY)
+
+            gate.countDown()
+            write.await() shouldBe ReviewWriteResult.Saved(null)
+            observed.awaitLast(EMPTY)
+            repository.getReviewsFlow(UUID).first() shouldBe EMPTY
+        }
+
+        it("TC-20: a delete sends DELETE with or without a review, shows no review at once and answers Saved(null)") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val gate = CountDownLatch(1)
+            script.answer(reply(204), gate, "DELETE")
+            script.answer(reply(200, reviewsBody()), method = "GET")
+            val observed = Observed(repository, UUID, scope)
+
+            val write = scope.async { repository.deleteMyReview(UUID) }
+            val delete = nextRequest()
+            delete.method shouldBe "DELETE"
+            delete.url.pathSegments shouldContainExactly listOf("api", "reviews", UUID)
+            observed.awaitLast(EMPTY)
+            gate.countDown()
+            write.await() shouldBe ReviewWriteResult.Saved(null)
+            nextRequest().method shouldBe "GET"
+            repository.getReviewsFlow(UUID).first() shouldBe EMPTY
+
+            val empty = repositoryFor()
+            load(empty)
+            script.answer(reply(204), method = "DELETE")
+            script.answer(reply(200, reviewsBody()), method = "GET")
+            empty.deleteMyReview(UUID) shouldBe ReviewWriteResult.Saved(null)
+            nextRequest().method shouldBe "DELETE"
+        }
+
+        it("TC-21: after a save one refetch updates summary and others, and mine stays the saved review") {
+            val repository = repositoryFor()
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            script.answer(reply(200, patchAnswer(stars = 4.5)), method = "PATCH")
+            script.answer(
+                reply(
+                    200,
+                    reviewsBody(
+                        mine = obj("stars" to 4.5, "updated_at" to 200L),
+                        others = listOf(obj("user_id" to 2L, "username" to "Amy", "stars" to 3.0)),
+                        summary = obj("average_stars" to 3.75, "ratings" to 2),
+                    ),
+                ),
+                method = "GET",
+            )
+
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+
+            server.requestCount shouldBe 3
+            val state = reviewsOf(repository.getReviewsFlow(UUID).first())
+            state.mine shouldBe mine(4.5f, updatedAt = 200_000L)
+            state.others.map { it.userId } shouldBe listOf(2L)
+            state.summary shouldBe ReviewSummary(3.75f, 2)
+        }
+
+        it("TC-21: a GET that started after the write is joined, so no second refetch is made") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val patchGate = CountDownLatch(1)
+            val getGate = CountDownLatch(1)
+            script.answer(reply(200, patchAnswer(stars = 4.5)), patchGate, "PATCH")
+            script.answer(
+                reply(200, reviewsBody(mine = obj("stars" to 4.5, "updated_at" to 200L), others = listOf(obj("user_id" to 2L)))),
+                getGate,
+                "GET",
+            )
+
+            val write = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest().method shouldBe "PATCH"
+            val refresh = scope.async { repository.refresh(UUID) }
+            nextRequest().method shouldBe "GET"
+
+            patchGate.countDown()
+            write.await() shouldBe ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+            getGate.countDown()
+            refresh.await()
+            awaitReviews(repository) { it.others.isNotEmpty() }
+
+            server.requestCount shouldBe 3
+        }
+
+        it("TC-22: a refetch that fails after a save keeps the loaded state and the saved review") {
+            val repository = repositoryFor()
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            script.answer(reply(200, patchAnswer(stars = 4.5)), method = "PATCH")
+            script.answer(reply(500), method = "GET")
+
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+            reviewsOf(repository.getReviewsFlow(UUID).first()).mine shouldBe mine(4.5f, updatedAt = 200_000L)
+
+            script.answer(reply(200, patchAnswer(stars = 3.5, seconds = 300L)), method = "PATCH")
+            script.answer(dropped(), method = "GET")
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(3.5f))) shouldBe
+                ReviewWriteResult.Saved(mine(3.5f, updatedAt = 300_000L))
+            reviewsOf(repository.getReviewsFlow(UUID).first()).mine shouldBe mine(3.5f, updatedAt = 300_000L)
+        }
+
+        it("TC-23: each write error maps to its ReviewError, nothing throws, and a blank uuid sends nothing") {
+            val provider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+            val repository = repositoryFor(provider = provider)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val previous = repository.getReviewsFlow(UUID).first()
+
+            provider.baseUrl = null
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.NoServer)
+            repository.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(ReviewError.NoServer)
+            provider.baseUrl = server.url("/")
+            repository.getReviewsFlow(UUID).first() shouldBe previous
+
+            val patchFailures = listOf(
+                dropped() to ReviewError.Unreachable,
+                reply(400) to ReviewError.Http(400),
+                reply(401) to ReviewError.SessionExpired,
+                reply(404) to ReviewError.BookNotFound,
+                reply(500) to ReviewError.Http(500),
+                reply(200, "garbage") to ReviewError.UnexpectedResponse,
+            )
+            patchFailures.forEach { (response, error) ->
+                script.answer(response, method = "PATCH")
+                repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                    ReviewWriteResult.Failed(error)
+                repository.getReviewsFlow(UUID).first() shouldBe previous
+            }
+
+            val deleteFailures = listOf(
+                dropped() to ReviewError.Unreachable,
+                reply(400) to ReviewError.Http(400),
+                reply(401) to ReviewError.SessionExpired,
+                reply(404) to ReviewError.BookNotFound,
+                reply(500) to ReviewError.Http(500),
+            )
+            deleteFailures.forEach { (response, error) ->
+                script.answer(response, method = "DELETE")
+                repository.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(error)
+                repository.getReviewsFlow(UUID).first() shouldBe previous
+            }
+
+            val before = server.requestCount
+            repository.updateMyReview(" ", ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.BookNotFound)
+            repository.deleteMyReview("") shouldBe ReviewWriteResult.Failed(ReviewError.BookNotFound)
+            server.requestCount shouldBe before
+        }
+
+        it("TC-24: a failed write restores the exact previous state, and no refetch follows the failure") {
+            val repository = repositoryFor()
+            load(
+                repository,
+                mine = obj("stars" to 4.0, "updated_at" to 100L),
+                others = listOf(obj("user_id" to 2L, "username" to "Amy", "stars" to 3.0)),
+                summary = obj("average_stars" to 3.5, "ratings" to 2),
+            )
+            val previous = repository.getReviewsFlow(UUID).first()
+            val observed = observeNow(repository)
+            script.answer(reply(500), method = "PATCH")
+            val before = server.requestCount
+
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.Http(500))
+
+            observed.states shouldContain loaded(mine(4.5f), reviewsOf(previous).others, reviewsOf(previous).summary)
+            observed.states.last() shouldBe previous
+            server.requestCount shouldBe before + 1
+        }
+
+        it("TC-25: an older write's success does not replace a newer write's optimistic value") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val observed = Observed(repository, UUID, scope)
+            val gateA = CountDownLatch(1)
+            val gateB = CountDownLatch(1)
+            script.answer(reply(200, patchAnswer(stars = 4.5)), gateA, "PATCH")
+            script.answer(reply(200, patchAnswer(stars = 3.5, seconds = 300L)), gateB, "PATCH")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 4.5, "updated_at" to 200L))), method = "GET")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 3.5, "updated_at" to 300L))), method = "GET")
+
+            val a = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest()
+            val b = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(3.5f))) }
+            observed.awaitLast(loaded(mine(rating = 3.5f)))
+
+            gateA.countDown()
+            a.await() shouldBe ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+            repository.getReviewsFlow(UUID).first() shouldBe loaded(mine(rating = 3.5f))
+
+            // The refetch after A and B's PATCH are both sent once A is answered, in either order.
+            nextRequest()
+            nextRequest()
+            gateB.countDown()
+            b.await() shouldBe ReviewWriteResult.Saved(mine(3.5f, updatedAt = 300_000L))
+            observed.awaitLast(loaded(mine(3.5f, updatedAt = 300_000L)))
+        }
+
+        it("TC-26: an older write's failure does not roll back a newer write, and the newer failure restores the confirmed value") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val original = repository.getReviewsFlow(UUID).first()
+            val gateA = CountDownLatch(1)
+            val gateB = CountDownLatch(1)
+            script.answer(reply(500), gateA, "PATCH")
+            script.answer(reply(500), gateB, "PATCH")
+
+            val a = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest()
+            val b = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(3.5f))) }
+            awaitReviews(repository) { it.mine?.rating == 3.5f }
+
+            gateA.countDown()
+            a.await() shouldBe ReviewWriteResult.Failed(ReviewError.Http(500))
+            repository.getReviewsFlow(UUID).first() shouldBe loaded(mine(rating = 3.5f))
+
+            nextRequest()
+            gateB.countDown()
+            b.await() shouldBe ReviewWriteResult.Failed(ReviewError.Http(500))
+            repository.getReviewsFlow(UUID).first() shouldBe original
+        }
+
+        it("TC-27: writes reach the server in call order, and the second waits until the first is answered") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val gate = CountDownLatch(1)
+            script.answer(reply(200, patchAnswer(stars = 4.5)), gate, "PATCH")
+            script.answer(reply(200, patchAnswer(stars = 3.5, seconds = 300L)), method = "PATCH")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 3.5, "updated_at" to 300L))), method = "GET")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 3.5, "updated_at" to 300L))), method = "GET")
+
+            var first: ReviewWriteResult? = null
+            var second: ReviewWriteResult? = null
+            val done = scope.launch {
+                val a = async(start = CoroutineStart.UNDISPATCHED) {
+                    repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f)))
+                }
+                val b = async(start = CoroutineStart.UNDISPATCHED) {
+                    repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(3.5f)))
+                }
+                first = a.await()
+                second = b.await()
+            }
+
+            nextRequest().body!!.utf8() shouldBe """{"stars":4.5}"""
+            server.takeRequest(300, TimeUnit.MILLISECONDS) shouldBe null
+            gate.countDown()
+            val next = listOf(nextRequest(), nextRequest())
+            next.single { it.method == "PATCH" }.body!!.utf8() shouldBe """{"stars":3.5}"""
+            done.join()
+            first shouldBe ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+            second shouldBe ReviewWriteResult.Saved(mine(3.5f, updatedAt = 300_000L))
+        }
+
+        it("TC-28: a cancelled caller gets CancellationException, but the write completes and the state updates") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val gate = CountDownLatch(1)
+            script.answer(reply(200, patchAnswer(stars = 4.5)), gate, "PATCH")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 4.5, "updated_at" to 200L))), method = "GET")
+            val observed = Observed(repository, UUID, scope)
+
+            val caller = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest()
+            caller.cancel()
+            shouldThrow<CancellationException> { caller.await() }
+
+            gate.countDown()
+            observed.awaitLast(loaded(mine(4.5f, updatedAt = 200_000L)))
+        }
+
+        it("TC-29: a write while the state is Loading, Offline or Failed fails with NotLoaded and sends nothing") {
+            val fresh = repositoryFor()
+            val before = server.requestCount
+            fresh.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            fresh.updateMyReview(UUID, ReviewPatch()) shouldBe ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            fresh.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            server.requestCount shouldBe before
+
+            val failed = repositoryFor(baseUrl = null)
+            observeNow(failed).states.last() shouldBe ReviewsState.Failed
+            failed.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            failed.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(ReviewError.NotLoaded)
+
+            script.answer(dropped(), method = "GET")
+            val offline = repositoryFor(monitor = FakeConnectivityMonitor(online = false))
+            observeNow(offline).states.last() shouldBe ReviewsState.Offline
+            val offlineBefore = server.requestCount
+            offline.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            offline.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(ReviewError.NotLoaded)
+            server.requestCount shouldBe offlineBefore
+        }
+
+        it("TC-30: a GET that started before a save never replaces the saved review, and one refetch follows it") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val staleGate = CountDownLatch(1)
+            script.answer(
+                reply(200, reviewsBody(mine = obj("stars" to 4.0, "updated_at" to 100L), others = listOf(obj("user_id" to 2L, "username" to "Amy", "stars" to 3.0)))),
+                staleGate,
+                "GET",
+            )
+            script.answer(reply(200, patchAnswer(stars = 4.5)), method = "PATCH")
+            script.answer(
+                reply(
+                    200,
+                    reviewsBody(
+                        mine = obj("stars" to 4.5, "updated_at" to 200L),
+                        others = listOf(obj("user_id" to 2L, "username" to "Amy", "stars" to 3.0), obj("user_id" to 5L, "username" to "Bo", "stars" to 4.0)),
+                        summary = obj("average_stars" to 3.5, "ratings" to 2),
+                    ),
+                ),
+                method = "GET",
+            )
+
+            val refresh = scope.async { repository.refresh(UUID) }
+            nextRequest().method shouldBe "GET"
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe
+                ReviewWriteResult.Saved(mine(4.5f, updatedAt = 200_000L))
+            nextRequest().method shouldBe "PATCH"
+
+            staleGate.countDown()
+            refresh.await()
+            awaitReviews(repository) { it.summary != null }
+            awaitReviews(repository) { it.others.size == 2 }
+
+            val state = reviewsOf(repository.getReviewsFlow(UUID).first())
+            state.mine shouldBe mine(4.5f, updatedAt = 200_000L)
+            state.summary shouldBe ReviewSummary(3.5f, 2)
+            server.requestCount shouldBe 4
+        }
+
+        it("TC-31: a GET that completes while a write is pending leaves the optimistic value, and a failure rolls back to it") {
+            val repository = repositoryFor(held = true)
+            val scope = newScope(Dispatchers.Default)
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            val getGate = CountDownLatch(1)
+            val patchGate = CountDownLatch(1)
+            script.answer(
+                reply(200, reviewsBody(mine = obj("stars" to 3.0, "updated_at" to 150L), others = listOf(obj("user_id" to 2L, "username" to "Amy")))),
+                getGate,
+                "GET",
+            )
+            script.answer(reply(500), patchGate, "PATCH")
+
+            val refresh = scope.async { repository.refresh(UUID) }
+            nextRequest().method shouldBe "GET"
+            val write = scope.async { repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) }
+            nextRequest().method shouldBe "PATCH"
+
+            getGate.countDown()
+            refresh.await()
+            // The visible state keeps the optimistic review (and its others) while the write is pending.
+            reviewsOf(repository.getReviewsFlow(UUID).first()).mine?.rating shouldBe 4.5f
+
+            patchGate.countDown()
+            write.await() shouldBe ReviewWriteResult.Failed(ReviewError.Http(500))
+            val rolledBack = reviewsOf(repository.getReviewsFlow(UUID).first())
+            rolledBack.mine shouldBe mine(3f, updatedAt = 150_000L)
+            rolledBack.others.map { it.userId } shouldBe listOf(2L)
+        }
+
+        it("TC-32: a write on one book leaves another book's state and requests alone") {
+            val repository = repositoryFor()
+            load(repository, uuid = "book-2", mine = obj("stars" to 3.0, "updated_at" to 50L))
+            val other = repository.getReviewsFlow("book-2").first()
+            load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
+            script.answer(reply(200, patchAnswer(stars = 4.5)), method = "PATCH")
+            script.answer(reply(200, reviewsBody(mine = obj("stars" to 4.5, "updated_at" to 200L))), method = "GET")
+
+            repository.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f)))
+
+            repository.getReviewsFlow("book-2").first() shouldBe other
+            val patch = nextRequest()
+            patch.url.pathSegments shouldContainExactly listOf("api", "reviews", UUID)
+            server.requestCount shouldBe 4
         }
     }
 })

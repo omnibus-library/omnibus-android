@@ -65,4 +65,53 @@ interface ReviewsRepository {
 
     /** Fetches the reviews again, unless a fetch for [bookUuid] is already in flight, which it joins. */
     suspend fun refresh(bookUuid: String)
+
+    /**
+     * Applies [patch] to the signed-in reader's review of [bookUuid]. The shared state moves at once, then the server's
+     * review replaces it on success, or the state rolls back to the last server-confirmed answer on failure. A patch
+     * that would change nothing makes no request.
+     */
+    suspend fun updateMyReview(bookUuid: String, patch: ReviewPatch): ReviewWriteResult
+
+    /**
+     * Deletes the signed-in reader's review of [bookUuid], with its stars, text and private notes. The shared state
+     * moves at once, and rolls back on failure.
+     */
+    suspend fun deleteMyReview(bookUuid: String): ReviewWriteResult
+}
+
+/** The outcome of [ReviewsRepository.updateMyReview] or [ReviewsRepository.deleteMyReview]. */
+sealed interface ReviewWriteResult {
+    /** The server accepted the write. [mine] is the server's review after it, and it replaces the optimistic value. */
+    data class Saved(val mine: Review?) : ReviewWriteResult
+
+    /** The patch would change nothing, so no request was made. */
+    data object Unchanged : ReviewWriteResult
+
+    /** The write failed and the shared state was rolled back. [error] says why. */
+    data class Failed(val error: ReviewError) : ReviewWriteResult
+}
+
+/** Why a review write failed. */
+sealed interface ReviewError {
+    /** No server is configured, so no request was made. */
+    data object NoServer : ReviewError
+
+    /** The server could not be reached (an IOException). */
+    data object Unreachable : ReviewError
+
+    /** The server answered 401, so the session has expired. */
+    data object SessionExpired : ReviewError
+
+    /** The server answered 404, or the book uuid was blank and no request was made. */
+    data object BookNotFound : ReviewError
+
+    /** The server answered another non-2xx code. */
+    data class Http(val code: Int) : ReviewError
+
+    /** A 2xx body that does not decode, or any other unexpected failure. */
+    data object UnexpectedResponse : ReviewError
+
+    /** The shared state was not Loaded, so no request was made. */
+    data object NotLoaded : ReviewError
 }
