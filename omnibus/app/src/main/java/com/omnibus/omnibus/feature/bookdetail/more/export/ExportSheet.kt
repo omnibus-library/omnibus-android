@@ -110,10 +110,9 @@ internal fun ExportSheet(
         onDismissRequest = { if (!locked.value) onClose() },
         sheetState = sheetState,
         sheetGesturesEnabled = !sending,
-        properties = ModalBottomSheetProperties(
-            shouldDismissOnBackPress = !sending,
-            shouldDismissOnClickOutside = !sending,
-        ),
+        // Left at their defaults: the sheet reads these once when its window is created, so flipping them while a
+        // send runs would leave Back dead afterwards. `onDismissRequest` and the inner BackHandler do the locking.
+        properties = ModalBottomSheetProperties(),
         shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
         containerColor = SheetContainer,
         contentColor = palette.ink0,

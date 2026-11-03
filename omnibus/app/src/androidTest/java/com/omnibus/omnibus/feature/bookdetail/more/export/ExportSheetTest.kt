@@ -341,6 +341,9 @@ class ExportSheetTest {
         rule.runOnIdle { sendingNow.value = false }
         rule.waitForIdle()
         rule.pressBackKey()
+        // The sheet animates away on Back and reports the dismissal afterwards.
+        rule.waitUntil(5_000) { taps.closes >= 1 }
+        rule.waitForIdle()
         assertEquals("Back closes the idle sheet once", 1, taps.closes)
     }
 }

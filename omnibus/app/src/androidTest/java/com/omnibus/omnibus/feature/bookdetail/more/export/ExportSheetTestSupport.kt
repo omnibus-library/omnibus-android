@@ -64,7 +64,7 @@ internal class SheetInputs(
 /** The callbacks the sheet made, counted in order. */
 internal class SheetTaps {
     var sends = 0
-    var closes = 0
+    @Volatile var closes = 0
     var settings = 0
     var opens = 0
     val saves = mutableListOf<ExportSave>()
