@@ -1,0 +1,10 @@
+<resources>
+    <string name="book_detail_activity_title">Activity</string>
+    <!-- %1$s is the day their latest sitting ended, such as Oct 29. -->
+    <string name="book_detail_activity_last_read">Last read %1$s</string>
+    <string name="book_detail_activity_under_a_minute">under a minute</string>
+    <plurals name="book_detail_activity_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+</resources>
