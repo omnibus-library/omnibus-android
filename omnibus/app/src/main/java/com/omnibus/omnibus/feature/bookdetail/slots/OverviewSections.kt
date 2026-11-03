@@ -9,7 +9,7 @@ internal val overviewSections: List<BookDetailSection> = listOfNotNull(
     // #100 Genres and Tags
     com.omnibus.omnibus.feature.bookdetail.overview.chips.GenresTagsSection,
     // #102 Your Reading Card
-    null,
+    com.omnibus.omnibus.feature.bookdetail.overview.reading.ReadingCardSection,
     // #103 Household Activity
     com.omnibus.omnibus.feature.bookdetail.overview.activity.HouseholdActivitySection,
     // #104 Series Fan
