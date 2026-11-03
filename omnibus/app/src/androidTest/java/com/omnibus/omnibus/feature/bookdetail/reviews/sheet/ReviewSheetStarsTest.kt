@@ -62,7 +62,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-84 a tap sets the half star under it`() {
+    fun tc84_aTapSetsTheHalfStarUnderIt() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -76,7 +76,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-85 a tap on the current rating clears it, and another step does not`() {
+    fun tc85_aTapOnTheCurrentRatingClearsItAndAnotherStepDoesNot() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(3f, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -88,7 +88,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-86 a drag past slop updates the rating live and reports nothing on release`() {
+    fun tc86_aDragPastSlopUpdatesTheRatingLiveAndReportsNothingOnRelease() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -111,7 +111,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-87 the bubble shows the number while the finger is down, and a release commits it`() {
+    fun tc87_theBubbleShowsTheNumberWhileTheFingerIsDownAndAReleaseCommitsIt() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -126,7 +126,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-88 a vertical swipe the parent scroll takes changes nothing`() {
+    fun tc88_aVerticalSwipeTheParentScrollTakesChangesNothing() {
         val changes = mutableListOf<Float?>()
         val scroll = ScrollState(0)
         setContentWith {
@@ -143,7 +143,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-89 a horizontal drag on the stars inside the scroll changes the rating and not the scroll`() {
+    fun tc89_aHorizontalDragOnTheStarsInsideTheScrollChangesTheRatingAndNotTheScroll() {
         val changes = mutableListOf<Float?>()
         val scroll = ScrollState(0)
         setContentWith {
@@ -160,7 +160,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-90 right-to-left layouts mirror the taps and the drag`() {
+    fun tc90_rightToLeftLayoutsMirrorTheTapsAndTheDrag() {
         val changes = mutableListOf<Float?>()
         setContentWith(rtl = true) { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -185,7 +185,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-91 the stars are one adjustable node with the rating as its state`() {
+    fun tc91_theStarsAreOneAdjustableNodeWithTheRatingAsItsState() {
         setContentWith { ReviewSheetStars(4.5f, {}, Color.Red, reducedMotion = true) }
 
         rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -196,13 +196,13 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-91 an unrated row reads Not rated`() {
+    fun tc91_anUnratedRowReadsNotRated() {
         setContentWith { ReviewSheetStars(null, {}, Color.Red, reducedMotion = true) }
         rule.onNode(hasTestTag(ReviewSheetTestTags.STARS)).assert(hasStateDescription("Not rated"))
     }
 
     @Test
-    fun `TC-92 set progress reports the half step, and zero clears`() {
+    fun tc92_setProgressReportsTheHalfStepAndZeroClears() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(3f, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
@@ -216,7 +216,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-93 the readout is a polite live region that follows the rating`() {
+    fun tc93_theReadoutIsAPoliteLiveRegionThatFollowsTheRating() {
         val rating = mutableStateOf<Float?>(4.5f)
         setContentWith { ReviewSheetStars(rating.value, { rating.value = it }, Color.Red, reducedMotion = true) }
         val readout = rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT))
@@ -230,7 +230,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-94 the compact stars behave like the large row, are smaller, and keep a 48dp target`() {
+    fun tc94_theCompactStarsBehaveLikeTheLargeRowAreSmallerAndKeepA48dpTarget() {
         val changes = mutableListOf<Float?>()
         setContentWith {
             Column {
@@ -254,7 +254,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-95 reduced motion keeps the star motion at rest, and the bubble still shows`() {
+    fun tc95_reducedMotionKeepsTheStarMotionAtRestAndTheBubbleStillShows() {
         rule.mainClock.autoAdvance = false
         val rating = mutableStateOf<Float?>(3f)
         setContentWith {
@@ -275,7 +275,7 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun `TC-96 with motion on, a pop, a ripple and a lift run and then settle`() {
+    fun tc96_withMotionOnAPopARippleAndALiftRunAndThenSettle() {
         rule.mainClock.autoAdvance = false
         val rating = mutableStateOf<Float?>(null)
         setContentWith {

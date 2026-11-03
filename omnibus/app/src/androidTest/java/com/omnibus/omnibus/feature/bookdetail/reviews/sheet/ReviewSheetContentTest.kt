@@ -80,7 +80,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-68 the header has Cancel at the start, the title as a heading, and Save at the end`() {
+    fun tc68_theHeaderHasCancelAtTheStartTheTitleAsAHeadingAndSaveAtTheEnd() {
         val state = mutableStateOf(sheet(title = ReviewSheetTitle.Write))
         show(state)
 
@@ -100,7 +100,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-69 Save is disabled, then enabled and clickable, then disabled while saving`() {
+    fun tc69_SaveIsDisabledThenEnabledAndClickableThenDisabledWhileSaving() {
         var saves = 0
         val state = mutableStateOf(sheet(saveEnabled = false))
         show(state, ReviewSheetActions(onSave = { saves++ }))
@@ -121,7 +121,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-70 Cancel calls back once`() {
+    fun tc70_CancelCallsBackOnce() {
         var cancels = 0
         show(mutableStateOf(sheet()), ReviewSheetActions(onCancel = { cancels++ }))
 
@@ -131,7 +131,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-71 the review field shows its text, and an empty one shows the placeholder and the audience`() {
+    fun tc71_theReviewFieldShowsItsTextAndAnEmptyOneShowsThePlaceholderAndTheAudience() {
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, "Better than Scarlet.", null, false)))
         show(state)
 
@@ -145,7 +145,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-72 typing in the review field reports the text`() {
+    fun tc72_typingInTheReviewFieldReportsTheText() {
         val texts = mutableListOf<String>()
         show(mutableStateOf(sheet()), ReviewSheetActions(onTextChange = { texts += it }))
 
@@ -156,7 +156,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-73 private notes are one button when collapsed, and show a labelled field when expanded`() {
+    fun tc73_privateNotesAreOneButtonWhenCollapsedAndShowALabelledFieldWhenExpanded() {
         var expands = 0
         val state = mutableStateOf(sheet(notesExpanded = false))
         show(state, ReviewSheetActions(onExpandNotes = { expands++ }))
@@ -179,7 +179,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-74 the spoiler switch is one toggle with its label, and a tap reports the new value`() {
+    fun tc74_theSpoilerSwitchIsOneToggleWithItsLabelAndATapReportsTheNewValue() {
         val spoilers = mutableListOf<Boolean>()
         val state = mutableStateOf(sheet(shown = ReviewFields(null, null, null, false)))
         show(state, ReviewSheetActions(onSpoilerChange = { spoilers += it }))
@@ -198,7 +198,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-75 the conflict note names the one field, or says several, and is absent without a conflict`() {
+    fun tc75_theConflictNoteNamesTheOneFieldOrSaysSeveralAndIsAbsentWithoutAConflict() {
         val state = mutableStateOf(sheet(conflicts = emptyList()))
         show(state)
         rule.onNodeWithTag(ReviewSheetTestTags.CONFLICT).assertDoesNotExist()
@@ -223,7 +223,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-76 the failure banner shows the offline copy when offline, and nothing without a failure`() {
+    fun tc76_theFailureBannerShowsTheOfflineCopyWhenOfflineAndNothingWithoutAFailure() {
         val state = mutableStateOf(sheet(failure = ReviewSheetFailure(offline = false)))
         show(state)
         rule.onNodeWithTag(ReviewSheetTestTags.FAILURE).assertTextEquals("Your review wasn't saved.")
@@ -238,7 +238,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-77 the readout gives the rating and its word, or the prompt when unrated`() {
+    fun tc77_theReadoutGivesTheRatingAndItsWordOrThePromptWhenUnrated() {
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
         show(state)
         rule.onNodeWithTag(ReviewSheetTestTags.READOUT).assertTextEquals("4.5 Loved it")
@@ -249,7 +249,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-78 focusing the review field shows the typing layout, with compact stars and the accessory row`() {
+    fun tc78_focusingTheReviewFieldShowsTheTypingLayoutWithCompactStarsAndTheAccessoryRow() {
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
         show(state)
 
@@ -275,7 +275,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-79 in typing mode Highlights calls back, and Done returns to the full layout`() {
+    fun tc79_inTypingModeHighlightsCallsBackAndDoneReturnsToTheFullLayout() {
         var opens = 0
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
         show(state, ReviewSheetActions(onOpenPicker = { opens++ }))
@@ -294,7 +294,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-80 From highlights calls back in the full layout`() {
+    fun tc80_FromHighlightsCallsBackInTheFullLayout() {
         var opens = 0
         show(mutableStateOf(sheet()), ReviewSheetActions(onOpenPicker = { opens++ }))
 
@@ -305,7 +305,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-81 the discard dialog is shown only while confirming, and its buttons call back`() {
+    fun tc81_theDiscardDialogIsShownOnlyWhileConfirmingAndItsButtonsCallBack() {
         var discards = 0
         var keeps = 0
         val state = mutableStateOf(sheet(confirmingDiscard = false))
@@ -324,7 +324,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-82 the targets are at least 48dp in both layouts`() {
+    fun tc82_theTargetsAreAtLeast48dpInBothLayouts() {
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
         show(state)
 
@@ -349,7 +349,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-83 the title is a heading, and the star row exposes no child nodes`() {
+    fun tc83_theTitleIsAHeadingAndTheStarRowExposesNoChildNodes() {
         show(mutableStateOf(sheet(shown = ReviewFields(3f, null, null, false))))
 
         rule.onNodeWithTag(ReviewSheetTestTags.TITLE).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
@@ -357,7 +357,7 @@ class ReviewSheetContentTest {
     }
 
     @Test
-    fun `TC-105 the roomy body scrolls, and the typing body does not`() {
+    fun tc105_theRoomyBodyScrollsAndTheTypingBodyDoesNot() {
         show(mutableStateOf(sheet()))
 
         rule.onNodeWithTag(ReviewSheetTestTags.BODY).assert(hasScrollAction())

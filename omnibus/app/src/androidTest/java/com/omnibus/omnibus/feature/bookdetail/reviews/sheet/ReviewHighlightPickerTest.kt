@@ -72,7 +72,7 @@ class ReviewHighlightPickerTest {
     )
 
     @Test
-    fun `TC-97 the title is a heading and the subtitle explains the tap`() {
+    fun tc97_theTitleIsAHeadingAndTheSubtitleExplainsTheTap() {
         show(mutableStateOf(PickerContent.Loading))
 
         rule.onNodeWithTag(ReviewSheetTestTags.PICKER_TITLE).assertTextEquals("From your highlights")
@@ -82,7 +82,7 @@ class ReviewHighlightPickerTest {
     }
 
     @Test
-    fun `TC-98 the four states show their copy, Retry calls back, and rows are listed`() {
+    fun tc98_theFourStatesShowTheirCopyRetryCallsBackAndRowsAreListed() {
         var retries = 0
         val content = mutableStateOf<PickerContent>(PickerContent.Loading)
         show(content, onRetry = { retries++ })
@@ -107,7 +107,7 @@ class ReviewHighlightPickerTest {
     }
 
     @Test
-    fun `TC-99 a row shows its passage, with the chapter footer only when the chapter is known`() {
+    fun tc99_aRowShowsItsPassageWithTheChapterFooterOnlyWhenTheChapterIsKnown() {
         show(mutableStateOf(PickerContent.Loaded(listOf(row(1L, "Placed passage", 3), row(2L, "Unplaced passage", null)))))
 
         rule.onNodeWithTag(HighlightsTestTags.row(1L)).assertTextContains("Placed passage", substring = true)
@@ -118,7 +118,7 @@ class ReviewHighlightPickerTest {
     }
 
     @Test
-    fun `TC-100 tapping a row picks its id, and the row is a button at least 48dp tall`() {
+    fun tc100_tappingARowPicksItsIdAndTheRowIsAButtonAtLeast48dpTall() {
         var picked = -1L
         show(
             mutableStateOf(PickerContent.Loaded(listOf(row(1L, "One", null), row(2L, "Two", null)))),

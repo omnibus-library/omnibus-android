@@ -19,7 +19,7 @@ class ReviewSheetSectionTest {
     val rule = createComposeRule()
 
     @Test
-    fun `TC-103 a book with nothing to read renders no sheet and no picker`() {
+    fun tc103_aBookWithNothingToReadRendersNoSheetAndNoPicker() {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 ReviewSheetSection.Content(

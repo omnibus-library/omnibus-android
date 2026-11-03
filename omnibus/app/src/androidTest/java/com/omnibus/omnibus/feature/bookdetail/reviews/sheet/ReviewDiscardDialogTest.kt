@@ -27,7 +27,7 @@ class ReviewDiscardDialogTest {
     }
 
     @Test
-    fun `TC-101 the dialog says what is lost, with Discard and Keep editing`() {
+    fun tc101_theDialogSaysWhatIsLostWithDiscardAndKeepEditing() {
         show(onDiscard = {}, onKeepEditing = {})
 
         rule.onNodeWithText("Discard your review?").assertExists()
@@ -37,7 +37,7 @@ class ReviewDiscardDialogTest {
     }
 
     @Test
-    fun `TC-102 Discard and Keep editing each call back once, and dismissing keeps editing`() {
+    fun tc102_DiscardAndKeepEditingEachCallBackOnceAndDismissingKeepsEditing() {
         var discards = 0
         var keeps = 0
         show(onDiscard = { discards++ }, onKeepEditing = { keeps++ })
