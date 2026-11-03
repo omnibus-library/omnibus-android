@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_detail_merge_menu_row">Merge with…</string>
+    <string name="book_detail_merge_close">Close</string>
+    <string name="book_detail_merge_intro">Find the other copy of this book. Its files, tags, highlights and reading progress move onto this entry, and the duplicate disappears.</string>
+    <string name="book_detail_merge_folds_into">Everything folds into</string>
+    <string name="book_detail_merge_entry_stays">This entry stays</string>
+    <string name="book_detail_merge_search_label">Search your library</string>
+    <string name="book_detail_merge_search_hint">Title, author or series</string>
+    <string name="book_detail_merge_note_idle">Results appear as you type.</string>
+    <plurals name="book_detail_merge_note_count">
+        <item quantity="one">%d result matching title, author or series</item>
+        <item quantity="other">%d results matching title, author or series</item>
+    </plurals>
+    <string name="book_detail_merge_note_none">No other book matches “%1$s”.</string>
+    <string name="book_detail_merge_searching">Searching</string>
+    <string name="book_detail_merge_search_failed">Couldn\'t search your library.</string>
+    <string name="book_detail_merge_retry">Try again</string>
+    <string name="book_detail_merge_same_series">Same series</string>
+    <string name="book_detail_merge_confirm_body">“%1$s” will be merged into “%2$s”. Its files, tags and reading progress move here, and the other entry disappears. You can undo it until you leave this page.</string>
+    <string name="book_detail_merge_back">Back</string>
+    <string name="book_detail_merge_confirm">Merge</string>
+    <string name="book_detail_merge_merging">Merging…</string>
+    <string name="book_detail_merge_failed">Couldn\'t merge these books. Try again.</string>
+    <string name="book_detail_merge_failed_gone">One of these books is no longer in your library.</string>
+    <string name="book_detail_merge_done">Books merged</string>
+    <string name="book_detail_merge_undo">Undo</string>
+    <string name="book_detail_merge_undone">Merge undone</string>
+    <string name="book_detail_merge_undo_failed">Couldn\'t undo the merge.</string>
+    <string name="book_detail_merge_undo_expired">This merge can\'t be undone anymore.</string>
+    <string name="book_detail_merge_choose_action">Choose</string>
+</resources>

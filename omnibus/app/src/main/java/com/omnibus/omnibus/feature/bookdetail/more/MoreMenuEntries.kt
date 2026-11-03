@@ -13,7 +13,7 @@ internal val moreMenuEntries: List<BookMoreMenuEntry> = listOfNotNull(
     // #119 Remove from wishlist
     com.omnibus.omnibus.feature.bookdetail.wishlist.WishlistMenuEntry,
     // #120 Merge with
-    null,
+    com.omnibus.omnibus.feature.bookdetail.more.merge.MergeMenuEntry,
     // #121 Delete
     null,
 )
