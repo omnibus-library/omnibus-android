@@ -23,11 +23,10 @@ class DeleteActivationTest : DescribeSpec({
             block.value shouldBe "com.omnibus.omnibus.feature.bookdetail.more.delete.DeleteMenuEntry,"
             source.none { it.startsWith("import com.omnibus.omnibus.feature.bookdetail.more.delete") } shouldBe true
 
-            // The #120 block is left out, because the Merge ticket may activate it before this one lands.
-            blocks.filterNot { it.comment == "// #120 Merge with" || it.comment == "// #121 Delete" }.map { it.value } shouldBe listOf(
+            // The Bookmarks, Export and Merge blocks are left out, because those tickets activate theirs independently.
+            val otherTickets = setOf("// #117 Bookmarks", "// #118 Export", "// #120 Merge with", "// #121 Delete")
+            blocks.filterNot { it.comment in otherTickets }.map { it.value } shouldBe listOf(
                 "ShelfMenuEntry,",
-                "null,",
-                "null,",
                 "com.omnibus.omnibus.feature.bookdetail.wishlist.WishlistMenuEntry,",
             )
 
