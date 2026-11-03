@@ -1,0 +1,12 @@
+<resources>
+    <!-- The Overview read-alikes heading. %1$s is the book's title. -->
+    <string name="book_detail_readalikes_heading">Readers who finished %1$s also read</string>
+    <!-- The caption under the heading naming where the suggestions come from. -->
+    <string name="book_detail_readalikes_source">From Hardcover</string>
+    <!-- The status line while the server is still looking for suggestions. -->
+    <string name="book_detail_readalikes_searching">Looking for read-alikes via Hardcover…</string>
+    <!-- The status line when the server could not find suggestions. -->
+    <string name="book_detail_readalikes_unavailable">Suggestions are unavailable right now.</string>
+    <!-- What tapping a suggestion does; TalkBack reads it as "Double-tap to open on Hardcover". -->
+    <string name="book_detail_readalikes_open">open on Hardcover</string>
+</resources>
