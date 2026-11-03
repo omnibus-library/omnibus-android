@@ -1,0 +1,47 @@
+<resources>
+    <!-- The Export row in the More menu, and the sheet title. -->
+    <string name="book_detail_export_menu">Export…</string>
+    <string name="book_detail_export_title">Export</string>
+    <string name="book_detail_export_close">Close</string>
+    <!-- The two section titles of the sheet. -->
+    <string name="book_detail_export_send_section">Send to a device</string>
+    <string name="book_detail_export_save_section">Save a copy</string>
+    <!-- The Kindle row: the subtitle is the copy for what the send mails. -->
+    <string name="book_detail_export_kindle">Send to Kindle</string>
+    <string name="book_detail_export_kindle_sends_epub">Emails the EPUB to your Kindle</string>
+    <string name="book_detail_export_kindle_sends_book">Emails the book to your Kindle</string>
+    <string name="book_detail_export_kindle_send">Send</string>
+    <string name="book_detail_export_kindle_sending">Sending…</string>
+    <string name="book_detail_export_kindle_sent_meta">Sent to your Kindle.</string>
+    <string name="book_detail_export_kindle_sent">Sent</string>
+    <string name="book_detail_export_kindle_no_address">Add your Kindle address in Settings first.</string>
+    <string name="book_detail_export_kindle_settings">Settings</string>
+    <string name="book_detail_export_kindle_oversize">Too large to email. Upload it on Amazon’s Send to Kindle page, up to 200 MB.</string>
+    <string name="book_detail_export_kindle_open">Open</string>
+    <string name="book_detail_export_kindle_retry">Retry</string>
+    <!-- Why a Kindle send failed. -->
+    <string name="book_detail_export_kindle_failed_undelivered">The server couldn\'t deliver this book.</string>
+    <string name="book_detail_export_kindle_failed_unconfirmed">Couldn\'t confirm the send finished. Check your Kindle before trying again.</string>
+    <string name="book_detail_export_kindle_failed_not_configured">Email delivery isn\'t set up on this server.</string>
+    <string name="book_detail_export_kindle_failed_not_found">This book isn\'t on the server any more.</string>
+    <string name="book_detail_export_kindle_failed_unreachable">Couldn\'t reach the server.</string>
+    <string name="book_detail_export_kindle_failed_unknown">Couldn\'t send this book.</string>
+    <!-- Shown as a row's subtitle while the device is offline. -->
+    <string name="book_detail_export_needs_connection">Needs a connection</string>
+    <!-- The Kobo row: a KEPUB saved to copy onto a Kobo. -->
+    <string name="book_detail_export_kobo">Send to Kobo</string>
+    <string name="book_detail_export_kobo_meta">Saves a KEPUB to copy onto your Kobo</string>
+    <string name="book_detail_export_save">Save</string>
+    <string name="book_detail_export_saving">Saving…</string>
+    <!-- %1$s is the ebook's format, EPUB or PDF. -->
+    <string name="book_detail_export_download_format">Download %1$s</string>
+    <string name="book_detail_export_download_audiobook">Download audiobook</string>
+    <!-- Follows the size in an ebook or audiobook row. -->
+    <string name="book_detail_export_opens_share_sheet">opens the share sheet</string>
+    <!-- Why a download failed, under the rows. -->
+    <string name="book_detail_export_error_forbidden">Your account can\'t download books.</string>
+    <string name="book_detail_export_error_not_found">This file isn\'t on the server any more.</string>
+    <string name="book_detail_export_error_unreachable">Couldn\'t reach the server.</string>
+    <string name="book_detail_export_error_no_space">There isn\'t enough space on this device.</string>
+    <string name="book_detail_export_error_failed">Couldn\'t download this file.</string>
+</resources>

@@ -9,7 +9,7 @@ internal val moreMenuEntries: List<BookMoreMenuEntry> = listOfNotNull(
     // #117 Bookmarks
     null,
     // #118 Export
-    null,
+    com.omnibus.omnibus.feature.bookdetail.more.export.ExportMenuEntry,
     // #119 Remove from wishlist
     com.omnibus.omnibus.feature.bookdetail.wishlist.WishlistMenuEntry,
     // #120 Merge with
