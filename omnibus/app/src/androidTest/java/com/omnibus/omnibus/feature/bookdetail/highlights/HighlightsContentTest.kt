@@ -217,7 +217,8 @@ class HighlightsContentTest {
             HighlightsTestTags.ribbon(1),
         ).forEach { tag ->
             val child = rule.onNodeWithTag(tag, useUnmergedTree = true).bounds()
-            assertTrue("$tag must lie inside its row", inside(child, rowBounds, slopPx = rule.pxOf(1f)))
+            // The ribbon hangs 1 dp above the row; one more pixel absorbs dp-to-px rounding on fractional densities.
+            assertTrue("$tag must lie inside its row", inside(child, rowBounds, slopPx = rule.pxOf(1f) + 1f))
         }
     }
 
