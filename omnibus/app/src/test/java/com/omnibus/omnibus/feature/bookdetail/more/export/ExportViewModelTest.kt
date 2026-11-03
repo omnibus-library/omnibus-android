@@ -36,9 +36,15 @@ private val dune = testBook(
     ),
 )
 
+/** A gate that answers the call at once. */
 private fun kindleAnswer(result: KindleSendResult): CompletableDeferred<KindleSendResult> = CompletableDeferred(result)
 
+/** A gate the test completes itself, so the call stays in flight until then. */
+private fun pendingKindle(): CompletableDeferred<KindleSendResult> = CompletableDeferred()
+
 private fun saveAnswer(result: ExportSaveResult): CompletableDeferred<ExportSaveResult> = CompletableDeferred(result)
+
+private fun pendingSave(): CompletableDeferred<ExportSaveResult> = CompletableDeferred()
 
 private fun savedFile(name: String): ExportSaveResult =
     ExportSaveResult.Saved(listOf(ExportedFile(File(name), "application/epub+zip")))
@@ -104,7 +110,7 @@ class ExportViewModelTest : DescribeSpec({
             failed.vm.uiState.value.kindle shouldBe KindlePhase.Idle
 
             val sending = Harness()
-            val gate = kindleAnswer(KindleSendResult.Sent)
+            val gate = pendingKindle()
             sending.repo.kindleGates.addLast(gate)
             sending.vm.sendToKindle()
             sending.vm.openSheet()
@@ -126,7 +132,7 @@ class ExportViewModelTest : DescribeSpec({
             idle.vm.uiState.value.sheetOpen shouldBe false
 
             val sending = Harness()
-            val gate = kindleAnswer(KindleSendResult.Sent)
+            val gate = pendingKindle()
             sending.repo.kindleGates.addLast(gate)
             sending.vm.openSheet()
             sending.vm.sendToKindle()
@@ -140,7 +146,7 @@ class ExportViewModelTest : DescribeSpec({
 
         it("#118 TC-18: sendToKindle shows Sending at once, calls the repository once, then shows Sent") {
             val h = Harness()
-            val gate = kindleAnswer(KindleSendResult.Sent)
+            val gate = pendingKindle()
             h.repo.kindleGates.addLast(gate)
 
             h.vm.sendToKindle()
@@ -176,7 +182,7 @@ class ExportViewModelTest : DescribeSpec({
 
         it("#118 TC-20: sendToKindle is ignored while sending, after Sent and offline; after a failure it sends only when called") {
             val sending = Harness()
-            val gate = kindleAnswer(KindleSendResult.Sent)
+            val gate = pendingKindle()
             sending.repo.kindleGates.addLast(gate)
             sending.vm.sendToKindle()
             sending.vm.sendToKindle()
@@ -220,7 +226,7 @@ class ExportViewModelTest : DescribeSpec({
             )
             for ((kind, call, result) in cases) {
                 withClue("kind=$kind") {
-                    val gate = saveAnswer(result)
+                    val gate = pendingSave()
                     h.repo.saveGates.addLast(gate)
                     h.vm.save(kind, dune)
                     h.vm.uiState.value.saving shouldBe kind
@@ -233,7 +239,7 @@ class ExportViewModelTest : DescribeSpec({
 
         it("#118 TC-23: one save at a time, offline saves ignored, and the Kindle send does not block a save") {
             val h = Harness()
-            val kobo = saveAnswer(ExportSaveResult.Saved(emptyList()))
+            val kobo = pendingSave()
             h.repo.saveGates.addLast(kobo)
             h.vm.save(ExportSave.Kobo, dune)
             h.vm.save(ExportSave.Ebook, dune)
@@ -244,10 +250,10 @@ class ExportViewModelTest : DescribeSpec({
             h.vm.save(ExportSave.Audio, dune)
             h.repo.saveCalls.size shouldBe 2
 
-            val kindle = kindleAnswer(KindleSendResult.Sent)
+            val kindle = pendingKindle()
             h.repo.kindleGates.addLast(kindle)
             h.vm.sendToKindle()
-            val ebook = saveAnswer(ExportSaveResult.Saved(emptyList()))
+            val ebook = pendingSave()
             h.repo.saveGates.addLast(ebook)
             h.vm.save(ExportSave.Ebook, dune)
             h.repo.saveCalls.size shouldBe 3
@@ -324,7 +330,7 @@ class ExportViewModelTest : DescribeSpec({
 
         it("#118 TC-26: closing the sheet cancels a save in flight, which then sets no share and no error") {
             val h = Harness()
-            val gate = saveAnswer(savedFile("Dune.kepub.epub"))
+            val gate = pendingSave()
             h.repo.saveGates.addLast(gate)
             h.vm.openSheet()
             h.vm.save(ExportSave.Kobo, dune)
@@ -345,7 +351,7 @@ class ExportViewModelTest : DescribeSpec({
 
         it("#118 TC-27: going offline does not cancel a save; its result still requests a share") {
             val h = Harness()
-            val gate = saveAnswer(savedFile("Dune.kepub.epub"))
+            val gate = pendingSave()
             h.repo.saveGates.addLast(gate)
             h.vm.save(ExportSave.Kobo, dune)
 

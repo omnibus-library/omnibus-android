@@ -21,7 +21,7 @@ class DefaultExportFileStoreTest : DescribeSpec({
 
         it("#118 TC-56: creates a missing root, returns two distinct empty folders under it, and reports usable space") {
             val root = File(tempDir, "book-exports")
-            val store = DefaultExportFileStore(root = root, nowMillis = { now })
+            val store = DefaultExportFileStore(root = root)
 
             val first = store.newFolder()
             val second = store.newFolder()
