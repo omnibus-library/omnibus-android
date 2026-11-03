@@ -26,4 +26,18 @@ class MenuRuleSlotsTest : DescribeSpec({
             }
         }
     }
+
+    describe("menuRuleSlots with joining groups") {
+        val cases = listOf(
+            Triple(listOf(10, 10, 10), listOf(false, true, false), listOf(2)),
+            Triple(listOf(10, 0, 10), listOf(false, false, true), listOf<Int>()),
+            Triple(listOf(10, 10), listOf(false, true), listOf<Int>()),
+            Triple(listOf(0, 10, 10), listOf(false, true, false), listOf(2)),
+        )
+        for ((heights, joins, expected) in cases) {
+            it("#117 TC-2: $heights joined $joins gives rules above $expected") {
+                menuRuleSlots(heights, joins) shouldBe expected
+            }
+        }
+    }
 })
