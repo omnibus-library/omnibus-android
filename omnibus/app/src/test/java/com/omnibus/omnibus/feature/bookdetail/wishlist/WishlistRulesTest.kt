@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.wishlist
 
+import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.testBook
 import com.omnibus.omnibus.data.wishlist.WishlistEntry
@@ -132,6 +133,17 @@ class WishlistRulesTest : DescribeSpec({
                     }
                 }
             }
+        }
+    }
+
+    describe("the stage line's source phrase") {
+
+        it("#119 TC-24: each known source maps to its phrase, and an unknown source to none") {
+            wishlistSourcePhraseRes(WishlistSource.Scan) shouldBe R.string.book_detail_wishlist_source_scan
+            wishlistSourcePhraseRes(WishlistSource.Detail) shouldBe R.string.book_detail_wishlist_source_detail
+            wishlistSourcePhraseRes(WishlistSource.Manual) shouldBe R.string.book_detail_wishlist_source_manual
+            wishlistSourcePhraseRes(WishlistSource.Search) shouldBe R.string.book_detail_wishlist_source_search
+            wishlistSourcePhraseRes(null) shouldBe null
         }
     }
 
