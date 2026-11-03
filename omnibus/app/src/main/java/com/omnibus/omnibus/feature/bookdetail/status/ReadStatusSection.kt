@@ -9,16 +9,18 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
+import com.omnibus.omnibus.feature.bookdetail.wishlist.rememberIsWishlistOnly
 
 /**
- * The read status pill at the start of the stage's status row. It renders nothing for a book with nothing to track,
- * before it creates its ViewModel, so such a book needs no Hilt.
+ * The read status pill at the start of the stage's status row. It renders nothing for a book with nothing to track, and
+ * nothing for a wishlist-only book, before it creates its ViewModel, so such a book needs no Hilt.
  */
 internal object ReadStatusSection : BookDetailSection {
 
     @Composable
     override fun Content(context: BookDetailSectionContext, modifier: Modifier) {
         if (!showsReadStatus(context.book)) return
+        if (rememberIsWishlistOnly(context.book)) return
         val viewModel = hiltViewModel<ReadStatusViewModel, ReadStatusViewModel.Factory>(
             key = "read-status-${context.book.uuid}",
             creationCallback = { it.create(context.book.uuid) },

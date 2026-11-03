@@ -9,7 +9,7 @@ import com.omnibus.omnibus.feature.bookdetail.progress.BookReadingProgress
 
 /**
  * What the bottom action bar shows for a book. [Primary] is the main button; [NoCopy] is the untappable note for a book
- * with nothing to read or listen to. #119 adds a `Wishlist` case here.
+ * with nothing to read or listen to, and [Wishlist] replaces it for a book on the wishlist.
  */
 sealed interface ActionBarModel {
 
@@ -31,6 +31,18 @@ sealed interface ActionBarModel {
      * @property physical Whether the book is on the shelf as a physical copy.
      */
     data class NoCopy(val physical: Boolean) : ActionBarModel
+
+    /**
+     * A book on the reader's wishlist with no readable copy: "Find a copy" opens a store search and "Check in" opens
+     * the check-in page.
+     *
+     * @property findCopy Where "Find a copy" leads.
+     * @property checkIn Where "Check in" leads.
+     */
+    data class Wishlist(
+        val findCopy: BookDetailDestination.ExternalUrl,
+        val checkIn: BookDetailDestination.CheckIn,
+    ) : ActionBarModel
 }
 
 /**
@@ -65,9 +77,9 @@ val ActionLabel.isListening: Boolean
 /**
  * The action bar's model for [book], with its read [status] and saved [progress].
  *
- * Order matters: a book with no readable copy is [ActionBarModel.NoCopy] first; #119 inserts its wishlist check before
- * this. A finished book reads again whatever its position. A saved place always offers to continue from it, even when
- * the status is unread or unknown.
+ * Order matters: a book with no readable copy is [ActionBarModel.NoCopy] first. The wishlist variant is chosen by the
+ * section, not here. A finished book reads again whatever its position. A saved place always offers to continue from
+ * it, even when the status is unread or unknown.
  */
 fun actionBarModel(book: Book, status: ReadStatusState, progress: BookReadingProgress?): ActionBarModel {
     if (!hasReadableCopy(book)) return ActionBarModel.NoCopy(physical = book.hasPhysical)

@@ -6,11 +6,14 @@ import com.omnibus.omnibus.data.library.testBook
 import com.omnibus.omnibus.data.wishlist.WishlistEntry
 import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.data.wishlist.WishlistState
+import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.bookdetail.actionbar.ActionBarModel
 import com.omnibus.omnibus.feature.bookdetail.actionbar.hasReadableCopy
 import com.omnibus.omnibus.feature.bookdetail.progress.hasProgressFile
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import java.net.URLDecoder
 
 /** A book with the given formats, and a physical copy when [physical] is set. */
@@ -56,6 +59,39 @@ class WishlistRulesTest : DescribeSpec({
                     }
                 }
             }
+        }
+    }
+
+    describe("the action bar's wishlist variant") {
+
+        it("#119 TC-17: null unless wishlist-only; otherwise Find a copy searches the store, Check in opens the page") {
+            for ((state, value) in allStates) {
+                for ((name, b) in fileless + withFile) {
+                    withClue("$state/$name") {
+                        val model = wishlistActionModel(b, value)
+                        if (isWishlistOnly(b, value)) {
+                            val wishlist = model.shouldBeInstanceOf<ActionBarModel.Wishlist>()
+                            wishlist.checkIn shouldBe BookDetailDestination.CheckIn(b.uuid)
+                            wishlist.findCopy.url.startsWith("https://www.amazon.com/s?k=") shouldBe true
+                        } else {
+                            model shouldBe null
+                        }
+                    }
+                }
+            }
+        }
+
+        it("#119 TC-17: the store query is the ISBN, else the title and author, never the unknown-author placeholder") {
+            val withIsbn = book(emptyList()).copy(isbn13 = "9781234567897")
+            wishlistActionModel(withIsbn, present)?.findCopy shouldBe
+                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=9781234567897")
+
+            wishlistActionModel(book(emptyList()), present)?.findCopy shouldBe
+                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=Book+1+Author+1")
+
+            val noAuthor = testBook(1, formats = emptyList(), creators = emptyList())
+            wishlistActionModel(noAuthor, present)?.findCopy shouldBe
+                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=Book+1")
         }
     }
 

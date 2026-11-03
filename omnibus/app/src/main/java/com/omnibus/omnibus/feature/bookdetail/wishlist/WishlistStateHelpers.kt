@@ -12,10 +12,11 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.wishlist.WishlistRepository
 import com.omnibus.omnibus.data.wishlist.WishlistState
 import com.omnibus.omnibus.data.wishlist.di.WishlistEntryPoint
+import com.omnibus.omnibus.feature.bookdetail.actionbar.ActionBarModel
 import com.omnibus.omnibus.feature.bookdetail.actionbar.hasReadableCopy
 import dagger.hilt.android.EntryPointAccessors
 
-/** Overrides the wishlist repository for a composition. Instrumented tests provide a fake; production leaves it null. */
+/** Overrides the wishlist repository for a composition. Instrumented tests provide a fake; production leaves it unset. */
 internal val LocalWishlistRepository = staticCompositionLocalOf<WishlistRepository?> { null }
 
 /**
@@ -57,4 +58,15 @@ internal fun rememberIsWishlistOnly(book: Book): Boolean {
     if (hasReadableCopy(book)) return false
     val state = rememberWishlistState(book)
     return isWishlistOnly(book, state)
+}
+
+/**
+ * The action bar's wishlist variant for [book], or null unless it is wishlist-only. A book with a readable copy is null
+ * without any repository access.
+ */
+@Composable
+internal fun rememberWishlistActionModel(book: Book): ActionBarModel.Wishlist? {
+    if (hasReadableCopy(book)) return null
+    val state = rememberWishlistState(book)
+    return remember(book, state) { wishlistActionModel(book, state) }
 }

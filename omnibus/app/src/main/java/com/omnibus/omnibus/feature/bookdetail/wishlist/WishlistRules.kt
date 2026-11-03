@@ -2,12 +2,35 @@ package com.omnibus.omnibus.feature.bookdetail.wishlist
 
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.wishlist.WishlistState
+import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.bookdetail.actionbar.ActionBarModel
 import com.omnibus.omnibus.feature.bookdetail.actionbar.hasReadableCopy
 import java.net.URLEncoder
 
 /** Whether [book] is on the wishlist with no ebook or audiobook, so its page is the wishlist-only page. */
 internal fun isWishlistOnly(book: Book, state: WishlistState): Boolean =
     state is WishlistState.Present && !hasReadableCopy(book)
+
+/**
+ * The action bar's wishlist variant for [book], or null unless the book is wishlist-only. "Find a copy" searches the
+ * store for the ISBN, else the title and author.
+ */
+internal fun wishlistActionModel(book: Book, state: WishlistState): ActionBarModel.Wishlist? {
+    if (!isWishlistOnly(book, state)) return null
+    return ActionBarModel.Wishlist(
+        findCopy = BookDetailDestination.ExternalUrl(
+            storeSearchUrl(book.isbn13, book.displayTitle, storeAuthor(book)),
+        ),
+        checkIn = BookDetailDestination.CheckIn(book.uuid),
+    )
+}
+
+/**
+ * The author for the store search. `Book.authorDisplay` falls back to the unknown-author placeholder only when no
+ * creator has a name, so that case gives blank and the placeholder is never searched for.
+ */
+private fun storeAuthor(book: Book): String =
+    if (book.creators.any { it.name.isNotBlank() }) book.authorDisplay else ""
 
 /**
  * The Amazon search URL for [isbn13] when it is present, and otherwise for the title and author. The query is

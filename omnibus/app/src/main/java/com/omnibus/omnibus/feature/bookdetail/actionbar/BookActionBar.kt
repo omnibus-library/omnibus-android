@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -25,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -50,7 +53,13 @@ internal object ActionBarTestTags {
     const val ICON = "book-action-bar-icon"
     const val LABEL = "book-action-bar-label"
     const val NO_COPY = "book-action-bar-no-copy"
+    const val FIND_COPY = "book-action-bar-find-copy"
+    const val CHECK_IN = "book-action-bar-check-in"
 }
+
+/** The Check in pill's wash and 1 dp rim. */
+@Immutable
+internal data class CheckInPillColors(val wash: Color, val rim: Color)
 
 /** The fill the button draws, read by tests. A custom key, so accessibility services never see it. */
 internal val ActionBarFillKey = SemanticsPropertyKey<Float>("ActionBarFill")
@@ -72,11 +81,13 @@ internal fun ActionLabel.text(): String = when (this) {
 }
 
 /**
- * The action bar: a pill for [ActionBarModel.Primary], or an untappable note for [ActionBarModel.NoCopy]. It is stateless,
- * so the page's section supplies the model. [extras] is #99's round buttons, shown beside the main button and not for
- * [ActionBarModel.NoCopy]. The bar adds no insets or outer padding: the action area owns those.
+ * The action bar: a pill for [ActionBarModel.Primary], an untappable note for [ActionBarModel.NoCopy], or the two
+ * wishlist pills for [ActionBarModel.Wishlist]. It is stateless, so the page's section supplies the model. [extras] is
+ * #99's round buttons, shown beside the main button and not for [ActionBarModel.NoCopy] or [ActionBarModel.Wishlist].
+ * The bar adds no insets or outer padding: the action area owns those.
  *
  * @param reducedMotion When true, the fill snaps and the book icon does not flip.
+ * @param checkInColors The Check in pill's wash and rim. Null uses the palette's background and line colours.
  */
 @Composable
 internal fun BookActionBar(
@@ -86,6 +97,7 @@ internal fun BookActionBar(
     modifier: Modifier = Modifier,
     reducedMotion: Boolean = rememberReducedMotion(),
     extras: @Composable RowScope.() -> Unit = {},
+    checkInColors: CheckInPillColors? = null,
 ) {
     when (model) {
         is ActionBarModel.NoCopy -> NoCopyCapsule(model, modifier.fillMaxWidth())
@@ -97,6 +109,76 @@ internal fun BookActionBar(
             MainButton(model, colors, onNavigate, reducedMotion, Modifier.weight(1f))
             extras()
         }
+        is ActionBarModel.Wishlist -> Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FindCopyButton(model, colors, onNavigate, Modifier.weight(1f))
+            CheckInPill(
+                model,
+                checkInColors ?: CheckInPillColors(OmnibusTheme.palette.bg2, OmnibusTheme.palette.line2),
+                onNavigate,
+            )
+        }
+    }
+}
+
+/** "Find a copy": the book's colour, the label and no icon, opening the store search. */
+@Composable
+private fun FindCopyButton(
+    model: ActionBarModel.Wishlist,
+    colors: ActionBarColors,
+    onNavigate: (BookDetailDestination) -> Unit,
+    modifier: Modifier,
+) {
+    val label = stringResource(R.string.book_detail_wishlist_find_a_copy)
+    Box(
+        modifier
+            .heightIn(min = 52.dp)
+            .clip(CircleShape)
+            .background(colors.base)
+            .clickable(role = Role.Button) { onNavigate(model.findCopy) }
+            .semantics { contentDescription = label }
+            .testTag(ActionBarTestTags.FIND_COPY)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = uiTextStyle(17, FontWeight.SemiBold, colors.content),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** "Check in": a washed pill with a 1 dp rim, opening the check-in page. It wraps its label and never ellipsizes it. */
+@Composable
+private fun CheckInPill(
+    model: ActionBarModel.Wishlist,
+    pill: CheckInPillColors,
+    onNavigate: (BookDetailDestination) -> Unit,
+) {
+    val label = stringResource(R.string.book_detail_wishlist_check_in)
+    Box(
+        Modifier
+            .heightIn(min = 52.dp)
+            .clip(CircleShape)
+            .background(pill.wash)
+            .border(1.dp, pill.rim, CircleShape)
+            .clickable(role = Role.Button) { onNavigate(model.checkIn) }
+            .semantics { contentDescription = label }
+            .testTag(ActionBarTestTags.CHECK_IN)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = uiTextStyle(16, FontWeight.SemiBold, OmnibusTheme.palette.ink0),
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
