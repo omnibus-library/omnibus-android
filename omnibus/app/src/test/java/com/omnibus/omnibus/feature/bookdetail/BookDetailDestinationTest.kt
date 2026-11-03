@@ -82,6 +82,21 @@ class BookDetailDestinationTest : DescribeSpec({
             BookDetailDestination.Genre("X").pushTarget(placeholderTop, titles).shouldBeNull()
         }
 
+        it("#117 TC-57: reader dispatch carries the start cfi") {
+            val opened = mutableListOf<Pair<String, String?>>()
+            fun dispatch(destination: BookDetailDestination) = destination.dispatch(
+                top = null,
+                titles = titles,
+                push = {},
+                openReader = { uuid, cfi -> opened += uuid to cfi },
+                openUri = {},
+            )
+
+            dispatch(BookDetailDestination.Reader("u"))
+            dispatch(BookDetailDestination.Reader("u", "epubcfi(/6/8)"))
+            opened shouldContainExactly listOf("u" to null, "u" to "epubcfi(/6/8)")
+        }
+
         it("#93 TC-134: dispatch routes each destination") {
             val pushed = mutableListOf<NavKey>()
             val readers = mutableListOf<String>()
@@ -90,7 +105,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 top = top,
                 titles = titles,
                 push = { pushed += it },
-                openReader = { readers += it },
+                openReader = { uuid, _ -> readers += uuid },
                 openUri = { uris += it },
             )
 
@@ -115,7 +130,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 top = null,
                 titles = titles,
                 push = {},
-                openReader = {},
+                openReader = { _, _ -> },
                 openUri = { error("no app can open this") },
             )
         }

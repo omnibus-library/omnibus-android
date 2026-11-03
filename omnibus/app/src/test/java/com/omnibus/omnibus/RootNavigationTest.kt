@@ -8,6 +8,9 @@ import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class RootNavigationTest : DescribeSpec({
 
@@ -43,6 +46,30 @@ class RootNavigationTest : DescribeSpec({
             stack.openReader("a")
 
             stack shouldContainExactly listOf(SignedInShellRoute, ReaderRoute("a"))
+        }
+
+        it("#117 TC-57: openReader carries the start cfi, and a different cfi is pushed") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openReader("a", "epubcfi(/6/4)")
+            stack.openReader("a", "epubcfi(/6/4)")
+            stack.openReader("a", "epubcfi(/6/8)")
+
+            stack shouldContainExactly listOf(
+                SignedInShellRoute,
+                ReaderRoute("a", "epubcfi(/6/4)"),
+                ReaderRoute("a", "epubcfi(/6/8)"),
+            )
+        }
+    }
+
+    describe("route serialization") {
+
+        it("#117 TC-58: routes round trip and decode old payloads") {
+            val route = ReaderRoute("a", "epubcfi(/6/4)")
+            Json.decodeFromString<ReaderRoute>(Json.encodeToString(route)) shouldBe route
+            Json.decodeFromString<ReaderRoute>(Json.encodeToString(ReaderRoute("a"))) shouldBe ReaderRoute("a", null)
+            Json.decodeFromString<ReaderRoute>("{\"bookUuid\":\"a\"}") shouldBe ReaderRoute("a", null)
         }
     }
 

@@ -7,8 +7,12 @@ import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 
 /** Where a tap on the Book Detail page leads. The shell maps each destination to a route or a platform action. */
 sealed interface BookDetailDestination {
-    /** Opens the reader for the book. */
-    data class Reader(val bookUuid: String) : BookDetailDestination
+    /**
+     * Opens the reader for the book, at [startCfi] instead of the saved position when it is given.
+     *
+     * @property startCfi An EPUB CFI to open at, or null to resume.
+     */
+    data class Reader(val bookUuid: String, val startCfi: String? = null) : BookDetailDestination
 
     /** Opens the player at [bookFileId], or at the server's choice when it is null. */
     data class Player(val bookUuid: String, val bookFileId: Long?) : BookDetailDestination
@@ -55,11 +59,11 @@ internal fun BookDetailDestination.dispatch(
     top: NavKey?,
     titles: PlaceholderTitles,
     push: (NavKey) -> Unit,
-    openReader: (bookUuid: String) -> Unit,
+    openReader: (bookUuid: String, startCfi: String?) -> Unit,
     openUri: (url: String) -> Unit,
 ) {
     when (this) {
-        is BookDetailDestination.Reader -> openReader(bookUuid)
+        is BookDetailDestination.Reader -> openReader(bookUuid, startCfi)
         is BookDetailDestination.ExternalUrl -> runCatching { openUri(url) }
         else -> pushTarget(top, titles)?.let(push)
     }

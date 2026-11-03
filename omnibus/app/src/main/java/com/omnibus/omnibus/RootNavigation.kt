@@ -36,9 +36,12 @@ internal fun MutableList<NavKey>.leaveForLogin() {
  */
 internal fun drawsOwnInsets(top: NavKey?): Boolean = top == SignedInShellRoute || top is ReaderRoute
 
-/** Opens the reader for [bookUuid] over the stack. A second open of the same book on top is ignored. */
-internal fun MutableList<NavKey>.openReader(bookUuid: String) {
-    val route = ReaderRoute(bookUuid)
+/**
+ * Opens the reader for [bookUuid] over the stack, at [startCfi] when given. A second open of the same route on top is
+ * ignored; a different [startCfi] is pushed.
+ */
+internal fun MutableList<NavKey>.openReader(bookUuid: String, startCfi: String? = null) {
+    val route = ReaderRoute(bookUuid, startCfi)
     if (lastOrNull() != route) add(route)
 }
 

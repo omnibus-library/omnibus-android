@@ -58,7 +58,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
     afterEach { persistScope.cancel() }
 
     /** The one place these cases build the ViewModel. Reads [fake], [now] and [persistScope] when called. */
-    fun viewModel(settings: FakeReaderSettingsStore = FakeReaderSettingsStore()) = ReaderViewModel(
+    fun viewModel(settings: FakeReaderSettingsStore = FakeReaderSettingsStore(), startCfi: String? = null) = ReaderViewModel(
         bookUuid = "book-1",
         libraryRepository = library,
         assetLoaderFactory = ReaderAssetLoaderFactory(
@@ -71,6 +71,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         bookmarksRepository = FakeBookmarksRepository(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
+        startCfi = startCfi,
     )
 
     fun relocate(cfi: String?, pct: Int = 10, totalPages: Int = 100, echo: Boolean = false) =
@@ -313,6 +314,22 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 ReaderOpening.Resolved(ReaderStart.AtCfi("epubcfi(/6/12)"))
         }
     }
+    describe("explicit start") {
+
+        // TC-51: an explicit start has no floor and does not hold the gate, so a lower percent is written as it is.
+        it("#117 TC-51: explicit start saves progress without a floor") {
+            fake.stored["book-1"] = position("epubcfi(/6/2)", percent = 57)
+            val vm = viewModel(startCfi = "epubcfi(/6/20)")
+            vm.onPageEvent(relocate("epubcfi(/6/20)", pct = 20))
+
+            vm.move("epubcfi(/6/22)", pct = 3)
+
+            fake.saves shouldBe listOf(
+                FakeProgressRepository.Save(position("epubcfi(/6/22)", percent = 3), push = false),
+            )
+        }
+    }
+
     describe("settings") {
 
         it("a settings save still completes after the view model is cleared") {

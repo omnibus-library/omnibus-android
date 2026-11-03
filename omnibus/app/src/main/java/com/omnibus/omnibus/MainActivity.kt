@@ -96,10 +96,10 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                 })
             }
             entry<SignedInShellRoute> {
-                SignedInShellScreen(onOpenReader = { backstack.openReader(it) })
+                SignedInShellScreen(onOpenReader = { uuid, cfi -> backstack.openReader(uuid, cfi) })
             }
             entry<ReaderRoute> { key ->
-                ReaderScreen(bookUuid = key.bookUuid, onClose = { backstack.closeReader(key) })
+                ReaderScreen(bookUuid = key.bookUuid, startCfi = key.startCfi, onClose = { backstack.closeReader(key) })
             }
         },
     )
