@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.di
 
+import com.omnibus.omnibus.data.bookmarks.BookmarkDraft
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
@@ -18,7 +19,7 @@ class UuidClientIdSourceTest : DescribeSpec({
 
             UUID.fromString(first).toString() shouldBe first
             first.length shouldBe 36
-            first.length shouldBeLessThanOrEqual 64
+            first.length shouldBeLessThanOrEqual BookmarkDraft.CLIENT_ID_MAX_LENGTH
             second shouldNotBe first
         }
     }
