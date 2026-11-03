@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.reader.ui
 
-/** A segment of the contents sheet. #57 adds Bookmarks and Notes. */
-enum class ReaderContentsTab { Contents }
+/** A segment of the contents sheet. #57 adds Highlights and Notes. */
+enum class ReaderContentsTab { Contents, Bookmarks }
 
 /**
  * The index into [toc] of the reader's chapter. [RelocateData.chapter] is 1-based and 0 means no

@@ -91,6 +91,7 @@ internal const val ContentsSheetHeightFraction = 0.92f
 @StringRes
 internal fun ReaderContentsTab.titleRes(): Int = when (this) {
     ReaderContentsTab.Contents -> R.string.reader_contents_tab_contents
+    ReaderContentsTab.Bookmarks -> R.string.reader_contents_tab_bookmarks
 }
 
 /**
@@ -258,6 +259,8 @@ internal fun ReaderContentsSheetContent(
                     } else {
                         ContentsList(toc, location, listState, onEntryChosen)
                     }
+                // Replaced by the bookmarks list in the next step.
+                ReaderContentsTab.Bookmarks -> Unit
             }
         }
     }

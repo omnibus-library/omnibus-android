@@ -310,6 +310,7 @@ internal fun ReaderMenuRowItem(
 ) {
     val (iconRes, titleRes) = when (row) {
         ReaderMenuRow.Contents -> R.drawable.ic_reader_contents to R.string.reader_menu_contents
+        ReaderMenuRow.Bookmarks -> R.drawable.ic_reader_bookmark to R.string.reader_menu_bookmarks
         ReaderMenuRow.Settings -> R.drawable.ic_reader_settings to R.string.reader_menu_settings
     }
     Row(

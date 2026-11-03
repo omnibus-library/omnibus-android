@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryError
@@ -58,6 +59,7 @@ class ReaderViewModelTest : DescribeSpec({
         ),
         progressRepository = FakeProgressRepository(),
         settingsStore = FakeReaderSettingsStore(),
+        bookmarksRepository = FakeBookmarksRepository(),
         timeSource = TimeSource { 0L },
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     )
@@ -270,7 +272,7 @@ class ReaderViewModelTest : DescribeSpec({
                 chromeVisible = true,
                 settings = ReaderSettings(),
                 sheet = null,
-                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
             )
         }
     }
@@ -395,12 +397,13 @@ class ReaderViewModelTest : DescribeSpec({
     describe("ReaderViewModel menu") {
 
         val contentsAndSettings = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+        val vmRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
-        it("CS-1: the reader offers the Contents and Settings rows from the start") {
+        it("CS-1: the reader offers the Contents, Bookmarks and Settings rows from the start") {
             val state = viewModel().uiState.value
 
             state.menuOpen shouldBe false
-            state.menuRows shouldBe contentsAndSettings
+            state.menuRows shouldBe vmRows
             state.toc shouldBe emptyList()
             ReaderUIState().menuRows shouldBe emptyList()
         }
@@ -523,7 +526,7 @@ class ReaderViewModelTest : DescribeSpec({
 
         it("offers the settings row after contents and opens and closes the settings sheet") {
             val vm = viewModel()
-            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
+            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
             vm.onSettingsRequested()
             vm.uiState.value.sheet shouldBe ReaderSheet.Settings
