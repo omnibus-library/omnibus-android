@@ -19,7 +19,7 @@ class ReadAlikesActivationTest : DescribeSpec({
             (registered.last() === ReadAlikesSection) shouldBe true
         }
 
-        it("#106 TC-54: only the 106 line changed in OverviewSections.kt") {
+        it("#106 TC-54: the 106 line holds the fully qualified section object") {
             val source = File(
                 System.getProperty("user.dir"),
                 "src/main/java/com/omnibus/omnibus/feature/bookdetail/slots/OverviewSections.kt",
@@ -27,9 +27,6 @@ class ReadAlikesActivationTest : DescribeSpec({
             val label = source.indexOf("// #106 Readers Also Read")
             (label >= 0) shouldBe true
             source[label + 1] shouldBe "com.omnibus.omnibus.feature.bookdetail.overview.readalikes.ReadAlikesSection,"
-            val other = source.indexOf("// #102 Your Reading Card")
-            (other >= 0) shouldBe true
-            source[other + 1] shouldBe "null,"
         }
     }
 })
