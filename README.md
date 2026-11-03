@@ -37,7 +37,7 @@ Release APKs are signed with the Omnibus release keystore. The workflow reads it
 | `RELEASE_KEY_ALIAS` | The key alias (`omnibus`) |
 | `RELEASE_KEY_PASSWORD` | The key password |
 
-The release-please job also uses the `ADD_TO_PROJECT_PAT` secret, so that its release PRs trigger the `Testing` checks (PRs opened with `GITHUB_TOKEN` don't run workflows). The token needs read and write access to contents, pull requests and issues on this repository. Its owner is shown as the author of release PRs.
+The release-please job also uses the `ANDROID_RELEASE_PLEASE` secret, so that its release PRs trigger the `Testing` checks (PRs opened with `GITHUB_TOKEN` don't run workflows). The token needs read and write access to contents, pull requests and issues on this repository. Its owner is shown as the author of release PRs.
 
 Add the signing secrets before merging a release PR; without them the release and tag are still created but `publish-apk` fails.
 
