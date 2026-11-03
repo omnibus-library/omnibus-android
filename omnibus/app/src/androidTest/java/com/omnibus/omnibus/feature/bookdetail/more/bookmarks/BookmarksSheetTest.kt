@@ -182,17 +182,20 @@ class BookmarksSheetTest {
             }
         }
 
+        // Measure the long row first: on a small window it fills the viewport, so the short row
+        // below it is only composed once the list has scrolled to it.
         val longName = rule.onNodeWithTag(BookmarksTestTags.name("id:5"), useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
-        val shortName = rule.onNodeWithTag(BookmarksTestTags.name("id:6"), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot
-        assertTrue("the long name wraps onto more lines", longName.height > shortName.height)
-
         val row = rule.onNodeWithTag(BookmarksTestTags.row("id:5")).fetchSemanticsNode().boundsInRoot
         val chevron = rule.onNodeWithTag(BookmarksTestTags.chevron("id:5"), useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
         assertTrue("the chevron stays inside the row", chevron.right <= row.right + 1f)
         assertTrue("the name does not run under the chevron", longName.right <= chevron.left + 1f)
+
+        rule.onNodeWithTag(BookmarksTestTags.LIST).performScrollToNode(hasTestTag(BookmarksTestTags.row("id:6")))
+        val shortName = rule.onNodeWithTag(BookmarksTestTags.name("id:6"), useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("the long name wraps onto more lines", longName.height > shortName.height)
     }
 
     // TC-66
