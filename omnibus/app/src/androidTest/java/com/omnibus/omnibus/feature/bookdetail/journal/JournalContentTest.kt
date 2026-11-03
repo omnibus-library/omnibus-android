@@ -98,6 +98,7 @@ class JournalContentTest {
                     testCard(1, preview = listOf(PreviewRun.Text("Short"))),
                     testCard(2, preview = listOf(PreviewRun.Text(longBody))),
                     testCard(3, preview = listOf(PreviewRun.Text("Short"))),
+                    testCard(4, preview = listOf(PreviewRun.Text(longBody + longBody))),
                 ),
             ),
         )
@@ -118,8 +119,14 @@ class JournalContentTest {
 
         val short = rule.onNodeWithTag(JournalTestTags.preview(1), useUnmergedTree = true).bounds()
         val long = rule.onNodeWithTag(JournalTestTags.preview(2), useUnmergedTree = true).bounds()
+        val longer = rule.onNodeWithTag(JournalTestTags.preview(4), useUnmergedTree = true).bounds()
         val ratio = long.height / short.height
-        assertTrue("a long body must be capped at four lines, was $ratio times a one-line body", ratio in 3.5f..4.5f)
+        assertTrue("a long body must wrap to several lines, was $ratio times a one-line body", ratio > 2.5f)
+        assertTrue("a long body must be capped at four lines, was $ratio times a one-line body", ratio < 5f)
+        assertTrue(
+            "twice as much text must not make the preview any taller, was ${long.height} then ${longer.height}",
+            abs(longer.height - long.height) <= rule.pxOf(1f),
+        )
     }
 
     // TC-51
