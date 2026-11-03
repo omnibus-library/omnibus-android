@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.more.merge
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -144,10 +145,13 @@ internal fun MergeSheet(state: MergeUIState, target: Book, actions: MergeSheetAc
         scrimColor = Color.Black.copy(alpha = 0.55f),
         dragHandle = { BottomSheetDefaults.DragHandle(width = 36.dp, height = 5.dp, color = palette.line2) },
         properties = ModalBottomSheetProperties(
-            shouldDismissOnBackPress = !state.merging,
+            shouldDismissOnBackPress = true, // blocked by the BackHandler below while merging
             shouldDismissOnClickOutside = !state.merging,
         ),
     ) {
+        // Back is consumed here while merging. The sheet's window reads shouldDismissOnBackPress only when it is
+        // created, and its own handler asks the sheet to hide, which is refused while merging and leaves it stuck.
+        BackHandler(enabled = state.merging) {}
         val closeWithAnimation = remember(actions, sheetState, scope) {
             MergeSheetActions(
                 onQueryChange = actions.onQueryChange,

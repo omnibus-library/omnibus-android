@@ -69,7 +69,7 @@ class MergeSheetContentTest {
         rule.onNodeWithTag(MergeTestTags.INTRO).assertTextEquals(intro)
         rule.onNodeWithTag(MergeTestTags.PANEL).assertExists()
         rule.onNodeWithText(detailText(R.string.book_detail_merge_folds_into), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText(target.displayTitle, useUnmergedTree = true).assertExists()
+        rule.onNodeWithText(target.displayTitle).assertExists()
         rule.onNodeWithText(detailText(R.string.book_detail_merge_entry_stays), useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(MergeTestTags.LABEL).assertTextEquals(detailText(R.string.book_detail_merge_search_label))
         rule.onNodeWithTag(MergeTestTags.FIELD).assertExists()
@@ -110,16 +110,16 @@ class MergeSheetContentTest {
         rule.onNodeWithTag(MergeTestTags.SPINNER, useUnmergedTree = true).assertExists()
         rule.onAllNodesWithText(idle).assertCountEquals(0)
 
-        rule.step(state) { copy(query = "dune", candidates = listOf(a)) }
+        rule.step(state) { copy(searching = false, query = "dune", candidates = listOf(a)) }
         rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(noteCount(1))
 
-        rule.step(state) { copy(query = "dune", candidates = listOf(a, b, c)) }
+        rule.step(state) { copy(searching = false, query = "dune", candidates = listOf(a, b, c)) }
         rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(noteCount(3))
 
-        rule.step(state) { copy(query = "zzz", candidates = emptyList()) }
+        rule.step(state) { copy(searching = false, query = "zzz", candidates = emptyList()) }
         rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(detailText(R.string.book_detail_merge_note_none, "zzz"))
 
-        rule.step(state) { copy(query = "dune", candidates = emptyList(), isOnline = false) }
+        rule.step(state) { copy(searching = false, query = "dune", candidates = emptyList(), isOnline = false) }
         rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(needsConnection)
     }
 
@@ -158,7 +158,7 @@ class MergeSheetContentTest {
         rowA.assertTextEquals("Alpha", "Ann", "EPUB")
         rowB.assertTextEquals("Bravo", "Bea · 1902", "Same series · EPUB, M4B")
         rowC.assertTextEquals("Charlie", "Cy")
-        rule.onAllNodesWithText(target.displayTitle, useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText(target.displayTitle).assertCountEquals(1)
 
         rowB.performScrollTo().performClick()
         rule.waitForIdle()
