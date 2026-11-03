@@ -328,9 +328,12 @@ class ReviewSheetContentTest {
         val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
         show(state)
 
+        // The header sits outside the scrolling body, so its targets are measured where they are.
+        listOf(ReviewSheetTestTags.CANCEL, ReviewSheetTestTags.SAVE).forEach { tag ->
+            rule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
+            rule.onNodeWithTag(tag).assertWidthIsAtLeast(48.dp)
+        }
         listOf(
-            ReviewSheetTestTags.CANCEL,
-            ReviewSheetTestTags.SAVE,
             ReviewSheetTestTags.NOTES_ROW,
             ReviewSheetTestTags.SPOILER,
             ReviewSheetTestTags.FROM_HIGHLIGHTS,

@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -93,15 +94,13 @@ class ReviewSheetStarsTest {
         setContentWith { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
 
-        var beforeUp = emptyList<Float?>()
-        stars.performTouchInput {
-            down(Offset(width * 0.15f, height / 2f))
-            moveTo(Offset(width * 0.35f, height / 2f))
-            moveTo(Offset(width * 0.55f, height / 2f))
-            moveTo(Offset(width * 0.75f, height / 2f))
-            beforeUp = changes.toList()
-            up()
-        }
+        // Each call dispatches its events before it returns, so the reads below see what the drag reported so far.
+        stars.performTouchInput { down(Offset(width * 0.15f, height / 2f)) }
+        stars.performTouchInput { moveTo(Offset(width * 0.35f, height / 2f)) }
+        stars.performTouchInput { moveTo(Offset(width * 0.55f, height / 2f)) }
+        stars.performTouchInput { moveTo(Offset(width * 0.75f, height / 2f)) }
+        val beforeUp = changes.toList()
+        stars.performTouchInput { up() }
 
         assertTrue("the drag reports while the finger is down", beforeUp.isNotEmpty())
         val steps = beforeUp.filterNotNull()
@@ -265,9 +264,11 @@ class ReviewSheetStarsTest {
 
         rating.value = 5f
         rule.waitForIdle()
+        rule.mainClock.advanceTimeByFrame()
         stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
 
         stars.performTouchInput { down(Offset(width * 0.5f, height / 2f)) }
+        rule.mainClock.advanceTimeByFrame()
         stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
         stars.assert(SemanticsMatcher.keyIsDefined(ReviewStarsBubbleKey))
         rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT)).assertTextEquals("2.5 Mixed feelings")
@@ -284,14 +285,10 @@ class ReviewSheetStarsTest {
         val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
 
         rating.value = 4.5f
-        rule.waitForIdle()
-        rule.mainClock.advanceTimeByFrame()
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion(lifted = false, pop = 4, ripple = false)))
+        assertTrue("star 5 pops", stepUntilMotion(stars) { it.pop == 4 && !it.ripple && !it.lifted })
 
         rating.value = 5f
-        rule.waitForIdle()
-        rule.mainClock.advanceTimeByFrame()
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion(lifted = false, pop = null, ripple = true)))
+        assertTrue("all five ripple", stepUntilMotion(stars) { it.ripple && it.pop == null && !it.lifted })
 
         // Holding the finger lifts the stars. The press moves the preview, so the pop may be running, and only the lift is asserted.
         stars.performTouchInput { down(Offset(width * 0.5f, height / 2f)) }
@@ -301,6 +298,19 @@ class ReviewSheetStarsTest {
         stars.performTouchInput { up() }
         rule.mainClock.advanceTimeBy(1000L)
         stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
+    }
+
+    /**
+     * Steps the clock a frame at a time, up to about half a second, until the row's motion satisfies [matches]. The
+     * motion is short and the clock is manual, so this catches it however the first frame lines up.
+     */
+    private fun stepUntilMotion(stars: SemanticsNodeInteraction, matches: (StarsMotion) -> Boolean): Boolean {
+        repeat(30) {
+            rule.mainClock.advanceTimeByFrame()
+            val motion = stars.fetchSemanticsNode().config.getOrNull(ReviewStarsMotionKey)
+            if (motion != null && matches(motion)) return true
+        }
+        return false
     }
 
     /** Matches a star row whose motion has its lift set to [expected]. */
