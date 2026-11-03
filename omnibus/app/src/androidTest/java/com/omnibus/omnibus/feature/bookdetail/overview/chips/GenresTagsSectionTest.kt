@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.chips
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -27,6 +28,8 @@ import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
 import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
+import com.omnibus.omnibus.feature.bookdetail.overview.chips.edit.LocalChipEditorSource
+import com.omnibus.omnibus.feature.bookdetail.overview.chips.edit.NoChipEditorSource
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -48,7 +51,9 @@ class GenresTagsSectionTest {
     private fun ComposeContentTestRule.setSection(book: Book, recorder: SectionContextRecorder = SectionContextRecorder()) {
         setContent {
             OmnibusTheme(darkTheme = true) {
-                GenresTagsSection.Content(testSectionContext(book = book, recorder = recorder), Modifier.fillMaxWidth())
+                CompositionLocalProvider(LocalChipEditorSource provides NoChipEditorSource) {
+                    GenresTagsSection.Content(testSectionContext(book = book, recorder = recorder), Modifier.fillMaxWidth())
+                }
             }
         }
         waitForIdle()

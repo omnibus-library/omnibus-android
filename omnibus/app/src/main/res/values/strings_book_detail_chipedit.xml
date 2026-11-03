@@ -1,0 +1,23 @@
+<resources>
+    <!-- The "+" chips at the end of the Genres and Tags rows, and the chip editor sheet they open (#101). -->
+    <string name="book_detail_chipedit_add_genres">Add genres</string>
+    <string name="book_detail_chipedit_add_tags">Add tags</string>
+    <string name="book_detail_chipedit_field_genres">Add a genre…</string>
+    <string name="book_detail_chipedit_field_tags">Add a tag…</string>
+    <!-- %1$s is "Genres" or "Tags", %2$s the book's title. -->
+    <string name="book_detail_chipedit_title">%1$s · %2$s</string>
+    <string name="book_detail_chipedit_hint">Tap a chip to remove it · changes save as you go</string>
+    <string name="book_detail_chipedit_empty">Nothing here yet.</string>
+    <!-- %1$s is the chip's value. -->
+    <string name="book_detail_chipedit_remove">Remove %1$s</string>
+    <string name="book_detail_chipedit_create_genre">Add “%1$s” as a new genre</string>
+    <string name="book_detail_chipedit_create_tag">Add “%1$s” as a new tag</string>
+    <plurals name="book_detail_chipedit_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="book_detail_chipedit_failed_genres">Couldn\'t save the genres. They\'re back as they were.</string>
+    <string name="book_detail_chipedit_failed_tags">Couldn\'t save the tags. They\'re back as they were.</string>
+    <string name="book_detail_chipedit_offline">You\'re offline. Changes need a connection.</string>
+    <string name="book_detail_chipedit_full">A book can have up to 64.</string>
+</resources>
