@@ -1,0 +1,55 @@
+<resources>
+    <string name="book_detail_review_sheet_title_write">Your review</string>
+    <string name="book_detail_review_sheet_title_edit">Edit review</string>
+    <string name="book_detail_review_sheet_cancel">Cancel</string>
+    <string name="book_detail_review_sheet_save">Save</string>
+    <string name="book_detail_review_sheet_stars_description">Your rating, in half stars</string>
+    <!-- %1$s is a rating, such as 4.5. %2$s is its word, such as Loved it. -->
+    <string name="book_detail_review_sheet_stars_state">%1$s of 5 stars, %2$s</string>
+    <string name="book_detail_review_sheet_stars_unrated">Not rated</string>
+    <string name="book_detail_review_sheet_readout_prompt">Tap or drag. Half stars count.</string>
+    <!-- %1$s is a rating, such as 4.5. %2$s is its word, such as Loved it. -->
+    <string name="book_detail_review_sheet_readout_compact">%1$s · %2$s</string>
+    <string name="book_detail_review_sheet_readout_compact_unrated">Not rated yet</string>
+    <string name="book_detail_review_sheet_word_not_for_me">Not for me</string>
+    <string name="book_detail_review_sheet_word_didnt_work">Didn\'t work for me</string>
+    <string name="book_detail_review_sheet_word_hard_going">Hard going</string>
+    <string name="book_detail_review_sheet_word_had_its_moments">Had its moments</string>
+    <string name="book_detail_review_sheet_word_mixed_feelings">Mixed feelings</string>
+    <string name="book_detail_review_sheet_word_liked_it">Liked it</string>
+    <string name="book_detail_review_sheet_word_liked_it_a_lot">Liked it a lot</string>
+    <string name="book_detail_review_sheet_word_really_good">Really good</string>
+    <string name="book_detail_review_sheet_word_loved_it">Loved it</string>
+    <string name="book_detail_review_sheet_word_a_favorite">A favorite</string>
+    <string name="book_detail_review_sheet_review_label">Review</string>
+    <string name="book_detail_review_sheet_review_audience">Your household can read this</string>
+    <string name="book_detail_review_sheet_review_placeholder">What did you make of it?</string>
+    <string name="book_detail_review_sheet_from_highlights">From highlights</string>
+    <string name="book_detail_review_sheet_accessory_highlights">Highlights</string>
+    <string name="book_detail_review_sheet_accessory_done">Done</string>
+    <string name="book_detail_review_sheet_spoiler">This review gives away the story.</string>
+    <string name="book_detail_review_sheet_notes_label">Private notes</string>
+    <string name="book_detail_review_sheet_notes_hint">Only you can see these</string>
+    <string name="book_detail_review_sheet_notes_placeholder">Notes to yourself</string>
+    <string name="book_detail_review_sheet_conflict_rating">Your rating changed elsewhere while this was open. Save keeps yours.</string>
+    <string name="book_detail_review_sheet_conflict_text">Your review text changed elsewhere while this was open. Save keeps yours.</string>
+    <string name="book_detail_review_sheet_conflict_notes">Your private notes changed elsewhere while this was open. Save keeps yours.</string>
+    <string name="book_detail_review_sheet_conflict_spoiler">Your spoiler setting changed elsewhere while this was open. Save keeps yours.</string>
+    <string name="book_detail_review_sheet_conflict_several">Parts of your review changed elsewhere while this was open. Save keeps yours.</string>
+    <string name="book_detail_review_sheet_save_failed">Your review wasn\'t saved.</string>
+    <string name="book_detail_review_sheet_save_failed_offline">No connection. Your review wasn\'t saved.</string>
+    <string name="book_detail_review_sheet_discard_title">Discard your review?</string>
+    <string name="book_detail_review_sheet_discard_message">Your stars and what you wrote here won\'t be saved.</string>
+    <string name="book_detail_review_sheet_discard_confirm">Discard</string>
+    <string name="book_detail_review_sheet_discard_keep">Keep editing</string>
+    <string name="book_detail_review_sheet_picker_title">From your highlights</string>
+    <string name="book_detail_review_sheet_picker_subtitle">Tap one to quote it in your review.</string>
+    <string name="book_detail_review_sheet_picker_close">Close</string>
+    <string name="book_detail_review_sheet_picker_pick">Quote in your review</string>
+    <string name="book_detail_review_sheet_picker_loading">Loading your highlights…</string>
+    <string name="book_detail_review_sheet_picker_failed_title">Couldn\'t load your highlights</string>
+    <string name="book_detail_review_sheet_picker_failed_message">Check your connection and try again.</string>
+    <string name="book_detail_review_sheet_picker_retry">Retry</string>
+    <string name="book_detail_review_sheet_picker_empty_title">No highlights yet</string>
+    <string name="book_detail_review_sheet_picker_empty_message">Highlight a passage while you read and it will show up here.</string>
+</resources>

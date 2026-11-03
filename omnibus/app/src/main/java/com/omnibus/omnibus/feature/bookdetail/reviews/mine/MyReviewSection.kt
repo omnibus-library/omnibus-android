@@ -8,12 +8,12 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
+import com.omnibus.omnibus.feature.bookdetail.reviews.sheet.rememberReviewSheetLauncher
 import com.omnibus.omnibus.feature.bookdetail.reviews.showsReviews
 
 /**
  * The reader's own review, at the top of the Reviews tab. It renders nothing for a book with nothing to read, before it
- * creates its ViewModel, so such a book needs no Hilt. Its [MyReviewCard] gets no `onCompose` yet: the review sheet
- * launcher replaces that `null`.
+ * creates its ViewModel, so such a book needs no Hilt. Its pencil and the prompt open the review sheet (#109).
  */
 internal object MyReviewSection : BookDetailSection {
 
@@ -32,7 +32,7 @@ internal object MyReviewSection : BookDetailSection {
             tint = context.accent.tint,
             onRate = viewModel::rate,
             onDelete = viewModel::delete,
-            onCompose = null,
+            onCompose = rememberReviewSheetLauncher(context.book.uuid),
             modifier = modifier,
         )
     }

@@ -1,0 +1,30 @@
+package com.omnibus.omnibus.feature.bookdetail.reviews.sheet
+
+/** Test tags of the review sheet, its picker and its discard dialog. */
+internal object ReviewSheetTestTags {
+    const val SHEET = "review_sheet"
+    const val TITLE = "review_sheet_title"
+    const val CANCEL = "review_sheet_cancel"
+    const val SAVE = "review_sheet_save"
+    const val BODY = "review_sheet_body"
+    const val COVER = "review_sheet_cover"
+    const val BOOK_TITLE = "review_sheet_book_title"
+    const val STARS = "review_sheet_stars"
+    const val COMPACT_STARS = "review_sheet_compact_stars"
+    const val READOUT = "review_sheet_readout"
+    const val COMPACT_READOUT = "review_sheet_compact_readout"
+    const val FIELD = "review_sheet_field"
+    const val FROM_HIGHLIGHTS = "review_sheet_from_highlights"
+    const val SPOILER = "review_sheet_spoiler"
+    const val NOTES_ROW = "review_sheet_notes_row"
+    const val NOTES_FIELD = "review_sheet_notes_field"
+    const val CONFLICT = "review_sheet_conflict"
+    const val FAILURE = "review_sheet_failure"
+    const val ACCESSORY_HIGHLIGHTS = "review_sheet_accessory_highlights"
+    const val DONE = "review_sheet_done"
+    const val DISCARD = "review_sheet_discard"
+    const val KEEP_EDITING = "review_sheet_keep_editing"
+    const val PICKER = "review_sheet_picker"
+    const val PICKER_TITLE = "review_sheet_picker_title"
+    const val PICKER_CLOSE = "review_sheet_picker_close"
+}
