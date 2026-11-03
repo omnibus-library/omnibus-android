@@ -9,5 +9,5 @@ internal val filesSections: List<BookDetailSection> = listOfNotNull(
     // #115 Link Ebook and Audiobook Positions
     null,
     // #114 Book Details
-    null,
+    com.omnibus.omnibus.feature.bookdetail.files.details.BookDetailsSection,
 )
