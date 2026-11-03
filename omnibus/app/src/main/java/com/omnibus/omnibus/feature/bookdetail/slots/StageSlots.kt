@@ -25,11 +25,11 @@ internal val stageProgress: List<BookDetailSection> = listOfNotNull(
     // #96 See Reading Progress
     com.omnibus.omnibus.feature.bookdetail.progress.ReadingProgressSection,
     // #97 Finish Card and Celebration
-    null,
+    com.omnibus.omnibus.feature.bookdetail.finish.FinishCardSection,
 )
 
 /** Over the cover, not tilted with it. */
 internal val stageCoverOverlay: List<BookDetailSection> = listOfNotNull(
     // #97 Finish Card and Celebration
-    null,
+    com.omnibus.omnibus.feature.bookdetail.finish.FinishCelebrationSection,
 )
