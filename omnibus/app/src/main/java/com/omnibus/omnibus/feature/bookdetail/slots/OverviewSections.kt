@@ -11,7 +11,7 @@ internal val overviewSections: List<BookDetailSection> = listOfNotNull(
     // #102 Your Reading Card
     null,
     // #103 Household Activity
-    null,
+    com.omnibus.omnibus.feature.bookdetail.overview.activity.HouseholdActivitySection,
     // #104 Series Fan
     null,
     // #105 More by This Author
