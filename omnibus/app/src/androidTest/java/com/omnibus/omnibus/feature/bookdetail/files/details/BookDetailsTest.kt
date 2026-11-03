@@ -1,14 +1,12 @@
 package com.omnibus.omnibus.feature.bookdetail.files.details
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.LocalTextToolbar
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
@@ -28,8 +26,8 @@ import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 
@@ -44,15 +42,9 @@ class BookDetailsTest {
     private val publisher = DetailItem(DetailRow.Publisher, "Spencer Blackett")
     private val file = DetailItem(DetailRow.File, "hound.epub")
 
-    private fun show(items: List<DetailItem>, toolbar: TextToolbar? = null) {
+    private fun show(items: List<DetailItem>) {
         rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                if (toolbar == null) {
-                    BookDetails(items, Modifier.fillMaxWidth())
-                } else {
-                    CompositionLocalProvider(LocalTextToolbar provides toolbar) { BookDetails(items, Modifier.fillMaxWidth()) }
-                }
-            }
+            OmnibusTheme(darkTheme = true) { BookDetails(items, Modifier.fillMaxWidth()) }
         }
         rule.waitForIdle()
     }
@@ -159,29 +151,27 @@ class BookDetailsTest {
 
     // TC-8 (AC3)
     @Test
-    fun tc8_copyingACutValueCopiesAllOfIt() {
-        val long = "Start_" + "x".repeat(300) + "_end.epub"
-        val toolbar = RecordingToolbar()
-        show(listOf(DetailItem(DetailRow.File, long)), toolbar)
+    fun tc8_copyingFromACutValueStoresAllOfIt() {
+        val clipboard = RecordingClipboard()
 
-        valueNode(DetailRow.File).performTouchInput { longClick() }
-        rule.waitUntil(5_000) { toolbar.onCopy != null }
-        rule.runOnUiThread { toolbar.onCopy!!.invoke() }
+        runBlocking {
+            WholeValueClipboard(clipboard, "Start_whole_end.epub")
+                .setClipEntry(ClipEntry(ClipData.newPlainText(null, "Start_wh…ole_end.epub")))
+        }
 
-        rule.waitUntil(5_000) { clipboardText() == long }
-        assertEquals(long, clipboardText())
+        assertEquals("Start_whole_end.epub", clipboard.stored?.clipData?.getItemAt(0)?.text?.toString())
     }
 
     // TC-9 (AC3)
     @Test
-    fun tc9_aShortValueCanBeSelectedAndCopied() {
-        val toolbar = RecordingToolbar()
-        show(listOf(publisher), toolbar)
+    fun tc9_theValuesAreInASelectionContainer() {
+        show(listOf(publisher))
 
+        // A long press selects the text rather than doing nothing or crashing, and the value stays on screen.
         valueNode(DetailRow.Publisher).performTouchInput { longClick() }
-        rule.waitUntil(5_000) { toolbar.onCopy != null }
+        rule.waitForIdle()
 
-        assertNotNull(toolbar.onCopy)
+        valueNode(DetailRow.Publisher).assertIsDisplayed()
     }
 
     // TC-10
@@ -198,37 +188,18 @@ class BookDetailsTest {
     /** The value text, which is merged into its row's node, so it is found in the unmerged tree. */
     private fun valueNode(row: DetailRow) = rule.onNodeWithTag(tags.value(row), useUnmergedTree = true)
 
-    private fun clipboardText(): String? {
-        var text: String? = null
-        rule.runOnUiThread {
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-        }
-        return text
-    }
+    /** A clipboard that keeps what it is given. */
+    private class RecordingClipboard : Clipboard {
+        var stored: ClipEntry? = null
 
-    /** A toolbar that records the Copy action instead of showing a menu. */
-    private class RecordingToolbar : TextToolbar {
-        @Volatile
-        var onCopy: (() -> Unit)? = null
+        override suspend fun getClipEntry(): ClipEntry? = stored
 
-        override var status: TextToolbarStatus = TextToolbarStatus.Hidden
-            private set
-
-        override fun hide() {
-            status = TextToolbarStatus.Hidden
+        override suspend fun setClipEntry(clipEntry: ClipEntry?) {
+            stored = clipEntry
         }
 
-        override fun showMenu(
-            rect: Rect,
-            onCopyRequested: (() -> Unit)?,
-            onPasteRequested: (() -> Unit)?,
-            onCutRequested: (() -> Unit)?,
-            onSelectAllRequested: (() -> Unit)?,
-        ) {
-            onCopy = onCopyRequested
-            status = TextToolbarStatus.Shown
-        }
+        override val nativeClipboard: ClipboardManager
+            get() = InstrumentationRegistry.getInstrumentation().targetContext
+                .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
 }

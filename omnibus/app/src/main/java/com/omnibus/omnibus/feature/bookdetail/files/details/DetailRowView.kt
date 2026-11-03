@@ -12,18 +12,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalTextToolbar
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -38,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
-import kotlinx.coroutines.launch
 
 private const val VALUE_MAX_LINES = 2
 private val LabelValueGap = 16.dp
@@ -115,7 +110,8 @@ private fun DetailRow.labelRes(): Int = when (this) {
 
 /**
  * A [SelectionContainer] whose Copy puts [whole] on the clipboard, for a value shown cut in the middle ([enabled]),
- * so a copied value is never the cut text with its ellipsis.
+ * so a copied value is never the cut text with its ellipsis. The container copies through [LocalClipboard], so that
+ * is what is wrapped; the menu that asks for the copy does not matter.
  */
 @Composable
 private fun CopiesWholeValue(
@@ -124,44 +120,19 @@ private fun CopiesWholeValue(
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
-    val delegate = LocalTextToolbar.current
     val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    val toolbar = remember(delegate, clipboard, whole) {
-        WholeValueToolbar(delegate) {
-            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, whole))) }
-        }
-    }
-    CompositionLocalProvider(LocalTextToolbar provides if (enabled) toolbar else delegate) {
+    val wrapped = remember(clipboard, whole, enabled) { if (enabled) WholeValueClipboard(clipboard, whole) else clipboard }
+    CompositionLocalProvider(LocalClipboard provides wrapped) {
         SelectionContainer(modifier, content = content)
     }
 }
 
-/** A [TextToolbar] that shows the [delegate]'s menu, and after its Copy runs [copyWhole], which overwrites the clipboard. */
-private class WholeValueToolbar(
-    private val delegate: TextToolbar,
-    private val copyWhole: () -> Unit,
-) : TextToolbar {
-    override val status: TextToolbarStatus get() = delegate.status
-
-    override fun hide() = delegate.hide()
-
-    override fun showMenu(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?,
-    ) = delegate.showMenu(
-        rect,
-        onCopyRequested = onCopyRequested?.let { copy ->
-            {
-                copy()
-                copyWhole()
-            }
-        },
-        onPasteRequested = onPasteRequested,
-        onCutRequested = onCutRequested,
-        onSelectAllRequested = onSelectAllRequested,
-    )
+/** A [Clipboard] that stores [whole] whatever it is asked to store, and otherwise behaves as [delegate]. */
+internal class WholeValueClipboard(
+    private val delegate: Clipboard,
+    private val whole: String,
+) : Clipboard by delegate {
+    override suspend fun setClipEntry(clipEntry: ClipEntry?) {
+        delegate.setClipEntry(clipEntry?.let { ClipEntry(ClipData.newPlainText(null, whole)) })
+    }
 }
