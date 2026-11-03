@@ -28,7 +28,7 @@ jobs:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
-          token: ${{ secrets.ADD_TO_PROJECT_PAT }}
+          token: ${{ secrets.ANDROID_RELEASE_PLEASE }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
