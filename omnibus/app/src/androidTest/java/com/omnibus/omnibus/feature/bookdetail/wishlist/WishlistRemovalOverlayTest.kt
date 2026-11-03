@@ -244,10 +244,13 @@ class WishlistRemovalOverlayTest {
 
         // A recomposition with the same outcome repeats nothing.
         rule.runOnIdle { ui.value = ui.value.copy(removing = true) }
+        rule.waitForIdle()
         rule.runOnIdle { ui.value = ui.value.copy(removing = false) }
+        rule.waitForIdle()
         assertEquals(1, recorder.messages.size)
 
         rule.runOnIdle { ui.value = ui.value.copy(outcome = RemovalOutcome.Failed(eventId = 2)) }
+        rule.waitForIdle()
         assertEquals(listOf(BookDetailMessage(failedText), BookDetailMessage(failedText)), recorder.messages)
         assertEquals(listOf(1L, 2L), reports.outcomesShown)
         assertEquals(0, recorder.closeCount)
