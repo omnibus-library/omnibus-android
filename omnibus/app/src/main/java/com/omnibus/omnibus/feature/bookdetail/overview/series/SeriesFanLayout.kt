@@ -10,6 +10,8 @@ internal object SeriesFanLayout {
     const val CARD_WIDTH_DP = 104f
     const val COVER_HEIGHT_DP = 152f
     const val SPREAD_STEP_DP = 120f
+    /** The widest gathered step, the design's (358 - 104) / 4 for its five-book fan, so neighbours always overlap. */
+    const val GATHERED_MAX_STEP_DP = 63.5f
     const val GATHERED_HEIGHT_DP = 176f
     const val SPREAD_HEIGHT_DP = 236f
     const val RAISE_DP = 10f
@@ -34,8 +36,9 @@ internal val FanEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 internal data class FanPose(val xDp: Float, val yDp: Float, val rotationDeg: Float, val z: Int)
 
 /**
- * The pose of card [index] of [count]. Gathered, the cards share [widthDp] and fan out by up to
- * 20 degrees in total. Spread, they sit 120 dp apart with no turn (iOS `SeriesFanLayout.pose`).
+ * The pose of card [index] of [count]. Gathered, the cards share [widthDp], at most
+ * [SeriesFanLayout.GATHERED_MAX_STEP_DP] apart from the row's start, and fan out by up to 20 degrees in total.
+ * Spread, they sit 120 dp apart with no turn (iOS `SeriesFanLayout.pose`).
  *
  * @param current The index of this book, or null when it is not in the series; no card is raised then,
  * and z is computed as if this book were 0.
@@ -43,7 +46,11 @@ internal data class FanPose(val xDp: Float, val yDp: Float, val rotationDeg: Flo
 internal fun fanPose(index: Int, count: Int, current: Int?, widthDp: Float, spread: Boolean): FanPose {
     val z = count - abs(index - (current ?: 0))
     if (spread) return FanPose(index * SeriesFanLayout.SPREAD_STEP_DP, 0f, 0f, z)
-    val step = if (count > 1) ((widthDp - SeriesFanLayout.CARD_WIDTH_DP) / (count - 1)).coerceAtLeast(0f) else 0f
+    val step = if (count > 1) {
+        min(SeriesFanLayout.GATHERED_MAX_STEP_DP, (widthDp - SeriesFanLayout.CARD_WIDTH_DP) / (count - 1)).coerceAtLeast(0f)
+    } else {
+        0f
+    }
     val turn = min(SeriesFanLayout.MAX_TURN_DEG, SeriesFanLayout.TOTAL_TURN_DEG / max(1, count - 1))
     return FanPose(
         xDp = index * step,
