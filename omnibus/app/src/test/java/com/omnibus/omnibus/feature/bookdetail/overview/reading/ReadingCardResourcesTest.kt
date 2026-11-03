@@ -52,5 +52,11 @@ class ReadingCardResourcesTest : DescribeSpec({
             val pace = text.lines().single { it.contains("name=\"book_detail_reading_pace_value\"") }
             pace.contains("%1\$d%%") shouldBe true
         }
+
+        it("TC-41: the section is the #102 line of the Overview slot") {
+            val slots = File(System.getProperty("user.dir"), "src/main/java/com/omnibus/omnibus/feature/bookdetail/slots/OverviewSections.kt").readLines()
+            val label = slots.indexOfFirst { it.contains("// #102") }
+            slots[label + 1].trim() shouldBe "com.omnibus.omnibus.feature.bookdetail.overview.reading.ReadingCardSection,"
+        }
     }
 })
