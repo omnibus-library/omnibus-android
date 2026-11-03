@@ -7,5 +7,5 @@ internal val highlightsSections: List<BookDetailSection> = listOfNotNull(
     // #110 Highlights List
     com.omnibus.omnibus.feature.bookdetail.highlights.HighlightsSection,
     // #112 Journal List
-    null,
+    com.omnibus.omnibus.feature.bookdetail.journal.JournalSection,
 )
