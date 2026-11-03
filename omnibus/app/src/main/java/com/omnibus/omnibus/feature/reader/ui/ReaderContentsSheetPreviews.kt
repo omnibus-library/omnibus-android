@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
@@ -62,9 +63,26 @@ internal val ReaderContentsPreviewBareLocation = RelocateData(
     totalChapters = 12,
 )
 
+/**
+ * Bookmarks for the Bookmarks previews: a titled row with a percent, a chapter-titled row, a row with neither (so it reads
+ * "Saved position" with no percent), and a row whose blank title falls back to its chapter.
+ */
+internal val ReaderContentsPreviewBookmarks = listOf(
+    Bookmark(1L, "preview-1", "preview", "epubcfi(/6/8!/4/2/1:0)", "The ferry at dawn", "Departure", 0.43f, null),
+    Bookmark(2L, "preview-2", "preview", "epubcfi(/6/14!/4/2/1:0)", null, "Crossing at Dusk", 0.21f, null),
+    Bookmark(3L, "preview-3", "preview", "epubcfi(/6/18!/4/2/1:0)", null, null, null, null),
+    Bookmark(4L, "preview-4", "preview", "epubcfi(/6/22!/4/2/1:0)", "A letter", null, 0.61f, null),
+    Bookmark(5L, "preview-5", "preview", "epubcfi(/6/28!/4/2/1:0)", "  ", "The Customs House", 0.28f, null),
+)
+
 /** The sheet's content over a plain window, in the app theme that follows the preview's uiMode. */
 @Composable
-private fun ContentsPreview(toc: List<TocEntry>, location: RelocateData?) {
+private fun ContentsPreview(
+    toc: List<TocEntry>,
+    location: RelocateData?,
+    tab: ReaderContentsTab = ReaderContentsTab.Contents,
+    bookmarks: List<Bookmark> = emptyList(),
+) {
     OmnibusTheme {
         ReaderContentsSheetContent(
             title = "The Long Road Home",
@@ -74,6 +92,8 @@ private fun ContentsPreview(toc: List<TocEntry>, location: RelocateData?) {
             onEntryChosen = {},
             onDismiss = {},
             modifier = Modifier.fillMaxSize(),
+            initialTab = tab,
+            bookmarks = bookmarks,
         )
     }
 }
@@ -97,3 +117,37 @@ private fun NestedWithoutPagesDarkPreview() = ContentsPreview(ReaderContentsPrev
 @Preview(name = "Empty", widthDp = 360, heightDp = 760)
 @Composable
 private fun EmptyContentsPreview() = ContentsPreview(emptyList(), ReaderContentsPreviewLocation)
+
+@Preview(name = "Bookmarks", widthDp = 360, heightDp = 760)
+@Composable
+private fun BookmarksPreview() = ContentsPreview(
+    ReaderContentsPreviewToc,
+    ReaderContentsPreviewLocation,
+    tab = ReaderContentsTab.Bookmarks,
+    bookmarks = ReaderContentsPreviewBookmarks,
+)
+
+@Preview(name = "Bookmarks dark", widthDp = 360, heightDp = 760, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun BookmarksDarkPreview() = ContentsPreview(
+    ReaderContentsPreviewToc,
+    ReaderContentsPreviewLocation,
+    tab = ReaderContentsTab.Bookmarks,
+    bookmarks = ReaderContentsPreviewBookmarks,
+)
+
+@Preview(name = "Bookmarks empty", widthDp = 360, heightDp = 760)
+@Composable
+private fun EmptyBookmarksPreview() = ContentsPreview(
+    ReaderContentsPreviewToc,
+    ReaderContentsPreviewLocation,
+    tab = ReaderContentsTab.Bookmarks,
+)
+
+@Preview(name = "Bookmarks empty dark", widthDp = 360, heightDp = 760, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun EmptyBookmarksDarkPreview() = ContentsPreview(
+    ReaderContentsPreviewToc,
+    ReaderContentsPreviewLocation,
+    tab = ReaderContentsTab.Bookmarks,
+)

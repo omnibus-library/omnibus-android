@@ -15,13 +15,15 @@ class ReaderChromePreviewsTest : DescribeSpec({
             val previewLines = source.lines().filter { it.contains("@Preview(name = ") }
             val names = previewLines.map { Regex("""@Preview\(name = "([^"]+)"""").find(it)!!.groupValues[1] }
 
-            (previewLines.size >= 13) shouldBe true
+            (previewLines.size >= 15) shouldBe true
             previewLines.count { it.contains("UI_MODE_NIGHT_YES") } shouldBe 1
             for (theme in listOf("Light", "Sepia", "Dark", "Black")) {
                 names.contains("$theme hidden") shouldBe true
                 names.contains("$theme visible") shouldBe true
             }
-            names.count { it.contains("Menu open") } shouldBe 2
+            names.count { it.contains("Menu open") } shouldBe 4
+            names.contains("Menu open bookmarked Light") shouldBe true
+            names.contains("Menu open bookmarked Dark") shouldBe true
             names.count { it.contains("Fallback") } shouldBe 2
         }
     }

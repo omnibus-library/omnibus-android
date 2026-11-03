@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
@@ -16,7 +17,10 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.emptyFlow
 
+private const val PreviewCfi = "epubcfi(/6/8!/4/2/1:0)"
+
 private val PreviewLocation = RelocateData(
+    cfi = PreviewCfi,
     page = 361,
     totalPages = 661,
     pct = 54,
@@ -24,6 +28,16 @@ private val PreviewLocation = RelocateData(
     totalChapters = 12,
     chapterPagesLeft = 7,
 )
+
+/** Three bookmarks in the preview book. The first is at the preview page, so its page reads as bookmarked. */
+internal val ReaderChromePreviewBookmarks = listOf(
+    Bookmark(1L, "preview-1", "preview", PreviewCfi, "The ferry", "Part Two", 0.42f, null),
+    Bookmark(2L, "preview-2", "preview", "epubcfi(/6/12!/4/2/1:0)", null, "Part Three", 0.61f, null),
+    Bookmark(3L, "preview-3", "preview", "epubcfi(/6/20!/4/2/1:0)", null, null, null, null),
+)
+
+/** The Bookmarks row sits between Contents and Settings. */
+private val AllMenuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
 /** Before epub.js has its locations: no page numbers, so the bottom label falls back to the chapter and percent. */
 private val FallbackLocation = RelocateData(
@@ -46,6 +60,7 @@ internal fun ReaderChromePreview(
     menuOpen: Boolean = false,
     menuRows: List<ReaderMenuRow> = emptyList(),
     location: RelocateData = PreviewLocation,
+    bookmarks: List<Bookmark> = emptyList(),
     appDark: Boolean = false,
 ) {
     OmnibusTheme(darkTheme = appDark) {
@@ -58,6 +73,7 @@ internal fun ReaderChromePreview(
                 menuOpen = menuOpen,
                 menuRows = menuRows,
                 settings = ReaderSettings(theme = theme),
+                bookmarks = bookmarks,
             ),
             bookUuid = "preview",
             controller = rememberReaderController(),
@@ -121,7 +137,7 @@ private fun MenuOpenLightPreview() = ReaderChromePreview(
     ReaderTheme.Light,
     chromeVisible = true,
     menuOpen = true,
-    menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+    menuRows = AllMenuRows,
 )
 
 @Preview(name = "Menu open Dark", widthDp = 393, heightDp = 852)
@@ -130,7 +146,27 @@ private fun MenuOpenDarkPreview() = ReaderChromePreview(
     ReaderTheme.Dark,
     chromeVisible = true,
     menuOpen = true,
-    menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+    menuRows = AllMenuRows,
+)
+
+@Preview(name = "Menu open bookmarked Light", widthDp = 393, heightDp = 852)
+@Composable
+private fun MenuOpenBookmarkedLightPreview() = ReaderChromePreview(
+    ReaderTheme.Light,
+    chromeVisible = true,
+    menuOpen = true,
+    menuRows = AllMenuRows,
+    bookmarks = ReaderChromePreviewBookmarks,
+)
+
+@Preview(name = "Menu open bookmarked Dark", widthDp = 393, heightDp = 852)
+@Composable
+private fun MenuOpenBookmarkedDarkPreview() = ReaderChromePreview(
+    ReaderTheme.Dark,
+    chromeVisible = true,
+    menuOpen = true,
+    menuRows = AllMenuRows,
+    bookmarks = ReaderChromePreviewBookmarks,
 )
 
 @Preview(name = "Light page, app dark", widthDp = 393, heightDp = 852, uiMode = Configuration.UI_MODE_NIGHT_YES)
@@ -138,7 +174,7 @@ private fun MenuOpenDarkPreview() = ReaderChromePreview(
 private fun LightPageAppDarkPreview() = ReaderChromePreview(
     ReaderTheme.Light,
     chromeVisible = true,
-    menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+    menuRows = AllMenuRows,
     appDark = true,
 )
 

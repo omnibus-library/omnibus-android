@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 
@@ -47,6 +48,23 @@ class ReaderContentsModelTest : DescribeSpec({
             ContentsPosition.from(RelocateData(page = 0, totalPages = 0, pct = 0)) shouldBe
                 ContentsPosition.Percent(0)
             ContentsPosition.from(null) shouldBe null
+        }
+
+        // TC-53: a row labels itself from its title, then its chapter title, and shows a whole percent when placed.
+        it("TC-53: a bookmark row labels itself from title, chapter title, or nothing") {
+            fun bookmark(title: String?, chapter: String?, fraction: Float?) =
+                Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", title, chapter, fraction, null)
+
+            bookmarkLabel(bookmark("Mine", "One", 0.5f)) shouldBe "Mine"
+            bookmarkLabel(bookmark(null, "One", 0.5f)) shouldBe "One"
+            bookmarkLabel(bookmark(null, null, null)) shouldBe null
+            bookmarkLabel(bookmark("  ", "", null)) shouldBe null
+            bookmarkLabel(bookmark("  ", "Two", null)) shouldBe "Two"
+
+            bookmarkPercent(bookmark(null, null, 0.426f)) shouldBe 43
+            bookmarkPercent(bookmark(null, null, 0f)) shouldBe 0
+            bookmarkPercent(bookmark(null, null, 1f)) shouldBe 100
+            bookmarkPercent(bookmark(null, null, null)) shouldBe null
         }
     }
 })
