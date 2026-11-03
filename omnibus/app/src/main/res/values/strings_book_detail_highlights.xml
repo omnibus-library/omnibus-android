@@ -1,0 +1,20 @@
+<resources>
+    <!-- Heading of the Highlights tab's list. -->
+    <string name="book_detail_highlights_heading">Highlights</string>
+    <!-- Shown under the heading when the book has no highlights. -->
+    <string name="book_detail_highlights_empty">Highlight while you read to keep passages here.</string>
+    <!-- Shown in place of a highlight's passage when it has no text, such as one made on a Kobo. -->
+    <string name="book_detail_highlights_no_text">A passage kept on another device, with no text to show here.</string>
+    <!-- First part of a highlight's footer. %1$d is the chapter number. -->
+    <string name="book_detail_highlights_chapter">Chapter %1$d</string>
+    <!-- Shown when the highlights could not be read. -->
+    <string name="book_detail_highlights_failed">Highlights couldn\'t be loaded.</string>
+    <!-- Button that reads the highlights again. -->
+    <string name="book_detail_highlights_retry">Try again</string>
+    <!-- Spoken description of a highlight's colour ribbon. -->
+    <string name="book_detail_highlights_color_amber">Amber highlight</string>
+    <string name="book_detail_highlights_color_green">Green highlight</string>
+    <string name="book_detail_highlights_color_blue">Blue highlight</string>
+    <string name="book_detail_highlights_color_rose">Rose highlight</string>
+    <string name="book_detail_highlights_color_violet">Violet highlight</string>
+</resources>
