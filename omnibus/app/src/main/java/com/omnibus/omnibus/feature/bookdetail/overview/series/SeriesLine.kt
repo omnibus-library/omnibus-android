@@ -1,9 +1,13 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.series
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.data.series.seriesNumber
+import com.omnibus.omnibus.feature.bookdetail.BookDetailAnchor
+import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 
 /**
  * The stage series line as a link: the series' book count and what a tap does.
@@ -47,3 +51,19 @@ internal fun seriesLineWording(index: String?, total: Int?): SeriesLineWording {
  */
 internal fun seriesLineState(book: Book, members: List<SeriesMember>?, onClick: () -> Unit): SeriesLineState? =
     if (members == null || seriesFanModel(book, members) == null) null else SeriesLineState(members.size, onClick)
+
+/**
+ * The stage line's link state, or null (a plain line) unless the Series section would show. A book without a series
+ * id, or with a blank series name, never reaches [LocalSeriesSource], so it never reaches Hilt.
+ */
+@Composable
+internal fun rememberSeriesLine(context: BookDetailSectionContext): SeriesLineState? {
+    val book = context.book
+    val seriesId = book.seriesId ?: return null
+    if (book.series.isNullOrBlank()) return null
+    val members = LocalSeriesSource.current.members(context, seriesId)
+    val tabs = context.tabs
+    return remember(book, members, tabs) {
+        seriesLineState(book, members) { tabs.scrollTo(BookDetailAnchor.Series) }
+    }
+}

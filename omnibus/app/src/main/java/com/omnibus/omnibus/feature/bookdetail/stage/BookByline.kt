@@ -25,11 +25,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.bookdetail.overview.series.SeriesLineState
+import com.omnibus.omnibus.feature.bookdetail.overview.series.SeriesLineWording
+import com.omnibus.omnibus.feature.bookdetail.overview.series.seriesLineWording
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
@@ -69,9 +73,15 @@ internal fun yearFitsBeside(authorWidthPx: Int, yearWidthPx: Int, gapPx: Int, ma
  * The author, the year (beside it when both fit, else under it) or the series line, centred under the title.
  *
  * @param onNavigate Receives the author destination when the author is linked.
+ * @param seriesLine The link state of the series line, or null for a plain line.
  */
 @Composable
-internal fun BookByline(model: BylineModel, onNavigate: (BookDetailDestination) -> Unit, modifier: Modifier = Modifier) {
+internal fun BookByline(
+    model: BylineModel,
+    onNavigate: (BookDetailDestination) -> Unit,
+    modifier: Modifier = Modifier,
+    seriesLine: SeriesLineState? = null,
+) {
     val style = uiTextStyle(16, FontWeight.Medium, OmnibusTheme.palette.ink1).copy(textAlign = TextAlign.Center)
     val series = model.series
     val year = model.year
@@ -79,7 +89,7 @@ internal fun BookByline(model: BylineModel, onNavigate: (BookDetailDestination) 
         when {
             series != null -> {
                 AuthorText(model.author, model.authorLink, style, onNavigate)
-                SeriesText(series, style)
+                SeriesText(series, style, seriesLine)
             }
             year != null -> AuthorWithYear(model.author, model.authorLink, year, style, onNavigate)
             else -> AuthorText(model.author, model.authorLink, style, onNavigate)
@@ -154,22 +164,31 @@ private fun AuthorWithYear(
     }
 }
 
-/** The series line in place of the year. Plain text: #104 makes it a link. */
+/** The series line in place of the year. With [seriesLine] it reads "book N of M" and is a link to the Series section. */
 @Composable
-private fun SeriesText(series: SeriesLine, style: TextStyle) {
-    val line = if (series.index != null) {
-        stringResource(R.string.book_detail_series_line, series.name, series.index)
-    } else {
-        series.name
+private fun SeriesText(series: SeriesLine, style: TextStyle, seriesLine: SeriesLineState?) {
+    val line = when (val wording = seriesLineWording(series.index, seriesLine?.total)) {
+        SeriesLineWording.NameOnly -> series.name
+        is SeriesLineWording.WithIndex -> stringResource(R.string.book_detail_series_line, series.name, wording.index)
+        is SeriesLineWording.WithTotal ->
+            stringResource(R.string.book_detail_series_line_of_total, series.name, wording.index, wording.total)
     }
     val description = stringResource(R.string.book_detail_series_description, line)
+    val clickLabel = stringResource(R.string.book_detail_series_line_click_label)
     Text(
         text = line,
-        style = style,
+        style = if (seriesLine != null) style.copy(textDecoration = TextDecoration.Underline) else style,
         maxLines = 2,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .heightIn(min = 48.dp)
+            .then(
+                if (seriesLine != null) {
+                    Modifier.clickable(onClickLabel = clickLabel, role = Role.Button) { seriesLine.onClick() }
+                } else {
+                    Modifier
+                },
+            )
             .testTag(BookDetailTestTags.SERIES)
             .semantics { contentDescription = description },
     )
