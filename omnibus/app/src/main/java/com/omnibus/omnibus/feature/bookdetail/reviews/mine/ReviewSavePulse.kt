@@ -42,6 +42,7 @@ class ReviewSavePulse @Inject constructor() {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface ReviewSavePulseEntryPoint {
+    /** The app's [ReviewSavePulse] singleton. */
     fun reviewSavePulse(): ReviewSavePulse
 }
 

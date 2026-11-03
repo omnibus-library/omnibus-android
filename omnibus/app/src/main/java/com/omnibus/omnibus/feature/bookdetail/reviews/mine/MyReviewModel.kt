@@ -44,10 +44,19 @@ internal val MyReviewModel.showsPrompt: Boolean
 
 /** The note under the stars. [Rated] carries the rating to show. */
 internal sealed interface MyReviewNote {
+    /** The reader has not rated the book. */
     data object NotRated : MyReviewNote
+
+    /** The reader's rating, which the note reads out. */
     data class Rated(val value: Float) : MyReviewNote
+
+    /** The review is loading. */
     data object Loading : MyReviewNote
+
+    /** The device has no connection, so the review cannot load. */
     data object Offline : MyReviewNote
+
+    /** The review could not load for another reason. */
     data object Failed : MyReviewNote
 }
 
