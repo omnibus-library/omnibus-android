@@ -1,0 +1,116 @@
+<resources>
+    <string name="book_detail_delete_row_files">Delete files…</string>
+    <string name="book_detail_delete_row_record">Delete record…</string>
+    <string name="book_detail_delete_a11y_destructive">delete permanently</string>
+    <string name="book_detail_delete_close">Close</string>
+    <string name="book_detail_delete_loading">Loading files</string>
+    <string name="book_detail_delete_load_error_title">Couldn’t load files</string>
+    <string name="book_detail_delete_load_error_message">This book’s files and copies didn’t load. Check your connection and try again.</string>
+    <string name="book_detail_delete_retry">Try again</string>
+    <!-- %1$s is the book title. -->
+    <string name="book_detail_delete_choose_title">Delete files from “%1$s”?</string>
+    <string name="book_detail_delete_intro_files">Each file you choose is deleted from disk and from the library database. This can’t be undone.</string>
+    <string name="book_detail_delete_intro_items">Choose what to remove. Files are deleted from disk, and a physical copy is only un-recorded.</string>
+    <plurals name="book_detail_delete_summary_files_on_disk">
+        <item quantity="one">%d file on disk</item>
+        <item quantity="other">%d files on disk</item>
+    </plurals>
+    <plurals name="book_detail_delete_summary_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <string name="book_detail_delete_select_all">Select all</string>
+    <string name="book_detail_delete_clear_selection">Clear selection</string>
+    <!-- %1$s is the upper-cased format, %2$s the formatted size. -->
+    <string name="book_detail_delete_file_detail">%1$s · %2$s</string>
+    <string name="book_detail_delete_copy_title">Physical copy</string>
+    <!-- %1$s is the copy's ISBN. -->
+    <string name="book_detail_delete_copy_title_isbn">Physical copy, ISBN %1$s</string>
+    <string name="book_detail_delete_copy_detail">Un-recorded only. Nothing on disk.</string>
+    <string name="book_detail_delete_choose_files_unpicked">Delete files…</string>
+    <string name="book_detail_delete_choose_items_unpicked">Delete items…</string>
+    <plurals name="book_detail_delete_choose_files">
+        <item quantity="one">Delete %d file…</item>
+        <item quantity="other">Delete %d files…</item>
+    </plurals>
+    <plurals name="book_detail_delete_choose_items">
+        <item quantity="one">Delete %d item…</item>
+        <item quantity="other">Delete %d items…</item>
+    </plurals>
+    <string name="book_detail_delete_cancel">Cancel</string>
+    <string name="book_detail_delete_back">Back</string>
+    <!-- %1$s is the book title. -->
+    <string name="book_detail_delete_heading_name">Delete “%1$s”?</string>
+    <plurals name="book_detail_delete_heading_all_files">
+        <item quantity="one">Delete all %d file?</item>
+        <item quantity="other">Delete all %d files?</item>
+    </plurals>
+    <plurals name="book_detail_delete_heading_all_items">
+        <item quantity="one">Delete all %d item?</item>
+        <item quantity="other">Delete all %d items?</item>
+    </plurals>
+    <plurals name="book_detail_delete_heading_some_files">
+        <item quantity="one">Delete %d file?</item>
+        <item quantity="other">Delete %d files?</item>
+    </plurals>
+    <plurals name="book_detail_delete_heading_some_items">
+        <item quantity="one">Delete %d item?</item>
+        <item quantity="other">Delete %d items?</item>
+    </plurals>
+    <string name="book_detail_delete_body_record">This book has no files on disk. Deleting removes the library record only, and nothing is deleted from your filesystem.</string>
+    <!-- %1$s is the book title. -->
+    <string name="book_detail_delete_body_total_files">Every file for “%1$s” will be deleted from disk, and the book will be removed from your library entirely.</string>
+    <string name="book_detail_delete_body_total_mixed">Every file for “%1$s” will be deleted from disk, its physical copies un-recorded, and the book will be removed from your library entirely.</string>
+    <string name="book_detail_delete_body_total_copies">“%1$s” has no files on disk. Its physical copies will be un-recorded and the book removed from your library entirely — nothing is deleted from your filesystem.</string>
+    <!-- %1$s is what was picked, %2$s the book title, %3$s the remaining count, such as "1 remaining file". -->
+    <string name="book_detail_delete_body_partial_files">%1$s will be deleted from disk and removed from this book. %2$s stays in your library with its %3$s.</string>
+    <string name="book_detail_delete_body_partial_copies">%1$s will be un-recorded — nothing is deleted from disk. %2$s stays in your library with its %3$s.</string>
+    <string name="book_detail_delete_body_partial_mixed">%1$s will be removed from this book — files deleted from disk, physical copies only un-recorded. %2$s stays in your library with its %3$s.</string>
+    <plurals name="book_detail_delete_remaining_files">
+        <item quantity="one">%d remaining file</item>
+        <item quantity="other">%d remaining files</item>
+    </plurals>
+    <plurals name="book_detail_delete_remaining_items">
+        <item quantity="one">%d remaining item</item>
+        <item quantity="other">%d remaining items</item>
+    </plurals>
+    <!-- %1$s is a file's label or filename. -->
+    <string name="book_detail_delete_picked_named">“%1$s”</string>
+    <plurals name="book_detail_delete_picked_files">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+    <plurals name="book_detail_delete_picked_copies">
+        <item quantity="one">%d copy</item>
+        <item quantity="other">%d copies</item>
+    </plurals>
+    <!-- %1$s is the file count, %2$s the copy count. -->
+    <string name="book_detail_delete_picked_files_and_copies">%1$s and %2$s</string>
+    <string name="book_detail_delete_action_record">Delete record</string>
+    <string name="book_detail_delete_action_book">Delete book</string>
+    <string name="book_detail_delete_action_file">Delete file</string>
+    <string name="book_detail_delete_action_files">Delete files</string>
+    <string name="book_detail_delete_action_item">Delete item</string>
+    <string name="book_detail_delete_action_items">Delete items</string>
+    <string name="book_detail_delete_deleting">Deleting…</string>
+    <!-- %1$s is the joined list, such as "4 highlights, 2 bookmarks and 1 review". -->
+    <string name="book_detail_delete_losses">Also gone for good: %1$s.</string>
+    <string name="book_detail_delete_list_separator">", "</string>
+    <string name="book_detail_delete_list_last">" and "</string>
+    <plurals name="book_detail_delete_loss_highlights"><item quantity="one">%d highlight</item><item quantity="other">%d highlights</item></plurals>
+    <plurals name="book_detail_delete_loss_journal_entries"><item quantity="one">%d journal entry</item><item quantity="other">%d journal entries</item></plurals>
+    <plurals name="book_detail_delete_loss_bookmarks"><item quantity="one">%d bookmark</item><item quantity="other">%d bookmarks</item></plurals>
+    <plurals name="book_detail_delete_loss_reading_sessions"><item quantity="one">%d reading session</item><item quantity="other">%d reading sessions</item></plurals>
+    <plurals name="book_detail_delete_loss_listening_sessions"><item quantity="one">%d listening session</item><item quantity="other">%d listening sessions</item></plurals>
+    <plurals name="book_detail_delete_loss_reviews"><item quantity="one">%d review</item><item quantity="other">%d reviews</item></plurals>
+    <plurals name="book_detail_delete_loss_shelves"><item quantity="one">%d shelf placement</item><item quantity="other">%d shelf placements</item></plurals>
+    <string name="book_detail_delete_error_unreachable">Couldn’t reach the server.</string>
+    <string name="book_detail_delete_error_other">Couldn’t delete. Try again.</string>
+    <string name="book_detail_delete_done_book">Book deleted</string>
+    <string name="book_detail_delete_done_file">File deleted</string>
+    <string name="book_detail_delete_done_copy">Copy removed</string>
+    <!-- Used only for counts of 2 or more; "one" exists to satisfy lint. -->
+    <plurals name="book_detail_delete_done_files"><item quantity="one">%d file deleted</item><item quantity="other">%d files deleted</item></plurals>
+    <plurals name="book_detail_delete_done_items_deleted"><item quantity="one">%d item deleted</item><item quantity="other">%d items deleted</item></plurals>
+    <plurals name="book_detail_delete_done_items_removed"><item quantity="one">%d item removed</item><item quantity="other">%d items removed</item></plurals>
+</resources>
