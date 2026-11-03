@@ -25,7 +25,6 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -87,7 +86,8 @@ internal fun DeleteBookSheet(
     callbacks: DeleteSheetCallbacks,
 ) {
     val palette = OmnibusTheme.palette
-    // The sheet state keeps the lambda it was created with, so it reads the latest value through this state.
+    // Back and the scrim still reach the sheet while deleting, and `confirmValueChange` and `onDismissRequest` refuse
+    // them. The sheet state keeps the lambda it was created with, so it reads the latest value through this state.
     val deleting by rememberUpdatedState(state.deleting)
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -97,10 +97,6 @@ internal fun DeleteBookSheet(
         onDismissRequest = { if (!state.deleting) callbacks.onClose() },
         sheetState = sheetState,
         sheetGesturesEnabled = !state.deleting,
-        properties = ModalBottomSheetProperties(
-            shouldDismissOnBackPress = !state.deleting,
-            shouldDismissOnClickOutside = !state.deleting,
-        ),
         shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
         containerColor = DeleteColors.SheetContainer,
         contentColor = palette.ink0,

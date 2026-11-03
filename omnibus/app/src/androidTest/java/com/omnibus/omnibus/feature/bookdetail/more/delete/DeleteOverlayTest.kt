@@ -191,7 +191,8 @@ class DeleteOverlayTest {
         rule.runOnIdle { ui = ui.copy(deleting = false) }
         rule.waitForIdle()
         Espresso.pressBack()
-        rule.waitForIdle()
+        // The sheet animates down before it reports the dismissal, which the test clock does not track.
+        rule.waitUntil(timeoutMillis = 5_000) { taps.closes == 1 }
         assertEquals(1, taps.closes)
     }
 }
