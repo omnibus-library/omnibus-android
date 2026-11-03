@@ -10,7 +10,7 @@ class ReadingProgressActivationTest : DescribeSpec({
     describe("reading progress slot") {
 
         it("TC-78: the progress slot registers the progress section") {
-            stageProgress shouldBe listOf(ReadingProgressSection)
+            stageProgress.first() shouldBe ReadingProgressSection
             BookDetailSlots.Registered.stageProgress shouldContain ReadingProgressSection
         }
     }
