@@ -21,16 +21,18 @@ class SeriesFanLayoutTest : DescribeSpec({
 
     describe("gathered layout") {
 
-        it("#104 TC-22: gathered x spans the width for any length") {
+        it("#104 TC-22: gathered x steps evenly within the width, capped at 63.5 dp") {
             for (width in gatheredWidths) for (n in counts) {
                 val xs = (0 until n).map { fanPose(it, n, null, width, spread = false).xDp }
-                val step = (width - 104f) / (n - 1)
+                val raw = (width - 104f) / (n - 1)
+                val step = min(63.5f, raw)
 
                 xs.first() shouldBe (0f plusOrMinus tolerance)
-                xs.last() shouldBe (width - 104f plusOrMinus tolerance)
+                xs.last() shouldBe ((n - 1) * step plusOrMinus tolerance)
                 for (i in 0 until n) xs[i] shouldBe (i * step plusOrMinus tolerance)
                 xs.zipWithNext { a, b -> (b >= a) shouldBe true }
                 xs.all { it >= -tolerance && it <= width - 104f + tolerance } shouldBe true
+                if (raw <= 63.5f) xs.last() shouldBe (width - 104f plusOrMinus tolerance)
             }
         }
 
@@ -50,11 +52,11 @@ class SeriesFanLayoutTest : DescribeSpec({
 
         it("#104 TC-24: known poses match the reference") {
             val two = (0..1).map { fanPose(it, 2, null, 288f, spread = false) }
-            two.map { it.xDp }.shouldBeNear(listOf(0f, 184f))
+            two.map { it.xDp }.shouldBeNear(listOf(0f, 63.5f))
             two.map { it.rotationDeg }.shouldBeNear(listOf(-2.5f, 2.5f))
 
             val three = (0..2).map { fanPose(it, 3, null, 288f, spread = false) }
-            three.map { it.xDp }.shouldBeNear(listOf(0f, 92f, 184f))
+            three.map { it.xDp }.shouldBeNear(listOf(0f, 63.5f, 127f))
             three.map { it.rotationDeg }.shouldBeNear(listOf(-5f, 0f, 5f))
 
             val five = (0..4).map { fanPose(it, 5, null, 288f, spread = false) }
@@ -100,6 +102,50 @@ class SeriesFanLayoutTest : DescribeSpec({
                     absent.xDp shouldBe (asFirst.xDp plusOrMinus tolerance)
                     absent.rotationDeg shouldBe (asFirst.rotationDeg plusOrMinus tolerance)
                 }
+            }
+        }
+    }
+
+    describe("gathered step cap (#153)") {
+
+        it("#153 TC-1: a wide section caps the step for two and three books") {
+            for (width in listOf(568f, 1000f, 2000f)) for (n in 2..3) {
+                val xs = (0 until n).map { fanPose(it, n, null, width, spread = false).xDp }
+                val step = xs[1] - xs[0]
+                step shouldBe (63.5f plusOrMinus tolerance)
+                (step <= 63.5f + tolerance) shouldBe true
+                (step < 104f) shouldBe true
+                for (i in 0 until n) xs[i] shouldBe (i * 63.5f plusOrMinus tolerance)
+            }
+        }
+
+        it("#153 TC-2: the capped hand does not grow with the width") {
+            val phone = (0..2).map { fanPose(it, 3, 1, 358f, spread = false).xDp }
+            val unfolded = (0..2).map { fanPose(it, 3, 1, 560f, spread = false).xDp }
+            phone.shouldBeNear(listOf(0f, 63.5f, 127f))
+            unfolded.shouldBeNear(phone)
+            (phone.last() + 104f) shouldBe (231f plusOrMinus tolerance)
+        }
+
+        it("#153 TC-3: two books overlap at the cap") {
+            val xs = (0..1).map { fanPose(it, 2, 0, 358f, spread = false).xDp }
+            xs.shouldBeNear(listOf(0f, 63.5f))
+            (xs.last() + 104f) shouldBe (167.5f plusOrMinus tolerance)
+        }
+
+        it("#153 TC-4: the design's five books are unchanged") {
+            val xs = (0..4).map { fanPose(it, 5, 1, 358f, spread = false).xDp }
+            xs.shouldBeNear(listOf(0f, 63.5f, 127f, 190.5f, 254f))
+            (xs.last() + 104f) shouldBe (358f plusOrMinus tolerance)
+        }
+
+        it("#153 TC-5: many books still compress below the cap") {
+            for ((width, n) in listOf(288f to 10, 379f to 40)) {
+                val xs = (0 until n).map { fanPose(it, n, null, width, spread = false).xDp }
+                val step = xs[1] - xs[0]
+                step shouldBe ((width - 104f) / (n - 1) plusOrMinus tolerance)
+                (step < 63.5f) shouldBe true
+                xs.last() shouldBe (width - 104f plusOrMinus tolerance)
             }
         }
     }
@@ -172,6 +218,7 @@ class SeriesFanLayoutTest : DescribeSpec({
             SeriesFanLayout.CARD_WIDTH_DP shouldBe 104f
             SeriesFanLayout.COVER_HEIGHT_DP shouldBe 152f
             SeriesFanLayout.SPREAD_STEP_DP shouldBe 120f
+            SeriesFanLayout.GATHERED_MAX_STEP_DP shouldBe 63.5f
             SeriesFanLayout.GATHERED_HEIGHT_DP shouldBe 176f
             SeriesFanLayout.SPREAD_HEIGHT_DP shouldBe 236f
             SeriesFanLayout.RAISE_DP shouldBe 10f

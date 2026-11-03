@@ -81,9 +81,9 @@ class SeriesFanTest {
         )
     }
 
-    // TC-70
+    // TC-70 (amended for #153: the gathered step is capped)
     @Test
-    fun issue104_tc70_gatheredSpansWidthAndDoesNotScroll() {
+    fun issue104_tc70_gatheredFitsTheSectionAndDoesNotScroll() {
         val state = FanState(fanModel(2, 0))
         rule.setFan(state)
         rule.waitForIdle()
@@ -91,15 +91,15 @@ class SeriesFanTest {
             rule.runOnIdle { state.model = fanModel(n, 0) }
             rule.waitForIdle()
             val section = rule.headingRow().bounds()
+            val sectionDp = section.width / rule.px(1.dp)
+            val handDp = minOf(sectionDp, SeriesFanLayout.CARD_WIDTH_DP + (n - 1) * SeriesFanLayout.GATHERED_MAX_STEP_DP)
             assertEquals("first card left edge, n=$n", section.left, rule.cardNode("m1").layoutBounds().left, 1f)
-            assertEquals("last card right edge, n=$n", section.right, rule.cardNode("m$n").layoutBounds().right, 1f)
+            assertEquals("last card right edge, n=$n", section.left + rule.px(handDp.dp), rule.cardNode("m$n").layoutBounds().right, 1f)
             (1..n).forEach { i ->
                 val card = rule.cardNode("m$i").layoutBounds()
                 assertTrue("card $i inside the section, n=$n", card.left >= section.left - 1f && card.right <= section.right + 1f)
             }
-            if (n >= 8) {
-                assertTrue("neighbours overlap, n=$n", rule.cardNode("m2").layoutBounds().left < rule.cardNode("m1").layoutBounds().right)
-            }
+            assertTrue("neighbours overlap, n=$n", rule.cardNode("m2").layoutBounds().left < rule.cardNode("m1").layoutBounds().right)
             assertEquals("no scroll when gathered, n=$n", 0, state.scroll.maxValue)
         }
     }
