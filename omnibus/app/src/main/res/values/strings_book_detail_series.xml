@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- %1$s is the series name. -->
+    <string name="book_detail_series_heading">%1$s series</string>
+    <string name="book_detail_series_page">Series page</string>
+    <string name="book_detail_series_page_click_label">Open the series page</string>
+    <!-- %1$s is the book\'s number in the series, e.g. 2 or 1.5. -->
+    <string name="book_detail_series_book">Book %1$s</string>
+    <string name="book_detail_series_this_book">This book</string>
+    <string name="book_detail_series_up_next">Up next</string>
+    <string name="book_detail_series_meta_separator">" · "</string>
+    <!-- %1$s is the book\'s title, %2$s its series details, e.g. "Book 2 · This book". -->
+    <string name="book_detail_series_card_description">%1$s, %2$s</string>
+    <string name="book_detail_series_spread_click_label">Show the whole series</string>
+    <string name="book_detail_series_gather_click_label">Gather the series</string>
+    <string name="book_detail_series_open_click_label">Open book</string>
+    <!-- %1$s is the series name, %2$s the book\'s number, %3$d the number of books in the series. -->
+    <string name="book_detail_series_line_of_total">%1$s, book %2$s of %3$d</string>
+    <string name="book_detail_series_line_click_label">Go to the series</string>
+</resources>

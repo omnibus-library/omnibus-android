@@ -60,7 +60,7 @@ internal fun BookStage(
             Spacer(Modifier.height(24.dp))
             BookStageTitle(context.book.displayTitle)
             Spacer(Modifier.height(2.dp))
-            BookByline(byline, context.onNavigate)
+            BookByline(byline, context.onNavigate, seriesLine = com.omnibus.omnibus.feature.bookdetail.overview.series.rememberSeriesLine(context))
             Row(
                 Modifier.fillMaxWidth().testTag(BookDetailTestTags.STATUS_ROW),
                 verticalAlignment = Alignment.CenterVertically,
