@@ -1,0 +1,16 @@
+<resources>
+    <!-- The bottom action bar's label for a book the reader has not started. -->
+    <string name="book_detail_actionbar_start_reading">Start reading</string>
+    <!-- %1$d is the 1-based chapter number. -->
+    <string name="book_detail_actionbar_continue_chapter">Continue · Chapter %1$d</string>
+    <!-- The action bar's label for a saved place with no known chapter. -->
+    <string name="book_detail_actionbar_continue_reading">Continue reading</string>
+    <string name="book_detail_actionbar_read_again">Read again</string>
+    <string name="book_detail_actionbar_start_listening">Start listening</string>
+    <string name="book_detail_actionbar_continue_listening">Continue listening</string>
+    <string name="book_detail_actionbar_listen_again">Listen again</string>
+    <!-- The bar for a book with a physical copy and no ebook or audiobook. It is not tappable. -->
+    <string name="book_detail_actionbar_physical_copy">On your shelf · physical copy</string>
+    <!-- The bar for a book with no ebook or audiobook and no physical copy. It is not tappable. -->
+    <string name="book_detail_actionbar_no_copy">No readable copy</string>
+</resources>
