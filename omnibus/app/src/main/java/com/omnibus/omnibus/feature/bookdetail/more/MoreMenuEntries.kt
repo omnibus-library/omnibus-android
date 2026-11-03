@@ -7,7 +7,7 @@ internal val moreMenuEntries: List<BookMoreMenuEntry> = listOfNotNull(
     // #116 Add to shelf
     ShelfMenuEntry,
     // #117 Bookmarks
-    null,
+    com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksMenuEntry,
     // #118 Export
     com.omnibus.omnibus.feature.bookdetail.more.export.ExportMenuEntry,
     // #119 Remove from wishlist

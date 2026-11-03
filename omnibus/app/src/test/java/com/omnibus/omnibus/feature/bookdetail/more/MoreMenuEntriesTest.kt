@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.more
 
+import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksMenuEntry
 import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfMenuEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -87,6 +88,12 @@ class MoreMenuEntriesTest : DescribeSpec({
             val names = BookMoreMenuEntry::class.java.declaredMethods.map { it.name }.filterNot { it.startsWith("access$") }
             names.toSet() shouldBe setOf("Rows", "Overlay", "getJoinsPreviousGroup")
             names.size shouldBe 3
+        }
+
+        it("#117 TC-3: registers the bookmarks entry after shelves, and only it joins the group above") {
+            moreMenuEntries[1] shouldBe BookmarksMenuEntry
+            BookmarksMenuEntry.joinsPreviousGroup shouldBe true
+            moreMenuEntries.filter { it.joinsPreviousGroup } shouldBe listOf(BookmarksMenuEntry)
         }
     }
 })
