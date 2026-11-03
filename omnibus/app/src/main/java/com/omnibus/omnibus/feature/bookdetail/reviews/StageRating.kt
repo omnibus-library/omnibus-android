@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -11,11 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -38,13 +43,19 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
+import com.omnibus.omnibus.feature.bookdetail.reviews.mine.rememberReviewSavePulse
 import com.omnibus.omnibus.feature.bookdetail.reviews.stars.StarRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import java.util.Locale
 
 /** The alpha of the stage rating's content, so a test can read how dimmed it is. */
 internal val StageRatingAlphaKey = SemanticsPropertyKey<Float>("StageRatingAlpha")
 private var SemanticsPropertyReceiver.stageRatingAlpha by StageRatingAlphaKey
+
+/** The scale of the stage rating's stars while a save pulse plays, so a test can read the pulse. */
+internal val StageRatingPulseKey = SemanticsPropertyKey<Float>("StageRatingPulse")
+private var SemanticsPropertyReceiver.stageRatingPulse by StageRatingPulseKey
 
 /** The opacity of the stars and chevron while the reviews are not known yet. */
 private const val DIMMED_ALPHA = 0.45f
@@ -59,9 +70,16 @@ internal object StageRatingSection : BookDetailSection {
     override fun Content(context: BookDetailSectionContext, modifier: Modifier) {
         if (!showsReviews(context.book)) return
         val viewModel = householdReviewsViewModel(context.book)
+        val pulse = rememberReviewSavePulse(context.book.uuid)
         LaunchedEffect(context.reloadKey) { viewModel.reload(context.reloadKey) }
         val state by viewModel.uiState.collectAsState()
-        StageRating(state.stage, context.accent.tint, onClick = { openReviews(context.tabs) }, modifier = modifier)
+        StageRating(
+            state.stage,
+            context.accent.tint,
+            onClick = { openReviews(context.tabs) },
+            modifier = modifier,
+            pulse = pulse,
+        )
     }
 }
 
@@ -79,6 +97,12 @@ internal fun householdReviewsViewModel(book: Book): HouseholdReviewsViewModel =
 /**
  * The stage's rating button. It is one accessibility node that reads the state and says it opens Reviews. Until the
  * reviews are known it is dimmed.
+ *
+ * A change of [pulse] plays the save pulse once: the stars scale up to 1.2 and back. The first composition, a return to
+ * the page and [reducedMotion] never pulse.
+ *
+ * @param pulse The count of saved ratings for the book, from [rememberReviewSavePulse].
+ * @param reducedMotion Whether the system asks for no animation, so the pulse is skipped.
  */
 @Composable
 internal fun StageRating(
@@ -86,10 +110,23 @@ internal fun StageRating(
     tint: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    pulse: Int = 0,
+    reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val palette = OmnibusTheme.palette
     val configuration = LocalConfiguration.current
     val locale = remember(configuration) { configuration.locales[0] ?: Locale.getDefault() }
+    val scale = remember { Animatable(1f) }
+    // The count seen so far. Starting at the current count means only a change after composition pulses.
+    var seen by remember { mutableIntStateOf(pulse) }
+    LaunchedEffect(pulse) {
+        if (pulse == seen) return@LaunchedEffect
+        seen = pulse
+        if (reducedMotion) return@LaunchedEffect
+        scale.animateTo(1.2f, tween(durationMillis = 180, delayMillis = 240))
+        scale.animateTo(1f, tween(durationMillis = 280))
+    }
+    val pulseScale = scale.value
     val phrase = when (model) {
         is StageRatingModel.Average -> pluralStringResource(
             R.plurals.book_detail_reviews_stage_average,
@@ -118,13 +155,19 @@ internal fun StageRating(
                 }
                 testTag = ReviewsTestTags.STAGE_RATING
                 stageRatingAlpha = alpha
+                stageRatingPulse = pulseScale
             }
             .padding(start = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
-            Modifier.alpha(alpha),
+            Modifier
+                .graphicsLayer {
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                }
+                .alpha(alpha),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
