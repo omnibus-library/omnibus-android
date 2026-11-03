@@ -1,0 +1,17 @@
+<resources>
+    <!-- Heading of the Files tab's list of printing details. -->
+    <string name="book_detail_details_title">Details</string>
+    <string name="book_detail_details_publisher">Publisher</string>
+    <string name="book_detail_details_published">Published</string>
+    <string name="book_detail_details_series">Series</string>
+    <string name="book_detail_details_language">Language</string>
+    <string name="book_detail_details_isbn">ISBN</string>
+    <string name="book_detail_details_added">Added</string>
+    <string name="book_detail_details_file">File</string>
+    <!-- The Series row. %1$s is the series name, %2$s the book's number in it, such as "Sherlock Holmes, book 2". -->
+    <string name="book_detail_details_series_book">%1$s, book %2$s</string>
+    <!-- The Language row for a book whose language is undetermined. -->
+    <string name="book_detail_details_language_unknown">Unknown</string>
+    <!-- What a row is read as. %1$s is its label, %2$s its value, such as "Publisher, Spencer Blackett". -->
+    <string name="book_detail_details_row_description">%1$s, %2$s</string>
+</resources>
