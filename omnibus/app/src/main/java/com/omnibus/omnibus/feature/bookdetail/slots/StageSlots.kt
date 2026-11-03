@@ -17,7 +17,7 @@ internal val stageStatusStart: List<BookDetailSection> = listOfNotNull(
 /** The end of the status row under the byline. */
 internal val stageStatusEnd: List<BookDetailSection> = listOfNotNull(
     // #107 Household Ratings and Reviews
-    null,
+    com.omnibus.omnibus.feature.bookdetail.reviews.StageRatingSection,
 )
 
 /** Under the byline, the full width of the stage. */

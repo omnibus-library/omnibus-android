@@ -1,0 +1,32 @@
+<resources>
+    <!-- The stage rating's state, read before "Opens Reviews." Placeholders: %1$s the average, %2$d the review count. -->
+    <plurals name="book_detail_reviews_stage_average">
+        <item quantity="one">Average rating %1$s of 5, from %2$d review.</item>
+        <item quantity="other">Average rating %1$s of 5, from %2$d reviews.</item>
+    </plurals>
+    <string name="book_detail_reviews_stage_none">No reviews yet.</string>
+    <string name="book_detail_reviews_stage_checking">Checking reviews…</string>
+    <string name="book_detail_reviews_stage_offline">Reviews need a connection.</string>
+    <string name="book_detail_reviews_stage_failed">Couldn\'t load reviews.</string>
+    <!-- %1$s is the state, such as "No reviews yet." -->
+    <string name="book_detail_reviews_stage_opens">%1$s Opens Reviews.</string>
+    <!-- %1$s is a rating, such as 4.5. -->
+    <string name="book_detail_reviews_stars_description">%1$s out of 5 stars</string>
+    <string name="book_detail_reviews_empty_title">No ratings or reviews yet</string>
+    <string name="book_detail_reviews_empty_message">Nobody in your household has rated or reviewed this book.</string>
+    <string name="book_detail_reviews_household">Household</string>
+    <!-- %1$s is the average, such as 4.3. -->
+    <string name="book_detail_reviews_average">%1$s average</string>
+    <!-- %1$s is the reader\'s name, %2$s the date their review last changed, such as June 14. -->
+    <string name="book_detail_reviews_name_date">%1$s · %2$s</string>
+    <string name="book_detail_reviews_rated_only">Rated only</string>
+    <string name="book_detail_reviews_read_more">Read more</string>
+    <string name="book_detail_reviews_spoiler_warning">This review gives away the story.</string>
+    <string name="book_detail_reviews_show_review">Show review</string>
+    <string name="book_detail_reviews_tab_offline">Reviews need a connection. They load when you\'re back online.</string>
+    <string name="book_detail_reviews_tab_failed">Couldn\'t load reviews.</string>
+    <string name="book_detail_reviews_retry">Try again</string>
+    <string name="book_detail_reviews_image_only">This review is an image, which the app can\'t show yet.</string>
+    <!-- Replaces an inline spoiler in a review for a reader who has not finished the book. -->
+    <string name="book_detail_reviews_inline_spoiler">(spoiler)</string>
+</resources>
