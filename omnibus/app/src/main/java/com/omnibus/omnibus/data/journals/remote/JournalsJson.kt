@@ -1,0 +1,13 @@
+package com.omnibus.omnibus.data.journals.remote
+
+import kotlinx.serialization.json.Json
+
+/**
+ * Lenient JSON for the journal list. Unknown keys are ignored, and an explicit null on an optional field takes its
+ * default. A wrong-typed value fails the whole decode.
+ */
+internal val JournalsJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+    explicitNulls = false
+}

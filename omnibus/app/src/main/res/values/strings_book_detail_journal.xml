@@ -1,0 +1,14 @@
+<resources>
+    <!-- Heading of the Highlights tab's journal list. -->
+    <string name="book_detail_journal_heading">Journal</string>
+    <!-- Shown under the heading when the book has no journal entries. -->
+    <string name="book_detail_journal_empty">No entries yet. Be the first to write one. Anyone reading this book can add to the journal.</string>
+    <!-- Shown under the heading when the journal could not be read. -->
+    <string name="book_detail_journal_failed">Entries couldn\'t be loaded.</string>
+    <!-- Button that reads the journal again. -->
+    <string name="book_detail_journal_retry">Try again</string>
+    <!-- Byline suffix on an entry the viewer has not published yet. -->
+    <string name="book_detail_journal_draft">Draft</string>
+    <!-- Spoken in place of a spoiler's hidden text. -->
+    <string name="book_detail_journal_spoiler_hidden">spoiler, hidden</string>
+</resources>
