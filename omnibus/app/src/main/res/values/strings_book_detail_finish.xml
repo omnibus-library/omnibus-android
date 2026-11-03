@@ -1,0 +1,28 @@
+<resources>
+    <!-- %1$s is the book's title. -->
+    <string name="book_detail_finish_title">You finished %1$s</string>
+    <plurals name="book_detail_finish_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <plurals name="book_detail_finish_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <plurals name="book_detail_finish_highlights">
+        <item quantity="one">%1$d highlight</item>
+        <item quantity="other">%1$d highlights</item>
+    </plurals>
+    <string name="book_detail_finish_review_title">Leave a review</string>
+    <string name="book_detail_finish_review_detail">Tell your household what you thought</string>
+    <!-- TalkBack's action for the review row: "double-tap to Write a review". -->
+    <string name="book_detail_finish_review_action">Write a review</string>
+    <!-- %1$s is the next book's title. -->
+    <string name="book_detail_finish_next_title">Up next: %1$s</string>
+    <!-- %1$s is the book's number in the series, such as 3, and %2$s the series name. -->
+    <string name="book_detail_finish_next_detail">Book %1$s of %2$s</string>
+    <!-- %1$s is the series name, for a book with no number. -->
+    <string name="book_detail_finish_next_detail_unnumbered">In %1$s</string>
+    <!-- TalkBack's action for the up next row. -->
+    <string name="book_detail_finish_next_action">Open the book</string>
+</resources>
