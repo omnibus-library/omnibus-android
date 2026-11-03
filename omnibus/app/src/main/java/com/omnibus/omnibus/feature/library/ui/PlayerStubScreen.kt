@@ -24,18 +24,20 @@ import kotlinx.serialization.Serializable
  *
  * @property bookUuid The book to play.
  * @property bookFileId The file the listener stopped in, or null when the player should pick one.
+ * @property positionSeconds Where to start, in seconds, or null for the saved place.
  */
 @Serializable
-data class PlayerStubRoute(val bookUuid: String, val bookFileId: Long?) : NavKey
+data class PlayerStubRoute(val bookUuid: String, val bookFileId: Long?, val positionSeconds: Double? = null) : NavKey
 
 /**
  * Placeholder player. It has no back button: system back pops it, as for any pushed entry.
  *
  * @param bookUuid The book the player will play.
  * @param bookFileId The saved file id, shown as "none" when absent.
+ * @param positionSeconds The requested start in seconds, shown when present.
  */
 @Composable
-fun PlayerStubScreen(bookUuid: String, bookFileId: Long?, modifier: Modifier = Modifier) {
+fun PlayerStubScreen(bookUuid: String, bookFileId: Long?, modifier: Modifier = Modifier, positionSeconds: Double? = null) {
     val palette = OmnibusTheme.palette
 
     Column(
@@ -60,6 +62,13 @@ fun PlayerStubScreen(bookUuid: String, bookFileId: Long?, modifier: Modifier = M
             ),
             style = monoTextStyle(12, palette.ink3),
         )
+        if (positionSeconds != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.player_stub_position, positionSeconds.toString()),
+                style = monoTextStyle(12, palette.ink3),
+            )
+        }
     }
 }
 

@@ -21,6 +21,11 @@ class BookDetailDestinationTest : DescribeSpec({
             BookDetailDestination.Book("other").shellRoute(titles) shouldBe BookDetailRoute("other")
         }
 
+        it("#117 TC-56: player destination carries position seconds") {
+            BookDetailDestination.Player("b", null, 4332.5).shellRoute(titles) shouldBe PlayerStubRoute("b", null, 4332.5)
+            BookDetailDestination.Player("b", 9).shellRoute(titles) shouldBe PlayerStubRoute("b", 9, null)
+        }
+
         it("#93 TC-43: browse destinations go to the placeholder") {
             BookDetailDestination.Author(3, "Ursula K. Le Guin").shellRoute(titles) shouldBe
                 BookDetailPlaceholderRoute("Ursula K. Le Guin")

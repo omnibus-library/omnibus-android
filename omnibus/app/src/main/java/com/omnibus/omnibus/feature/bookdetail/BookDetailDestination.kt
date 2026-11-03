@@ -14,8 +14,16 @@ sealed interface BookDetailDestination {
      */
     data class Reader(val bookUuid: String, val startCfi: String? = null) : BookDetailDestination
 
-    /** Opens the player at [bookFileId], or at the server's choice when it is null. */
-    data class Player(val bookUuid: String, val bookFileId: Long?) : BookDetailDestination
+    /**
+     * Opens the player at [bookFileId], or at the server's choice when it is null.
+     *
+     * @property positionSeconds Where to start, in seconds, or null for the saved place.
+     */
+    data class Player(
+        val bookUuid: String,
+        val bookFileId: Long?,
+        val positionSeconds: Double? = null,
+    ) : BookDetailDestination
 
     data class Book(val bookUuid: String) : BookDetailDestination
 
@@ -40,7 +48,7 @@ data class PlaceholderTitles(val checkIn: String, val settings: String)
 /** The shell route this destination pushes, or null for Reader and ExternalUrl, which the shell handles itself. */
 internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey? = when (this) {
     is BookDetailDestination.Reader, is BookDetailDestination.ExternalUrl -> null
-    is BookDetailDestination.Player -> PlayerStubRoute(bookUuid, bookFileId)
+    is BookDetailDestination.Player -> PlayerStubRoute(bookUuid, bookFileId, positionSeconds)
     is BookDetailDestination.Book -> BookDetailRoute(bookUuid)
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Series -> BookDetailPlaceholderRoute(name)

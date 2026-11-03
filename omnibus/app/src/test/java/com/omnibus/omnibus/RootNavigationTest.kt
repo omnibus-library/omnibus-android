@@ -3,6 +3,7 @@ package com.omnibus.omnibus
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import io.kotest.core.spec.style.DescribeSpec
@@ -70,6 +71,11 @@ class RootNavigationTest : DescribeSpec({
             Json.decodeFromString<ReaderRoute>(Json.encodeToString(route)) shouldBe route
             Json.decodeFromString<ReaderRoute>(Json.encodeToString(ReaderRoute("a"))) shouldBe ReaderRoute("a", null)
             Json.decodeFromString<ReaderRoute>("{\"bookUuid\":\"a\"}") shouldBe ReaderRoute("a", null)
+
+            val player = PlayerStubRoute("a", 9L, 4332.5)
+            Json.decodeFromString<PlayerStubRoute>(Json.encodeToString(player)) shouldBe player
+            Json.decodeFromString<PlayerStubRoute>("{\"bookUuid\":\"a\",\"bookFileId\":9}") shouldBe
+                PlayerStubRoute("a", 9L, null)
         }
     }
 

@@ -137,6 +137,8 @@
     <!-- %1$s is the file id, or player_stub_no_file. -->
     <string name="player_stub_file_id" translatable="false">file id: %1$s</string>
     <string name="player_stub_no_file">none</string>
+    <!-- %1$s is the requested position in seconds. -->
+    <string name="player_stub_position" translatable="false">at: %1$s</string>
 
     <!-- Reader -->
     <string name="reader_loading">Opening your book</string>

@@ -1,7 +1,9 @@
 package com.omnibus.omnibus.feature.library.ui
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Rule
@@ -34,5 +36,29 @@ class PlayerStubScreenTest {
         }
 
         rule.onNodeWithText("file id: none").assertIsDisplayed()
+    }
+
+    // TC-54
+    @Test
+    fun issue117_tc54_showsTheRequestedPosition() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                PlayerStubScreen(bookUuid = "7f3c", bookFileId = null, positionSeconds = 4332.5)
+            }
+        }
+
+        rule.onNodeWithText("at: 4332.5").assertIsDisplayed()
+    }
+
+    // TC-55
+    @Test
+    fun issue117_tc55_omitsThePositionLineWhenNull() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                PlayerStubScreen(bookUuid = "7f3c", bookFileId = null)
+            }
+        }
+
+        rule.onAllNodesWithText("at: ", substring = true).assertCountEquals(0)
     }
 }

@@ -165,7 +165,11 @@ private fun SignedInShellContent(
                         }
                         entry<PlayerStubRoute> { key ->
                             StatusBarPadded {
-                                PlayerStubScreen(bookUuid = key.bookUuid, bookFileId = key.bookFileId)
+                                PlayerStubScreen(
+                                    bookUuid = key.bookUuid,
+                                    bookFileId = key.bookFileId,
+                                    positionSeconds = key.positionSeconds,
+                                )
                             }
                         }
                         entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
