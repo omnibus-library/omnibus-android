@@ -8,7 +8,7 @@ plugins {
 
 // The app version. release-please rewrites the version on this line in each release PR
 // (see the Releases section of the repo README); do not edit it by hand.
-val appVersionName = "0.0.0" // x-release-please-version
+val appVersionName = "0.1.0" // x-release-please-version
 
 // versionCode = major * 10000 + minor * 100 + patch, so it grows with every release.
 // minor and patch must stay below 100 or two versions would share a code.
