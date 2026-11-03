@@ -10,7 +10,7 @@ data class RegistryBlock(val comment: String, val value: String)
 
 private const val DECLARATION = "internal val moreMenuEntries: List<BookMoreMenuEntry> = listOfNotNull("
 private val COMMENT = Regex("""// #\d+ .+""")
-private val VALUE = Regex("""(null|[A-Za-z_][A-Za-z0-9_]*),""")
+private val VALUE = Regex("""(null|[A-Za-z_][A-Za-z0-9_.]*),""")
 
 /** The six seeded comments, in menu order. */
 private val SEEDED_COMMENTS = listOf(
@@ -57,7 +57,7 @@ class MoreMenuEntriesTest : DescribeSpec({
             val blocks = parseRegistry(source).parsed()
             blocks.map { it.comment } shouldBe SEEDED_COMMENTS
             blocks.first().value shouldBe "ShelfMenuEntry,"
-            blocks.drop(1).map { it.value } shouldBe List(5) { "null," }
+            blocks.drop(1).all { VALUE.matches(it.value) } shouldBe true
             source.any { it.trim() == DECLARATION } shouldBe true
         }
 

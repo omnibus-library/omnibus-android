@@ -1,0 +1,22 @@
+<resources>
+    <!-- The stage line for a wishlist-only book. %1$s is one of the source phrases below. -->
+    <string name="book_detail_wishlist_line">On your wishlist · added from %1$s</string>
+    <!-- The stage line when the entry's source is unknown or missing. -->
+    <string name="book_detail_wishlist_line_no_source">On your wishlist</string>
+    <string name="book_detail_wishlist_source_scan">a scan</string>
+    <string name="book_detail_wishlist_source_detail">this page</string>
+    <string name="book_detail_wishlist_source_manual">an ISBN you entered</string>
+    <string name="book_detail_wishlist_source_search">a title search</string>
+    <!-- The action bar's main button for a wishlist-only book. It opens a store search. -->
+    <string name="book_detail_wishlist_find_a_copy">Find a copy</string>
+    <string name="book_detail_wishlist_check_in">Check in</string>
+    <!-- The More menu row. -->
+    <string name="book_detail_wishlist_remove">Remove from wishlist</string>
+    <string name="book_detail_wishlist_confirm_title">Remove from wishlist?</string>
+    <string name="book_detail_wishlist_confirm_keeps_book">This stops tracking a physical copy. The book stays in your library.</string>
+    <string name="book_detail_wishlist_confirm_only_place">Your library holds no files for this book, so the wishlist is the only place it shows up.</string>
+    <string name="book_detail_wishlist_confirm_remove">Remove</string>
+    <string name="book_detail_wishlist_confirm_cancel">Cancel</string>
+    <string name="book_detail_wishlist_removed">Removed from your wishlist</string>
+    <string name="book_detail_wishlist_remove_failed">Couldn\'t remove this book from your wishlist.</string>
+</resources>

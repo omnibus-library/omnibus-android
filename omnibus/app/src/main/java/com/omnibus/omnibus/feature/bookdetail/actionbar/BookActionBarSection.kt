@@ -9,10 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
+import com.omnibus.omnibus.feature.bookdetail.status.rememberStatusRim
+import com.omnibus.omnibus.feature.bookdetail.wishlist.rememberWishlistActionModel
 
 /**
- * The bottom action bar of the Book Detail page. It is self-gating: a book with no readable copy renders the untappable
- * [ActionBarModel.NoCopy] before any ViewModel is created, so such a book needs no Hilt.
+ * The bottom action bar of the Book Detail page. It is self-gating: a book with no readable copy renders before any
+ * ViewModel is created, so such a book needs no Hilt. That is [ActionBarModel.NoCopy], or the wishlist variant when the
+ * book is on the wishlist.
  */
 internal object BookActionBarSection : BookDetailSection {
 
@@ -21,7 +24,9 @@ internal object BookActionBarSection : BookDetailSection {
         val book = context.book
         val colors = remember(book) { actionBarColors(book) }
         if (!hasReadableCopy(book)) {
-            BookActionBar(ActionBarModel.NoCopy(physical = book.hasPhysical), colors, context.onNavigate, modifier)
+            val model = rememberWishlistActionModel(book) ?: ActionBarModel.NoCopy(physical = book.hasPhysical)
+            val checkIn = CheckInPillColors(wash = context.accent.tintSoft, rim = rememberStatusRim(book))
+            BookActionBar(model, colors, context.onNavigate, modifier, checkInColors = checkIn)
             return
         }
         val viewModel = hiltViewModel<ActionBarViewModel, ActionBarViewModel.Factory>(
