@@ -15,7 +15,7 @@ internal val overviewSections: List<BookDetailSection> = listOfNotNull(
     // #104 Series Fan
     null,
     // #105 More by This Author
-    null,
+    com.omnibus.omnibus.feature.bookdetail.overview.author.MoreByAuthorSection,
     // #106 Readers Also Read
     null,
 )

@@ -1,0 +1,8 @@
+<resources>
+    <!-- The Overview shelf's heading. %1$s is the author's name. -->
+    <string name="book_detail_author_heading">More by %1$s</string>
+    <!-- The link beside the heading that opens the author's page. -->
+    <string name="book_detail_author_link">Author page</string>
+    <!-- What tapping a book on the shelf does, announced after the book's title and year. -->
+    <string name="book_detail_author_open_book">Open book</string>
+</resources>
