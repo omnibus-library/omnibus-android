@@ -19,11 +19,13 @@ class ReaderContentsSheetPreviewsTest : DescribeSpec({
             val previewLines = source.lines().filter { it.contains("@Preview(name = ") }
             val names = previewLines.map { Regex("""@Preview\(name = "([^"]+)"""").find(it)!!.groupValues[1] }
 
-            (previewLines.size >= 5) shouldBe true
-            previewLines.count { it.contains("UI_MODE_NIGHT_YES") } shouldBe 2
+            (previewLines.size >= 9) shouldBe true
+            previewLines.count { it.contains("UI_MODE_NIGHT_YES") } shouldBe 4
             names.count { it.contains("Nested with pages") } shouldBe 2
             names.count { it.contains("Nested without pages") } shouldBe 2
             names.count { it == "Empty" } shouldBe 1
+            names.count { it.startsWith("Bookmarks empty") } shouldBe 2
+            names.count { it == "Bookmarks" || it == "Bookmarks dark" } shouldBe 2
         }
 
         // CS-58

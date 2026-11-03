@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.progress.FakeProgressRepository
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -53,6 +54,7 @@ class ReaderViewModelSettingsTest : DescribeSpec({
         ),
         progressRepository = FakeProgressRepository(),
         settingsStore = store,
+        bookmarksRepository = FakeBookmarksRepository(),
         timeSource = TimeSource { 0L },
         persistScope = persistScope,
     )

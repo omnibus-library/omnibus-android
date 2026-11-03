@@ -38,6 +38,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
@@ -109,6 +110,9 @@ fun ReaderScreen(
         onSyncOfferAccepted = viewModel::onSyncOfferAccepted,
         onSyncOfferDismissed = viewModel::onSyncOfferDismissed,
         onSettingsChanged = viewModel::onSettingsChanged,
+        onBookmarkToggled = viewModel::onBookmarkToggled,
+        onBookmarkChosen = viewModel::onBookmarkChosen,
+        onBookmarksRetryRequested = viewModel::onBookmarksRetryRequested,
         onClose = onClose,
         modifier = modifier,
     )
@@ -138,6 +142,9 @@ fun ReaderScreen(
  * @param onSyncOfferDismissed the reader dismissed the sync offer.
  * @param onClose called after [onReaderClosed] when the reader is left.
  * @param onSettingsChanged the reader changed a setting in the settings sheet.
+ * @param onBookmarkToggled the quick action was tapped: bookmark the page, or remove its bookmarks.
+ * @param onBookmarkChosen a bookmark was chosen on the Bookmarks segment.
+ * @param onBookmarksRetryRequested the Bookmarks segment's Try again was tapped.
  */
 @Composable
 internal fun ReaderScreenContent(
@@ -159,6 +166,9 @@ internal fun ReaderScreenContent(
     onSyncOfferDismissed: () -> Unit,
     onClose: () -> Unit,
     onSettingsChanged: (ReaderSettings) -> Unit = {},
+    onBookmarkToggled: () -> Unit = {},
+    onBookmarkChosen: (Bookmark) -> Unit = {},
+    onBookmarksRetryRequested: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val leave = {
@@ -300,6 +310,9 @@ internal fun ReaderScreenContent(
                             menuOpen = uiState.menuOpen,
                             menuRows = uiState.menuRows,
                             percent = uiState.location?.pct ?: 0,
+                            bookmarkCount = uiState.bookmarkCount,
+                            pageBookmarked = uiState.isPageBookmarked,
+                            canBookmark = uiState.location?.cfi?.isNotBlank() == true,
                             colors = readerChromeColors(theme),
                             reduceMotion = reduceMotion,
                             insets = ReaderWebViewDefaults.insets,
@@ -307,6 +320,7 @@ internal fun ReaderScreenContent(
                             onMenuOpened = onMenuOpened,
                             onMenuDismissed = onMenuDismissed,
                             onMenuRowChosen = onMenuRowChosen,
+                            onBookmarkToggled = onBookmarkToggled,
                         )
                     }
                     if (uiState.sheet == ReaderSheet.Contents) {
@@ -319,6 +333,11 @@ internal fun ReaderScreenContent(
                                 location = uiState.location,
                                 onEntryChosen = onTocEntryChosen,
                                 onDismiss = onSheetDismissed,
+                                initialTab = uiState.contentsTab,
+                                bookmarks = uiState.bookmarks,
+                                bookmarksStatus = uiState.bookmarksStatus,
+                                onBookmarkChosen = onBookmarkChosen,
+                                onBookmarksRetry = onBookmarksRetryRequested,
                             )
                         }
                     }

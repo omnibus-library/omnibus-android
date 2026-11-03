@@ -20,6 +20,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -72,6 +75,11 @@ class ReaderContentsSheetTest {
         title: String = "The Long Road Home",
         onEntryChosen: (TocEntry) -> Unit = {},
         onDismiss: () -> Unit = {},
+        initialTab: ReaderContentsTab = ReaderContentsTab.Contents,
+        bookmarks: MutableState<List<Bookmark>> = mutableStateOf(emptyList()),
+        status: MutableState<ReaderBookmarksStatus> = mutableStateOf(ReaderBookmarksStatus.Loaded),
+        onBookmarkChosen: (Bookmark) -> Unit = {},
+        onBookmarksRetry: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = false) {
@@ -83,6 +91,11 @@ class ReaderContentsSheetTest {
                     onEntryChosen = onEntryChosen,
                     onDismiss = onDismiss,
                     modifier = Modifier.fillMaxSize(),
+                    initialTab = initialTab,
+                    bookmarks = bookmarks.value,
+                    bookmarksStatus = status.value,
+                    onBookmarkChosen = onBookmarkChosen,
+                    onBookmarksRetry = onBookmarksRetry,
                 )
             }
         }
@@ -426,15 +439,19 @@ class ReaderContentsSheetTest {
         assertNear(list.top, rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().boundsInRoot.top, "row 0 at the top of the list")
     }
 
-    // CS-29
+    // CS-29 (TC-72): two segments, Contents selected by default.
     @Test
-    fun cs29_showsASingleSelectedContentsSegment() {
+    fun cs29_showsContentsAndBookmarksSegmentsWithContentsSelected() {
         showBody()
 
         rule.onAllNodesWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertCountEquals(1)
+        rule.onAllNodesWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertCountEquals(1)
         val segment = rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents))
         segment.assertTextEquals(text(R.string.reader_contents_tab_contents))
         segment.assertIsSelected()
+        val bookmarksSegment = rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks))
+        bookmarksSegment.assertTextEquals(text(R.string.reader_contents_tab_bookmarks))
+        bookmarksSegment.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
 
         segment.performClick()
         rule.waitForIdle()
@@ -536,6 +553,105 @@ class ReaderContentsSheetTest {
             val row = rule.onNodeWithTag(ReaderContentsTags.row(i)).fetchSemanticsNode().boundsInRoot
             assertTrue("divider $i is above row $i", divider.top <= row.top + 1f)
         }
+    }
+
+    // TC-67
+    @Test
+    fun bookmarksTabShowsLoading() {
+        showBody(initialTab = ReaderContentsTab.Bookmarks, status = mutableStateOf(ReaderBookmarksStatus.Loading))
+
+        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_LOADING).assertIsDisplayed()
+        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_LIST).assertCountEquals(0)
+        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_EMPTY).assertCountEquals(0)
+        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_ERROR).assertCountEquals(0)
+    }
+
+    // TC-68
+    @Test
+    fun bookmarksTabShowsErrorAndRetries() {
+        var retries = 0
+        showBody(
+            initialTab = ReaderContentsTab.Bookmarks,
+            status = mutableStateOf(ReaderBookmarksStatus.Failed),
+            onBookmarksRetry = { retries++ },
+        )
+
+        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_ERROR).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.reader_bookmarks_error_title)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.reader_bookmarks_error_message)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.reader_try_again)).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, retries)
+    }
+
+    // TC-69
+    @Test
+    fun bookmarksTabShowsEmptyState() {
+        showBody(initialTab = ReaderContentsTab.Bookmarks)
+
+        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_EMPTY).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.reader_bookmarks_empty_title)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.reader_bookmarks_empty_message)).assertIsDisplayed()
+    }
+
+    // TC-70
+    @Test
+    fun bookmarksTabListsRowsAndJumpsOnTap() {
+        val bookmarks = listOf(
+            Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", "The ferry", "Part One", 0.43f, null),
+            Bookmark(2L, "client-2", "book-1", "epubcfi(/6/8)", null, "Crossing at Dusk", null, null),
+            Bookmark(3L, "client-3", "book-1", "epubcfi(/6/12)", null, null, 1f, null),
+        )
+        val chosen = mutableListOf<Bookmark>()
+        showBody(
+            initialTab = ReaderContentsTab.Bookmarks,
+            bookmarks = mutableStateOf(bookmarks),
+            onBookmarkChosen = { chosen += it },
+        )
+
+        val first = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0))
+        val second = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(1))
+        val third = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(2))
+        first.assert(hasText("The ferry")).assert(hasText("43%"))
+        second.assert(hasText("Crossing at Dusk"))
+        rule.onAllNodesWithTag(ReaderContentsTags.bookmarkPercent(1)).assertCountEquals(0)
+        third.assert(hasText(text(R.string.reader_bookmark_untitled))).assert(hasText("100%"))
+
+        val firstTop = first.fetchSemanticsNode().boundsInRoot.top
+        val secondTop = second.fetchSemanticsNode().boundsInRoot.top
+        val thirdTop = third.fetchSemanticsNode().boundsInRoot.top
+        assertTrue("rows keep the server order", firstTop < secondTop && secondTop < thirdTop)
+
+        first.performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(bookmarks[0]), chosen)
+    }
+
+    // TC-71
+    @Test
+    fun segmentsSwitchBetweenContentsAndBookmarks() {
+        showBody(
+            initialTab = ReaderContentsTab.Bookmarks,
+            bookmarks = mutableStateOf(
+                listOf(
+                    Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", "The ferry", null, 0.2f, null),
+                    Bookmark(2L, "client-2", "book-1", "epubcfi(/6/8)", "Dusk", null, 0.4f, null),
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertIsSelected()
+        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0)).assertIsDisplayed()
+
+        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsSelected()
+        rule.onNodeWithTag(ReaderContentsTags.row(0)).assertIsDisplayed()
+
+        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0)).assertIsDisplayed()
     }
 
     // CS-49

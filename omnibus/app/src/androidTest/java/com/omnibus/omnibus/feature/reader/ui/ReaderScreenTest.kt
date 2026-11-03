@@ -22,7 +22,10 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -33,6 +36,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.core.view.ViewCompat
@@ -40,6 +45,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
@@ -120,6 +126,9 @@ class ReaderScreenTest {
         onSyncOfferAccepted: () -> Unit = {},
         onSyncOfferDismissed: () -> Unit = {},
         onClose: () -> Unit = {},
+        onBookmarkToggled: () -> Unit = {},
+        onBookmarkChosen: (Bookmark) -> Unit = {},
+        onBookmarksRetryRequested: () -> Unit = {},
         /** The app's dark setting for the test, or null to keep the device's. */
         appNight: Boolean? = null,
     ) {
@@ -153,6 +162,9 @@ class ReaderScreenTest {
                         onSyncOfferAccepted = onSyncOfferAccepted,
                         onSyncOfferDismissed = onSyncOfferDismissed,
                         onClose = onClose,
+                        onBookmarkToggled = onBookmarkToggled,
+                        onBookmarkChosen = onBookmarkChosen,
+                        onBookmarksRetryRequested = onBookmarksRetryRequested,
                     )
                 }
             }
@@ -660,6 +672,59 @@ class ReaderScreenTest {
         rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
         assertEquals(ReaderSheet.Contents, state.value.sheet)
         assertEquals(false, state.value.menuOpen)
+    }
+
+    // TC-75
+    @Test
+    fun bookmarkControlsAreWiredThroughTheScreenContent() {
+        val cfi = "epubcfi(/6/8!/4/2/1:0)"
+        val bookmarks = listOf(
+            Bookmark(1L, "client-1", "book-1", cfi, "Here", "Chapter", 0.5f, null),
+            Bookmark(2L, "client-2", "book-1", "epubcfi(/6/20!/4/2/1:0)", null, "Later", 0.8f, null),
+        )
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                location = RelocateData(cfi = cfi, chapterTitle = "Chapter"),
+                chromeVisible = true,
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
+                menuOpen = true,
+                bookmarks = bookmarks,
+            ),
+        )
+        var toggles = 0
+        val chosen = mutableListOf<Bookmark>()
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onMenuRowChosen = { state.value = state.value.withMenuRowChosen(it) },
+            onMenuDismissed = { state.value = state.value.withMenuDismissed() },
+            onBookmarkToggled = { toggles++ },
+            onBookmarkChosen = {
+                chosen += it
+                state.value = state.value.copy(sheet = null)
+            },
+        )
+
+        rule.onNodeWithContentDescription("Remove bookmark").assert(hasTestTag(ReaderChromeTags.BOOKMARK)).performClick()
+        rule.waitForIdle()
+        assertEquals(1, toggles)
+
+        state.value = state.value.copy(location = RelocateData(cfi = " ", chapterTitle = "Chapter"))
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Add bookmark").assertIsNotEnabled()
+        state.value = state.value.copy(location = RelocateData(cfi = cfi, chapterTitle = "Chapter"))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)).assert(hasText("2")).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertIsSelected()
+        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0)).assertIsDisplayed()
+
+        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(1)).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(bookmarks[1]), chosen)
     }
 
     // RC-48

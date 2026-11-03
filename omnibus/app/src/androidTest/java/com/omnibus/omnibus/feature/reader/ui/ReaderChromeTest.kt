@@ -20,14 +20,18 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,6 +41,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -52,6 +57,9 @@ private const val ROOT_TAG = "reader_chrome_test_root"
 /** A window narrow enough that 272dp menu rows plus their 28dp insets do not fit on a phone. */
 private const val NARROW_WINDOW = 0.6f
 private const val UNDERLAY_TAG = "reader_chrome_test_underlay"
+
+/** The three rows the ViewModel offers, in its order. */
+private val ALL_ROWS = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
 /** A mid-book location: page 361 of 661, seven pages left in chapter 3 of 12, 54%. */
 private val READING = RelocateData(
@@ -71,6 +79,9 @@ private data class ChromeInputs(
     val menuOpen: Boolean = false,
     val menuRows: List<ReaderMenuRow> = emptyList(),
     val percent: Int = READING.pct,
+    val bookmarkCount: Int = 0,
+    val pageBookmarked: Boolean = false,
+    val canBookmark: Boolean = true,
     val theme: ReaderTheme = ReaderTheme.Light,
     val reduceMotion: Boolean = true,
     val insets: WindowInsets = WindowInsets(),
@@ -84,6 +95,7 @@ private data class PreviewCase(
     val chromeVisible: Boolean,
     val menuOpen: Boolean = false,
     val menuRows: List<ReaderMenuRow> = emptyList(),
+    val bookmarks: List<Bookmark> = emptyList(),
 )
 
 // RC-25 to RC-44. Tests use tags, text and relative bounds only, and size the root as a fraction of the
@@ -116,6 +128,9 @@ class ReaderChromeTest {
                         menuOpen = i.menuOpen,
                         menuRows = i.menuRows,
                         percent = i.percent,
+                        bookmarkCount = i.bookmarkCount,
+                        pageBookmarked = i.pageBookmarked,
+                        canBookmark = i.canBookmark,
                         colors = readerChromeColors(i.theme),
                         reduceMotion = i.reduceMotion,
                         insets = i.insets,
@@ -123,6 +138,7 @@ class ReaderChromeTest {
                         onMenuOpened = { events += "menuOpened" },
                         onMenuDismissed = { events += "menuDismissed" },
                         onMenuRowChosen = { events += "row:${it.name}" },
+                        onBookmarkToggled = { events += "bookmarkToggled" },
                     )
                 }
             }
@@ -305,7 +321,7 @@ class ReaderChromeTest {
     fun rc34_menuButtonOpensTheMenu() {
         val events = mutableListOf<String>()
         setChrome(
-            mutableStateOf(ChromeInputs(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings))),
+            mutableStateOf(ChromeInputs(chromeVisible = true, menuRows = ALL_ROWS)),
             events,
         )
 
@@ -488,14 +504,14 @@ class ReaderChromeTest {
                 ChromeInputs(
                     chromeVisible = true,
                     menuOpen = true,
-                    menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                    menuRows = ALL_ROWS,
                 ),
             ),
             mutableListOf(),
         )
         val minimum = 46.dp - pixel()
 
-        for (tag in listOf(ReaderChromeTags.CLOSE, ReaderChromeTags.MENU)) {
+        for (tag in listOf(ReaderChromeTags.CLOSE, ReaderChromeTags.MENU, ReaderChromeTags.BOOKMARK)) {
             val bounds = rule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
             assertTrue("$tag is at least 46dp wide", bounds.width() >= minimum)
             assertTrue("$tag is at least 46dp tall", bounds.height() >= minimum)
@@ -513,8 +529,9 @@ class ReaderChromeTest {
             ChromeInputs(
                 chromeVisible = true,
                 menuOpen = true,
-                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                menuRows = ALL_ROWS,
                 percent = 100,
+                bookmarkCount = 128,
                 insets = WindowInsets(),
                 rootWidthFraction = NARROW_WINDOW,
             ),
@@ -529,6 +546,8 @@ class ReaderChromeTest {
             assertTrue("$row keeps the 28dp inset on the left", bounds.left >= container.left + 28.dp - tolerance)
             assertTrue("$row keeps the 28dp inset on the right", bounds.right <= container.right - 28.dp + tolerance)
         }
+        val bookmark = rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).getUnclippedBoundsInRoot()
+        assertTrue("the quick action is inside the narrow window", bookmark.left >= container.left && bookmark.right <= container.right)
         rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assert(hasText("Contents"))
         rule.onNodeWithText("Themes & Settings").assertIsDisplayed()
         rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Settings)).performClick()
@@ -546,15 +565,28 @@ class ReaderChromeTest {
     // RC-44
     @Test
     fun rc44_previewHelperComposesForEveryThemeAndState() {
-        val menu = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
         val cases = ReaderTheme.entries.flatMap { theme ->
             listOf(
                 PreviewCase(theme, chromeVisible = false),
                 PreviewCase(theme, chromeVisible = true),
             )
         } + listOf(
-            PreviewCase(ReaderTheme.Light, chromeVisible = true, menuOpen = true, menuRows = menu),
-            PreviewCase(ReaderTheme.Dark, chromeVisible = true, menuOpen = true, menuRows = menu),
+            PreviewCase(ReaderTheme.Light, chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS),
+            PreviewCase(ReaderTheme.Dark, chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS),
+            PreviewCase(
+                ReaderTheme.Light,
+                chromeVisible = true,
+                menuOpen = true,
+                menuRows = ALL_ROWS,
+                bookmarks = ReaderChromePreviewBookmarks,
+            ),
+            PreviewCase(
+                ReaderTheme.Dark,
+                chromeVisible = true,
+                menuOpen = true,
+                menuRows = ALL_ROWS,
+                bookmarks = ReaderChromePreviewBookmarks,
+            ),
         )
         val index = mutableStateOf(0)
         rule.setContent {
@@ -565,6 +597,7 @@ class ReaderChromeTest {
                     chromeVisible = case.chromeVisible,
                     menuOpen = case.menuOpen,
                     menuRows = case.menuRows,
+                    bookmarks = case.bookmarks,
                 )
             }
         }
@@ -576,7 +609,160 @@ class ReaderChromeTest {
         }
     }
 
+    // TC-56
+    @Test
+    fun bookmarkQuickActionAddsFromAnUnbookmarkedPage() {
+        val events = mutableListOf<String>()
+        setChrome(mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS)), events)
+
+        rule.onNodeWithContentDescription("Add bookmark")
+            .assert(hasTestTag(ReaderChromeTags.BOOKMARK))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(hasClickAction())
+            .performClick()
+        rule.waitForIdle()
+
+        assertEquals(listOf("bookmarkToggled"), events)
+    }
+
+    // TC-57
+    @Test
+    fun bookmarkQuickActionShowsRemoveWhenThePageIsBookmarked() {
+        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, pageBookmarked = true))
+        val events = mutableListOf<String>()
+        setChrome(inputs, events)
+
+        rule.onNodeWithContentDescription("Remove bookmark").assert(hasTestTag(ReaderChromeTags.BOOKMARK)).performClick()
+        rule.waitForIdle()
+        rule.onAllNodesWithContentDescription("Add bookmark").assertCountEquals(0)
+
+        rule.runOnIdle { inputs.value = inputs.value.copy(pageBookmarked = false) }
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription("Add bookmark").assert(hasTestTag(ReaderChromeTags.BOOKMARK))
+        rule.onAllNodesWithContentDescription("Remove bookmark").assertCountEquals(0)
+
+        assertEquals(listOf("bookmarkToggled"), events)
+    }
+
+    // TC-58
+    @Test
+    fun bookmarkQuickActionOnlyShowsWhileTheMenuIsOpen() {
+        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuRows = ALL_ROWS, reduceMotion = true))
+        setChrome(inputs, mutableListOf())
+
+        for (reduceMotion in listOf(true, false)) {
+            rule.runOnIdle { inputs.value = inputs.value.copy(reduceMotion = reduceMotion, menuOpen = false) }
+            rule.waitForIdle()
+            rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).assertDoesNotExist()
+
+            rule.runOnIdle { inputs.value = inputs.value.copy(menuOpen = true) }
+            rule.waitForIdle()
+            rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).assertExists()
+
+            rule.runOnIdle { inputs.value = inputs.value.copy(menuOpen = false) }
+            rule.waitForIdle()
+            rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).assertDoesNotExist()
+        }
+    }
+
+    // TC-59
+    @Test
+    fun bookmarkQuickActionIsDisabledWithoutACfi() {
+        val events = mutableListOf<String>()
+        setChrome(
+            mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, canBookmark = false)),
+            events,
+        )
+
+        rule.onNodeWithTag(ReaderChromeTags.BOOKMARK)
+            .assertIsNotEnabled()
+            .assert(hasContentDescription("Add bookmark"))
+            .performClick()
+        rule.waitForIdle()
+
+        assertEquals(emptyList<String>(), events)
+    }
+
+    // TC-60
+    @Test
+    fun bookmarkQuickActionSitsOnTheMenuButtonLineToItsStartSide() {
+        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS))
+        setChrome(inputs, mutableListOf())
+        val tolerance = pixel().value
+
+        for (window in listOf("full", "narrow")) {
+            rule.runOnIdle {
+                inputs.value = inputs.value.copy(rootWidthFraction = if (window == "narrow") NARROW_WINDOW else null)
+            }
+            rule.waitForIdle()
+
+            val root = rule.onNodeWithTag(ROOT_TAG).getUnclippedBoundsInRoot()
+            val bookmark = rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).getUnclippedBoundsInRoot()
+            val menu = rule.onNodeWithTag(ReaderChromeTags.MENU).getUnclippedBoundsInRoot()
+
+            assertTrue("$window: the quick action sits on the menu button's line", abs((centreY(bookmark) - centreY(menu)).value) <= tolerance)
+            assertTrue("$window: the quick action ends before the menu button", bookmark.right <= menu.left)
+            assertTrue(
+                "$window: the gap is the menu spacing",
+                abs((menu.left - bookmark.right - ReaderMenu.spacing).value) <= tolerance,
+            )
+            assertTrue("$window: the quick action is the menu button's size", abs((bookmark.width() - menu.width()).value) <= tolerance)
+            assertTrue("$window: the quick action is the menu button's height", abs((bookmark.height() - menu.height()).value) <= tolerance)
+            assertTrue(
+                "$window: the quick action is inside the window",
+                bookmark.left >= root.left && bookmark.right <= root.right && bookmark.top >= root.top && bookmark.bottom <= root.bottom,
+            )
+        }
+    }
+
+    // TC-62
+    @Test
+    fun bookmarksRowSitsBetweenContentsAndSettingsWithItsCount() {
+        val events = mutableListOf<String>()
+        setChrome(
+            mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, bookmarkCount = 3, percent = 42)),
+            events,
+        )
+
+        val contents = ReaderChromeTags.menuRow(ReaderMenuRow.Contents)
+        val bookmarks = ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)
+        val settings = ReaderChromeTags.menuRow(ReaderMenuRow.Settings)
+        rule.onNodeWithTag(bookmarks).assert(hasText("Bookmarks")).assert(hasText("3"))
+
+        val top = rule.onNodeWithTag(contents).getUnclippedBoundsInRoot()
+        val middle = rule.onNodeWithTag(bookmarks).getUnclippedBoundsInRoot()
+        val bottom = rule.onNodeWithTag(settings).getUnclippedBoundsInRoot()
+        assertTrue("Contents sits above Bookmarks", top.bottom <= middle.top)
+        assertTrue("Bookmarks sits above Themes & Settings", middle.bottom <= bottom.top)
+
+        rule.onNodeWithTag(bookmarks).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("row:Bookmarks"), events)
+    }
+
+    // TC-63
+    @Test
+    fun bookmarksRowCountAppearsAndDisappearsWithTheCount() {
+        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, bookmarkCount = 0))
+        setChrome(inputs, mutableListOf())
+        val bookmarks = ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)
+
+        rule.onNodeWithTag(bookmarks).assert(hasText("Bookmarks"))
+        rule.onAllNodesWithText("0").assertCountEquals(0)
+
+        rule.runOnIdle { inputs.value = inputs.value.copy(bookmarkCount = 1) }
+        rule.waitForIdle()
+        rule.onNodeWithTag(bookmarks).assert(hasText("1"))
+
+        rule.runOnIdle { inputs.value = inputs.value.copy(bookmarkCount = 0) }
+        rule.waitForIdle()
+        rule.onAllNodesWithText("1").assertCountEquals(0)
+    }
+
     // ---- helpers ----
+
+    /** The vertical centre of [rect]. */
+    private fun centreY(rect: DpRect): Dp = (rect.top + rect.bottom) / 2
 
     /** One physical pixel, as a [Dp], for the bounds comparisons. */
     private fun pixel(): Dp = with(rule.density) { 1f.toDp() }

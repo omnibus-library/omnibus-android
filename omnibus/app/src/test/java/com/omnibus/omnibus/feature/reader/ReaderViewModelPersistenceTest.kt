@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
 import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.progress.FakeProgressRepository
 import com.omnibus.omnibus.data.progress.PositionSaveResult
@@ -67,6 +68,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         ),
         progressRepository = fake,
         settingsStore = settings,
+        bookmarksRepository = FakeBookmarksRepository(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
     )

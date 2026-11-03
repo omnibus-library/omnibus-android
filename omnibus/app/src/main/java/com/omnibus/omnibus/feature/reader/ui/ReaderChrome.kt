@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -53,7 +54,8 @@ import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
- * The reader's chrome: the title and page labels, the close and menu buttons and the menu rows.
+ * The reader's chrome: the title and page labels, the close and menu buttons, the menu rows and, while the
+ * menu is open, the bookmark quick action beside the menu button.
  * It is drawn over the page in the bands `#stage` reserves, and never resizes it.
  *
  * Stateless. The screen owns the state and passes plain values in.
@@ -63,6 +65,9 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * @param menuOpen Whether the menu rows are shown above the menu button.
  * @param menuRows The rows to show, in order. Empty hides the menu button.
  * @param percent The progress shown on the Contents row.
+ * @param bookmarkCount The count shown on the Bookmarks row, when it is above zero.
+ * @param pageBookmarked Whether the current page has a bookmark, which fills the quick action's icon.
+ * @param canBookmark False when there is no current position, which disables the quick action.
  * @param colors The reading theme's chrome colours.
  * @param reduceMotion When true, every change appears on the next frame, with no transition.
  * @param insets The system bars and cutout, the same insets the page takes.
@@ -70,6 +75,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * @param onMenuOpened Called when the menu button is tapped.
  * @param onMenuDismissed Called when a tap lands outside the open menu.
  * @param onMenuRowChosen Called with the row that was tapped.
+ * @param onBookmarkToggled Called when the quick action, shown beside the menu button while the menu is open, is tapped.
  */
 @Composable
 internal fun ReaderChrome(
@@ -86,6 +92,10 @@ internal fun ReaderChrome(
     onMenuDismissed: () -> Unit,
     onMenuRowChosen: (ReaderMenuRow) -> Unit,
     modifier: Modifier = Modifier,
+    bookmarkCount: Int = 0,
+    pageBookmarked: Boolean = false,
+    canBookmark: Boolean = true,
+    onBookmarkToggled: () -> Unit = {},
 ) {
     Box(modifier.fillMaxSize()) {
         // Labels take no touches, so a tap on them reaches the page underneath.
@@ -164,19 +174,45 @@ internal fun ReaderChrome(
                                     ReaderMenuRowItem(
                                         row = row,
                                         percent = percent,
+                                        bookmarkCount = bookmarkCount,
                                         colors = colors,
                                         onClick = { onMenuRowChosen(row) },
                                     )
                                 }
                             }
                         }
-                        ReaderChromeButton(
-                            iconRes = R.drawable.ic_reader_menu,
-                            contentDescription = stringResource(R.string.reader_menu),
-                            colors = colors,
-                            onClick = onMenuOpened,
-                            modifier = Modifier.testTag(ReaderChromeTags.MENU),
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // The 8dp gap is the wrapper's padding, so the menu button stays put when the quick action is hidden.
+                            ChromeVisibility(
+                                visible = menuOpen,
+                                reduceMotion = reduceMotion,
+                                enter = fadeIn(Motion.lift()),
+                                exit = fadeOut(Motion.snap()),
+                                modifier = Modifier.padding(end = ReaderMenu.spacing),
+                            ) {
+                                ReaderChromeButton(
+                                    iconRes = if (pageBookmarked) {
+                                        R.drawable.ic_reader_bookmark_filled
+                                    } else {
+                                        R.drawable.ic_reader_bookmark
+                                    },
+                                    contentDescription = stringResource(
+                                        if (pageBookmarked) R.string.reader_bookmark_remove else R.string.reader_bookmark_add,
+                                    ),
+                                    colors = colors,
+                                    onClick = onBookmarkToggled,
+                                    enabled = canBookmark,
+                                    modifier = Modifier.testTag(ReaderChromeTags.BOOKMARK),
+                                )
+                            }
+                            ReaderChromeButton(
+                                iconRes = R.drawable.ic_reader_menu,
+                                contentDescription = stringResource(R.string.reader_menu),
+                                colors = colors,
+                                onClick = onMenuOpened,
+                                modifier = Modifier.testTag(ReaderChromeTags.MENU),
+                            )
+                        }
                     }
                 }
             }
@@ -203,6 +239,7 @@ internal object ReaderChromeTags {
     const val MENU_SCRIM = "reader_chrome_menu_scrim"
     const val LABEL_TOP = "reader_chrome_label_top"
     const val LABEL_BOTTOM = "reader_chrome_label_bottom"
+    const val BOOKMARK = "reader_chrome_bookmark"
 
     fun menuRow(row: ReaderMenuRow) = "reader_chrome_menu_row_${row.name}"
 }
@@ -272,7 +309,10 @@ internal fun ChromeVisibility(
     }
 }
 
-/** A 46dp circular button with an opaque plate, a hairline border and an icon in the chrome ink. */
+/**
+ * A 46dp circular button with an opaque plate, a hairline border and an icon in the chrome ink. A disabled button is
+ * drawn at 0.38 alpha and takes no taps.
+ */
 @Composable
 internal fun ReaderChromeButton(
     @DrawableRes iconRes: Int,
@@ -280,14 +320,16 @@ internal fun ReaderChromeButton(
     colors: ReaderChromeColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Box(
         modifier
             .size(ReaderMenu.buttonSize)
+            .alpha(if (enabled) 1f else 0.38f)
             .clip(CircleShape)
             .background(colors.plate)
             .border(0.5.dp, colors.border, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
@@ -305,11 +347,13 @@ internal fun ReaderChromeButton(
 internal fun ReaderMenuRowItem(
     row: ReaderMenuRow,
     percent: Int,
+    bookmarkCount: Int,
     colors: ReaderChromeColors,
     onClick: () -> Unit,
 ) {
     val (iconRes, titleRes) = when (row) {
         ReaderMenuRow.Contents -> R.drawable.ic_reader_contents to R.string.reader_menu_contents
+        ReaderMenuRow.Bookmarks -> R.drawable.ic_reader_bookmark to R.string.reader_menu_bookmarks
         ReaderMenuRow.Settings -> R.drawable.ic_reader_settings to R.string.reader_menu_settings
     }
     Row(
@@ -342,6 +386,13 @@ internal fun ReaderMenuRowItem(
         if (row == ReaderMenuRow.Contents) {
             Text(
                 text = stringResource(R.string.reader_percent, percent),
+                style = uiTextStyle(13.5.sp, FontWeight.Normal, colors.labelInk),
+                maxLines = 1,
+            )
+        }
+        if (row == ReaderMenuRow.Bookmarks && bookmarkCount > 0) {
+            Text(
+                text = bookmarkCount.toString(),
                 style = uiTextStyle(13.5.sp, FontWeight.Normal, colors.labelInk),
                 maxLines = 1,
             )

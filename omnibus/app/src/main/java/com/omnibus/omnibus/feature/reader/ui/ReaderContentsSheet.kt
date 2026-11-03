@@ -56,11 +56,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.first
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.cover.CoverSize
+import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.feature.reader.ui.ContentsPosition.PageOf
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.components.EmptyStateView
+import com.omnibus.omnibus.ui.components.ErrorStateView
+import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
@@ -76,12 +80,18 @@ internal object ReaderContentsTags {
     const val CLOSE = "reader_contents_close"
     const val EMPTY = "reader_contents_empty"
     const val CURRENT_MARKER = "reader_contents_current_marker"
+    const val BOOKMARKS_LIST = "reader_contents_bookmarks_list"
+    const val BOOKMARKS_LOADING = "reader_contents_bookmarks_loading"
+    const val BOOKMARKS_ERROR = "reader_contents_bookmarks_error"
+    const val BOOKMARKS_EMPTY = "reader_contents_bookmarks_empty"
 
     fun segment(tab: ReaderContentsTab) = "reader_contents_segment_${tab.name}"
     fun row(index: Int) = "reader_contents_row_$index"
     fun label(index: Int) = "reader_contents_label_$index"
     fun page(index: Int) = "reader_contents_page_$index"
     fun divider(index: Int) = "reader_contents_divider_$index"
+    fun bookmarkRow(index: Int) = "reader_contents_bookmark_row_$index"
+    fun bookmarkPercent(index: Int) = "reader_contents_bookmark_percent_$index"
 }
 
 /** The share of the window the sheet takes, nearly full height as iOS `.large`. */
@@ -91,6 +101,7 @@ internal const val ContentsSheetHeightFraction = 0.92f
 @StringRes
 internal fun ReaderContentsTab.titleRes(): Int = when (this) {
     ReaderContentsTab.Contents -> R.string.reader_contents_tab_contents
+    ReaderContentsTab.Bookmarks -> R.string.reader_contents_tab_bookmarks
 }
 
 /**
@@ -102,6 +113,10 @@ internal fun ReaderContentsTab.titleRes(): Int = when (this) {
  * @param onEntryChosen Called with the entry whose row was tapped.
  * @param onDismiss Called when the sheet is dismissed by any means.
  * @param initialTab The segment to open on.
+ * @param bookmarks The book's bookmarks, listed on the Bookmarks segment.
+ * @param bookmarksStatus Whether [bookmarks] is loading, failed to load, or loaded.
+ * @param onBookmarkChosen Called with the bookmark whose row was tapped.
+ * @param onBookmarksRetry Called when the Bookmarks segment's Try again is tapped.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,6 +129,10 @@ internal fun ReaderContentsSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     initialTab: ReaderContentsTab = ReaderContentsTab.Contents,
+    bookmarks: List<Bookmark> = emptyList(),
+    bookmarksStatus: ReaderBookmarksStatus = ReaderBookmarksStatus.Loaded,
+    onBookmarkChosen: (Bookmark) -> Unit = {},
+    onBookmarksRetry: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     ModalBottomSheet(
@@ -133,6 +152,10 @@ internal fun ReaderContentsSheet(
             // The 8% left over keeps a strip of scrim above the sheet.
             modifier = Modifier.fillMaxWidth().fillMaxHeight(ContentsSheetHeightFraction),
             initialTab = initialTab,
+            bookmarks = bookmarks,
+            bookmarksStatus = bookmarksStatus,
+            onBookmarkChosen = onBookmarkChosen,
+            onBookmarksRetry = onBookmarksRetry,
         )
     }
 }
@@ -146,6 +169,10 @@ internal fun ReaderContentsSheet(
  *
  * @param onEntryChosen Called with the entry whose row was tapped.
  * @param onDismiss Called when the close button is tapped.
+ * @param bookmarks The book's bookmarks, listed on the Bookmarks segment.
+ * @param bookmarksStatus Whether [bookmarks] is loading, failed to load, or loaded.
+ * @param onBookmarkChosen Called with the bookmark whose row was tapped.
+ * @param onBookmarksRetry Called when the Bookmarks segment's Try again is tapped.
  */
 @Composable
 internal fun ReaderContentsSheetContent(
@@ -157,6 +184,10 @@ internal fun ReaderContentsSheetContent(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     initialTab: ReaderContentsTab = ReaderContentsTab.Contents,
+    bookmarks: List<Bookmark> = emptyList(),
+    bookmarksStatus: ReaderBookmarksStatus = ReaderBookmarksStatus.Loaded,
+    onBookmarkChosen: (Bookmark) -> Unit = {},
+    onBookmarksRetry: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     var tab by rememberSaveable { mutableStateOf(initialTab) }
@@ -258,6 +289,30 @@ internal fun ReaderContentsSheetContent(
                     } else {
                         ContentsList(toc, location, listState, onEntryChosen)
                     }
+                ReaderContentsTab.Bookmarks -> when (bookmarksStatus) {
+                    ReaderBookmarksStatus.Loading -> LoadingStateView(
+                        label = stringResource(R.string.reader_bookmarks_loading),
+                        modifier = Modifier.testTag(ReaderContentsTags.BOOKMARKS_LOADING),
+                    )
+                    ReaderBookmarksStatus.Failed -> ErrorStateView(
+                        title = stringResource(R.string.reader_bookmarks_error_title),
+                        message = stringResource(R.string.reader_bookmarks_error_message),
+                        actionLabel = stringResource(R.string.reader_try_again),
+                        onRetry = onBookmarksRetry,
+                        modifier = Modifier.testTag(ReaderContentsTags.BOOKMARKS_ERROR),
+                    )
+                    ReaderBookmarksStatus.Loaded ->
+                        if (bookmarks.isEmpty()) {
+                            EmptyStateView(
+                                title = stringResource(R.string.reader_bookmarks_empty_title),
+                                message = stringResource(R.string.reader_bookmarks_empty_message),
+                                modifier = Modifier.testTag(ReaderContentsTags.BOOKMARKS_EMPTY),
+                                glyph = R.drawable.ic_reader_bookmark,
+                            )
+                        } else {
+                            BookmarksList(bookmarks, onBookmarkChosen)
+                        }
+                }
             }
         }
     }
@@ -301,6 +356,73 @@ private fun ContentsList(
                 isCurrent = index == current,
                 onClick = { onEntryChosen(toc[index]) },
             )
+        }
+    }
+}
+
+/** The bookmark rows, in the repository's order. Keyed by index, as the contents list is, so a replaced list keeps its scroll. */
+@Composable
+private fun BookmarksList(bookmarks: List<Bookmark>, onBookmarkChosen: (Bookmark) -> Unit) {
+    val listState = rememberLazyListState()
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag(ReaderContentsTags.BOOKMARKS_LIST),
+        contentPadding = PaddingValues(start = Spacing.screen, end = Spacing.screen, bottom = 32.dp),
+    ) {
+        items(count = bookmarks.size, key = { it }) { index ->
+            BookmarkRow(
+                index = index,
+                bookmark = bookmarks[index],
+                onClick = { onBookmarkChosen(bookmarks[index]) },
+            )
+        }
+    }
+}
+
+/** One bookmark row: a hairline above it (none above the first), its label and its percent when known. */
+@Composable
+private fun BookmarkRow(
+    index: Int,
+    bookmark: Bookmark,
+    onClick: () -> Unit,
+) {
+    val palette = OmnibusTheme.palette
+    val label = bookmarkLabel(bookmark) ?: stringResource(R.string.reader_bookmark_untitled)
+    val percent = bookmarkPercent(bookmark)
+
+    Column {
+        if (index > 0) {
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = palette.line,
+                modifier = Modifier.testTag(ReaderContentsTags.divider(index)),
+            )
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) {}
+                .testTag(ReaderContentsTags.bookmarkRow(index))
+                .padding(vertical = 13.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            Text(
+                text = label,
+                style = uiTextStyle(15.5.sp, FontWeight.Normal, palette.ink1),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            percent?.let { pct ->
+                Text(
+                    text = stringResource(R.string.reader_percent, pct),
+                    style = uiTextStyle(14.sp, FontWeight.Normal, palette.ink3).copy(fontFeatureSettings = "tnum"),
+                    modifier = Modifier.testTag(ReaderContentsTags.bookmarkPercent(index)),
+                )
+            }
         }
     }
 }

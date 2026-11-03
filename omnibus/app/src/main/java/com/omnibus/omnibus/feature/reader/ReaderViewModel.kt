@@ -2,6 +2,10 @@ package com.omnibus.omnibus.feature.reader
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.data.bookmarks.BookmarkDraft
+import com.omnibus.omnibus.data.bookmarks.BookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.BookmarksState
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.progress.PositionPushThrottle
@@ -17,6 +21,7 @@ import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
@@ -65,6 +70,7 @@ class ReaderViewModel @AssistedInject constructor(
     val assetLoaderFactory: ReaderAssetLoaderFactory,
     private val progressRepository: ProgressRepository,
     private val settingsStore: ReaderSettingsStore,
+    private val bookmarksRepository: BookmarksRepository,
     private val timeSource: TimeSource,
     @param:ApplicationScope private val persistScope: CoroutineScope,
 ) : ViewModel() {
@@ -73,7 +79,8 @@ class ReaderViewModel @AssistedInject constructor(
         ReaderUIState(
             opening = ReaderOpening.Resolving,
             settingsLoaded = false,
-            menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+            menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
+            bookmarksStatus = ReaderBookmarksStatus.Loading,
         ),
     )
 
@@ -121,6 +128,7 @@ class ReaderViewModel @AssistedInject constructor(
         loadSettings()
         loadBook()
         resolveOpening()
+        loadBookmarks()
     }
 
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
@@ -179,9 +187,9 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.withMenuRowChosen(row) }
     }
 
-    /** The reader asked for the contents sheet. */
+    /** The reader asked for the contents sheet, on its Contents segment. */
     fun onContentsRequested() {
-        _uiState.update { it.withSheet(ReaderSheet.Contents) }
+        _uiState.update { it.withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Contents) }
     }
 
     /** The reader asked for the settings sheet. */
@@ -196,6 +204,33 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(settings = next) }
         // Application scope so the save outlives the reader; UNDISPATCHED so rapid taps reach DataStore in order.
         persistScope.launch(start = CoroutineStart.UNDISPATCHED) { settingsStore.save(next) }
+    }
+
+    /** Adds a bookmark at the current page, or removes every bookmark there. The menu stays open. */
+    fun onBookmarkToggled() {
+        val state = _uiState.value
+        val onPage = state.pageBookmarks
+        if (onPage.isNotEmpty()) {
+            onPage.forEach { bookmark -> viewModelScope.launch { bookmarksRepository.removeBookmark(bookmark) } }
+            return
+        }
+        val location = state.location ?: return
+        val draft = BookmarkDraft.create(bookUuid, location.cfi, location.chapterTitle) ?: return
+        viewModelScope.launch { bookmarksRepository.addBookmark(draft) }
+    }
+
+    /**
+     * The reader chose a bookmark: closes the sheet and asks the page to show its position. #58 will mark a
+     * return point here, before the jump.
+     */
+    fun onBookmarkChosen(bookmark: Bookmark) {
+        _uiState.update { it.copy(sheet = null) }
+        _commands.trySend(ReaderCommand.Display(bookmark.position))
+    }
+
+    /** The reader asked to retry a bookmarks load that failed. */
+    fun onBookmarksRetryRequested() {
+        viewModelScope.launch { bookmarksRepository.refresh(bookUuid) }
     }
 
     /** The open sheet was dismissed. */
@@ -360,6 +395,13 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(settings = stored, settingsLoaded = true) }
     }
 
+    /** Collects the book's bookmarks, which re-reads the server on every open, and mirrors them into the state. */
+    private fun loadBookmarks() = viewModelScope.launch {
+        bookmarksRepository.getBookmarksFlow(bookUuid).collect { state ->
+            _uiState.update { it.withBookmarks(state) }
+        }
+    }
+
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
     private fun loadBook() {
         bookJob?.cancel()
@@ -396,7 +438,7 @@ data class ReaderUIState(
     /** Whether the chrome's menu is open. It only opens when the chrome is up and [menuRows] is non-empty. */
     val menuOpen: Boolean = false,
     /**
-     * The rows for reader features that exist. The ViewModel offers `Contents` and `Settings`. Empty
+     * The rows for reader features that exist. The ViewModel offers `Contents`, `Bookmarks` and `Settings`. Empty
      * hides the menu button, which is the default for hand-built states.
      */
     val menuRows: List<ReaderMenuRow> = emptyList(),
@@ -412,7 +454,27 @@ data class ReaderUIState(
     val opening: ReaderOpening = ReaderOpening.Resolved(ReaderStart.Beginning),
     /** A newer position from another device, offered once the page is ready. Null when there is none to offer. */
     val syncOffer: SyncOffer? = null,
-)
+    /** The book's bookmarks in the repository's order, including adds the server has not answered yet. */
+    val bookmarks: List<Bookmark> = emptyList(),
+    /** Where [bookmarks] stands. The Bookmarks segment shows a loading or error view until it is Loaded. */
+    val bookmarksStatus: ReaderBookmarksStatus = ReaderBookmarksStatus.Loaded,
+    /** The segment the contents sheet opens on. */
+    val contentsTab: ReaderContentsTab = ReaderContentsTab.Contents,
+) {
+
+    /** The number of bookmarks in the state, so an optimistic add counts at once and a failed one drops off. */
+    val bookmarkCount: Int get() = bookmarks.size
+
+    /** The bookmarks at the current page: a trimmed position equal to the trimmed location CFI. */
+    internal val pageBookmarks: List<Bookmark>
+        get() {
+            val cfi = location?.cfi?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+            return bookmarks.filter { it.position.trim() == cfi }
+        }
+
+    /** Whether a bookmark sits at the current page. */
+    val isPageBookmarked: Boolean get() = pageBookmarks.isNotEmpty()
+}
 
 /** Whether the book for the reader could be read. */
 sealed interface ReaderBookState {
@@ -448,11 +510,14 @@ enum class ReaderUnavailableReason {
 /** A sheet the reader can show over the page. */
 enum class ReaderSheet { Contents, Settings }
 
+/** Where the book's bookmarks stand, as the Bookmarks segment shows them. */
+enum class ReaderBookmarksStatus { Loading, Failed, Loaded }
+
 /**
- * A row in the chrome's menu, each of which opens a [ReaderSheet]. #57 adds `BookmarksAndHighlights`,
- * whose count comes from its own state.
+ * A row in the chrome's menu, each of which opens a [ReaderSheet]. #57 renames `Bookmarks` to
+ * `BookmarksAndHighlights` and adds the highlight count.
  */
-enum class ReaderMenuRow { Contents, Settings }
+enum class ReaderMenuRow { Contents, Bookmarks, Settings }
 
 internal fun ReaderUIState.withChromeToggled(): ReaderUIState =
     if (chromeVisible) copy(chromeVisible = false, menuOpen = false) else copy(chromeVisible = true)
@@ -464,12 +529,18 @@ internal fun ReaderUIState.withMenuDismissed(): ReaderUIState = copy(menuOpen = 
 
 internal fun ReaderUIState.withSheet(sheet: ReaderSheet): ReaderUIState = copy(sheet = sheet, menuOpen = false)
 
-internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState = withSheet(
-    when (row) {
-        ReaderMenuRow.Contents -> ReaderSheet.Contents
-        ReaderMenuRow.Settings -> ReaderSheet.Settings
-    },
-)
+internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState = when (row) {
+    ReaderMenuRow.Contents -> withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Contents)
+    ReaderMenuRow.Bookmarks -> withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Bookmarks)
+    ReaderMenuRow.Settings -> withSheet(ReaderSheet.Settings)
+}
+
+/** Mirrors the repository's [state] into the bookmarks fields. A Loading or Failed state has no rows to show. */
+internal fun ReaderUIState.withBookmarks(state: BookmarksState): ReaderUIState = when (state) {
+    BookmarksState.Loading -> copy(bookmarks = emptyList(), bookmarksStatus = ReaderBookmarksStatus.Loading)
+    BookmarksState.Failed -> copy(bookmarks = emptyList(), bookmarksStatus = ReaderBookmarksStatus.Failed)
+    is BookmarksState.Loaded -> copy(bookmarks = state.bookmarks, bookmarksStatus = ReaderBookmarksStatus.Loaded)
+}
 
 /** An imperative request for the page, which the screen applies to the controller. */
 sealed interface ReaderCommand {

@@ -1,7 +1,21 @@
 package com.omnibus.omnibus.feature.reader.ui
 
-/** A segment of the contents sheet. #57 adds Bookmarks and Notes. */
-enum class ReaderContentsTab { Contents }
+import com.omnibus.omnibus.data.bookmarks.Bookmark
+import kotlin.math.roundToInt
+
+/** A segment of the contents sheet. #57 adds Highlights and Notes. */
+enum class ReaderContentsTab { Contents, Bookmarks }
+
+/**
+ * A bookmark row's label: its title, else its chapter title. Blank counts as absent. Null when neither is set, and the
+ * sheet shows "Saved position" then.
+ */
+internal fun bookmarkLabel(bookmark: Bookmark): String? =
+    bookmark.title?.trim()?.takeIf { it.isNotEmpty() } ?: bookmark.chapterTitle?.trim()?.takeIf { it.isNotEmpty() }
+
+/** A bookmark's place in the book as a whole percent, 0 to 100, or null when the server could not place it. */
+internal fun bookmarkPercent(bookmark: Bookmark): Int? =
+    bookmark.fraction?.let { (it * 100).roundToInt().coerceIn(0, 100) }
 
 /**
  * The index into [toc] of the reader's chapter. [RelocateData.chapter] is 1-based and 0 means no

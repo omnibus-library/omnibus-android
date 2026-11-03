@@ -201,4 +201,14 @@
     <string name="reader_contents_empty_message">This edition ships without one.</string>
     <string name="reader_contents_done">Done</string>
     <string name="reader_contents_current_chapter">Current chapter</string>
+    <string name="reader_menu_bookmarks">Bookmarks</string>
+    <string name="reader_bookmark_add">Add bookmark</string>
+    <string name="reader_bookmark_remove">Remove bookmark</string>
+    <string name="reader_contents_tab_bookmarks">Bookmarks</string>
+    <string name="reader_bookmarks_loading">Loading bookmarks</string>
+    <string name="reader_bookmarks_empty_title">No bookmarks</string>
+    <string name="reader_bookmarks_empty_message">Tap the ribbon while reading to save your place.</string>
+    <string name="reader_bookmarks_error_title">Couldn\'t load bookmarks.</string>
+    <string name="reader_bookmarks_error_message">Check your connection and try again.</string>
+    <string name="reader_bookmark_untitled">Saved position</string>
 </resources>
