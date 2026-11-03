@@ -1,0 +1,38 @@
+<resources>
+    <string name="book_detail_reading_title">Your reading</string>
+    <string name="book_detail_reading_line_no_reading">No reading recorded yet. Time, sessions and pace appear after you open the book.</string>
+    <string name="book_detail_reading_line_wishlist">Add an ebook or an audiobook to start tracking your reading stats for this book.</string>
+    <string name="book_detail_reading_line_history_failed">Your reading history couldn\'t be loaded.</string>
+    <string name="book_detail_reading_line_paper_copy">Stats come from reading in the app. A paper copy is tracked by its read status.</string>
+    <string name="book_detail_reading_line_sync_pending">Sittings of a minute or more show here once they sync.</string>
+    <!-- %1$s is the date the reader started the book, such as October 12. -->
+    <string name="book_detail_reading_line_reading_since">Reading since %1$s</string>
+    <!-- %1$s is the date the reader finished the book, such as October 29. -->
+    <string name="book_detail_reading_line_finished">Finished %1$s</string>
+    <string name="book_detail_reading_row_started">Started</string>
+    <string name="book_detail_reading_row_time_read">Time read</string>
+    <string name="book_detail_reading_row_pace">Pace</string>
+    <string name="book_detail_reading_row_last_read">Last read</string>
+    <string name="book_detail_reading_row_longest_sitting">Longest sitting</string>
+    <string name="book_detail_reading_row_time_left">Time left</string>
+    <!-- The time read row's value. %1$s is a duration, such as 3 h 04 m, and %2$s the session count. Keep the middle dot. -->
+    <string name="book_detail_reading_time_read_value">%1$s · %2$s</string>
+    <plurals name="book_detail_reading_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <!-- The pace row's value. %1$d is a whole percentage of the book per hour, such as 20. -->
+    <string name="book_detail_reading_pace_value">About %1$d%% an hour</string>
+    <!-- The longest sitting row's value. %1$s is a duration, such as 48 m, and %2$s the date it started. -->
+    <string name="book_detail_reading_longest_sitting_value">%1$s, %2$s</string>
+    <!-- The time left row's value. %1$s is a duration, such as 1 h 53 m. -->
+    <string name="book_detail_reading_time_left_value">About %1$s</string>
+    <!-- TalkBack description of a row. %1$s is the row's label and %2$s its value. -->
+    <string name="book_detail_reading_row_description">%1$s, %2$s</string>
+    <!-- The day word for a last read on the current day, as in "Today, 08:02". -->
+    <string name="book_detail_reading_today">Today</string>
+    <!-- The day word for a last read on the day before, as in "Yesterday, 22:14". -->
+    <string name="book_detail_reading_yesterday">Yesterday</string>
+    <!-- A duration shorter than one minute. -->
+    <string name="book_detail_reading_under_a_minute">under a minute</string>
+</resources>
