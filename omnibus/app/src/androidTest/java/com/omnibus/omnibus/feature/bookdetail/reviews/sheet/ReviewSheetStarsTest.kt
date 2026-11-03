@@ -292,7 +292,7 @@ class ReviewSheetStarsTest {
 
         // Holding the finger lifts the stars. The press moves the preview, so the pop may be running, and only the lift is asserted.
         stars.performTouchInput { down(Offset(width * 0.5f, height / 2f)) }
-        rule.waitForIdle()
+        rule.mainClock.advanceTimeByFrame()
         stars.assert(liftedIs(true))
 
         stars.performTouchInput { up() }
