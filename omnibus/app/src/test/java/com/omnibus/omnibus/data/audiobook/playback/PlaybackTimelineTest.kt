@@ -147,16 +147,16 @@ class PlaybackTimelineTest : DescribeSpec({
         it("divides by the rate (I-TL-5)") {
             val state = stateAt(700.0, threeChapters)
 
-            state.spanSecondsLeftAtRate shouldBe 1100.0 plusOrMinus 1e-9
-            state.bookSecondsLeftAtRate shouldBe 2300.0 plusOrMinus 1e-9
+            state.spanSecondsLeftAtRate shouldBe (1100.0 plusOrMinus 1e-9)
+            state.bookSecondsLeftAtRate shouldBe (2300.0 plusOrMinus 1e-9)
 
             val at15 = stateAt(700.0, threeChapters, rate = 1.5)
-            at15.spanSecondsLeftAtRate shouldBe 733.333 plusOrMinus 0.01
-            at15.bookSecondsLeftAtRate shouldBe 1533.333 plusOrMinus 0.01
+            at15.spanSecondsLeftAtRate shouldBe (733.333 plusOrMinus 0.01)
+            at15.bookSecondsLeftAtRate shouldBe (1533.333 plusOrMinus 0.01)
 
             val at20 = stateAt(700.0, threeChapters, rate = 2.0)
-            at20.spanSecondsLeftAtRate shouldBe 550.0 plusOrMinus 1e-9
-            at20.bookSecondsLeftAtRate shouldBe 1150.0 plusOrMinus 1e-9
+            at20.spanSecondsLeftAtRate shouldBe (550.0 plusOrMinus 1e-9)
+            at20.bookSecondsLeftAtRate shouldBe (1150.0 plusOrMinus 1e-9)
         }
 
         // TC-26
