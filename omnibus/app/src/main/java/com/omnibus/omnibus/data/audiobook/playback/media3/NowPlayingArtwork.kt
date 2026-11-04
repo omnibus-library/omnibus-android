@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import androidx.core.graphics.createBitmap
 import java.io.ByteArrayOutputStream
 
 /**
@@ -30,7 +31,7 @@ internal object ArtworkPlate {
     /** The PNG bytes for [bookUuid], drawn from [title]. Returns the cached bytes when the uuid is the same. */
     fun render(bookUuid: String, title: String): ByteArray {
         cache?.takeIf { it.first == bookUuid }?.let { return it.second }
-        val bitmap = Bitmap.createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(SIZE_PX, SIZE_PX, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).apply {
             drawColor(PALETTE[Math.floorMod(bookUuid.hashCode(), PALETTE.size)])
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
