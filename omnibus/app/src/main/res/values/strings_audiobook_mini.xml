@@ -1,0 +1,7 @@
+<resources>
+    <!-- Mini player and reader dock (#172). Shared player labels live in strings_audiobook_player.xml (C13); never redefine them here. -->
+    <!-- Spoken label of the mini player's ✕ button, which stops playback and removes the bar. -->
+    <string name="audiobook_mini_stop">Stop playback</string>
+    <!-- Spoken action of the mini player's body: tapping it opens the full player. -->
+    <string name="audiobook_mini_open_player">Open player</string>
+</resources>
