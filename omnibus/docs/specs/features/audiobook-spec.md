@@ -245,7 +245,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 **Requirements**
 
-- P-SLP-1. The Sleep button opens a sheet with a two-column grid: "Off", "15 min", "30 min", "45 min", "1 hour", "2 hours", "3 hours", "4 hours", and "End of chapter {n}".
+- P-SLP-1. The Sleep button opens a sheet with a two-column grid: "Off", "15 min", "30 min", "45 min", "1 hour", "2 hours", "3 hours", "4 hours", and "End of chapter {n}". "End of chapter {n}" sits full width under the grid and shows only when the book has a current chapter; `{n}` is the chapter's 1-based position in the chapter list. Picking an option sets it and leaves the sheet open.
 - P-SLP-2. A timed option pauses playback when it runs out, with no fade. It counts real time, whatever the speed.
 - P-SLP-3. "End of chapter" pauses at the end of the chapter that was current when it was set.
 - P-SLP-4. While a timer runs, the sheet header shows "{h:mm:ss} remaining" and the player's top bar shows the moon pill.
@@ -456,8 +456,8 @@ Every request, including audio streams, carries `Authorization: Bearer <token>`.
 
 ### 12.10 Sleep timer
 
-- I-SLP-1. Timed options count down by the wall clock, once a second, independent of the rate.
-- I-SLP-2. "End of chapter" stores the chapter's end in book time when it is set, and pauses when playback reaches it.
+- I-SLP-1. Timed options count down by the wall clock, once a second, independent of the rate. They keep counting while playback is paused.
+- I-SLP-2. "End of chapter" stores the chapter's end in book time when it is set, and pauses once the position reaches it, by playback or by a seek to or past it. While playing, the pause is scheduled to land on the boundary rather than on the next position update. Loading another book or stopping clears it.
 - I-SLP-3. The timer belongs to the playback layer, not a screen. Loading another book clears it.
 
 ### 12.11 Bookmarks and sync point
@@ -702,3 +702,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #166: the device and ebook offers as built; ebook dismissals are kept per book in their own DataStore and re-arm when the source clock changes. |
 | 2026-11-04 | #172: P-MINI-4 shows the dock while a book is loaded, not only while it plays (as on iOS); P-MINI-6 says Immersive read uses a load with autoplay. |
 | 2026-11-04 | #171: P-BMK-2 adds the screen-reader remove action; P-BMK-4 says a second Sync here sends again; a §9 edge case ignores Bookmark while loading; AND-RUSE-3 gives the position's precision; AND-RUSE-6 names what the player's sheet reuses. |
+| 2026-11-04 | #169: the sleep timer as built: P-SLP-1 places "End of chapter {n}", numbers it by list position and keeps the sheet open after a pick; I-SLP-1 counts while paused; I-SLP-2 fires on a seek to or past the end and lands on the boundary. |
