@@ -16,7 +16,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -52,8 +51,8 @@ private class Calls {
 private val playing = MiniPlayerUIState(
     visible = true,
     bookUuid = "book-1",
-    cover = CoverIdentity(uuid = "book-1", title = "T", creator = "An Author", hasCover = true),
-    title = "T",
+    cover = CoverIdentity(uuid = "book-1", title = "Plate", creator = "An Author", hasCover = true),
+    title = "Mini Title",
     subtitle = "Chapter 7: The Question of Sex",
     progress = 0.35f,
     isPlaying = true,
@@ -99,13 +98,13 @@ class MiniPlayerContentTest {
         rule.setBar({ state.value }, Calls())
         rule.waitForIdle()
 
-        rule.onNodeWithText("T", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Mini Title", useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("Chapter 7: The Question of Sex", useUnmergedTree = true).assertIsDisplayed()
 
         rule.runOnIdle { state.value = playing.copy(subtitle = null) }
         rule.waitForIdle()
 
-        rule.onNodeWithText("T", useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Mini Title", useUnmergedTree = true).assertIsDisplayed()
         rule.onAllNodesWithText("Chapter 7", useUnmergedTree = true).assertCountEquals(0)
     }
 
@@ -159,7 +158,7 @@ class MiniPlayerContentTest {
         rule.setBar({ playing }, Calls())
         rule.waitForIdle()
 
-        val title = rule.onNodeWithText("T", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val title = rule.onNodeWithText("Mini Title", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val back = rule.onNodeWithTag(MiniPlayerTestTags.BACK_15, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val playPause = rule.onNodeWithTag(MiniPlayerTestTags.PLAY_PAUSE, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val stop = rule.onNodeWithTag(MiniPlayerTestTags.STOP, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
@@ -214,8 +213,9 @@ class MiniPlayerContentTest {
         val body = rule.onNodeWithTag(MiniPlayerTestTags.BODY)
         val clickLabel = body.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)?.label
         assertEquals(context.getString(R.string.audiobook_mini_open_player), clickLabel)
-        body.assertTextContains("T")
-        body.assertTextContains("Chapter 7")
+        val merged = body.fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text }
+        assertTrue("the body reads the title: $merged", "Mini Title" in merged)
+        assertTrue("the body reads the subtitle: $merged", merged.any { it.startsWith("Chapter 7") })
 
         val unmerged = rule.onNodeWithTag(MiniPlayerTestTags.BODY, useUnmergedTree = true).fetchSemanticsNode()
         val inside = unmerged.descendantTags()
@@ -252,7 +252,7 @@ class MiniPlayerContentTest {
             assertTrue("$tag is not a click target", !node.config.contains(SemanticsActions.OnClick))
         }
         // The title text appears once in the unmerged tree: the cover adds no second copy of it.
-        rule.onAllNodesWithText("T", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("Mini Title", useUnmergedTree = true).assertCountEquals(1)
     }
 
     // P-MINI-2, P-MINI-4
