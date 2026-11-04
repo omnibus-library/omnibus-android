@@ -624,7 +624,7 @@ Build on what exists; don't write a second copy.
 - AND-RUSE-2. Position writes go through the audio position store's own offline queue in `data/audiobook/position` (I-SAVE-4): one pending write per book, flushed when `ConnectivityMonitor` reports online and on every pushed save. `data/progress` is EPUB-only and isn't used for audio; its `PositionPushThrottle` (constructed with 5 s) and `PositionSync.OPEN_DEADLINE` are reused.
 - AND-RUSE-3. Bookmarks use `BookmarksRepository`. The audio position format is the one `listeningSeconds` in `feature/bookdetail/more/bookmarks/BookmarkCopy.kt` already reads (I-BMK-1). The player writes book time with at most three decimals, rounded down.
 - AND-RUSE-4. The player background reuses Book Detail's cover wash (P-SCR-3).
-- AND-RUSE-5. The chapters sheet borrows `ReaderContentsSheet`'s styling where it fits.
+- AND-RUSE-5. The chapters sheet borrows `ReaderContentsSheet`'s styling where it fits: its sheet window (full height, scrim strip, `ContentsSheetHeightFraction`), its hairline rows, and the centre-the-current-row scroll.
 - AND-RUSE-6. The player's bookmarks sheet reuses Book Detail's bookmark row (`BookmarkRow`), row model and copy, with the date as the only meta. Swipe to remove and the footer are the player's own, in `feature/audiobook/bookmarks`.
 - AND-RUSE-7. Connectivity comes from `ConnectivityMonitor` (P-SCR-2, P-BMK-4).
 
@@ -703,3 +703,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #172: P-MINI-4 shows the dock while a book is loaded, not only while it plays (as on iOS); P-MINI-6 says Immersive read uses a load with autoplay. |
 | 2026-11-04 | #171: P-BMK-2 adds the screen-reader remove action; P-BMK-4 says a second Sync here sends again; a §9 edge case ignores Bookmark while loading; AND-RUSE-3 gives the position's precision; AND-RUSE-6 names what the player's sheet reuses. |
 | 2026-11-04 | #169: the sleep timer as built: P-SLP-1 places "End of chapter {n}", numbers it by list position and keeps the sheet open after a pick; I-SLP-1 counts while paused; I-SLP-2 fires on a seek to or past the end and lands on the boundary. |
+| 2026-11-04 | #167: AND-RUSE-5 names what the chapters sheet takes from `ReaderContentsSheet`. |

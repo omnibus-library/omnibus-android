@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.feature.audiobook.player.offers.PlayerBannerSlot
 import com.omnibus.omnibus.feature.audiobook.bookmarks.PlayerBookmarksSheet
+import com.omnibus.omnibus.feature.audiobook.chapters.ChaptersSheet
 import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberAddBookmarkAction
 import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberSyncHereButton
 import com.omnibus.omnibus.feature.audiobook.sleep.SleepPill
@@ -57,7 +58,7 @@ fun PlayerScreen(
     // Each ticket replaces the null / Unit in its own block only.
     val actions = PlayerActions(
         // #167
-        onOpenChapters = null,
+        onOpenChapters = { overlay = PlayerOverlay.Chapters },
 
         // #168
         onOpenSpeed = null,
@@ -100,7 +101,7 @@ fun PlayerScreen(
 
         when (overlay) {
             // #167
-            PlayerOverlay.Chapters -> Unit
+            PlayerOverlay.Chapters -> ChaptersSheet(onDismiss = dismissOverlay)
 
             // #168
             PlayerOverlay.Speed -> Unit
