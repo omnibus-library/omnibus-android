@@ -452,7 +452,8 @@ Every request, including audio streams, carries `Authorization: Bearer <token>`.
 
 - I-SPD-1. The rate is clamped to [0.5, 3.0] and defaults to 1.0. It is stored per book on the server and cached locally.
 - I-SPD-2. The slider applies the rate live and persists it on release. Presets and −/+ persist at once.
-- I-SPD-3. A failed `PUT` keeps the local rate, and the next change retries.
+- I-SPD-3. A failed `PUT` keeps the local rate. It is retried on the next change, when the device comes back online, and when the book next loads.
+- I-SPD-4. At load the rate is the unsent local change if there is one; else the server's answer within 1.2 s; else the cached rate; else 1.0. A server answer that arrives later only refreshes the cache.
 
 ### 12.10 Sleep timer
 
@@ -705,3 +706,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #169: the sleep timer as built: P-SLP-1 places "End of chapter {n}", numbers it by list position and keeps the sheet open after a pick; I-SLP-1 counts while paused; I-SLP-2 fires on a seek to or past the end and lands on the boundary. |
 | 2026-11-04 | #167: AND-RUSE-5 names what the chapters sheet takes from `ReaderContentsSheet`. |
 | 2026-11-04 | #170: P-CAR-3 says the play tile uses the app's accent colour; car mode is always black and dark, whatever the theme. |
+| 2026-11-04 | #168: I-SPD-3 also retries on reconnect and at the next load; I-SPD-4 sets the rate read order at load. |
