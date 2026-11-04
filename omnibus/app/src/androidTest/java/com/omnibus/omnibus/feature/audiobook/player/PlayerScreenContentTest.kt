@@ -149,11 +149,12 @@ class PlayerScreenContentTest {
         val actions = RecordedActions()
         rule.setPlayer(fullUiState(chapterTitle = "004"), actions = actions.actions())
 
-        rule.onNodeWithTag(PlayerTestTags.CHAPTER_TITLE).assertIsDisplayed()
+        // The clickable row merges its children, so the title's own tag lives in the unmerged tree.
+        rule.onNodeWithTag(PlayerTestTags.CHAPTER_TITLE, useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithText("004").assertIsDisplayed()
 
         val root = rule.boundsOf(PlayerTestTags.ROOT)
-        val chapter = rule.boundsOf(PlayerTestTags.CHAPTER_TITLE)
+        val chapter = rule.onNodeWithTag(PlayerTestTags.CHAPTER_TITLE, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue("the chapter title should be left-aligned", chapter.left < root.width / 4f)
 
         val label = rule.onNodeWithTag(PlayerTestTags.CHAPTER_ROW).fetchSemanticsNode()
@@ -195,7 +196,7 @@ class PlayerScreenContentTest {
         val actions = RecordedActions()
         rule.setPlayer(fullUiState(chapterTitle = LONG_CHAPTER_TITLE), actions = actions.actions())
 
-        val chapter = rule.onNodeWithTag(PlayerTestTags.CHAPTER_TITLE).textLayout()
+        val chapter = rule.onNodeWithTag(PlayerTestTags.CHAPTER_TITLE, useUnmergedTree = true).textLayout()
         assertEquals(1, chapter.lineCount)
         assertTrue("the long chapter title should be ellipsized", chapter.hasVisualOverflow)
 
