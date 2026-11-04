@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.omnibus.omnibus.feature.audiobook.player.offers.PlayerBannerSlot
 
 /**
  * The audiobook player (C10): the root-route screen for one open of the player. It is the host every later player ticket
@@ -85,7 +86,7 @@ fun PlayerScreen(
             onSeek = viewModel::onSeek,
             banner = {
                 // #166
-                uiState.error?.let { PlayerErrorBanner(error = it, onRetry = viewModel::onRetry) }
+                PlayerBannerSlot(bookUuid = bookUuid, error = uiState.error, onRetry = viewModel::onRetry)
 
             },
         )

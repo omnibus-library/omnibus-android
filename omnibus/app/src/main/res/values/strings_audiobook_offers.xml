@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Resume offers in the player's banner slot (#166). Dismiss reuses audiobook_dismiss from strings_audiobook_player.xml. -->
+    <!-- Title of the offer when another device has listened further. -->
+    <string name="audiobook_offers_device_title">Listened further elsewhere</string>
+    <!-- %1$s is a time already formatted for the locale, such as "1:42:10" or "6:38". -->
+    <string name="audiobook_offers_device_detail">Another device left off at %1$s.</string>
+    <!-- Title of the ebook offer when the ebook is ahead of the audio. -->
+    <string name="audiobook_offers_ebook_ahead_title">Read further in the ebook</string>
+    <!-- Title of the ebook offer when the ebook is behind the audio, a re-read. -->
+    <string name="audiobook_offers_ebook_behind_title">Re-reading earlier in the ebook</string>
+    <!-- %1$s is a time already formatted for the locale, such as "1:42:10" or "6:38". -->
+    <string name="audiobook_offers_ebook_detail">Your reading maps to about %1$s.</string>
+    <!-- Spoken and visible label of the button that accepts an offer and moves to its position. -->
+    <string name="audiobook_offers_go">Go</string>
+</resources>
