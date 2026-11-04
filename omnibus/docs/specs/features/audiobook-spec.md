@@ -331,9 +331,9 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
   - Back 15, play/pause, and a ✕.
 - P-MINI-2. The player's chevron-down collapses it to the mini player, and playback continues. Tapping the mini player opens the full player.
 - P-MINI-3. ✕ stops playback, saves the place, and removes the bar.
-- P-MINI-4. While audio plays, the reader shows the same bar docked at the bottom, and the page lays out above it. Expanding it opens the player over the reader.
+- P-MINI-4. While a book is loaded in the player (playing or paused), the reader shows the same bar docked at the bottom, and the page lays out above it. Expanding it opens the player over the reader.
 - P-MINI-5. The player's book button collapses the player and opens the reader on the same book, with the audio still playing in the dock.
-- P-MINI-6. Immersive read (#99) starts the audio and opens the reader with the dock.
+- P-MINI-6. Immersive read (#99) starts the audio and opens the reader with the dock. It needs no separate entry point: a load with autoplay starts the audio without the player screen, and the dock shows as soon as the load starts.
 
 **Edge cases**
 
@@ -699,3 +699,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #164: AND-RUSE-2 names the audio position queue in data/audiobook/position; I-SESS-2 says ticks count wall-clock time on both clients; I-SESS-3 says the carry-over is per book. |
 | 2026-11-04 | #165: AND-UI-1 and Q4 put the player on the root stack (D1); AND-UI-6 names the per-area strings files; P-SCR-2 exempts a book already loaded and adds the title-less message; a §4 edge case closes the player when its book is unloaded. |
 | 2026-11-04 | #166: the device and ebook offers as built; ebook dismissals are kept per book in their own DataStore and re-arm when the source clock changes. |
+| 2026-11-04 | #172: P-MINI-4 shows the dock while a book is loaded, not only while it plays (as on iOS); P-MINI-6 says Immersive read uses a load with autoplay. |
