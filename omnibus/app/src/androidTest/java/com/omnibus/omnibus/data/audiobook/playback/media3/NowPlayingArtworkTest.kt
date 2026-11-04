@@ -23,8 +23,9 @@ class NowPlayingArtworkTest {
 
     private fun decode(bytes: ByteArray): Bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)!!
 
+    // I-SYS-4
     @Test
-    fun `draws a deterministic 1024 px plate (I-SYS-4)`() {
+    fun drawsADeterministic1024PxPlate() {
         // TC-105: the plate is a square 1024 px PNG, the same for the same book, a different colour for another book,
         // with the initials drawn in the middle.
         val first = ArtworkPlate.render("book-1", "The Book")
@@ -52,8 +53,9 @@ class NowPlayingArtworkTest {
         plate.recycle()
     }
 
+    // I-SYS-4
     @Test
-    fun `caps the cover at 1024 px (I-SYS-4)`() {
+    fun capsTheCoverAt1024Px() {
         // TC-105: a 3000 px cover loads no larger than the session's limit.
         val big = Bitmap.createBitmap(3_000, 3_000, Bitmap.Config.RGB_565).apply { eraseColor(Color.RED) }
         val png = ByteArrayOutputStream().use { out ->

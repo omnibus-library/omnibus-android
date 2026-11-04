@@ -75,8 +75,9 @@ class AudiobookPlaybackServiceTest {
         image = NowPlayingImage.None,
     )
 
+    // AND-STK-1, AND-STK-2, P-PLAY-1
     @Test
-    fun `declares the service and permissions (AND-STK-1, AND-STK-2, P-PLAY-1)`() {
+    fun declaresTheServiceAndPermissions() {
         // TC-91: the merged manifest exports the service with the media playback type, requests the two foreground
         // permissions, doesn't ask for notifications, and resolves the Media3 session action.
         val packageManager = context.packageManager
@@ -102,8 +103,9 @@ class AudiobookPlaybackServiceTest {
         assertTrue(resolved.any { it.serviceInfo.name == AudiobookPlaybackService::class.java.name })
     }
 
+    // AND-STK-6
     @Test
-    fun `builds one player and session with speech attributes (AND-STK-6)`() {
+    fun buildsOnePlayerAndSessionWithSpeechAttributes() {
         // TC-92: the service builds one speech player and one session. The session's player is chapter-relative, which
         // hides the previous and next commands from the controller.
         val controller = connect()
@@ -116,8 +118,9 @@ class AudiobookPlaybackServiceTest {
         assertFalse(onMain { controller.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT) })
     }
 
+    // AND-STK-1
     @Test
-    fun `releases on destroy (AND-STK-1)`() {
+    fun releasesOnDestroy() {
         // TC-92: when the last controller releases and the service stops, the player and session are released.
         // This needs no other connection to the service, so it relies on the other tests releasing theirs.
         val controller = connect()
@@ -132,8 +135,9 @@ class AudiobookPlaybackServiceTest {
         assertTrue(onMain { exo.isReleased })
     }
 
+    // I-SYS-2, P-PLAY-2
     @Test
-    fun `shows the chapter title, span duration and two custom actions (I-SYS-2, P-PLAY-2)`() {
+    fun showsTheChapterTitleSpanDurationAndTwoCustomActions() {
         // TC-103: the platform session shows the chapter title and the span's duration, with back 15 and forward 30.
         val controller = connect()
         startBookAt(70_000)
@@ -150,8 +154,9 @@ class AudiobookPlaybackServiceTest {
         onMain { controller.pause() }
     }
 
+    // I-SYS-2
     @Test
-    fun `reports speed 0 while paused (I-SYS-2)`() {
+    fun reportsSpeed0WhilePaused() {
         // TC-103: the platform speed is 0 while paused, and the real rate while playing.
         val controller = connect()
         startBookAt(70_000)
@@ -175,8 +180,9 @@ class AudiobookPlaybackServiceTest {
         return onMain { PlatformController(context, token) }
     }
 
+    // AND-STK-2
     @Test
-    fun `custom buttons skip through the filter (AND-STK-2)`() {
+    fun customButtonsSkipThroughTheFilter() {
         // TC-104: the custom skip commands move the book by 30 s forward and 15 s back, through the press filter.
         val controller = connect()
         val exo = startBookAt(10_000)
@@ -193,8 +199,9 @@ class AudiobookPlaybackServiceTest {
         awaitUntil("back 15 s to 25 s") { near(25_000, exo.currentPosition) }
     }
 
+    // AND-STK-2, P-PLAY-2
     @Test
-    fun `custom buttons are back 15 and forward 30 in their slots (AND-STK-2, P-PLAY-2)`() {
+    fun customButtonsAreBack15AndForward30InTheirSlots() {
         // TC-104: the media button preferences are the two skip buttons, with their icons, slots and names.
         val controller = connect()
         awaitUntil("the media button preferences") { controller.mediaButtonPreferences.size == 2 }
@@ -211,8 +218,9 @@ class AudiobookPlaybackServiceTest {
         assertEquals(context.getString(R.string.audiobook_playback_forward_30), forward.displayName.toString())
     }
 
+    // AND-STK-2
     @Test
-    fun `a media notification is posted without a POST_NOTIFICATIONS prompt (AND-STK-2)`() {
+    fun aMediaNotificationIsPostedWithoutAPOSTNOTIFICATIONSPrompt() {
         // TC-104: playing posts the media notification on the playback channel, with no permission request.
         val controller = connect()
         startBookAt(10_000)
@@ -229,7 +237,7 @@ class AudiobookPlaybackServiceTest {
     }
 
     @Test
-    fun `session activity opens the app`() {
+    fun sessionActivityOpensTheApp() {
         // TC-104: the session activity is an immutable PendingIntent.
         val controller = connect()
         awaitUntil("the session activity") { controller.sessionActivity != null }

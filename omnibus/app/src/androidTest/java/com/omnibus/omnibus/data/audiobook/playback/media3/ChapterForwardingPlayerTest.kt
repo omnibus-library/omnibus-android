@@ -84,8 +84,9 @@ class ChapterForwardingPlayerTest {
         }
     }
 
+    // I-SYS-1
     @Test
-    fun `duration and position are the span's (I-SYS-1)`() {
+    fun durationAndPositionAreTheSpanS() {
         // TC-95: chapter two is 50 s long, and the session reports its span, not the whole book.
         loadBook()
         seekBook(70_000)
@@ -99,8 +100,9 @@ class ChapterForwardingPlayerTest {
         assertTrue("buffered ${values[4]} is outside the span", values[4] in 0L..50_000L)
     }
 
+    // I-TL-4
     @Test
-    fun `no chapters spans the book (I-TL-4)`() {
+    fun noChaptersSpansTheBook() {
         // TC-95: without chapters the session shows the whole book.
         loadBook()
         onMain { bridge.nowPlaying = nowPlaying(chapters = emptyList(), chapterIndex = null) }
@@ -111,8 +113,9 @@ class ChapterForwardingPlayerTest {
         assertEquals(values[3], values[2])
     }
 
+    // I-SYS-1
     @Test
-    fun `maps span seeks back to book time (I-SYS-1)`() {
+    fun mapsSpanSeeksBackToBookTime() {
         // TC-96: span seeks land in book time, inside the current chapter's span.
         loadBook()
         seekBook(70_000)
@@ -124,8 +127,9 @@ class ChapterForwardingPlayerTest {
         awaitUntil("an indexed span seek of 5 s to land at 65 s") { near(65_000, exo.currentPosition) }
     }
 
+    // I-SYS-1
     @Test
-    fun `clamps to the span (I-SYS-1)`() {
+    fun clampsToTheSpan() {
         // TC-96: a span seek below zero stops at the chapter's start, and one past its end stops at its end.
         loadBook()
         seekBook(70_000)
@@ -137,8 +141,9 @@ class ChapterForwardingPlayerTest {
         awaitUntil("a seek past the span to stop at 110 s") { near(110_000, exo.currentPosition) }
     }
 
+    // I-SYS-2
     @Test
-    fun `shows the chapter title else the book title (I-SYS-2)`() {
+    fun showsTheChapterTitleElseTheBookTitle() {
         // TC-97: the chapter title, or the book title when the chapter has none or there are no chapters.
         onMain { bridge.nowPlaying = nowPlaying(chapterIndex = 1) }
         assertEquals("Two", onMain { player.mediaMetadata.title?.toString() })
@@ -151,8 +156,9 @@ class ChapterForwardingPlayerTest {
         assertEquals("The Book", onMain { player.mediaMetadata.title?.toString() })
     }
 
+    // I-SYS-2
     @Test
-    fun `artist, album and artwork (I-SYS-2)`() {
+    fun artistAlbumAndArtwork() {
         // TC-97: the artist is the author, the album the book title, and the artwork the bytes it was given.
         val bytes = byteArrayOf(1, 2, 3, 4, 5)
         onMain { bridge.nowPlaying = nowPlaying(image = NowPlayingImage.Cover(bytes.toByteString())) }
@@ -163,8 +169,9 @@ class ChapterForwardingPlayerTest {
         assertTrue(bytes.contentEquals(metadata.artworkData))
     }
 
+    // I-SYS-1
     @Test
-    fun `notifies on chapter, metadata and artwork changes (I-SYS-1)`() {
+    fun notifiesOnChapterMetadataAndArtworkChanges() {
         // TC-98: a chapter, metadata or artwork change reaches the listeners; an equal NowPlaying reaches none.
         val recorder = Recorder()
         onMain { player.addListener(recorder) }
@@ -187,8 +194,9 @@ class ChapterForwardingPlayerTest {
         assertEquals(before, onMain { recorder.eventSets.size })
     }
 
+    // P-PLAY-6
     @Test
-    fun `skips move in book time and never change chapter (P-PLAY-6)`() {
+    fun skipsMoveInBookTimeAndNeverChangeChapter() {
         // TC-99: each skip moves +30 s or -15 s in book time, from mid-book, near the start and near the end.
         loadBook()
         val cases = listOf(
@@ -214,8 +222,9 @@ class ChapterForwardingPlayerTest {
 
     private class Skip(val name: String, val from: Long, val to: Long, val act: (ChapterForwardingPlayer) -> Unit)
 
+    // P-PLAY-2
     @Test
-    fun `hides chapter and track buttons (P-PLAY-2)`() {
+    fun hidesChapterAndTrackButtons() {
         // TC-101: the four previous and next commands are gone; play, seek and speed remain.
         loadBook()
         val available = onMain {
@@ -234,16 +243,18 @@ class ChapterForwardingPlayerTest {
         assertEquals(listOf(false, false, false, false, true, true, true), available)
     }
 
+    // I-SYS-5
     @Test
-    fun `with nothing loaded asks the controller (I-SYS-5)`() {
+    fun withNothingLoadedAsksTheController() {
         // TC-102: play with nothing loaded asks the controller, and does not touch the player.
         onMain { player.play() }
         assertEquals(1, onMain { playRequests })
         assertFalse(onMain { exo.playWhenReady })
     }
 
+    // I-SYS-5
     @Test
-    fun `with a playerError asks the controller and prepare does not re-prepare (I-SYS-5)`() {
+    fun withAPlayerErrorAsksTheControllerAndPrepareDoesNotRePrepare() {
         // TC-102: a raw player error sends play to the controller, and prepare does nothing while it stands.
         onMain {
             exo.setMediaItem(MediaItem.fromUri("file:///nonexistent/silent-missing.wav"))
@@ -260,8 +271,9 @@ class ChapterForwardingPlayerTest {
         assertTrue(onMain { exo.playerError } != null)
     }
 
+    // I-SYS-5
     @Test
-    fun `plays the loaded item without asking the controller (I-SYS-5)`() {
+    fun playsTheLoadedItemWithoutAskingTheController() {
         // TC-102: with an item loaded and no error, play is ExoPlayer's.
         loadBook()
         onMain { player.play() }
@@ -270,8 +282,9 @@ class ChapterForwardingPlayerTest {
         onMain { player.pause() }
     }
 
+    // AND-STK-7
     @Test
-    fun `keeps the pitch (AND-STK-7)`() {
+    fun keepsThePitch() {
         // TC-109: a speed change leaves the pitch at 1.0.
         loadBook()
         onMain { player.playbackParameters = PlaybackParameters(2.0f) }

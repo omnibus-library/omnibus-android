@@ -33,8 +33,9 @@ class AudiobookPlayerFactoryTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val factory by lazy { entryPoint(context).audiobookPlayerFactory() }
 
+    // I-LOAD-4
     @Test
-    fun `a book second lands in the right part (I-LOAD-4)`() {
+    fun aBookSecondLandsInTheRightPart() {
         // TC-111: three parts of 2, 3 and 2 seconds read as one 7-second book, and playback crosses into part two
         // without a seek.
         val source = AudioSource.Parts("book-1", localParts(context, "factory", listOf(2.0, 3.0, 2.0)), emptyMap())
@@ -76,8 +77,9 @@ class AudiobookPlayerFactoryTest {
         }
     }
 
+    // I-LOAD-3
     @Test
-    fun `hls builds an HlsMediaSource (I-LOAD-3)`() {
+    fun hlsBuildsAnHlsMediaSource() {
         // TC-111: an hls book becomes one HLS media source.
         val source = onMain {
             factory.mediaSource(
@@ -87,8 +89,9 @@ class AudiobookPlayerFactoryTest {
         assertTrue("the hls source is ${source.javaClass.simpleName}", source is HlsMediaSource)
     }
 
+    // AND-STK-3
     @Test
-    fun `OkHttpDataSource runs on the app's OkHttp 5 client (AND-STK-3)`() {
+    fun okHttpDataSourceRunsOnTheAppSOkHttp5Client() {
         // TC-112: the data source runs on the app's client with the source's headers. Cleartext HTTP to a loopback
         // server is refused by the app's network policy (there is no network security config), so the read may fail
         // with an IOException. A linkage failure (NoSuchMethodError, AbstractMethodError) is an Error and fails here.

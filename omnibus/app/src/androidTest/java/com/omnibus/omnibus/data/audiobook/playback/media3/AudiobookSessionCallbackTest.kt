@@ -42,8 +42,9 @@ class AudiobookSessionCallbackTest {
         }
     }
 
+    // P-PLAY-6
     @Test
-    fun `the six keys skip and play-pause is left to Media3 (P-PLAY-6)`() {
+    fun theSixKeysSkipAndPlayPauseIsLeftToMedia3() {
         // TC-100: the skip keys move the book, play-pause returns false for Media3, and only a key down acts.
         val exo: ExoPlayer = onMain { factory.createPlayer() }
         val forwarding = onMain {

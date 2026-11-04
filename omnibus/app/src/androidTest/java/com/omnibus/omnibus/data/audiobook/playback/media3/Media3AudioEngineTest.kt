@@ -52,8 +52,9 @@ class Media3AudioEngineTest {
         fun has(event: EngineEvent): Boolean = events.contains(event)
     }
 
+    // C2
     @Test
-    fun `connects on the first command (C2)`() {
+    fun connectsOnTheFirstCommand() {
         // TC-106: awaitReady connects the controller and waits for the service's player.
         val engine = newEngine()
         awaitOnMain { engine.awaitReady() }
@@ -61,8 +62,9 @@ class Media3AudioEngineTest {
         assertNotNull(bridge.player)
     }
 
+    // I-HLTH-3
     @Test
-    fun `reconnects after the service dies (I-HLTH-3)`() {
+    fun reconnectsAfterTheServiceDies() {
         // TC-106: a lost connection reports Disconnected, and the next awaitReady reconnects to the service's player.
         // The disconnect is simulated by calling the engine's disconnect path, because a bound service can't be stopped
         // from inside the app.
@@ -77,8 +79,9 @@ class Media3AudioEngineTest {
         assertNotNull(bridge.player)
     }
 
+    // C2
     @Test
-    fun `engine commands are not external pauses, but a pause from outside is (C2)`() {
+    fun engineCommandsAreNotExternalPausesButAPauseFromOutsideIs() {
         // TC-106: the engine's own source change and pause don't report PausedExternally, and a pause from another
         // controller (one without the app's hint) does.
         val engine = newEngine()
