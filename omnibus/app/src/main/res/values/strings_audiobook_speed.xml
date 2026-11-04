@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Playback speed sheet opened from the player's Speed cell (#168). Every name is prefixed audiobook_speed_. -->
+    <!-- Title of the speed sheet, also its heading for TalkBack. -->
+    <string name="audiobook_speed_title">Playback speed</string>
+    <!-- Label of the slider's row, on the left of the range. -->
+    <string name="audiobook_speed_fine_tune">Fine-tune</string>
+    <!-- %1$s and %2$s are the slider's two ends, each a formatted rate such as "0.5×" and "3.0×". -->
+    <string name="audiobook_speed_range">%1$s — %2$s</string>
+    <!-- Spoken description of the fine-tune slider for TalkBack. -->
+    <string name="audiobook_speed_slider_description">Fine-tune speed</string>
+    <!-- Spoken label of the button that steps the speed down by one fine-tune step. The visible glyph is a minus sign. -->
+    <string name="audiobook_speed_slower">Slower</string>
+    <!-- Spoken label of the button that steps the speed up by one fine-tune step. The visible glyph is a plus sign. -->
+    <string name="audiobook_speed_faster">Faster</string>
+    <!-- %1$s is the fine-tune step in the locale's digits, "0.05" in English and "0,05" in German. -->
+    <string name="audiobook_speed_step_caption">%1$s steps</string>
+</resources>

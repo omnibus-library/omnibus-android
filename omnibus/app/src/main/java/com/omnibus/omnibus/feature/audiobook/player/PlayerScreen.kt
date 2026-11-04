@@ -19,6 +19,7 @@ import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberAddBookmarkAction
 import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberSyncHereButton
 import com.omnibus.omnibus.feature.audiobook.sleep.SleepPill
 import com.omnibus.omnibus.feature.audiobook.sleep.SleepSheet
+import com.omnibus.omnibus.feature.audiobook.speed.SpeedSheet
 
 /**
  * The audiobook player (C10): the root-route screen for one open of the player. It is the host every later player ticket
@@ -62,7 +63,7 @@ fun PlayerScreen(
         onOpenChapters = { overlay = PlayerOverlay.Chapters },
 
         // #168
-        onOpenSpeed = null,
+        onOpenSpeed = { overlay = PlayerOverlay.Speed },
 
         // #169
         onOpenSleep = { overlay = PlayerOverlay.Sleep },
@@ -105,7 +106,7 @@ fun PlayerScreen(
             PlayerOverlay.Chapters -> ChaptersSheet(onDismiss = dismissOverlay)
 
             // #168
-            PlayerOverlay.Speed -> Unit
+            PlayerOverlay.Speed -> SpeedSheet(onDismiss = dismissOverlay)
 
             // #169
             PlayerOverlay.Sleep -> SleepSheet(onDismiss = dismissOverlay)
