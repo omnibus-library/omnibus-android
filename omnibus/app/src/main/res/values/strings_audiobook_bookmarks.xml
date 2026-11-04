@@ -1,0 +1,12 @@
+<resources>
+    <!-- Label of the tool-row button that marks this second of the audio as matching the reader's place (P-BMK-4). -->
+    <string name="audiobook_bookmarks_sync_here">Sync here</string>
+    <!-- The same button's label after a successful sync, kept until the player closes. -->
+    <string name="audiobook_bookmarks_synced">Synced ✓</string>
+    <!-- Spoken after the Sync here label while the device is offline and the button is disabled (P-A11Y-5). -->
+    <string name="audiobook_bookmarks_needs_connection">Needs a connection</string>
+    <!-- Footer under the player's bookmark list. -->
+    <string name="audiobook_bookmarks_swipe_hint">Swipe one to remove it.</string>
+    <!-- Screen-reader action on a bookmark row that removes it. -->
+    <string name="audiobook_bookmarks_remove">Remove bookmark</string>
+</resources>

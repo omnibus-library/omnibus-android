@@ -294,13 +294,16 @@ private class BookmarkRowText(val name: String, val meta: String?, val descripti
 /**
  * One bookmark: a ribbon in the book's accent, its name, its meta line when it has one, and a chevron. The whole row is
  * one button whose description is the name and the place.
+ *
+ * Also used by the player's bookmarks sheet (#171), which passes [modifier] for its remove action.
  */
 @Composable
-private fun BookmarkRow(
+internal fun BookmarkRow(
     row: BookmarkRowModel,
     nowMillis: Long,
     ribbonColor: Color,
     onChosen: (BookmarkRowModel) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
     val locale = LocalConfiguration.current.locales[0]
@@ -334,7 +337,7 @@ private fun BookmarkRow(
         BookmarkRowText(name, bookmarkMeta(parts), bookmarkRowDescription(name, parts))
     }
     Row(
-        Modifier
+        modifier
             .testTag(BookmarksTestTags.row(key))
             .topRule()
             .fillMaxWidth()
