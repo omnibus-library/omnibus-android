@@ -1,0 +1,20 @@
+<resources>
+    <!-- Sleep timer sheet and moon pill (#169). Shared player labels live in strings_audiobook_player.xml (C13); never redefine them here. -->
+    <!-- Title of the sleep timer sheet in the audiobook player. -->
+    <string name="audiobook_sleep_title">Sleep timer</string>
+    <!-- Sleep timer option that turns the timer off. -->
+    <string name="audiobook_sleep_off">Off</string>
+    <!-- Sleep timer option. %1$d is a number of minutes under an hour, such as 15. -->
+    <string name="audiobook_sleep_minutes">%1$d min</string>
+    <!-- Sleep timer option. %1$d is a whole number of hours, 1 to 4. -->
+    <plurals name="audiobook_sleep_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <!-- Sleep timer option that pauses at the end of the current chapter. %1$d is the chapter's position in the book's chapter list, starting at 1. -->
+    <string name="audiobook_sleep_end_of_chapter">End of chapter %1$d</string>
+    <!-- Countdown in the sleep sheet's header. %1$s is a clock time such as "0:14:59". -->
+    <string name="audiobook_sleep_remaining">%1$s remaining</string>
+    <!-- Spoken description of the moon pill in the player's top bar. %1$s is a clock time such as "14:32". -->
+    <string name="audiobook_sleep_pill_description">Sleep timer, %1$s remaining</string>
+</resources>
