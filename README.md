@@ -11,6 +11,8 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 2. Merge it like any other PR (squash) once the `Testing` checks pass.
 3. The workflow tags `vX.Y.Z`, creates the GitHub Release, and its `publish-apk` job attaches a signed `omnibus-X.Y.Z.apk`. Download the APK from the release's **Assets** on the [Releases page](https://github.com/omnibus-library/omnibus-android/releases).
 
+You don't have to do this by hand: `.github/workflows/nightly-release.yml` merges the open release PR every night at 2:00 AM EST, 07:00 UTC (auto-merge, so it waits for the `Testing` checks), and the merge triggers the steps in 3. To release right away, run **Nightly release** from the Actions tab. To hold releases back, disable the workflow in the Actions tab.
+
 If `publish-apk` fails (for example a missing secret), fix the cause and re-run the failed job from the Actions run; the upload replaces any partial asset.
 
 ### How commits bump the version

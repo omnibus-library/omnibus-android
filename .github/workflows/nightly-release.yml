@@ -1,0 +1,40 @@
+name: Nightly release
+
+# Merges the open release-please PR once a night, which cuts the release: the merge is a push to
+# main, so release-please.yml tags vX.Y.Z, creates the GitHub Release and runs publish-apk.
+# The merge uses the release-please PAT, not GITHUB_TOKEN: a merge made with GITHUB_TOKEN doesn't
+# trigger workflows, so no tag would be created and no APK built. The PR is merged with --auto
+# so it waits for the required Testing checks instead of failing if they are still running.
+on:
+  schedule:
+    # 2:00 AM EST. Cron is UTC and ignores daylight saving, so this is 3:00 AM EDT in summer.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  merge-release-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    env:
+      GH_TOKEN: ${{ secrets.ANDROID_RELEASE_PLEASE }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Merge the release PR
+        run: |
+          PR="$(gh pr list --state open --base main --head release-please--branches--main \
+            --label "autorelease: pending" --json number,headRefOid --jq '.[0]')"
+          if [ -z "$PR" ] || [ "$PR" = "null" ]; then
+            echo "No open release PR, nothing to release."
+            exit 0
+          fi
+          NUMBER="$(jq -r .number <<< "$PR")"
+          SHA="$(jq -r .headRefOid <<< "$PR")"
+          echo "Merging release PR #$NUMBER at $SHA"
+          gh pr merge "$NUMBER" --squash --auto --match-head-commit "$SHA"
