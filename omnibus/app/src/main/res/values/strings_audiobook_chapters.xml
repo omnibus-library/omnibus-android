@@ -1,0 +1,10 @@
+<resources>
+    <!-- Title of the chapters sheet (P-CHP-1). -->
+    <string name="audiobook_chapters_title">Chapters</string>
+    <!-- The pill at the sheet's top right that closes it (P-CHP-1). -->
+    <string name="audiobook_chapters_done">Done</string>
+    <!-- What TalkBack reads for a chapter row (P-A11Y-3). %1$d is the 1-based number, %2$s the title, %3$s the length such as "18:19". -->
+    <string name="audiobook_chapters_row_description">Chapter %1$d, %2$s, %3$s</string>
+    <!-- Spoken state of the row for the chapter being played (P-A11Y-3). -->
+    <string name="audiobook_chapters_current">Current</string>
+</resources>
