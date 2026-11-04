@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * The audiobook player's destination. It goes on the root back stack, not a tab stack, so the player covers the shell
  * and its tab bar, and closing it returns to the shell with its tab stacks intact.
  *
- * The arguments match the old `PlayerStubRoute`, so saved payloads still decode.
+ * The arguments are the ones the earlier placeholder route took, so saved payloads still decode.
  *
  * @property bookUuid The book to play.
  * @property bookFileId The file to open, or null for the saved one.
