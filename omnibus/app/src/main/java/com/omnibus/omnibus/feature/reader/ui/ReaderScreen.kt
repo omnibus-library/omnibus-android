@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,10 +22,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
@@ -45,6 +50,7 @@ import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
 import com.omnibus.omnibus.feature.reader.ReaderBookState
@@ -80,7 +86,8 @@ data class ReaderRoute(val bookUuid: String, val startCfi: String? = null) : Nav
 /**
  * The reader for one book, over the shell. The ViewModel is created for [bookUuid] and is the only
  * thing here that sees its state. [onClose] leaves the reader. [startCfi] opens at that place instead
- * of the saved position.
+ * of the saved position. [onOpenPlayer] docks the mini player at the bottom and expands it into the player; null shows
+ * no dock.
  */
 @Composable
 fun ReaderScreen(
@@ -91,6 +98,7 @@ fun ReaderScreen(
     viewModel: ReaderViewModel = hiltViewModel<ReaderViewModel, ReaderViewModel.Factory>(
         creationCallback = { it.create(bookUuid, startCfi) },
     ),
+    onOpenPlayer: ((bookUuid: String) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val controller = rememberReaderController()
@@ -118,6 +126,14 @@ fun ReaderScreen(
         onBookmarksRetryRequested = viewModel::onBookmarksRetryRequested,
         onClose = onClose,
         modifier = modifier,
+        bottomDock = {
+            if (onOpenPlayer != null) {
+                MiniPlayer(
+                    onExpand = onOpenPlayer,
+                    contentWindowInsets = ReaderWebViewDefaults.insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                )
+            }
+        },
     )
 }
 
@@ -148,6 +164,7 @@ fun ReaderScreen(
  * @param onBookmarkToggled the quick action was tapped: bookmark the page, or remove its bookmarks.
  * @param onBookmarkChosen a bookmark was chosen on the Bookmarks segment.
  * @param onBookmarksRetryRequested the Bookmarks segment's Try again was tapped.
+ * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
 @Composable
 internal fun ReaderScreenContent(
@@ -173,6 +190,7 @@ internal fun ReaderScreenContent(
     onBookmarkChosen: (Bookmark) -> Unit = {},
     onBookmarksRetryRequested: () -> Unit = {},
     modifier: Modifier = Modifier,
+    bottomDock: @Composable () -> Unit = {},
 ) {
     val leave = {
         onReaderClosed()
@@ -222,138 +240,159 @@ internal fun ReaderScreenContent(
     }
 
     val ground = Color(theme.groundArgb)
+    // Whether the dock below the page is showing, measured from its height.
+    var dockShowing by remember { mutableStateOf(false) }
     OmnibusTheme(darkTheme = !theme.isLight) {
+        // With a dock below, the page ends at its top edge, and the dock pads the bottom inset itself.
+        val pageInsets = if (dockShowing) {
+            ReaderWebViewDefaults.insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        } else {
+            ReaderWebViewDefaults.insets
+        }
         Box(
             modifier
                 .fillMaxSize()
                 .background(ground)
                 .testTag(ReaderScreenTags.ROOT),
         ) {
-            // Inset so the message clears the bars, with the ground painted behind them.
-            val stateModifier = Modifier.fillMaxSize().windowInsetsPadding(ReaderWebViewDefaults.insets)
-            when (val book = uiState.book) {
-                ReaderBookState.Loading -> LoadingStateView(
-                    label = stringResource(R.string.reader_loading),
-                    modifier = stateModifier,
-                    background = ground,
-                )
-
-                is ReaderBookState.Unavailable -> ErrorStateView(
-                    title = stringResource(R.string.reader_error_title),
-                    message = stringResource(book.reason.messageRes()),
-                    actionLabel = stringResource(R.string.reader_back),
-                    onRetry = leave,
-                    modifier = stateModifier,
-                    background = ground,
-                )
-
-                is ReaderBookState.Failed -> ErrorStateView(
-                    title = stringResource(R.string.reader_error_title),
-                    message = libraryErrorText(book.error),
-                    actionLabel = stringResource(R.string.reader_try_again),
-                    onRetry = onRetryBookRequested,
-                    modifier = stateModifier,
-                    background = ground,
-                )
-
-                is ReaderBookState.Ready -> {
-                    val opening = uiState.opening
-                    if (LocalInspectionMode.current) {
-                        // The WebView can't run in a preview, so the page is a plain ground.
-                        Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
-                    } else if (opening is ReaderOpening.Resolved && uiState.settingsLoaded) {
-                        // The page boots at the opening position and the stored settings, so it waits for both.
-                        SideEffect { controller.startAt(opening.start.bootCfi) }
-                        ReaderWebView(
-                            bookUuid = bookUuid,
-                            settings = uiState.settings,
-                            controller = controller,
-                            assetLoaderFactory = assetLoaderFactory,
-                            modifier = Modifier.fillMaxSize(),
-                            onEvent = onPageEvent,
-                        )
-                    }
-                    if (uiState.loadStatus == ReaderLoadStatus.Loading) {
-                        LoadingStateView(
-                            label = stringResource(R.string.reader_opening_title, book.title),
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxWidth().testTag(ReaderScreenTags.PAGE_AREA)) {
+                    // Inset so the message clears the bars, with the ground painted behind them.
+                    val stateModifier = Modifier.fillMaxSize().windowInsetsPadding(pageInsets)
+                    when (val book = uiState.book) {
+                        ReaderBookState.Loading -> LoadingStateView(
+                            label = stringResource(R.string.reader_loading),
                             modifier = stateModifier,
                             background = ground,
                         )
-                    }
-                    if (uiState.loadStatus == ReaderLoadStatus.Ready) {
-                        // Anchored above the bottom band whatever the chrome does, so it never moves when the chrome toggles.
-                        ChromeVisibility(
-                            visible = uiState.syncOffer != null,
-                            reduceMotion = reduceMotion,
-                            enter = fadeIn(Motion.settle()) + slideInVertically { it / 2 },
-                            exit = fadeOut(Motion.settle()),
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        ) {
-                            ReaderSyncOfferBanner(
-                                title = stringResource(R.string.reader_sync_offer_title),
-                                detail = stringResource(R.string.reader_sync_offer_detail),
-                                goLabel = stringResource(R.string.reader_sync_offer_go),
-                                dismissLabel = stringResource(R.string.reader_sync_offer_dismiss),
-                                colors = readerChromeColors(theme),
-                                actionColor = readerSyncOfferActionColor(theme),
-                                onAccept = onSyncOfferAccepted,
-                                onDismiss = onSyncOfferDismissed,
-                                modifier = Modifier
-                                    .windowInsetsPadding(
-                                        ReaderWebViewDefaults.insets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-                                    )
-                                    .padding(start = Spacing.md, end = Spacing.md, bottom = ReaderBands.Bottom + Spacing.sm)
-                                    .widthIn(max = 560.dp)
-                                    .fillMaxWidth(),
-                            )
-                        }
-                        ReaderChrome(
-                            indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
-                            chromeVisible = uiState.chromeVisible,
-                            menuOpen = uiState.menuOpen,
-                            menuRows = uiState.menuRows,
-                            percent = uiState.location?.pct ?: 0,
-                            bookmarkCount = uiState.bookmarkCount,
-                            pageBookmarked = uiState.isPageBookmarked,
-                            canBookmark = uiState.location?.cfi?.isNotBlank() == true,
-                            colors = readerChromeColors(theme),
-                            reduceMotion = reduceMotion,
-                            insets = ReaderWebViewDefaults.insets,
-                            onClose = leave,
-                            onMenuOpened = onMenuOpened,
-                            onMenuDismissed = onMenuDismissed,
-                            onMenuRowChosen = onMenuRowChosen,
-                            onBookmarkToggled = onBookmarkToggled,
+
+                        is ReaderBookState.Unavailable -> ErrorStateView(
+                            title = stringResource(R.string.reader_error_title),
+                            message = stringResource(book.reason.messageRes()),
+                            actionLabel = stringResource(R.string.reader_back),
+                            onRetry = leave,
+                            modifier = stateModifier,
+                            background = ground,
                         )
+
+                        is ReaderBookState.Failed -> ErrorStateView(
+                            title = stringResource(R.string.reader_error_title),
+                            message = libraryErrorText(book.error),
+                            actionLabel = stringResource(R.string.reader_try_again),
+                            onRetry = onRetryBookRequested,
+                            modifier = stateModifier,
+                            background = ground,
+                        )
+
+                        is ReaderBookState.Ready -> {
+                            val opening = uiState.opening
+                            if (LocalInspectionMode.current) {
+                                // The WebView can't run in a preview, so the page is a plain ground.
+                                Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
+                            } else if (opening is ReaderOpening.Resolved && uiState.settingsLoaded) {
+                                // The page boots at the opening position and the stored settings, so it waits for both.
+                                SideEffect { controller.startAt(opening.start.bootCfi) }
+                                ReaderWebView(
+                                    bookUuid = bookUuid,
+                                    settings = uiState.settings,
+                                    controller = controller,
+                                    assetLoaderFactory = assetLoaderFactory,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onEvent = onPageEvent,
+                                    insets = pageInsets,
+                                )
+                            }
+                            if (uiState.loadStatus == ReaderLoadStatus.Loading) {
+                                LoadingStateView(
+                                    label = stringResource(R.string.reader_opening_title, book.title),
+                                    modifier = stateModifier,
+                                    background = ground,
+                                )
+                            }
+                            if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                                // Anchored above the bottom band whatever the chrome does, so it never moves when the chrome toggles.
+                                ChromeVisibility(
+                                    visible = uiState.syncOffer != null,
+                                    reduceMotion = reduceMotion,
+                                    enter = fadeIn(Motion.settle()) + slideInVertically { it / 2 },
+                                    exit = fadeOut(Motion.settle()),
+                                    modifier = Modifier.align(Alignment.BottomCenter),
+                                ) {
+                                    ReaderSyncOfferBanner(
+                                        title = stringResource(R.string.reader_sync_offer_title),
+                                        detail = stringResource(R.string.reader_sync_offer_detail),
+                                        goLabel = stringResource(R.string.reader_sync_offer_go),
+                                        dismissLabel = stringResource(R.string.reader_sync_offer_dismiss),
+                                        colors = readerChromeColors(theme),
+                                        actionColor = readerSyncOfferActionColor(theme),
+                                        onAccept = onSyncOfferAccepted,
+                                        onDismiss = onSyncOfferDismissed,
+                                        modifier = Modifier
+                                            .windowInsetsPadding(
+                                                pageInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                                            )
+                                            .padding(start = Spacing.md, end = Spacing.md, bottom = ReaderBands.Bottom + Spacing.sm)
+                                            .widthIn(max = 560.dp)
+                                            .fillMaxWidth(),
+                                    )
+                                }
+                                ReaderChrome(
+                                    indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
+                                    chromeVisible = uiState.chromeVisible,
+                                    menuOpen = uiState.menuOpen,
+                                    menuRows = uiState.menuRows,
+                                    percent = uiState.location?.pct ?: 0,
+                                    bookmarkCount = uiState.bookmarkCount,
+                                    pageBookmarked = uiState.isPageBookmarked,
+                                    canBookmark = uiState.location?.cfi?.isNotBlank() == true,
+                                    colors = readerChromeColors(theme),
+                                    reduceMotion = reduceMotion,
+                                    insets = pageInsets,
+                                    onClose = leave,
+                                    onMenuOpened = onMenuOpened,
+                                    onMenuDismissed = onMenuDismissed,
+                                    onMenuRowChosen = onMenuRowChosen,
+                                    onBookmarkToggled = onBookmarkToggled,
+                                )
+                            }
+                            if (uiState.sheet == ReaderSheet.Contents) {
+                                // The app theme, not the reading theme: a dark-app reader on a Light page gets a dark sheet.
+                                OmnibusTheme(darkTheme = appDark) {
+                                    ReaderContentsSheet(
+                                        title = book.title,
+                                        cover = book.cover,
+                                        toc = uiState.toc,
+                                        location = uiState.location,
+                                        onEntryChosen = onTocEntryChosen,
+                                        onDismiss = onSheetDismissed,
+                                        initialTab = uiState.contentsTab,
+                                        bookmarks = uiState.bookmarks,
+                                        bookmarksStatus = uiState.bookmarksStatus,
+                                        onBookmarkChosen = onBookmarkChosen,
+                                        onBookmarksRetry = onBookmarksRetryRequested,
+                                    )
+                                }
+                            }
+                        }
                     }
-                    if (uiState.sheet == ReaderSheet.Contents) {
-                        // The app theme, not the reading theme: a dark-app reader on a Light page gets a dark sheet.
-                        OmnibusTheme(darkTheme = appDark) {
-                            ReaderContentsSheet(
-                                title = book.title,
-                                cover = book.cover,
-                                toc = uiState.toc,
-                                location = uiState.location,
-                                onEntryChosen = onTocEntryChosen,
+                    // The sheet is app-themed, never the reading theme (R13), so it re-wraps outside the reader's theme.
+                    if (uiState.sheet == ReaderSheet.Settings) {
+                        OmnibusTheme {
+                            ReaderSettingsSheet(
+                                settings = uiState.settings,
+                                onSettingsChanged = onSettingsChanged,
                                 onDismiss = onSheetDismissed,
-                                initialTab = uiState.contentsTab,
-                                bookmarks = uiState.bookmarks,
-                                bookmarksStatus = uiState.bookmarksStatus,
-                                onBookmarkChosen = onBookmarkChosen,
-                                onBookmarksRetry = onBookmarksRetryRequested,
                             )
                         }
                     }
                 }
-            }
-            // The sheet is app-themed, never the reading theme (R13), so it re-wraps outside the reader's theme.
-            if (uiState.sheet == ReaderSheet.Settings) {
-                OmnibusTheme {
-                    ReaderSettingsSheet(
-                        settings = uiState.settings,
-                        onSettingsChanged = onSettingsChanged,
-                        onDismiss = onSheetDismissed,
-                    )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { dockShowing = it.height > 0 }
+                        .testTag(ReaderScreenTags.DOCK),
+                ) {
+                    bottomDock()
                 }
             }
         }
@@ -370,6 +409,8 @@ internal fun ReaderController.execute(command: ReaderCommand) = when (command) {
 internal object ReaderScreenTags {
     const val ROOT = "reader_root"
     const val PREVIEW_PAGE = "reader_preview_page"
+    const val PAGE_AREA = "reader_page_area"
+    const val DOCK = "reader_dock"
 }
 
 private fun ReaderUnavailableReason.messageRes(): Int =

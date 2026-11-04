@@ -70,7 +70,7 @@ fun PlayerScreen(
         syncHere = null,
 
         // #172
-        onOpenBook = null,
+        onOpenBook = { onOpenReader(bookUuid, null) },
     )
 
     Box(modifier.fillMaxSize()) {

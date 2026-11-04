@@ -104,7 +104,12 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                 )
             }
             entry<ReaderRoute> { key ->
-                ReaderScreen(bookUuid = key.bookUuid, startCfi = key.startCfi, onClose = { backstack.closeReader(key) })
+                ReaderScreen(
+                    bookUuid = key.bookUuid,
+                    startCfi = key.startCfi,
+                    onClose = { backstack.closeReader(key) },
+                    onOpenPlayer = { uuid -> backstack.openPlayer(uuid, null) },
+                )
             }
             entry<PlayerRoute> { key ->
                 PlayerScreen(
