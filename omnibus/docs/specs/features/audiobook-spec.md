@@ -278,7 +278,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
   - Whole-book time left at the current speed, as "20h 25m left", in secondary text.
 - P-CAR-3. **Tiles**, filling the lower part of the screen:
   - Back 15 and forward 30, side by side, in dark tiles.
-  - Play/pause, full width and taller, filled in the accent colour with a black icon.
+  - Play/pause, full width and taller, filled in the app's accent colour (not the cover's tone) with a black icon.
   - Previous and next chapter, side by side, in dark tiles.
 - P-CAR-4. The tiles follow P-PLAY-3–5.
 - P-CAR-5. The screen stays on while car mode is open.
@@ -704,3 +704,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #171: P-BMK-2 adds the screen-reader remove action; P-BMK-4 says a second Sync here sends again; a §9 edge case ignores Bookmark while loading; AND-RUSE-3 gives the position's precision; AND-RUSE-6 names what the player's sheet reuses. |
 | 2026-11-04 | #169: the sleep timer as built: P-SLP-1 places "End of chapter {n}", numbers it by list position and keeps the sheet open after a pick; I-SLP-1 counts while paused; I-SLP-2 fires on a seek to or past the end and lands on the boundary. |
 | 2026-11-04 | #167: AND-RUSE-5 names what the chapters sheet takes from `ReaderContentsSheet`. |
+| 2026-11-04 | #170: P-CAR-3 says the play tile uses the app's accent colour; car mode is always black and dark, whatever the theme. |
