@@ -698,3 +698,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #163: §13.2 and §13.3 match the playback packages and contracts as built; AND-STK-1 says what goes through the MediaController; AND-RUSE-1 says what was added. |
 | 2026-11-04 | #164: AND-RUSE-2 names the audio position queue in data/audiobook/position; I-SESS-2 says ticks count wall-clock time on both clients; I-SESS-3 says the carry-over is per book. |
 | 2026-11-04 | #165: AND-UI-1 and Q4 put the player on the root stack (D1); AND-UI-6 names the per-area strings files; P-SCR-2 exempts a book already loaded and adds the title-less message; a §4 edge case closes the player when its book is unloaded. |
+| 2026-11-04 | #166: the device and ebook offers as built; ebook dismissals are kept per book in their own DataStore and re-arm when the source clock changes. |
