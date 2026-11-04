@@ -28,7 +28,7 @@ import javax.inject.Singleton
 @OptIn(UnstableApi::class)
 @Singleton
 class AudiobookPlayerFactory @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val omnibusHttpClient: OmnibusHttpClient,
 ) {
 

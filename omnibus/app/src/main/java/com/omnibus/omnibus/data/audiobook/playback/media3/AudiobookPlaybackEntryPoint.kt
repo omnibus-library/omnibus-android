@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.audiobook.playback.media3
 
 import com.omnibus.omnibus.data.audiobook.playback.AudioEngine
+import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -15,4 +16,5 @@ interface AudiobookPlaybackEntryPoint {
     fun playbackServiceBridge(): PlaybackServiceBridge
     fun audioEngine(): AudioEngine
     fun audiobookPlayerFactory(): AudiobookPlayerFactory
+    fun omnibusHttpClient(): OmnibusHttpClient
 }

@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.audiobook.playback.media3
 
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import com.omnibus.omnibus.data.audiobook.playback.NowPlaying
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,6 +25,9 @@ class PlaybackServiceBridge @Inject constructor() {
 
     /** The service's ExoPlayer, or null while no service is running. */
     val player: ExoPlayer? get() = _player.value
+
+    /** The service's session, or null while no service is running. Read by instrumented tests. */
+    var mediaSession: MediaSession? = null
 
     /** Publishes the service's ExoPlayer when it is created. */
     fun attach(player: ExoPlayer) {

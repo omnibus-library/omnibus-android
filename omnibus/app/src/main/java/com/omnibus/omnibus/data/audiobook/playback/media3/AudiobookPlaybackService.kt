@@ -69,6 +69,7 @@ class AudiobookPlaybackService : MediaSessionService() {
         forwarding.session = built
         player = forwarding
         session = built
+        bridge.mediaSession = built
         bridge.attach(exo)
     }
 
@@ -76,6 +77,7 @@ class AudiobookPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         bridge.detach()
+        bridge.mediaSession = null
         session?.release()
         player?.release()
         session = null

@@ -38,7 +38,7 @@ import kotlinx.coroutines.withTimeout
 @OptIn(UnstableApi::class)
 @Singleton
 class Media3AudioEngine @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val bridge: PlaybackServiceBridge,
     private val playerFactory: AudiobookPlayerFactory,
 ) : AudioEngine {
@@ -129,8 +129,11 @@ class Media3AudioEngine @Inject constructor(
         bridge.onExternalPause = { listener?.onEvent(EngineEvent.PausedExternally) }
     }
 
-    /** The service went away: drop the handles, so the next command reconnects. */
-    private fun lost() {
+    /**
+     * The service went away: drops the handles, so the next [awaitReady] reconnects. Called from the controller's
+     * disconnect callback, and directly by instrumented tests.
+     */
+    internal fun lost() {
         observed?.removeListener(rawListener)
         observed = null
         controller?.release()
