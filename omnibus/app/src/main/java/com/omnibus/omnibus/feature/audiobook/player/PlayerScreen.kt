@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.feature.audiobook.player.offers.PlayerBannerSlot
+import com.omnibus.omnibus.feature.audiobook.carmode.CarMode
 import com.omnibus.omnibus.feature.audiobook.bookmarks.PlayerBookmarksSheet
 import com.omnibus.omnibus.feature.audiobook.chapters.ChaptersSheet
 import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberAddBookmarkAction
@@ -68,7 +69,7 @@ fun PlayerScreen(
         sleepPill = { uiState.sleepTimer?.let { SleepPill(it) } },
 
         // #170
-        onOpenCarMode = null,
+        onOpenCarMode = { overlay = PlayerOverlay.CarMode },
 
         // #171
         onAddBookmark = rememberAddBookmarkAction(bookUuid),
@@ -110,7 +111,7 @@ fun PlayerScreen(
             PlayerOverlay.Sleep -> SleepSheet(onDismiss = dismissOverlay)
 
             // #170
-            PlayerOverlay.CarMode -> Unit
+            PlayerOverlay.CarMode -> CarMode(onDismiss = dismissOverlay)
 
             // #171
             PlayerOverlay.Bookmarks -> PlayerBookmarksSheet(

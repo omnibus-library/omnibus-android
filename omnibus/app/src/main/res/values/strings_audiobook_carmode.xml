@@ -1,0 +1,4 @@
+<resources>
+    <!-- Spoken label of the round button at the top right of car mode that returns to the player. -->
+    <string name="audiobook_carmode_leave">Leave car mode</string>
+</resources>
