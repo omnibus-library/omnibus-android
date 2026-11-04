@@ -32,6 +32,8 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
+import com.omnibus.omnibus.feature.audiobook.mini.shellHidesMiniPlayer
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.PlaceholderTitles
 import com.omnibus.omnibus.feature.bookdetail.dispatch
@@ -175,6 +177,10 @@ private fun SignedInShellContent(
                     },
                 )
             }
+        }
+        // The mini player sits above the tab bar, except on Book Detail (P-MINI-1). It pads no insets: the tab bar does.
+        if (!shellHidesMiniPlayer(navigator.backStack.lastOrNull())) {
+            MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
         }
         OmnibusTabBar(
             items = tabBarItems,
