@@ -89,6 +89,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         applicationScope = applicationScope,
     )
 
+    /** The address of a server that has been shut down, so a request to it fails with an IOException. */
+    fun unreachableUrl(): HttpUrl {
+        val closed = MockWebServer().apply { start() }
+        return closed.url("/").also { closed.close() }
+    }
+
     /** A JSON body with [records] for `GET api/progress/book-1`. */
     fun progressBody(vararg records: String) =
         """{"book_uuid":"book-1","records":[${records.joinToString(",")}],"furthest":null}"""
@@ -288,7 +294,6 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                 MockResponse.Builder().code(401).build() to "401",
                 MockResponse.Builder().code(408).build() to "408",
                 MockResponse.Builder().code(429).build() to "429",
-                MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build() to "closed socket",
             )
 
             rows.forEach { (response, name) ->
@@ -298,6 +303,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                     repositoryFor(server.url("/"), rowStore).save(position, push = true)
                     rowStore.pendingPositions shouldBe mapOf("book-1" to position)
                 }
+            }
+
+            withClue("unreachable server") {
+                val rowStore = FakeAudioPositionStore()
+                repositoryFor(unreachableUrl(), rowStore).save(position, push = true)
+                rowStore.pendingPositions shouldBe mapOf("book-1" to position)
             }
 
             withClue("no saved server") {
@@ -425,7 +436,6 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                 MockResponse.Builder().code(422).build() to emptyList(),
                 MockResponse.Builder().code(500).build() to listOf(report),
                 MockResponse.Builder().code(401).build() to listOf(report),
-                MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build() to listOf(report),
             )
 
             rows.forEach { (response, expected) ->
@@ -435,6 +445,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                     repositoryFor(server.url("/"), rowStore).queueSession(report)
                     rowStore.sessions() shouldBe expected
                 }
+            }
+
+            withClue("unreachable server expects 1 kept") {
+                val rowStore = FakeAudioPositionStore()
+                repositoryFor(unreachableUrl(), rowStore).queueSession(report)
+                rowStore.sessions() shouldBe listOf(report)
             }
         }
 

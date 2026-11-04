@@ -189,6 +189,7 @@ class DefaultResumeStartResolverTest : DescribeSpec({
             }
             // Row 2: the server never answers, so settle returns the local start at 1200 ms.
             run {
+                val startedAt = scheduler.currentTime
                 val h = harness()
                 h.repo.locals["book-1"] = local(100.0, 6, 10)
                 h.repo.serverAnswers["book-1"] = CompletableDeferred()
@@ -205,7 +206,7 @@ class DefaultResumeStartResolverTest : DescribeSpec({
                 withClue("answered at 1200 ms") {
                     result.isCompleted shouldBe true
                     result.getCompleted() shouldBe 100.0
-                    scheduler.currentTime shouldBe 1_200
+                    scheduler.currentTime - startedAt shouldBe 1_200
                 }
             }
         }
@@ -237,6 +238,7 @@ class DefaultResumeStartResolverTest : DescribeSpec({
             }
             // Row 2: settle called at 5000 ms, after the deadline, returns the local start with no wait.
             run {
+                val startedAt = scheduler.currentTime
                 val h = harness()
                 h.repo.locals["book-1"] = local(100.0, 6, 10)
                 h.repo.serverAnswers["book-1"] = CompletableDeferred()
@@ -248,7 +250,7 @@ class DefaultResumeStartResolverTest : DescribeSpec({
                 withClue("after the deadline") {
                     result.isCompleted shouldBe true
                     result.getCompleted() shouldBe 100.0
-                    scheduler.currentTime shouldBe 5_000
+                    scheduler.currentTime - startedAt shouldBe 5_000
                 }
             }
         }
