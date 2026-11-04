@@ -6,7 +6,7 @@
 | Epic | #91 |
 | Sub-issues | #163 – #172 |
 | Behavioural reference | iOS `omnibus-ios/omnibus/Features/Player/` at `origin/main` 9243d40c |
-| UI reference | iOS screenshots: player, chapters sheet, car mode (attached to the epic) |
+| UI reference | iOS screenshots in [`images/`](images/): player, chapters sheet, car mode |
 
 ## About this spec
 
@@ -134,7 +134,9 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 ## 4. Player screen (#165)
 
-UI reference: the player screenshot attached to #91.
+<img src="images/player.png" alt="The iOS player: cover, title and author, the chapter row, the chapter scrubber with its three labels, the transport, and the tool row" width="300">
+
+*UI reference: the iOS player.*
 
 **Requirements**
 
@@ -188,7 +190,9 @@ UI reference: the player screenshot attached to #91.
 
 ## 5. Chapters sheet (#167)
 
-UI reference: the chapters screenshot attached to #91.
+<img src="images/chapters.png" alt="The iOS chapters sheet: numbered rows with lengths, the current chapter highlighted with a progress line" width="300">
+
+*UI reference: the iOS chapters sheet.*
 
 **Requirements**
 
@@ -258,7 +262,9 @@ UI reference: the chapters screenshot attached to #91.
 
 ## 8. Car mode (#170)
 
-UI reference: the car mode screenshot attached to #91.
+<img src="images/car-mode.png" alt="iOS car mode: chapter and time left, the 15 and 30 tiles, a wide accent play tile, and the chapter tiles" width="300">
+
+*UI reference: iOS car mode.*
 
 **Requirements**
 
@@ -628,3 +634,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 |---|---|
 | 2026-11-04 | First draft, from tickets #163–#172 and the iOS reference. |
 | 2026-11-04 | Split into Product and Implementation (General, Android, iOS). IDs re-prefixed by part. |
+| 2026-11-04 | Added the iOS reference screenshots in `images/`. |
