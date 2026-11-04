@@ -144,6 +144,8 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 - P-SCR-2. **Offline.** If the audiobook isn't downloaded and there's no connection, a dialog shows instead of the player:
   - Title: "Can't play offline"
   - Message: "“{title}” isn't downloaded to this device, and the server can't be reached. Connect to the internet to stream it, or download the audiobook while you're online to listen anywhere."
+  - When the player doesn't know the book's title, the message starts "This audiobook isn't downloaded to this device…".
+  - A book already loaded in the player is exempt, so the player still opens from the mini player while offline.
 - P-SCR-3. **Background.** A dark wash of the book's cover, with a soft glow in its colour.
 - P-SCR-4. **Top bar.**
   - Left: a round chevron-down button that collapses the player.
@@ -178,6 +180,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 - The time-left labels change with the speed: at 2×, "6:38 left" becomes "3:19 left".
 - A book with no ebook hides the book button and "Sync here".
 - With animations turned off, a short dismiss drag snaps back instead of springing.
+- If the book is unloaded while the player shows it (stopped from the notification, or another book loads), the player closes.
 
 **Acceptance criteria**
 
@@ -626,12 +629,12 @@ Build on what exists; don't write a second copy.
 
 ### 13.5 Navigation and UI
 
-- AND-UI-1. The player is a Navigation 3 route that replaces `PlayerStubRoute` and `PlayerStubScreen` (`feature/library/ui`), keeping their arguments: `bookUuid`, `bookFileId`, `positionSeconds`. `BookDetailDestination.Player` maps to it.
+- AND-UI-1. The player is a Navigation 3 route on the root stack, `PlayerRoute` (`feature/audiobook/player`), like `ReaderRoute`, so it covers the shell and its tab bar. It replaces the placeholder route and screen, keeping their arguments: `bookUuid`, `bookFileId`, `positionSeconds`. `BookDetailDestination.Player` and the Continue card reach it through the shell's `onOpenPlayer`.
 - AND-UI-2. Sheets are `ModalBottomSheet`, and the offline message is an `AlertDialog`. System back dismisses the player, car mode and every sheet.
 - AND-UI-3. Car mode keeps the screen on with `keepScreenOn` while it is composed.
 - AND-UI-4. Haptics use `HapticFeedbackType` (a light tap for transport, confirm for a bookmark).
 - AND-UI-5. Sizes are relative to the available space. No fixed screen size is assumed.
-- AND-UI-6. Strings go in `strings.xml`. Numbers and times are formatted for the device locale.
+- AND-UI-6. Strings go in `res/values/strings_audiobook_<area>.xml`. Numbers and times are formatted for the device locale.
 - AND-UI-7. Reduced motion (P-A11Y-6) follows the system's animator duration scale.
 
 ### 13.6 Testing
@@ -681,7 +684,7 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | Q1 | Should the system seek bar cover the chapter (as on iOS) or the whole book? | The chapter (I-SYS-1). |
 | Q2 | The offline dialog's last words: iOS says "read it anywhere". | "listen anywhere" (P-SCR-2). |
 | Q3 | How is one of several audio files chosen? | Book Detail's file chooser (#99). The player itself never asks. |
-| Q4 | Should the Android player be a pushed screen or an overlay above the navigation? | A pushed screen that collapses to the mini player (AND-UI-1). |
+| Q4 | Should the Android player be a pushed screen or an overlay above the navigation? | A pushed screen on the root stack (like the reader) that collapses to the mini player (AND-UI-1). |
 | Q5 | In-car platforms. | Out of scope; a separate epic. |
 
 ## 16. Changelog
@@ -694,3 +697,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | Moved to `docs/specs/features/`, with the screenshots in `images/audiobook/`. |
 | 2026-11-04 | #163: §13.2 and §13.3 match the playback packages and contracts as built; AND-STK-1 says what goes through the MediaController; AND-RUSE-1 says what was added. |
 | 2026-11-04 | #164: AND-RUSE-2 names the audio position queue in data/audiobook/position; I-SESS-2 says ticks count wall-clock time on both clients; I-SESS-3 says the carry-over is per book. |
+| 2026-11-04 | #165: AND-UI-1 and Q4 put the player on the root stack (D1); AND-UI-6 names the per-area strings files; P-SCR-2 exempts a book already loaded and adds the title-less message; a §4 edge case closes the player when its book is unloaded. |

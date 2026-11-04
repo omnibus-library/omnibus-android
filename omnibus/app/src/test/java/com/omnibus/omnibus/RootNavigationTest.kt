@@ -1,9 +1,9 @@
 package com.omnibus.omnibus
 
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
-import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import io.kotest.core.spec.style.DescribeSpec
@@ -35,6 +35,51 @@ class RootNavigationTest : DescribeSpec({
             stack.closeReader(route)
 
             stack shouldContainExactly listOf(SignedInShellRoute, route, LoginScreenRoute)
+        }
+    }
+
+    describe("openPlayer") {
+
+        it("#165 TC-1: ignores an identical PlayerRoute already on top") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openPlayer("a", 9L, 120.0)
+            stack.openPlayer("a", 9L, 120.0)
+
+            stack shouldContainExactly listOf(SignedInShellRoute, PlayerRoute("a", 9L, 120.0))
+        }
+
+        it("#165 TC-2: pushes a route that differs in position or file") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openPlayer("a", 9L, 120.0)
+            stack.openPlayer("a", 9L, 240.0)
+            stack.openPlayer("a", 10L, 240.0)
+
+            stack shouldContainExactly listOf(
+                SignedInShellRoute,
+                PlayerRoute("a", 9L, 120.0),
+                PlayerRoute("a", 9L, 240.0),
+                PlayerRoute("a", 10L, 240.0),
+            )
+        }
+    }
+
+    describe("closePlayer") {
+
+        it("#165 TC-3: pops only its own route when on top; a second close and a buried route are no-ops") {
+            val route = PlayerRoute("a", 9L)
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, route)
+
+            stack.closePlayer(route)
+            stack shouldContainExactly listOf(SignedInShellRoute)
+
+            stack.closePlayer(route)
+            stack shouldContainExactly listOf(SignedInShellRoute)
+
+            val buried = mutableListOf<NavKey>(SignedInShellRoute, route, LoginScreenRoute)
+            buried.closePlayer(route)
+            buried shouldContainExactly listOf(SignedInShellRoute, route, LoginScreenRoute)
         }
     }
 
@@ -72,10 +117,11 @@ class RootNavigationTest : DescribeSpec({
             Json.decodeFromString<ReaderRoute>(Json.encodeToString(ReaderRoute("a"))) shouldBe ReaderRoute("a", null)
             Json.decodeFromString<ReaderRoute>("{\"bookUuid\":\"a\"}") shouldBe ReaderRoute("a", null)
 
-            val player = PlayerStubRoute("a", 9L, 4332.5)
-            Json.decodeFromString<PlayerStubRoute>(Json.encodeToString(player)) shouldBe player
-            Json.decodeFromString<PlayerStubRoute>("{\"bookUuid\":\"a\",\"bookFileId\":9}") shouldBe
-                PlayerStubRoute("a", 9L, null)
+            // #165 TC-5: the stub's payloads decode into PlayerRoute.
+            val player = PlayerRoute("a", 9L, 4332.5)
+            Json.decodeFromString<PlayerRoute>(Json.encodeToString(player)) shouldBe player
+            Json.decodeFromString<PlayerRoute>("{\"bookUuid\":\"a\",\"bookFileId\":9}") shouldBe
+                PlayerRoute("a", 9L, null)
         }
     }
 
@@ -107,6 +153,10 @@ class RootNavigationTest : DescribeSpec({
             drawsOwnInsets(LoginScreenRoute) shouldBe false
             drawsOwnInsets(ServerConfigurationScreenRoute) shouldBe false
             drawsOwnInsets(null) shouldBe false
+        }
+
+        it("#165 TC-4: is true for PlayerRoute") {
+            drawsOwnInsets(PlayerRoute("x", null)) shouldBe true
         }
     }
 })

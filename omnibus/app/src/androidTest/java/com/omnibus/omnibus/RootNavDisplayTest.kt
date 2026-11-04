@@ -33,6 +33,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
+import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
@@ -63,6 +64,9 @@ class RootNavDisplayTest {
                             Box(Modifier.fillMaxSize().testTag(FAKE_READER)) {
                                 Text(key.bookUuid)
                             }
+                        }
+                        entry<PlayerRoute> {
+                            Box(Modifier.fillMaxSize().testTag(FAKE_PLAYER))
                         }
                         entry<LoginScreenRoute> {
                             Text("fake login", modifier = Modifier.testTag(FAKE_LOGIN))
@@ -165,6 +169,25 @@ class RootNavDisplayTest {
         rule.onNodeWithText("book-1").assertIsDisplayed()
     }
 
+    // #165 TC-9 (P-SCR-AC1, D1)
+    @Test
+    fun playerRouteCoversTheShellAndItsTabBar() {
+        setRoot()
+        rule.onNodeWithTag(FAKE_TAB_BAR).assertIsDisplayed()
+
+        rule.runOnIdle { stack.openPlayer("book-1", 9L) }
+        rule.waitForIdle()
+
+        rule.onAllNodesWithTag(FAKE_TAB_BAR).assertCountEquals(0)
+        rule.onNodeWithTag(FAKE_PLAYER).assertIsDisplayed()
+
+        pressBack()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(FAKE_TAB_BAR).assertIsDisplayed()
+        assertEquals(listOf<NavKey>(SignedInShellRoute), stack.toList())
+    }
+
     // TC-82
     @Test
     fun tc82_signOutWithTheReaderOpenGoesToLogin() {
@@ -196,6 +219,7 @@ class RootNavDisplayTest {
         const val COUNTER = "fake_counter"
         const val FAKE_TAB_BAR = "fake_tab_bar"
         const val FAKE_READER = "fake_reader"
+        const val FAKE_PLAYER = "fake_player"
         const val FAKE_LOGIN = "fake_login"
     }
 }

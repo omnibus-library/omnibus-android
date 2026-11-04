@@ -1,0 +1,64 @@
+<resources>
+    <!-- Shared player labels (contract C13). Read by the player, car mode, bookmarks and the mini player; never redefine them elsewhere. -->
+    <!-- Spoken label of the round button that collapses the player. -->
+    <string name="audiobook_close_player">Close player</string>
+    <!-- Spoken label of the button that goes to the previous chapter. -->
+    <string name="audiobook_previous_chapter">Previous chapter</string>
+    <!-- Spoken label of the button that goes back 15 seconds. -->
+    <string name="audiobook_back_15">Back 15 seconds</string>
+    <!-- Spoken label of the play button. -->
+    <string name="audiobook_play">Play</string>
+    <!-- Spoken label of the pause button. -->
+    <string name="audiobook_pause">Pause</string>
+    <!-- Spoken label of the button that goes forward 30 seconds. -->
+    <string name="audiobook_forward_30">Forward 30 seconds</string>
+    <!-- Spoken label of the button that goes to the next chapter. -->
+    <string name="audiobook_next_chapter">Next chapter</string>
+    <!-- %1$s is a time already formatted for the locale, such as "20h 25m" or "6:38". -->
+    <string name="audiobook_time_left">%1$s left</string>
+    <!-- Spoken label of a button that dismisses a banner or an overlay. -->
+    <string name="audiobook_dismiss">Dismiss</string>
+
+    <!-- Spoken label of the top-bar button that opens the book's ebook. -->
+    <string name="audiobook_player_open_book">Open the ebook</string>
+    <!-- Spoken label of the top-bar button that opens the bookmarks list. -->
+    <string name="audiobook_player_bookmarks">Bookmarks</string>
+    <!-- Action TalkBack reads for the chapter row, which opens the chapter list. -->
+    <string name="audiobook_player_chapters_action">Open chapters</string>
+    <!-- Spoken name of the scrubber when it covers the current chapter. -->
+    <string name="audiobook_player_position_chapter">Chapter position</string>
+    <!-- Spoken name of the scrubber when the book has no chapters and it covers the whole book. -->
+    <string name="audiobook_player_position_book">Book position</string>
+    <!-- Label under the playback speed button. -->
+    <string name="audiobook_player_tool_speed">Speed</string>
+    <!-- Label under the button that opens car mode. -->
+    <string name="audiobook_player_tool_car_mode">Car Mode</string>
+    <!-- Label under the sleep timer button. -->
+    <string name="audiobook_player_tool_sleep">Sleep</string>
+    <!-- Label under the button that adds a bookmark at the current position. -->
+    <string name="audiobook_player_tool_bookmark">Bookmark</string>
+    <!-- Shown over the cover while the audiobook loads. -->
+    <string name="audiobook_player_preparing">Preparing audio</string>
+    <!-- Shown over the cover while playback waits for data. -->
+    <string name="audiobook_player_buffering">Buffering</string>
+    <!-- Button on the playback error banner that tries again. -->
+    <string name="audiobook_player_retry">Retry</string>
+    <!-- Playback error: the audiobook has no audio files. -->
+    <string name="audiobook_player_error_no_audio_parts">No audio parts.</string>
+    <!-- Playback error: the audio files' lengths could not be put together. -->
+    <string name="audiobook_player_error_timeline">Could not build the audio timeline.</string>
+    <!-- Playback error: one of the audio files is damaged or not audio. -->
+    <string name="audiobook_player_error_part_unreadable">An audio part could not be read.</string>
+    <!-- Playback error: playback failed several times in a row. -->
+    <string name="audiobook_player_error_stopped">Playback stopped and could not be resumed. Tap play to try again.</string>
+    <!-- Playback error when the server failed without giving a message. -->
+    <string name="audiobook_player_error_server">The server couldn\'t load this audiobook.</string>
+    <!-- Title of the dialog shown instead of the player when the audiobook can\'t be streamed offline. -->
+    <string name="audiobook_player_offline_title">Can\'t play offline</string>
+    <!-- %1$s is the book\'s title. -->
+    <string name="audiobook_player_offline_message">“%1$s” isn\'t downloaded to this device, and the server can\'t be reached. Connect to the internet to stream it, or download the audiobook while you\'re online to listen anywhere.</string>
+    <!-- The same message as audiobook_player_offline_message, for when the book\'s title is not known. -->
+    <string name="audiobook_player_offline_message_untitled">This audiobook isn\'t downloaded to this device, and the server can\'t be reached. Connect to the internet to stream it, or download the audiobook while you\'re online to listen anywhere.</string>
+    <!-- Button that closes the offline dialog. -->
+    <string name="audiobook_player_ok">OK</string>
+</resources>
