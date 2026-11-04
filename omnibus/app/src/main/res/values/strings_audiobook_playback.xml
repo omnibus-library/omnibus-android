@@ -1,0 +1,8 @@
+<resources>
+    <!-- The system's name for the notification channel of audiobook playback. -->
+    <string name="audiobook_playback_notification_channel">Audiobook playback</string>
+    <!-- The notification and lock-screen button that goes back 15 seconds. -->
+    <string name="audiobook_playback_back_15">Back 15 seconds</string>
+    <!-- The notification and lock-screen button that goes forward 30 seconds. -->
+    <string name="audiobook_playback_forward_30">Forward 30 seconds</string>
+</resources>
