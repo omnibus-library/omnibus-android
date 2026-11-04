@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
-import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 
 /** Where a tap on the Book Detail page leads. The shell maps each destination to a route or a platform action. */
 sealed interface BookDetailDestination {
@@ -15,7 +14,7 @@ sealed interface BookDetailDestination {
     data class Reader(val bookUuid: String, val startCfi: String? = null) : BookDetailDestination
 
     /**
-     * Opens the player at [bookFileId], or at the server's choice when it is null.
+     * Opens the player on the root stack at [bookFileId], or at the server's choice when it is null.
      *
      * @property positionSeconds Where to start, in seconds, or null for the saved place.
      */
@@ -45,10 +44,12 @@ sealed interface BookDetailDestination {
 /** The two placeholder titles that come from string resources. */
 data class PlaceholderTitles(val checkIn: String, val settings: String)
 
-/** The shell route this destination pushes, or null for Reader and ExternalUrl, which the shell handles itself. */
+/**
+ * The shell route this destination pushes, or null for Reader, Player and ExternalUrl, which the shell hands to the root
+ * stack or the platform.
+ */
 internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey? = when (this) {
-    is BookDetailDestination.Reader, is BookDetailDestination.ExternalUrl -> null
-    is BookDetailDestination.Player -> PlayerStubRoute(bookUuid, bookFileId, positionSeconds)
+    is BookDetailDestination.Reader, is BookDetailDestination.Player, is BookDetailDestination.ExternalUrl -> null
     is BookDetailDestination.Book -> BookDetailRoute(bookUuid)
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Series -> BookDetailPlaceholderRoute(name)
@@ -68,10 +69,12 @@ internal fun BookDetailDestination.dispatch(
     titles: PlaceholderTitles,
     push: (NavKey) -> Unit,
     openReader: (bookUuid: String, startCfi: String?) -> Unit,
+    openPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit,
     openUri: (url: String) -> Unit,
 ) {
     when (this) {
         is BookDetailDestination.Reader -> openReader(bookUuid, startCfi)
+        is BookDetailDestination.Player -> openPlayer(bookUuid, bookFileId, positionSeconds)
         is BookDetailDestination.ExternalUrl -> runCatching { openUri(url) }
         else -> pushTarget(top, titles)?.let(push)
     }

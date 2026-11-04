@@ -12,6 +12,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
+import com.omnibus.omnibus.feature.audiobook.player.PlayerScreen
 import com.omnibus.omnibus.feature.auth.ui.LoginScreen
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenAction
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
@@ -96,10 +98,25 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                 })
             }
             entry<SignedInShellRoute> {
-                SignedInShellScreen(onOpenReader = { uuid, cfi -> backstack.openReader(uuid, cfi) })
+                SignedInShellScreen(
+                    onOpenReader = { uuid, cfi -> backstack.openReader(uuid, cfi) },
+                    onOpenPlayer = { uuid, fileId, seconds -> backstack.openPlayer(uuid, fileId, seconds) },
+                )
             }
             entry<ReaderRoute> { key ->
                 ReaderScreen(bookUuid = key.bookUuid, startCfi = key.startCfi, onClose = { backstack.closeReader(key) })
+            }
+            entry<PlayerRoute> { key ->
+                PlayerScreen(
+                    bookUuid = key.bookUuid,
+                    bookFileId = key.bookFileId,
+                    positionSeconds = key.positionSeconds,
+                    onClose = { backstack.closePlayer(key) },
+                    onOpenReader = { uuid, cfi ->
+                        backstack.closePlayer(key)
+                        backstack.openReader(uuid, cfi)
+                    },
+                )
             }
         },
     )

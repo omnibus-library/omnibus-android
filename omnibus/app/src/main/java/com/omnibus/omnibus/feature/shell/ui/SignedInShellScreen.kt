@@ -41,8 +41,6 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
-import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
-import com.omnibus.omnibus.feature.library.ui.PlayerStubScreen
 import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
 import com.omnibus.omnibus.feature.shell.SeriesRoot
@@ -67,11 +65,15 @@ data object SignedInShellRoute : NavKey
  *
  * @param onOpenReader opens the reader for a book over the shell, at the given start CFI or the saved position when it
  *   is null. The Book Detail page reaches it through `BookDetailDestination.Reader`; the Continue card calls it too.
+ * @param onOpenPlayer opens the player on the root stack, over the shell and its tab bar, at the given file and position
+ *   (or the saved ones when they are null). Book Detail reaches it through `BookDetailDestination.Player`; the Continue
+ *   card through the Library.
  */
 @Composable
 fun SignedInShellScreen(
     onOpenReader: (bookUuid: String, startCfi: String?) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit = { _, _, _ -> },
 ) {
     val navigator = rememberShellNavigator()
     val activity = LocalActivity.current
@@ -81,6 +83,7 @@ fun SignedInShellScreen(
         // Back from the first tab's root leaves the app, as it would without the shell.
         onBack = { if (!navigator.back()) activity?.finish() },
         onOpenReader = onOpenReader,
+        onOpenPlayer = onOpenPlayer,
         modifier = modifier,
     )
 }
@@ -98,6 +101,7 @@ private fun SignedInShellContent(
     navigator: ShellNavigator,
     onBack: () -> Unit,
     onOpenReader: (bookUuid: String, startCfi: String?) -> Unit,
+    onOpenPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -115,6 +119,7 @@ private fun SignedInShellContent(
             titles = titles,
             push = { navigator.navigateTo(it) },
             openReader = onOpenReader,
+            openPlayer = onOpenPlayer,
             openUri = { uriHandler.openUri(it) },
         )
     }
@@ -149,7 +154,7 @@ private fun SignedInShellContent(
                                     onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
                                     onAddBooks = { /* Add books sheet: later ticket */ },
                                     onOpenReader = { onOpenReader(it, null) },
-                                    onOpenPlayer = { uuid, fileId -> navigator.navigateTo(PlayerStubRoute(uuid, fileId)) },
+                                    onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
                                 )
                             }
                         }
@@ -162,15 +167,6 @@ private fun SignedInShellContent(
                         }
                         entry<BookDetailPlaceholderRoute> { key ->
                             StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
-                        }
-                        entry<PlayerStubRoute> { key ->
-                            StatusBarPadded {
-                                PlayerStubScreen(
-                                    bookUuid = key.bookUuid,
-                                    bookFileId = key.bookFileId,
-                                    positionSeconds = key.positionSeconds,
-                                )
-                            }
                         }
                         entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
                         entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }

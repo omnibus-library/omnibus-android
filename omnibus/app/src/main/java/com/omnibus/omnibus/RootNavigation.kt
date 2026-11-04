@@ -13,6 +13,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
@@ -32,9 +33,10 @@ internal fun MutableList<NavKey>.leaveForLogin() {
 
 /**
  * Whether the route on top draws its own insets. The root Scaffold would otherwise pad it, which
- * would keep the shell's tab bar above the keyboard and stop the reader going edge to edge.
+ * would keep the shell's tab bar above the keyboard and stop the reader and the player going edge to edge.
  */
-internal fun drawsOwnInsets(top: NavKey?): Boolean = top == SignedInShellRoute || top is ReaderRoute
+internal fun drawsOwnInsets(top: NavKey?): Boolean =
+    top == SignedInShellRoute || top is ReaderRoute || top is PlayerRoute
 
 /**
  * Opens the reader for [bookUuid] over the stack, at [startCfi] when given. A second open of the same route on top is
@@ -51,7 +53,21 @@ internal fun MutableList<NavKey>.closeReader(route: ReaderRoute) {
 }
 
 /**
- * The root navigation display. It hosts the shell, the reader and the sign-in screens on one stack,
+ * Opens the player for [bookUuid] over the stack. A second open of the same route on top is ignored; a different file
+ * or position is pushed.
+ */
+internal fun MutableList<NavKey>.openPlayer(bookUuid: String, bookFileId: Long?, positionSeconds: Double? = null) {
+    val route = PlayerRoute(bookUuid, bookFileId, positionSeconds)
+    if (lastOrNull() != route) add(route)
+}
+
+/** Collapses the player for [route], but only when it is still on top. Playback keeps going. */
+internal fun MutableList<NavKey>.closePlayer(route: PlayerRoute) {
+    if (lastOrNull() == route) removeAt(lastIndex)
+}
+
+/**
+ * The root navigation display. It hosts the shell, the reader, the player and the sign-in screens on one stack,
  * so the reader covers the shell and its tab bar, and leaving the reader restores the shell.
  *
  * @param backstack the root stack, which owns the screens' order.
@@ -69,7 +85,7 @@ internal fun RootNavDisplay(
         if (shouldLeaveForLogin(backstack, isSignedIn)) backstack.leaveForLogin()
     }
 
-    // The shell and the reader inset themselves, so the Scaffold must not pad them.
+    // The shell, the reader and the player inset themselves, so the Scaffold must not pad them.
     val insets = if (drawsOwnInsets(backstack.lastOrNull())) {
         WindowInsets(0)
     } else {

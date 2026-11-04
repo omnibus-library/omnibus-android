@@ -131,14 +131,6 @@
     <!-- %1$s is the book\'s title. -->
     <string name="continue_offline_audiobook_message">“%1$s” isn\'t downloaded to this device, and the server can\'t be reached. Connect to the internet to stream it, or download the audiobook while you\'re online to read it anywhere.</string>
     <string name="continue_ok">OK</string>
-    <string name="player_stub_title">Player</string>
-    <!-- %1$s is the book\'s uuid. -->
-    <string name="player_stub_uuid" translatable="false">uuid: %1$s</string>
-    <!-- %1$s is the file id, or player_stub_no_file. -->
-    <string name="player_stub_file_id" translatable="false">file id: %1$s</string>
-    <string name="player_stub_no_file">none</string>
-    <!-- %1$s is the requested position in seconds. -->
-    <string name="player_stub_position" translatable="false">at: %1$s</string>
 
     <!-- Reader -->
     <string name="reader_loading">Opening your book</string>

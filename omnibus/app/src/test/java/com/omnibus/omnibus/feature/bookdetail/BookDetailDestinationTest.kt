@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
-import com.omnibus.omnibus.feature.library.ui.PlayerStubRoute
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -16,14 +15,37 @@ class BookDetailDestinationTest : DescribeSpec({
 
     describe("BookDetailDestination routing") {
 
-        it("#93 TC-42: player and book routes") {
-            BookDetailDestination.Player("b", 9).shellRoute(titles) shouldBe PlayerStubRoute("b", 9)
+        it("#93 TC-42 / #165 TC-6: player is not a shell route; book is") {
+            BookDetailDestination.Player("b", 9).shellRoute(titles).shouldBeNull()
             BookDetailDestination.Book("other").shellRoute(titles) shouldBe BookDetailRoute("other")
         }
 
-        it("#117 TC-56: player destination carries position seconds") {
-            BookDetailDestination.Player("b", null, 4332.5).shellRoute(titles) shouldBe PlayerStubRoute("b", null, 4332.5)
-            BookDetailDestination.Player("b", 9).shellRoute(titles) shouldBe PlayerStubRoute("b", 9, null)
+        it("#117 TC-56 / #165 TC-6: shellRoute is null for Player, whatever its position") {
+            BookDetailDestination.Player("b", null, 4332.5).shellRoute(titles).shouldBeNull()
+            BookDetailDestination.Player("b", 9).shellRoute(titles).shouldBeNull()
+        }
+
+        it("#117 TC-56 / #165 TC-7: dispatch hands Player to openPlayer with its file and position") {
+            val opened = mutableListOf<Triple<String, Long?, Double?>>()
+            val pushed = mutableListOf<NavKey>()
+            val readers = mutableListOf<String>()
+            val uris = mutableListOf<String>()
+            fun dispatch(destination: BookDetailDestination) = destination.dispatch(
+                top = null,
+                titles = titles,
+                push = { pushed += it },
+                openReader = { uuid, _ -> readers += uuid },
+                openPlayer = { uuid, fileId, seconds -> opened += Triple(uuid, fileId, seconds) },
+                openUri = { uris += it },
+            )
+
+            dispatch(BookDetailDestination.Player("b", 9, 4332.5))
+            dispatch(BookDetailDestination.Player("b", null, null))
+
+            opened shouldContainExactly listOf(Triple("b", 9L, 4332.5), Triple("b", null, null))
+            pushed.shouldBeEmpty()
+            readers.shouldBeEmpty()
+            uris.shouldBeEmpty()
         }
 
         it("#93 TC-43: browse destinations go to the placeholder") {
@@ -41,8 +63,9 @@ class BookDetailDestinationTest : DescribeSpec({
             BookDetailDestination.Settings.shellRoute(titles) shouldBe BookDetailPlaceholderRoute(titles.settings)
         }
 
-        it("#93 TC-45: reader and external url are not pushed") {
+        it("#93 TC-45 / #165 TC-8: reader, player and external url are not pushed") {
             BookDetailDestination.Reader("u").shellRoute(titles).shouldBeNull()
+            BookDetailDestination.Player("u", null).shellRoute(titles).shouldBeNull()
             BookDetailDestination.ExternalUrl("https://x").shellRoute(titles).shouldBeNull()
 
             // Exhaustive on purpose: a new destination must be named here too.
@@ -94,6 +117,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 titles = titles,
                 push = {},
                 openReader = { uuid, cfi -> opened += uuid to cfi },
+                openPlayer = { _, _, _ -> },
                 openUri = {},
             )
 
@@ -111,6 +135,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 titles = titles,
                 push = { pushed += it },
                 openReader = { uuid, _ -> readers += uuid },
+                openPlayer = { _, _, _ -> },
                 openUri = { uris += it },
             )
 
@@ -136,6 +161,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 titles = titles,
                 push = {},
                 openReader = { _, _ -> },
+                openPlayer = { _, _, _ -> },
                 openUri = { error("no app can open this") },
             )
         }
