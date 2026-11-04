@@ -494,7 +494,7 @@ Every client exposes one observable playback state, and one command set that eve
 
 ### 13.1 Stack
 
-- AND-STK-1. Playback uses Media3. A `MediaSessionService` owns one `ExoPlayer` and its `MediaSession`, and the app talks to it only through a `MediaController`. Add Media3 through the version catalog.
+- AND-STK-1. Playback uses Media3. A `MediaSessionService` owns one `ExoPlayer` and its `MediaSession`, and the app sends transport commands (play, pause, speed, stop) through a `MediaController`. Add Media3 through the version catalog. Setting the media source, and book-time seeks and reads, go to the same in-process ExoPlayer through a bridge, because a `MediaSource` can't cross a `MediaController` and the session's player is chapter-relative (AND-STK-5).
 - AND-STK-2. The foreground notification is Media3's default media notification. Its buttons are back 15, play/pause and forward 30.
 - AND-STK-3. Audio is fetched through Media3's OkHttp data source, on the app's `OmnibusHttpClient`, so it carries the same auth and interceptors as every other request.
 - AND-STK-4. Parts are joined with `ConcatenatingMediaSource2`, sized from the manifest's `duration_seconds` (I-LOAD-4).
@@ -511,14 +511,19 @@ The layout follows `docs/engineering/feature-layers.md`.
 feature/audiobook/                 UI: screens, sheets, ViewModels
   player/  chapters/  speed/  sleep/  carmode/  bookmarks/  mini/
 data/audiobook/                    Everything below the ViewModel
-  AudiobookRepository.kt           Manifest, rate, sync point
-  playback/                        MediaSessionService, controller, timeline, health, sleep timer
-  remote/                          DTOs and API calls
-  local/                           Rate and manifest cache
-  di/
+  AudiobookRepository.kt           Manifest only: file choice, 404 retry, modes
+  remote/                          The recent audiobook read (play with nothing loaded)
+  playback/                        Controller, state and seams, timeline, transport rules, health, artwork schedule
+    media3/                        MediaSessionService, ExoPlayer factory, ForwardingPlayer, session callback, engine
+  position/                        Resume, the audio position store and queue, sessions, read status (#164)
+  rate/                            Playback rate API, cache and PlaybackRateStore (#168)
+  sleep/                           The SleepTimer implementation (#169)
+  syncpoint/                       Sync point (#171)
+  crossformat/  offers/            Ebook position and resume offers (#166)
+  di/                              One Hilt module per ticket
 ```
 
-The names are proposed. The plan for #163 fixes them, and this section is updated to match.
+These are the packages as built. Each ticket owns its own package and its own Hilt module in `di/`.
 
 ### 13.3 Contracts
 
@@ -526,22 +531,32 @@ Fields may be added. Existing ones aren't removed or renamed without a spec chan
 
 ```kotlin
 data class PlaybackState(
-    val book: PlayingBook?,             // null when nothing is loaded
-    val chapters: List<Chapter>,        // sorted by start; empty when the book has none
-    val positionSeconds: Double,        // book time
-    val durationSeconds: Double,        // book time
-    val currentChapterIndex: Int?,      // null when there are no chapters
-    val isPlaying: Boolean,
-    val isLoading: Boolean,
-    val isBuffering: Boolean,
-    val rate: Double,
-    val error: PlaybackError?,
-    val sleepTimer: SleepTimerState?,
+    val book: PlayingBook? = null,         // null when nothing is loaded; set as soon as a load starts
+    val chapters: List<Chapter> = emptyList(), // sorted by start; empty when the book has none
+    val positionSeconds: Double = 0.0,     // book time
+    val durationSeconds: Double = 0.0,     // book time
+    val currentChapterIndex: Int? = null,  // null when there are no chapters
+    val isPlaying: Boolean = false,
+    val isLoading: Boolean = false,
+    val isBuffering: Boolean = false,
+    val rate: Double = 1.0,                // within [0.5, 3.0]
+    val error: PlaybackError? = null,
+    val sleepTimer: SleepTimerState? = null,
 )
 
+// hasEbook is Book.hasEpub: it gates the reader button and Sync. bookFileId is final once isLoading is false.
 data class PlayingBook(val bookUuid: String, val bookFileId: Long, val title: String, val author: String?, val hasEbook: Boolean)
 
+// durationSeconds is the resolved length: the manifest's value, or the gap to the next start (or the book's end).
 data class Chapter(val ordinal: Long, val title: String, val startSeconds: Double, val durationSeconds: Double)
+
+sealed interface PlaybackError {
+    data object NoAudioParts : PlaybackError
+    data object TimelineFailed : PlaybackError
+    data object PartUnreadable : PlaybackError              // never retried
+    data class Server(val message: String?) : PlaybackError
+    data object StoppedAfterRetries : PlaybackError         // play() refills the budget and retries
+}
 
 interface AudiobookController {
     val state: StateFlow<PlaybackState>
@@ -554,13 +569,54 @@ interface AudiobookController {
     fun setSleepTimer(option: SleepTimerOption?)
     fun stop()
 }
+
+interface PlaybackListener {
+    fun onSettled(state: PlaybackState, startSeconds: Double) {}
+    fun onTick(state: PlaybackState) {}                     // every 0.5 s while playing
+    fun onPlay(state: PlaybackState) {}
+    fun onPause(state: PlaybackState) {}
+    fun onAppBackground(state: PlaybackState) {}
+    fun onEnded(state: PlaybackState) {}
+    suspend fun onUnload(state: PlaybackState, reason: UnloadReason) {}  // awaited for at most 2 s
+}
+
+enum class UnloadReason { Stop, SwitchBook }
+
+interface ResumeStartResolver {                             // optional: bound with @BindsOptionalOf
+    fun begin(bookUuid: String, explicitFileId: Long?, explicitPositionSeconds: Double?): PendingResume
+}
+
+interface PendingResume {
+    suspend fun savedFileId(): Long?
+    suspend fun settle(loadedFileId: Long, durationSeconds: Double): Double?
+    fun cancel()
+}
+
+interface PlaybackRateStore {                               // optional
+    suspend fun rate(bookUuid: String): Double?
+    suspend fun save(bookUuid: String, rate: Double)
+}
+
+sealed interface SleepTimerOption {
+    data class After(val minutes: Int) : SleepTimerOption
+    data object EndOfChapter : SleepTimerOption
+}
+
+data class SleepTimerState(val option: SleepTimerOption, val remainingSeconds: Double)
+
+interface SleepTimer {                                      // optional
+    val state: StateFlow<SleepTimerState?>
+    fun set(option: SleepTimerOption?)
+}
 ```
+
+`PlaybackTimeline.kt` also holds the C3 helpers: `chapterIndexAt`, the `PlaybackState` extensions `currentChapter`, `spanStartSeconds`, `spanLengthSeconds`, `spanPositionSeconds`, `spanSecondsLeftAtRate`, `bookSecondsLeftAtRate`, `isLastChapter` and `hasChapters`, and `resolveChapters`.
 
 ### 13.4 Reuse
 
 Build on what exists; don't write a second copy.
 
-- AND-RUSE-1. `AudiobookManifestDto` (`data/bookprogress/remote`) is extended with `parts` and `playlist_url`, not duplicated.
+- AND-RUSE-1. `AudiobookManifestDto` (`data/bookprogress/remote`) is extended with `parts` and `playlist_url`, both with defaults, not duplicated. `DefaultAudiobookRepository` decodes it.
 - AND-RUSE-2. Position writes go through the offline queue in `data/progress` (I-SAVE-4).
 - AND-RUSE-3. Bookmarks use `BookmarksRepository`. The audio position format is the one `listeningSeconds` in `feature/bookdetail/more/bookmarks/BookmarkCopy.kt` already reads (I-BMK-1).
 - AND-RUSE-4. The player background reuses Book Detail's cover wash (P-SCR-3).
@@ -636,3 +692,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | Split into Product and Implementation (General, Android, iOS). IDs re-prefixed by part. |
 | 2026-11-04 | Added the iOS reference screenshots in `images/`. |
 | 2026-11-04 | Moved to `docs/specs/features/`, with the screenshots in `images/audiobook/`. |
+| 2026-11-04 | #163: §13.2 and §13.3 match the playback packages and contracts as built; AND-STK-1 says what goes through the MediaController; AND-RUSE-1 says what was added. |
