@@ -198,7 +198,8 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
                 apiFor(null).put("book-1", 1.25) shouldBe PutOutcome.Keep
                 apiFor(unreachableUrl()).put("book-1", 1.25) shouldBe PutOutcome.Keep
 
-                script.answer(MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build())
+                // The socket closes once the request has arrived, as the other write tests drop a connection.
+                script.answer(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
                 apiFor(server.url("/")).put("book-1", 1.25) shouldBe PutOutcome.Keep
             }
         }

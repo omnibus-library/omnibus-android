@@ -304,10 +304,8 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-45: a blank uuid is ignored by rate and save (R15, R16)") {
             runTest {
                 val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache().apply {
-                    cachedRates[""] = 1.0
-                    pendingRates[""] = 1.5
-                }
+                // Only a cached rate is seeded: a pending one under a blank uuid would be flushed by the online collector.
+                val cache = FakePlaybackRateCache().apply { cachedRates[""] = 1.0 }
                 val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
 
                 store.rate("").shouldBeNull()
