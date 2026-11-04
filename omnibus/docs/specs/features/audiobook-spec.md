@@ -629,7 +629,7 @@ Build on what exists; don't write a second copy.
 
 ### 13.5 Navigation and UI
 
-- AND-UI-1. The player is a Navigation 3 route on the root stack, `PlayerRoute` (`feature/audiobook/player`), like `ReaderRoute`, so it covers the shell and its tab bar. It replaces `PlayerStubRoute` and `PlayerStubScreen`, keeping their arguments: `bookUuid`, `bookFileId`, `positionSeconds`. `BookDetailDestination.Player` and the Continue card reach it through the shell's `onOpenPlayer`.
+- AND-UI-1. The player is a Navigation 3 route on the root stack, `PlayerRoute` (`feature/audiobook/player`), like `ReaderRoute`, so it covers the shell and its tab bar. It replaces the placeholder route and screen, keeping their arguments: `bookUuid`, `bookFileId`, `positionSeconds`. `BookDetailDestination.Player` and the Continue card reach it through the shell's `onOpenPlayer`.
 - AND-UI-2. Sheets are `ModalBottomSheet`, and the offline message is an `AlertDialog`. System back dismisses the player, car mode and every sheet.
 - AND-UI-3. Car mode keeps the screen on with `keepScreenOn` while it is composed.
 - AND-UI-4. Haptics use `HapticFeedbackType` (a light tap for transport, confirm for a bookmark).
