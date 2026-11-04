@@ -6,7 +6,7 @@
 | Epic | #91 |
 | Sub-issues | #163 – #172 |
 | Behavioural reference | iOS `omnibus-ios/omnibus/Features/Player/` at `origin/main` 9243d40c |
-| UI reference | iOS screenshots in [`images/`](images/): player, chapters sheet, car mode |
+| UI reference | iOS screenshots in [`images/audiobook/`](images/audiobook/): player, chapters sheet, car mode |
 
 ## About this spec
 
@@ -134,7 +134,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 ## 4. Player screen (#165)
 
-<img src="images/player.png" alt="The iOS player: cover, title and author, the chapter row, the chapter scrubber with its three labels, the transport, and the tool row" width="300">
+<img src="images/audiobook/player.png" alt="The iOS player: cover, title and author, the chapter row, the chapter scrubber with its three labels, the transport, and the tool row" width="300">
 
 *UI reference: the iOS player.*
 
@@ -190,7 +190,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 ## 5. Chapters sheet (#167)
 
-<img src="images/chapters.png" alt="The iOS chapters sheet: numbered rows with lengths, the current chapter highlighted with a progress line" width="300">
+<img src="images/audiobook/chapters.png" alt="The iOS chapters sheet: numbered rows with lengths, the current chapter highlighted with a progress line" width="300">
 
 *UI reference: the iOS chapters sheet.*
 
@@ -262,7 +262,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 ## 8. Car mode (#170)
 
-<img src="images/car-mode.png" alt="iOS car mode: chapter and time left, the 15 and 30 tiles, a wide accent play tile, and the chapter tiles" width="300">
+<img src="images/audiobook/car-mode.png" alt="iOS car mode: chapter and time left, the 15 and 30 tiles, a wide accent play tile, and the chapter tiles" width="300">
 
 *UI reference: iOS car mode.*
 
@@ -508,7 +508,7 @@ Every client exposes one observable playback state, and one command set that eve
 The layout follows `docs/engineering/feature-layers.md`.
 
 ```
-feature/audiobook/                 UI: screens, sheets, ViewModels (this spec lives here)
+feature/audiobook/                 UI: screens, sheets, ViewModels
   player/  chapters/  speed/  sleep/  carmode/  bookmarks/  mini/
 data/audiobook/                    Everything below the ViewModel
   AudiobookRepository.kt           Manifest, rate, sync point
@@ -635,3 +635,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | First draft, from tickets #163–#172 and the iOS reference. |
 | 2026-11-04 | Split into Product and Implementation (General, Android, iOS). IDs re-prefixed by part. |
 | 2026-11-04 | Added the iOS reference screenshots in `images/`. |
+| 2026-11-04 | Moved to `docs/specs/features/`, with the screenshots in `images/audiobook/`. |
