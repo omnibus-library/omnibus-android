@@ -7,21 +7,27 @@ import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.Lifecycle
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -45,6 +51,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
+import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -131,6 +138,8 @@ class ReaderScreenTest {
         onBookmarksRetryRequested: () -> Unit = {},
         /** The app's dark setting for the test, or null to keep the device's. */
         appNight: Boolean? = null,
+        /** The dock below the page; empty, as in the app without a book in the player. */
+        bottomDock: @Composable () -> Unit = {},
     ) {
         rule.setContent {
             val configuration = appNight?.let { night ->
@@ -165,6 +174,7 @@ class ReaderScreenTest {
                         onBookmarkToggled = onBookmarkToggled,
                         onBookmarkChosen = onBookmarkChosen,
                         onBookmarksRetryRequested = onBookmarksRetryRequested,
+                        bottomDock = bottomDock,
                     )
                 }
             }
@@ -1267,5 +1277,113 @@ class ReaderScreenTest {
         rule.waitForIdle()
 
         assertEquals(listOf("dismissed"), events)
+    }
+
+    // TC-41, P-MINI-4
+    @Test
+    fun dockTheDefaultDockLeavesTheReaderUnchanged() {
+        show(uiState = { ReaderUIState(book = ReaderBookState.Loading) })
+        rule.waitForIdle()
+
+        val root = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
+        val page = rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().boundsInRoot
+        val dock = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot
+        assertTrue(abs(page.top - root.top) <= 1f)
+        assertTrue(abs(page.bottom - root.bottom) <= 1f)
+        assertTrue(abs(page.left - root.left) <= 1f)
+        assertTrue(abs(page.right - root.right) <= 1f)
+        assertEquals(0f, dock.height, 1f)
+    }
+
+    // TC-42, P-MINI-4
+    @Test
+    fun dockThePageSitsAboveTheDockWithoutOverlap() {
+        show(
+            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
+            bottomDock = { Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock")) },
+        )
+        rule.waitForIdle()
+
+        val root = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
+        val page = rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().boundsInRoot
+        val dock = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot
+        assertTrue("the dock has a height", dock.height > 0f)
+        assertTrue("the page ends at the dock's top edge", page.bottom <= dock.top + 1f)
+        assertTrue(abs(page.top - root.top) <= 1f)
+        assertTrue(abs(dock.bottom - root.bottom) <= 1f)
+        assertTrue(abs(dock.left - root.left) <= 1f)
+        assertTrue(abs(dock.right - root.right) <= 1f)
+    }
+
+    // TC-43, P-MINI-4 (stopping from the dock returns the page to full height)
+    @Test
+    fun dockRemovingTheDockRestoresTheFullPageHeight() {
+        val docked = mutableStateOf(true)
+        show(
+            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
+            bottomDock = {
+                if (docked.value) Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock"))
+            },
+        )
+        rule.waitForIdle()
+
+        val rootHeight = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().size.height
+        assertTrue("the dock has a height before removal", rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().size.height > 0)
+        assertTrue(rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().size.height < rootHeight)
+
+        rule.runOnIdle { docked.value = false }
+        rule.waitForIdle()
+
+        assertEquals(0, rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().size.height)
+        assertTrue(abs(rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().size.height - rootHeight) <= 1)
+    }
+
+    // TC-44, P-MINI-4 (page content ends above the dock)
+    @Test
+    fun dockPageContentNeverSitsUnderTheDock() {
+        show(
+            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
+            bottomDock = { Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock")) },
+        )
+        rule.waitForIdle()
+
+        val dockTop = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot.top
+        val loading = rule.onNodeWithText(context.getString(R.string.reader_loading)).fetchSemanticsNode().boundsInRoot
+        assertTrue("the loading text ends above the dock", loading.bottom <= dockTop + 1f)
+    }
+
+    // TC-45, P-MINI-4 (the dock pads the navigation bar, so the page's bottom inset is 0 while docked)
+    @Test
+    fun dockPageBottomInsetIsZeroWhileDocked() {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val controller = ReaderController()
+        val docked = mutableStateOf(true)
+        show(
+            uiState = { ReaderUIState(book = ReaderBookState.Ready(title = "Test Book")) },
+            controller = controller,
+            assetLoaderFactory = epubLoader,
+            bottomDock = {
+                if (docked.value) Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock"))
+            },
+        )
+        rule.waitUntil(timeoutMillis = 30_000) { controller.status == ReaderLoadStatus.Ready }
+        rule.waitUntil(timeoutMillis = 10_000) { cssInset("--inset-bottom") != null }
+        rule.waitForIdle()
+        assertEquals(0, cssInset("--inset-bottom"))
+
+        val decor = rule.activity.window.decorView
+        val bars = ViewCompat.getRootWindowInsets(decor)!!
+            .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+        val density = rule.activity.resources.displayMetrics.density
+        val tolerance = density / 2 + 1
+        rule.runOnIdle { docked.value = false }
+        rule.waitForIdle()
+        if (bars.bottom == 0) {
+            rule.waitUntil(timeoutMillis = 10_000) { cssInset("--inset-bottom") == 0 }
+        } else {
+            rule.waitUntil(timeoutMillis = 10_000) {
+                cssInset("--inset-bottom")?.let { abs(it * density - bars.bottom) <= tolerance } == true
+            }
+        }
     }
 }
