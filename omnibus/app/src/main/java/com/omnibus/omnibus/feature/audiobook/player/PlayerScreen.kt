@@ -12,6 +12,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.feature.audiobook.player.offers.PlayerBannerSlot
+import com.omnibus.omnibus.feature.audiobook.bookmarks.PlayerBookmarksSheet
+import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberAddBookmarkAction
+import com.omnibus.omnibus.feature.audiobook.bookmarks.rememberSyncHereButton
 
 /**
  * The audiobook player (C10): the root-route screen for one open of the player. It is the host every later player ticket
@@ -65,9 +68,9 @@ fun PlayerScreen(
         onOpenCarMode = null,
 
         // #171
-        onAddBookmark = null,
-        onOpenBookmarks = null,
-        syncHere = null,
+        onAddBookmark = rememberAddBookmarkAction(bookUuid),
+        onOpenBookmarks = { overlay = PlayerOverlay.Bookmarks },
+        syncHere = rememberSyncHereButton(bookUuid),
 
         // #172
         onOpenBook = { onOpenReader(bookUuid, null) },
@@ -107,7 +110,12 @@ fun PlayerScreen(
             PlayerOverlay.CarMode -> Unit
 
             // #171
-            PlayerOverlay.Bookmarks -> Unit
+            PlayerOverlay.Bookmarks -> PlayerBookmarksSheet(
+                bookUuid = bookUuid,
+                cover = uiState.cover,
+                onDismiss = dismissOverlay,
+                onOpenReader = onOpenReader,
+            )
 
             null -> Unit
         }
