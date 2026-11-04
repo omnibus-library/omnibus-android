@@ -440,8 +440,8 @@ Every request, including audio streams, carries `Authorization: Bearer <token>`.
 ### 12.8 Sessions and read status
 
 - I-SESS-1. Sessions are sent as an array of `{book_uuid, format: "audio", started_at, ended_at, progress_units, client_id, utc_offset_minutes, time_zone}`. `client_id` is a fresh UUID per session.
-- I-SESS-2. Each tick adds 0.5 s ÷ rate of wall-clock time.
-- I-SESS-3. Sessions are sent on pause, going to the background, switching books, the end of the book and close. Under 5 s carries over to the next report.
+- I-SESS-2. Listening time is wall-clock time spent playing: an hour of audio at 2× counts 30 minutes. A client whose tick is timed in media time (iOS, every 0.5 s of audio) adds 0.5 s ÷ rate per tick; a client whose tick is timed by the wall clock (Android) adds 0.5 s.
+- I-SESS-3. Sessions are sent on pause, going to the background, switching books, the end of the book and close. Under 5 s carries over to the next report. The carry-over is per book: a remainder under 5 s when the book is unloaded (switch or close) is dropped.
 - I-SESS-4. The first play marks the book `reading`. Reaching the end of the item marks it `finished`.
 
 ### 12.9 Speed
@@ -617,7 +617,7 @@ interface SleepTimer {                                      // optional
 Build on what exists; don't write a second copy.
 
 - AND-RUSE-1. `AudiobookManifestDto` (`data/bookprogress/remote`) is extended with `parts` and `playlist_url`, both with defaults, not duplicated. `DefaultAudiobookRepository` decodes it.
-- AND-RUSE-2. Position writes go through the offline queue in `data/progress` (I-SAVE-4).
+- AND-RUSE-2. Position writes go through the audio position store's own offline queue in `data/audiobook/position` (I-SAVE-4): one pending write per book, flushed when `ConnectivityMonitor` reports online and on every pushed save. `data/progress` is EPUB-only and isn't used for audio; its `PositionPushThrottle` (constructed with 5 s) and `PositionSync.OPEN_DEADLINE` are reused.
 - AND-RUSE-3. Bookmarks use `BookmarksRepository`. The audio position format is the one `listeningSeconds` in `feature/bookdetail/more/bookmarks/BookmarkCopy.kt` already reads (I-BMK-1).
 - AND-RUSE-4. The player background reuses Book Detail's cover wash (P-SCR-3).
 - AND-RUSE-5. The chapters sheet borrows `ReaderContentsSheet`'s styling where it fits.
@@ -693,3 +693,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | Added the iOS reference screenshots in `images/`. |
 | 2026-11-04 | Moved to `docs/specs/features/`, with the screenshots in `images/audiobook/`. |
 | 2026-11-04 | #163: §13.2 and §13.3 match the playback packages and contracts as built; AND-STK-1 says what goes through the MediaController; AND-RUSE-1 says what was added. |
+| 2026-11-04 | #164: AND-RUSE-2 names the audio position queue in data/audiobook/position; I-SESS-2 says ticks count wall-clock time on both clients; I-SESS-3 says the carry-over is per book. |
