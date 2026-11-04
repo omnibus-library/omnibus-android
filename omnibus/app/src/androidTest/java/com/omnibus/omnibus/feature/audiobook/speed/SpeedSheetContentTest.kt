@@ -23,7 +23,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
@@ -208,7 +208,13 @@ class SpeedSheetContentTest {
             )
         }
 
-        rule.onNodeWithTag(SpeedSheetTags.SLIDER).performTouchInput { swipeRight() }
+        // The swipe stays off the window's edges: a full-width slider's own edge is the system back-gesture zone.
+        rule.onNodeWithTag(SpeedSheetTags.SLIDER).performTouchInput {
+            swipe(
+                start = Offset(width * 0.25f, centerY),
+                end = Offset(width * 0.75f, centerY),
+            )
+        }
         rule.waitForIdle()
 
         val swipeMoves = log.filter { it.startsWith("moved:") }
