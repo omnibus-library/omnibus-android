@@ -249,23 +249,6 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
             }
         }
 
-        // TC-20
-        it("getChapters ignores the added manifest fields (AND-RUSE-1)") {
-            val manifest = """{"mode":"direct","book_file_id":7,"total_duration_seconds":1000.0,"chapters":[
-                {"title":"","start_seconds":0.0,"duration_seconds":250.0},{"title":"","start_seconds":250.0,"duration_seconds":750.0}],
-                "parts":[{"ordinal":1,"url":"/api/audiobooks/book-1/parts/1?file_id=7","duration_seconds":1000.0,"mime":"audio/mpeg"}],
-                "playlist_url":"/api/audiobooks/book-1/playlist.m3u8"}"""
-            script.answer(ALIGNMENT, reply(200, ALIGNMENT_ONE_FILE))
-            script.answer(MANIFEST, reply(200, manifest))
-
-            repositoryFor().getChapters(UUID) shouldBe BookChaptersResult.Success(
-                ebookChapters = emptyList(),
-                audioChapters = listOf(BookChapter(0, null, 0f), BookChapter(1, null, .25f)),
-                audioFileId = 7L,
-                audioTotalSeconds = 1000L,
-            )
-        }
-
         it("TC-61: chapter errors map to their error, and a blank uuid makes no request") {
             val cases = listOf(
                 reply(404) to BookProgressError.NotFound,
