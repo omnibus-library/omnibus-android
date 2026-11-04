@@ -38,9 +38,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/book_detail_export_paths" />
         </provider>
+        <!-- Exported on purpose: the system, Bluetooth and the notification bind to the media session. -->
         <service
             android:name=".data.audiobook.playback.media3.AudiobookPlaybackService"
             android:exported="true"
+            tools:ignore="ExportedService"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
