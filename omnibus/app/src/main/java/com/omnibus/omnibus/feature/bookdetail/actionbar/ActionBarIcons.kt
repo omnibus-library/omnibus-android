@@ -51,6 +51,36 @@ internal val OpenBookIcon: ImageVector by lazy {
         .build()
 }
 
+/** The book with sound waves for Immersive read, drawn in code from the design's 24 by 24 path. */
+internal val ImmersiveReadIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ActionBarImmersiveRead",
+        defaultWidth = 21.dp,
+        defaultHeight = 21.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    )
+        .addPath(
+            pathData = addPathNodes(
+                "M4 5.2A2 2 0 0 1 6 4h4.2a1.8 1.8 0 0 1 1.8 1.8V18a1.6 1.6 0 0 0-1.6-1.6H6A2 2 0 0 1 4 14.4V5.2z",
+            ),
+            fill = null,
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.7f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+        .addPath(
+            pathData = addPathNodes("M15.5 8v8M18.5 6v12M21 9.5v5"),
+            fill = null,
+            stroke = SolidColor(Color.White),
+            strokeLineWidth = 1.7f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+        .build()
+}
+
 /** The four-bar audio mark for the listening labels: 18 by 16 dp, bars 3 dp wide with 2 dp gaps, bottom-aligned. */
 @Composable
 internal fun AudioBarsMark(color: Color, modifier: Modifier = Modifier) {
