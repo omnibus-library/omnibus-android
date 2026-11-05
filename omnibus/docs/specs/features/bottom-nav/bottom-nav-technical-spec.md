@@ -161,7 +161,7 @@ The chrome animates only when `mode` changes (P-MOT-6). Within a mode, every val
 
   Both use `emphasized`. The delays carry the ordering in P-MOT-2 and P-MOT-3: going wide, the bar's end clears the FAB's column before the FAB starts to drop.
 - I-MOT-3. The FAB animates its bottom offset; its end offset doesn't change (I-LAY-5). When the FAB is hidden, `fabProgress` still runs, so it is in the right place if it shows mid-switch.
-- I-MOT-4. **Dip.** On every mode change the FAB's scale runs keyframes 1 → 0.9 (at 45%) → 1, `emphasized`, lasting the FAB's delay plus its move (510 ms going wide, 430 ms going narrow). Scale is around the centre and doesn't affect layout.
+- I-MOT-4. **Dip.** On every mode change the FAB's scale runs 1 → 0.9 → 1, with 0.9 at 45% of the timeline. One `emphasized` curve eases the whole timeline, which is then mapped piecewise to scale; the two halves are not eased separately. It lasts 510 ms going wide (the FAB's 160 ms delay plus its 350 ms move) and 430 ms going narrow (the 350 ms move plus 80 ms). Scale is around the centre and doesn't affect layout.
 - I-MOT-5. **Interruption.** A mode change during an animation retargets from the current progress, with the new direction's durations and no delay. It never snaps back to 0 or 1.
 - I-MOT-6. **Reduced motion.** With the system's reduce-motion setting on, progress jumps straight to its target and the dip is skipped (P-MOT-7).
 
@@ -280,8 +280,8 @@ res/values/strings.xml
 - AND-LAY-1. Read `availableWidth` from the shell's own constraints (`BoxWithConstraints`, or a `Layout` measuring the overlay), minus horizontal `WindowInsets.safeDrawing`. Don't use the screen size or the window size class: split-screen and freeform windows must follow the app's width (product §11).
 - AND-LAY-2. `bottomInset` is `WindowInsets.navigationBars` bottom. The keyboard (`ime`) is not included, so it covers the chrome (P-VIS-5).
 - AND-LAY-3. Provide padding as `LocalShellContentPadding: PaddingValues`, read by each entry's `LazyVerticalGrid` / `LazyColumn` `contentPadding`. This replaces `StatusBarPadded` for the bottom edge (#162).
-- AND-MOT-1. Drive `barProgress` and `fabProgress` with an `updateTransition(mode)` and `transition.animateFloat { spec }`, where `spec` picks the row of I-MOT-2 from `initialState isTransitioningTo targetState`. Interpolate in the layout phase (`Modifier.layout` or `offset { }`), so frames don't recompose.
-- AND-MOT-2. The dip is `transition.animateFloat` with `keyframes { 0.9f at (duration × 0.45) }` and applied with `graphicsLayer { scaleX; scaleY }`.
+- AND-MOT-1. Drive `barProgress` and `fabProgress` with two `Animatable`s keyed off `mode`, each `animateTo` using the row of I-MOT-2 for the direction, or no delay when interrupting (I-MOT-5). A pure function picks the spec, so the interruption rule is unit tested. Interpolate in the layout phase (`Modifier.layout` or `offset { }`), so frames don't recompose.
+- AND-MOT-2. The dip is an `Animatable` from 0 to 1 on `tween(duration, easing = emphasized)`, mapped through a pure `dipScale(progress)` (I-MOT-4), and applied with `graphicsLayer { scaleX; scaleY }`.
 - AND-MOT-3. Reduced motion uses the existing `rememberReducedMotion()` in `ui/theme/Motion.kt`: when true, use `snap()` specs.
 - AND-MOT-4. FAB enter and exit use `AnimatedVisibility` with `scaleIn(initialScale = 0.6f) + fadeIn` on `Motion.settle()` and `scaleOut(targetScale = 0.6f) + fadeOut` on `Motion.snap()`.
 - AND-SURF-1. Draw the two shadow layers with two chained `Modifier.dropShadow` calls (Compose UI 1.9+; the catalog's BOM `2026.02.01` is newer), using the §1.3 values. Don't use `Modifier.shadow`: elevation shadows can't take these offsets and colours.
@@ -321,3 +321,4 @@ Guidance for when iOS adopts this design (product Q2). The general part is autho
 |---|---|
 | 2026-11-05 | First draft, from the floating-bar mockup and the current Android shell. |
 | 2026-11-05 | I-MINI-1: the mini player is its own floating bar above the nav bar; I-MINI-3 keeps today's mini player in that slot until its own ticket. |
+| 2026-11-05 | I-MOT-4 states the dip durations and easing plainly; AND-MOT-1 and AND-MOT-2 use `Animatable`s so the interruption rule can be unit tested. |
