@@ -23,6 +23,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
+/** Semantics, taps and scrolling. ChaptersSheetScreenshotTest covers how the rows look. */
 class ChaptersSheetContentTest {
 
     @get:Rule
@@ -61,25 +62,6 @@ class ChaptersSheetContentTest {
             .performClick()
 
         assertEquals(1, done)
-    }
-
-    // P-CHP-2, P-CHP-AC2: each row shows its number, title and length
-    @Test
-    fun rowShowsNumberTitleAndLength() {
-        setSheet(mutableStateOf(ChaptersUiState(rows(3) { "Part $it" }, currentIndex = 0)))
-
-        rule.onNodeWithTag(ChaptersTestTags.number(1), useUnmergedTree = true).assertTextEquals("2")
-        rule.onNodeWithTag(ChaptersTestTags.title(1), useUnmergedTree = true).assertTextEquals("Part 2")
-        rule.onNodeWithTag(ChaptersTestTags.length(1), useUnmergedTree = true).assertTextEquals("2:00")
-    }
-
-    // P-CHP-3, P-CHP-AC2: only the current row has the progress line
-    @Test
-    fun onlyTheCurrentRowHasProgressLine() {
-        setSheet(mutableStateOf(ChaptersUiState(rows(4), currentIndex = 2, currentProgress = 0.5f)))
-
-        rule.onAllNodesWithTag(ChaptersTestTags.PROGRESS, useUnmergedTree = true).assertCountEquals(1)
-        rule.onNodeWithTag(ChaptersTestTags.PROGRESS, useUnmergedTree = true).assertIsDisplayed()
     }
 
     // P-A11Y-3: a row reads as "Chapter {n}, {title}, {length}"

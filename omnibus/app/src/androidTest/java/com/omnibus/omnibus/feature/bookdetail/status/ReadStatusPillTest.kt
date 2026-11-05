@@ -47,7 +47,8 @@ import org.junit.Test
 
 /**
  * The read status pill and its menu, rendered alone with recording callbacks. Each test sets its content once and
- * changes the state it shows through the returned [MutableState]. Assertions are relative, never fixed sizes.
+ * changes the state it shows through the returned [MutableState]. ReadStatusPillScreenshotTest covers how the pill
+ * looks.
  */
 class ReadStatusPillTest {
 
@@ -110,30 +111,6 @@ class ReadStatusPillTest {
         Espresso.pressBack()
         rule.waitForIdle()
         openMenu()
-    }
-
-    // TC-80
-    @Test
-    fun tc80_labelShowsEachKnownStatus() {
-        val state = setPill(ReadStatusUIState(status = ReadStatus.Unread))
-
-        listOf(
-            ReadStatus.Unread to "Unread",
-            ReadStatus.Reading to "Reading",
-            ReadStatus.Finished to "Finished",
-        ).forEach { (status, label) ->
-            rule.runOnIdle { state.value = ReadStatusUIState(status = status) }
-            rule.onNodeWithText(label).assertExists()
-        }
-    }
-
-    // TC-81
-    @Test
-    fun tc81_unknownShowsReadingStatusNotUnread() {
-        setPill(ReadStatusUIState(status = null))
-
-        rule.onNodeWithText(detailText(R.string.book_detail_status_unknown)).assertExists()
-        rule.onNodeWithText("Unread").assertDoesNotExist()
     }
 
     // TC-82
@@ -205,18 +182,6 @@ class ReadStatusPillTest {
         rule.onNodeWithTag(ReadStatusTestTags.FINISHED_DATE, useUnmergedTree = true)
             .assert(hasAnyAncestor(hasTestTag(ReadStatusTestTags.row(ReadStatus.Finished))))
         assertFalse(date.contains("2025"))
-    }
-
-    // TC-90
-    @Test
-    fun tc90_finishedDateShowsTheYearWhenNotCurrent() {
-        val finishedOn2024 = utc(2024, 10, 29, 12)
-        setPill(ReadStatusUIState(status = ReadStatus.Finished, finishedAtMillis = finishedOn2024, nowMillis = now2025))
-        openMenu()
-
-        val date = expectedDate(finishedOn2024, now2025)
-        rule.onNodeWithTag(ReadStatusTestTags.FINISHED_DATE, useUnmergedTree = true).assertTextEquals(date)
-        assertTrue(date.contains("2024"))
     }
 
     // TC-91

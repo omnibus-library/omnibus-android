@@ -22,14 +22,11 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -39,9 +36,7 @@ import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import kotlin.math.abs
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -92,6 +87,7 @@ private data class PreviewCase(
 
 // RC-25 to RC-44. Tests use tags, text and relative bounds only, and size the root as a fraction of the
 // window (never in fixed dp), so they hold on the 320dp CI AVD and on a phone-sized one.
+/** Callbacks, touch pass-through, motion and semantics. ReaderChromeScreenshotTest covers how each state looks. */
 class ReaderChromeTest {
 
     @get:Rule
@@ -137,27 +133,13 @@ class ReaderChromeTest {
         }
     }
 
-    // RC-25
-    @Test
-    fun rc25_hiddenChromeShowsOnlyTheTwoLabels() {
-        setChrome(mutableStateOf(ChromeInputs()), mutableListOf())
-
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals(TITLE)
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361")
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertDoesNotExist()
-        rule.onNodeWithTag(ReaderChromeTags.MENU).assertDoesNotExist()
-    }
-
     // RC-26
     @Test
-    fun rc26_visibleChromeShowsButtonsAndNavigatingLabels() {
+    fun rc26_pagesLeftLabelFollowsThePlural() {
         val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents)))
         setChrome(inputs, mutableListOf())
 
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertIsDisplayed()
-        rule.onNodeWithTag(ReaderChromeTags.MENU).assertIsDisplayed()
         rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals("7 pages left in chapter")
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361 of 661")
 
         rule.runOnIdle { inputs.value = inputs.value.copy(location = READING.copy(chapterPagesLeft = 1)) }
         rule.waitForIdle()
@@ -180,36 +162,6 @@ class ReaderChromeTest {
         rule.onNodeWithTag(ReaderChromeTags.MENU).assertDoesNotExist()
         rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals(TITLE)
         rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("361")
-    }
-
-    // RC-28
-    @Test
-    fun rc28_fallbackLabelsAndNoPageZero() {
-        val inputs = mutableStateOf(
-            ChromeInputs(
-                location = RelocateData(totalPages = 0, pct = 18, chapter = 3, totalChapters = 12, chapterPagesLeft = 0),
-                chromeVisible = true,
-            ),
-        )
-        setChrome(inputs, mutableListOf())
-
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals("Chapter 3 of 12")
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertTextEquals("18%")
-
-        rule.runOnIdle {
-            inputs.value = inputs.value.copy(
-                location = RelocateData(page = 1, totalPages = 0, pct = 0, chapter = 3, totalChapters = 12),
-            )
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertDoesNotExist()
-        rule.onAllNodesWithText("1").assertCountEquals(0)
-        rule.onAllNodesWithText("0%").assertCountEquals(0)
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(location = null) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertDoesNotExist()
-        rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertDoesNotExist()
     }
 
     // RC-31
@@ -236,18 +188,6 @@ class ReaderChromeTest {
         rule.waitForIdle()
 
         assertEquals(listOf("close"), events)
-    }
-
-    // RC-33
-    @Test
-    fun rc33_menuButtonHiddenWithoutRows() {
-        setChrome(mutableStateOf(ChromeInputs(chromeVisible = true, menuRows = emptyList())), mutableListOf())
-
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertIsDisplayed()
-        rule.onNodeWithTag(ReaderChromeTags.MENU).assertDoesNotExist()
-        ReaderMenuRow.entries.forEach { row ->
-            rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).assertDoesNotExist()
-        }
     }
 
     @Test
@@ -280,45 +220,6 @@ class ReaderChromeTest {
         ReaderMenuRow.entries.forEach { row ->
             rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).assertDoesNotExist()
         }
-    }
-
-    // RC-35
-    @Test
-    fun rc35_openMenuStacksRowsAboveTheButtonInListOrder() {
-        val inputs = mutableStateOf(
-            ChromeInputs(
-                chromeVisible = true,
-                menuOpen = true,
-                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
-                percent = 54,
-            ),
-        )
-        setChrome(inputs, mutableListOf())
-
-        val contents = ReaderChromeTags.menuRow(ReaderMenuRow.Contents)
-        val settings = ReaderChromeTags.menuRow(ReaderMenuRow.Settings)
-        rule.onNodeWithTag(contents).assert(hasText("Contents")).assert(hasText("54%"))
-        rule.onNodeWithTag(settings).assert(hasText("Themes & Settings"))
-
-        var first = rule.onNodeWithTag(contents).getUnclippedBoundsInRoot()
-        var second = rule.onNodeWithTag(settings).getUnclippedBoundsInRoot()
-        var menu = rule.onNodeWithTag(ReaderChromeTags.MENU).getUnclippedBoundsInRoot()
-        assertTrue("Contents sits above Settings", first.bottom <= second.top)
-        assertTrue("Settings sits above the menu button", second.bottom <= menu.top)
-        assertTrue("rows end at the menu button's right edge", abs((first.right - menu.right).value) <= 1f)
-        assertTrue("rows end at the menu button's right edge", abs((second.right - menu.right).value) <= 1f)
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(menuRows = listOf(ReaderMenuRow.Settings, ReaderMenuRow.Contents)) }
-        rule.waitForIdle()
-        first = rule.onNodeWithTag(settings).getUnclippedBoundsInRoot()
-        second = rule.onNodeWithTag(contents).getUnclippedBoundsInRoot()
-        menu = rule.onNodeWithTag(ReaderChromeTags.MENU).getUnclippedBoundsInRoot()
-        assertTrue("a reversed list reverses the rows", first.bottom <= second.top)
-        assertTrue("the last row sits above the menu button", second.bottom <= menu.top)
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(percent = 0) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(contents).assert(hasText("0%"))
     }
 
     // RC-36
@@ -534,45 +435,15 @@ class ReaderChromeTest {
 
     // TC-62
     @Test
-    fun bookmarksRowSitsBetweenContentsAndSettingsWithItsCount() {
+    fun bookmarksRowReportsItsTap() {
         val events = mutableListOf<String>()
         setChrome(
             mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, bookmarkCount = 3, percent = 42)),
             events,
         )
 
-        val contents = ReaderChromeTags.menuRow(ReaderMenuRow.Contents)
-        val bookmarks = ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)
-        val settings = ReaderChromeTags.menuRow(ReaderMenuRow.Settings)
-        rule.onNodeWithTag(bookmarks).assert(hasText("Bookmarks")).assert(hasText("3"))
-
-        val top = rule.onNodeWithTag(contents).getUnclippedBoundsInRoot()
-        val middle = rule.onNodeWithTag(bookmarks).getUnclippedBoundsInRoot()
-        val bottom = rule.onNodeWithTag(settings).getUnclippedBoundsInRoot()
-        assertTrue("Contents sits above Bookmarks", top.bottom <= middle.top)
-        assertTrue("Bookmarks sits above Themes & Settings", middle.bottom <= bottom.top)
-
-        rule.onNodeWithTag(bookmarks).performClick()
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)).performClick()
         rule.waitForIdle()
         assertEquals(listOf("row:Bookmarks"), events)
-    }
-
-    // TC-63
-    @Test
-    fun bookmarksRowCountAppearsAndDisappearsWithTheCount() {
-        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS, bookmarkCount = 0))
-        setChrome(inputs, mutableListOf())
-        val bookmarks = ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)
-
-        rule.onNodeWithTag(bookmarks).assert(hasText("Bookmarks"))
-        rule.onAllNodesWithText("0").assertCountEquals(0)
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(bookmarkCount = 1) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(bookmarks).assert(hasText("1"))
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(bookmarkCount = 0) }
-        rule.waitForIdle()
-        rule.onAllNodesWithText("1").assertCountEquals(0)
     }
 }

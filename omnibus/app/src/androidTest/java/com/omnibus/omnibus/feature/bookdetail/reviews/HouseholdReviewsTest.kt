@@ -22,25 +22,21 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
-import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.format.BookDetailFormat
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The Reviews tab's household list: its heading and entries, spoilers, long text, and the tab's notices. */
+/** The household list: headings, star descriptions, spoilers, Read more, retry and hiding. HouseholdReviewsScreenshotTest covers how it looks. */
 class HouseholdReviewsTest {
 
     @get:Rule
     val rule = createComposeRule()
 
     private val now = 1_762_000_000_000L
-    private val locale get() = InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration.locales[0]
 
     private fun entry(
         id: Long,
@@ -86,70 +82,27 @@ class HouseholdReviewsTest {
 
     // TC-47 (AC2)
     @Test
-    fun tc47_emptyShowsTheHeadingAndMessage() {
+    fun tc47_theEmptyTitleIsAHeading() {
         show(mutableStateOf(ReviewsTabModel.Empty))
 
-        rule.onNodeWithText(detailText(R.string.book_detail_reviews_empty_title)).assertIsDisplayed().assertIsHeading()
-        rule.onNodeWithText(detailText(R.string.book_detail_reviews_empty_message)).assertIsDisplayed()
-        rule.onAllNodesWithText(detailText(R.string.book_detail_reviews_household)).assertCountEquals(0)
+        rule.onNodeWithText(detailText(R.string.book_detail_reviews_empty_title)).assertIsHeading()
     }
 
     // TC-48 (AC3)
     @Test
-    fun tc48_listShowsHeadingCountAndAverage() {
-        val model = mutableStateOf<ReviewsTabModel>(
-            listed(entry(1, "Ada"), entry(2, "Bo"), entry(3, "Cy"), average = 4.3f),
-        )
-        show(model)
+    fun tc48_theListHeadingIsAHeading() {
+        show(mutableStateOf(listed(entry(1, "Ada"), entry(2, "Bo"), entry(3, "Cy"), average = 4.3f)))
 
-        rule.onNodeWithText(detailText(R.string.book_detail_reviews_household)).assertIsDisplayed().assertIsHeading()
-        rule.onNodeWithTag(ReviewsTestTags.COUNT).assertTextEquals("3")
-        rule.onNodeWithText(detailText(R.string.book_detail_reviews_average, "4.3")).assertIsDisplayed()
-
-        rule.runOnIdle { model.value = listed(entry(1, "Ada"), entry(2, "Bo"), entry(3, "Cy")) }
-        rule.onAllNodesWithText(detailText(R.string.book_detail_reviews_average, "4.3")).assertCountEquals(0)
+        rule.onNodeWithText(detailText(R.string.book_detail_reviews_household)).assertIsHeading()
     }
 
     // TC-49 (AC3)
     @Test
-    fun tc49_entryShowsNameDateStarsAndTextAndOmitsMissingOnes() {
-        val date = 1_749_859_200_000L
-        show(
-            mutableStateOf(
-                listed(
-                    entry(3, "Maren", date = date, rating = 4.5f, markdown = "Loved it.", body = ReviewBody.Text),
-                    entry(4, "Theo", markdown = "Slow start.", body = ReviewBody.Text),
-                ),
-            ),
-        )
+    fun tc49_starsAreDescribedByTheirRating() {
+        show(mutableStateOf(listed(entry(3, "Maren", rating = 4.5f, markdown = "Loved it.", body = ReviewBody.Text))))
 
-        val dated = "Maren · ${BookDetailFormat.longDate(date, now, locale, TimeZone.getDefault())}"
-        rule.onNodeWithText(dated).assertIsDisplayed()
         rule.onNodeWithTag(ReviewsTestTags.stars(3))
             .assertContentDescriptionEquals(detailText(R.string.book_detail_reviews_stars_description, "4.5"))
-        rule.onAllNodesWithText("4.5").assertCountEquals(0)
-        rule.onNodeWithText("Theo").assertIsDisplayed()
-        rule.onAllNodesWithTag(ReviewsTestTags.stars(4)).assertCountEquals(0)
-        rule.onNodeWithText("Loved it.").assertIsDisplayed()
-        rule.onNodeWithText("Slow start.").assertIsDisplayed()
-    }
-
-    // TC-50 (AC5)
-    @Test
-    fun tc50_ratedOnlyAndImageOnlyShowTheirNotes() {
-        show(
-            mutableStateOf(
-                listed(
-                    entry(5, "Jonas", rating = 3.5f, body = ReviewBody.RatedOnly),
-                    entry(6, "Ada", rating = 4f, markdown = "![x](u)", body = ReviewBody.ImageOnly),
-                ),
-            ),
-        )
-
-        rule.onAllNodesWithText(detailText(R.string.book_detail_reviews_rated_only)).assertCountEquals(1)
-        rule.onAllNodesWithText(detailText(R.string.book_detail_reviews_image_only)).assertCountEquals(1)
-        rule.onAllNodesWithTag(ReviewsTestTags.readMore(5)).assertCountEquals(0)
-        rule.onAllNodesWithTag(ReviewsTestTags.readMore(6)).assertCountEquals(0)
     }
 
     // TC-52 (AC3)

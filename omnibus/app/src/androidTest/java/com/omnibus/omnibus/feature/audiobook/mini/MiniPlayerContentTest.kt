@@ -16,7 +16,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
@@ -76,28 +75,11 @@ private fun SemanticsNode.descendantTags(): List<String> = children.flatMap { ch
     listOfNotNull(child.config.getOrNull(SemanticsProperties.TestTag)) + child.descendantTags()
 }
 
+/** Callbacks and semantics. MiniPlayerScreenshotTest covers how the bar looks. */
 class MiniPlayerContentTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    // P-MINI-1, P-MINI-AC1
-    // TC-28 (P-MINI-1)
-    @Test
-    fun showsTheTitleAndSubtitleAndOmitsAMissingSubtitle() {
-        val state = mutableStateOf(playing)
-        rule.setBar({ state.value }, Calls())
-        rule.waitForIdle()
-
-        rule.onNodeWithText("Mini Title", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Chapter 7: The Question of Sex", useUnmergedTree = true).assertIsDisplayed()
-
-        rule.runOnIdle { state.value = playing.copy(subtitle = null) }
-        rule.waitForIdle()
-
-        rule.onNodeWithText("Mini Title", useUnmergedTree = true).assertIsDisplayed()
-        rule.onAllNodesWithText("Chapter 7", useUnmergedTree = true).assertCountEquals(0)
-    }
 
     // P-MINI-AC5
     // TC-32 (P-MINI-2)

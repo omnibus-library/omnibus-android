@@ -22,16 +22,16 @@ import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
-import com.omnibus.omnibus.feature.audiobook.player.boundsOf
 import com.omnibus.omnibus.feature.bookdetail.more.pressBackKey
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import kotlin.math.abs
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The sleep sheet's body and window: the grid, the countdown, the selection and the taps (R9-R14). */
+/**
+ * The sleep sheet's body and window: the countdown, the selection and the taps (R9-R14). SleepSheetScreenshotTest covers
+ * how the grid looks.
+ */
 class SleepSheetContentTest {
 
     @get:Rule
@@ -70,49 +70,6 @@ class SleepSheetContentTest {
             cell.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
             cell.assertHeightIsAtLeast(44.dp)
         }
-    }
-
-    // TC-34, R10: the title, the eight presets in a grid, and the chapter cell full width under them
-    @Test
-    fun issue169_tc34_gridShowsTheEightPresetsAndTheChapterCellUnderThem() {
-        showSheet(mutableStateOf(sleepUIState(playing(700.0))))
-        rule.onNodeWithTag(SleepTestTags.TITLE).assertTextEquals("Sleep timer")
-        rule.onNodeWithTag(SleepTestTags.OFF).assertTextEquals("Off")
-        val labels = mapOf(
-            15 to "15 min",
-            30 to "30 min",
-            45 to "45 min",
-            60 to "1 hour",
-            120 to "2 hours",
-            180 to "3 hours",
-            240 to "4 hours",
-        )
-        labels.forEach { (minutes, label) ->
-            rule.onNodeWithTag(SleepTestTags.timed(minutes)).assertTextEquals(label)
-        }
-        rule.onNodeWithTag(SleepTestTags.END_OF_CHAPTER).assertTextEquals("End of chapter 2")
-
-        val cells = listOf(SleepTestTags.OFF) + labels.keys.map { SleepTestTags.timed(it) }
-        val bounds = cells.map { rule.boundsOf(it) }
-        bounds.chunked(2).forEach { (left, right) ->
-            assertTrue(left.left < right.left)
-            assertTrue(abs(left.top - right.top) <= 1f)
-        }
-        bounds.chunked(2).zipWithNext().forEach { (row, next) ->
-            assertTrue(next[0].top > row[0].top)
-        }
-        val endOfChapter = rule.boundsOf(SleepTestTags.END_OF_CHAPTER)
-        assertTrue(endOfChapter.top >= bounds.last().bottom - 1f)
-        assertTrue(endOfChapter.width > bounds.first().width)
-    }
-
-    // TC-35, R10: a book with no chapters has no chapter cell, and the eight presets stay
-    @Test
-    fun issue169_tc35_aBookWithoutChaptersHasNoChapterCell() {
-        showSheet(mutableStateOf(sleepUIState(PlaybackState(book = book, durationSeconds = 3600.0))))
-        rule.onAllNodesWithTag(SleepTestTags.END_OF_CHAPTER).assertCountEquals(0)
-        rule.onAllNodesWithTag(SleepTestTags.OFF).assertCountEquals(1)
-        SleepTimedMinutes.forEach { rule.onAllNodesWithTag(SleepTestTags.timed(it)).assertCountEquals(1) }
     }
 
     // TC-36, R12, R14: the countdown shows only while a timer runs, in the clock format, and is not a live region

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -22,15 +21,13 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 
-/** The Details list at the end of the Files tab: which rows show, how values are cut, copied and read out. */
+/** The Details list at the end of the Files tab: which rows it builds, and how values are copied and read out. */
 class BookDetailsTest {
 
     @get:Rule
@@ -46,29 +43,6 @@ class BookDetailsTest {
             OmnibusTheme(darkTheme = true) { BookDetails(items, Modifier.fillMaxWidth()) }
         }
         rule.waitForIdle()
-    }
-
-    // TC-1 (AC1)
-    @Test
-    fun tc1_showsTheHeadingAndOneLabelledRowPerItem() {
-        show(listOf(publisher, DetailItem(DetailRow.Language, "English"), file))
-
-        rule.onNodeWithTag(tags.TITLE).assertTextEquals(detailText(R.string.book_detail_details_title))
-        rule.onNodeWithTag(tags.row(DetailRow.Publisher)).assertIsDisplayed()
-        rule.onNodeWithTag(tags.row(DetailRow.Language)).assertIsDisplayed()
-        rule.onNodeWithTag(tags.row(DetailRow.File)).assertIsDisplayed()
-        valueNode(DetailRow.Publisher).assertTextEquals("Spencer Blackett")
-        valueNode(DetailRow.Language).assertTextEquals("English")
-    }
-
-    // TC-2 (AC1)
-    @Test
-    fun tc2_showsNoRowForADetailTheBookLacks() {
-        show(listOf(file))
-
-        rule.onAllNodesWithTag(tags.row(DetailRow.File)).assertCountEquals(1)
-        rule.onAllNodesWithTag(tags.row(DetailRow.Publisher)).assertCountEquals(0)
-        rule.onAllNodesWithTag(tags.row(DetailRow.Isbn)).assertCountEquals(0)
     }
 
     // TC-3 (AC1)
@@ -115,22 +89,12 @@ class BookDetailsTest {
         rule.onAllNodesWithTag(tags.row(DetailRow.Publisher)).assertCountEquals(1)
     }
 
-    // TC-7 (AC3)
+    // TC-7 (AC3): a value cut on screen is still read out whole. BookDetailsScreenshotTest shows the cut.
     @Test
-    fun tc7_aLongValueIsCutInTheMiddleOnTwoLines() {
+    fun tc7_aCutValueIsReadOutWhole() {
         val long = "Start_" + "x".repeat(300) + "_end.epub"
         show(listOf(DetailItem(DetailRow.File, long)))
 
-        val value = valueNode(DetailRow.File)
-        val text = value.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text }
-        assertTrue(text, text.contains("…"))
-        assertTrue(text, text.startsWith("Start_"))
-        assertTrue(text, text.endsWith("_end.epub"))
-        assertTrue(text.length < long.length)
-        val layout = value.textLayout()
-        assertEquals(2, layout.lineCount)
-        assertTrue(!layout.hasVisualOverflow)
-        // TalkBack still gets the whole value.
         rule.onNodeWithTag(tags.row(DetailRow.File))
             .assertContentDescriptionEquals(detailText(R.string.book_detail_details_row_description, "File", long))
     }

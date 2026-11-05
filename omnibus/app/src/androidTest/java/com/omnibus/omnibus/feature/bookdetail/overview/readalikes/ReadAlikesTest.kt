@@ -29,6 +29,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** Semantics, taps, scrolling, the spinner and live region. ReadAlikesScreenshotTest covers how each state looks. */
 class ReadAlikesTest {
 
     @get:Rule
@@ -47,10 +48,9 @@ class ReadAlikesTest {
         state: ReadAlikesUiState,
         onOpen: (ReadAlike) -> Unit = {},
         reducedMotion: Boolean = true,
-        darkTheme: Boolean = true,
     ) {
         rule.setContent {
-            OmnibusTheme(darkTheme = darkTheme) {
+            OmnibusTheme(darkTheme = true) {
                 ReadAlikes(
                     bookTitle = title,
                     state = state,
@@ -81,16 +81,10 @@ class ReadAlikesTest {
 
     // #106 TC-57 (AC1)
     @Test
-    fun tc57_readyShowsTheHeadingTheCaptionAndOneCardPerSuggestion() {
+    fun tc57_theHeadingIsAHeading() {
         setState(threeCards())
 
-        rule.onNodeWithTag(ReadAlikesTestTags.HEADING).assertIsDisplayed()
-        assertEquals(detailText(R.string.book_detail_readalikes_heading, title), textsOf(ReadAlikesTestTags.HEADING).single())
         assertTrue(rule.onNodeWithTag(ReadAlikesTestTags.HEADING).fetchSemanticsNode().config.contains(SemanticsProperties.Heading))
-        assertEquals(detailText(R.string.book_detail_readalikes_source), textsOf(ReadAlikesTestTags.SOURCE).single())
-        rule.onAllNodesWithTag(BookShelfTestTags.CARD).assertCountEquals(3)
-        rule.onNodeWithTag(ReadAlikesTestTags.STATUS).assertDoesNotExist()
-        rule.onAllNodesWithTag(ReadAlikesTestTags.SPINNER, useUnmergedTree = true).assertCountEquals(0)
     }
 
     // #106 TC-59 (AC1, AC6)
@@ -102,15 +96,6 @@ class ReadAlikesTest {
             listOf(listOf("Book 1", "Author 1"), listOf("Book 2", "Author 2"), listOf("Book 3", "Author 3")),
             cardTexts(),
         )
-    }
-
-    // #106 TC-61 (AC1)
-    @Test
-    fun tc61_aBlankAuthorDrawsNoAuthorLine() {
-        setState(readyOf(listOf(suggestion(1, author = ""))))
-
-        rule.onAllNodesWithTag(BookShelfTestTags.SUBTITLE, useUnmergedTree = true).assertCountEquals(0)
-        assertEquals(listOf(listOf("Book 1")), cardTexts())
     }
 
     // #106 TC-62 (AC1)
@@ -145,21 +130,6 @@ class ReadAlikesTest {
         assertEquals(Role.Button, card.getOrNull(SemanticsProperties.Role))
     }
 
-    // #106 TC-65 (AC2)
-    @Test
-    fun tc65_searchingShowsTheHeadingTheCaptionAndASpinnerLine() {
-        setState(ReadAlikesUiState.Searching, reducedMotion = false)
-
-        rule.onNodeWithTag(ReadAlikesTestTags.HEADING).assertIsDisplayed()
-        assertEquals(detailText(R.string.book_detail_readalikes_source), textsOf(ReadAlikesTestTags.SOURCE).single())
-        assertEquals(
-            listOf(detailText(R.string.book_detail_readalikes_searching)),
-            textsOf(ReadAlikesTestTags.STATUS_TEXT, useUnmergedTree = true),
-        )
-        rule.onNodeWithTag(ReadAlikesTestTags.SPINNER, useUnmergedTree = true).assertExists()
-        rule.onAllNodesWithTag(BookShelfTestTags.CARD).assertCountEquals(0)
-    }
-
     // #106 TC-66 (AC6)
     @Test
     fun tc66_reducedMotionShowsAStaticThreeQuarterRing() {
@@ -180,21 +150,6 @@ class ReadAlikesTest {
         setState(ReadAlikesUiState.Searching, reducedMotion = false)
 
         assertEquals(ProgressBarRangeInfo.Indeterminate, spinnerRange())
-    }
-
-    // #106 TC-68 (AC3)
-    @Test
-    fun tc68_unavailableShowsTheMessageWithoutASpinner() {
-        setState(ReadAlikesUiState.Unavailable)
-
-        rule.onNodeWithTag(ReadAlikesTestTags.HEADING).assertIsDisplayed()
-        assertEquals(detailText(R.string.book_detail_readalikes_source), textsOf(ReadAlikesTestTags.SOURCE).single())
-        assertEquals(
-            listOf(detailText(R.string.book_detail_readalikes_unavailable)),
-            textsOf(ReadAlikesTestTags.STATUS_TEXT, useUnmergedTree = true),
-        )
-        rule.onAllNodesWithTag(ReadAlikesTestTags.SPINNER, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodesWithTag(BookShelfTestTags.CARD).assertCountEquals(0)
     }
 
     // #106 TC-69 (AC4)
@@ -255,26 +210,5 @@ class ReadAlikesTest {
         )
         rule.onAllNodesWithTag(ReadAlikesTestTags.SPINNER, useUnmergedTree = true).assertCountEquals(0)
         assertEquals(LiveRegionMode.Polite, liveRegionOf(ReadAlikesTestTags.STATUS))
-    }
-
-    // #106 TC-72 (AC1)
-    @Test
-    fun tc72_aCardWithAPathButNoFetcherStillShowsItsPlate() {
-        setState(readyOf(listOf(suggestion(1, coverPath = "/api/suggestions/u/1/cover"))))
-
-        rule.onNodeWithTag(BookShelfTestTags.CARD).assertIsDisplayed()
-        assertEquals(listOf(listOf("Book 1", "Author 1")), cardTexts())
-    }
-
-    // #106 TC-73 (AC1)
-    @Test
-    fun tc73_theShelfRendersInLightTheme() {
-        setState(threeCards(), darkTheme = false)
-
-        rule.onAllNodesWithTag(BookShelfTestTags.CARD).assertCountEquals(3)
-        assertEquals(
-            listOf(listOf("Book 1", "Author 1"), listOf("Book 2", "Author 2"), listOf("Book 3", "Author 3")),
-            cardTexts(),
-        )
     }
 }

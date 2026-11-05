@@ -19,10 +19,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
 /** Callback counts and the inputs of [PlayerTransport], so tests can change them between frames. */
 private class TransportInputs {
@@ -64,33 +62,17 @@ private fun ComposeContentTestRule.setTransport(inputs: TransportInputs) {
     }
 }
 
+/** Callbacks, labels, enabled states and haptics. PlayerTransportScreenshotTest covers how the row looks. */
 class PlayerTransportTest {
 
     @get:Rule
     val rule = createComposeRule()
 
-    // P-SCR-10, AND-UI-4: the order, the disc size and each callback
+    // P-SCR-10: each control calls its own callback once
     @Test
-    fun transportOrderDiscSizeAndCallbacks() {
+    fun eachControlCallsItsCallbackOnce() {
         val inputs = TransportInputs()
         rule.setTransport(inputs)
-
-        val tags = listOf(
-            PlayerTestTags.PREVIOUS,
-            PlayerTestTags.BACK_15,
-            PlayerTestTags.PLAY_PAUSE,
-            PlayerTestTags.FORWARD_30,
-            PlayerTestTags.NEXT,
-        )
-        val bounds = tags.map { rule.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot }
-        bounds.zipWithNext().forEach { (left, right) ->
-            assertTrue("the controls should run left to right", left.left < right.left)
-        }
-        val disc = bounds[2]
-        bounds.filterIndexed { index, _ -> index != 2 }.forEach {
-            assertTrue("the disc should be taller than each stepper", disc.height > it.height)
-            assertTrue("the disc should sit on the same row", abs(disc.center.y - it.center.y) < disc.height / 2f)
-        }
 
         rule.onNodeWithTag(PlayerTestTags.PREVIOUS).performClick()
         rule.onNodeWithTag(PlayerTestTags.BACK_15).performClick()

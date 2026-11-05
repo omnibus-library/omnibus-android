@@ -13,7 +13,6 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -38,6 +37,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** Callbacks, swipes, states and semantics. PlayerBookmarksSheetScreenshotTest covers how the rows look. */
 class PlayerBookmarksSheetTest {
 
     @get:Rule
@@ -82,35 +82,6 @@ class PlayerBookmarksSheetTest {
         rule.waitForIdle()
 
         assertEquals(1, closes)
-    }
-
-    // TC50, R4, AND-RUSE-6: a titled row keeps its title, an audio row reads as listening, a text row as saved position
-    @Test
-    fun rowsAreNamedByTitleListeningOrSavedPosition() {
-        rule.setSheetContent(
-            BookmarksContent.Loaded(
-                rowsOf(
-                    bookmark(1, title = "Fav"),
-                    bookmark(2, position = "3725"),
-                    bookmark(3),
-                ),
-            ),
-        )
-
-        rule.onNodeWithTag(BookmarksTestTags.name("id:1"), useUnmergedTree = true).assertTextEquals("Fav")
-        rule.onNodeWithTag(BookmarksTestTags.name("id:2"), useUnmergedTree = true)
-            .assertTextEquals("Listening, 1 h 02 m in")
-        rule.onNodeWithTag(BookmarksTestTags.name("id:3"), useUnmergedTree = true)
-            .assertTextEquals("Saved position")
-    }
-
-    // TC51, R4: the meta line is the date alone, with no chapter or percent
-    @Test
-    fun rowMetaIsDateOnly() {
-        rule.setSheetContent(BookmarksContent.Loaded(rowsOf(bookmark(1), bookmark(2, position = "3725"))))
-
-        rule.onNodeWithTag(BookmarksTestTags.meta("id:1"), useUnmergedTree = true).assertTextEquals(SAMPLE_DATE)
-        rule.onNodeWithTag(BookmarksTestTags.meta("id:2"), useUnmergedTree = true).assertTextEquals(SAMPLE_DATE)
     }
 
     // TC53, R4, P-BMK-3: loading, failed and empty states show their copy, and none has a footer

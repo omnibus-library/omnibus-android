@@ -30,6 +30,7 @@ omnibus/
 ├── app/src/main/java/com/omnibus/omnibus/   # App source (UI theme lives in ui/theme/)
 ├── app/src/test/                            # JVM unit tests
 ├── app/src/androidTest/                     # Instrumented tests
+├── app/src/screenshotTest/                  # Compose preview screenshot tests
 ├── docs/engineering/                        # Engineering guidelines (read these)
 └── gradle/libs.versions.toml                # Version catalog
 ```
@@ -42,6 +43,8 @@ Run from the `omnibus/` directory:
 ./gradlew assembleDebug          # Build a debug APK
 ./gradlew test                   # Run JVM unit tests
 ./gradlew connectedAndroidTest   # Run instrumented tests (requires a device/emulator)
+./gradlew testDebugScreenshotTestDefaultTestSuite    # Run screenshot tests (no device needed)
+./gradlew updateDebugScreenshotTestDefaultTestSuite  # Re-record screenshot references
 ./gradlew lint                   # Run Android lint
 ```
 
@@ -55,7 +58,7 @@ Follow the documents in `docs/engineering/`:
 - [Feature Layers](docs/engineering/feature-layers.md): Screen (Compose) → ViewModel → Repository → Data sources, with conventions per layer. The login feature is the reference implementation.
 - [Commits](docs/engineering/commits.md): Never commit directly to `main`; work on a branch and merge via pull request. Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification).
 - [KDocs](docs/engineering/kdocs.md): Document public APIs with KDoc. Keep descriptions concise and avoid restating what is obvious from the signature.
-- [Testing](docs/engineering/testing.md): Unit test non-Android Kotlin/KMP code with Kotest on the JUnit runner, preferring the [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec) style. Test code that needs an Android `Context` with instrumented tests in `app/src/androidTest/`.
+- [Testing](docs/engineering/testing.md): Unit test non-Android Kotlin/KMP code with Kotest on the JUnit runner, preferring the [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec) style. Test code that needs an Android `Context` with instrumented tests in `app/src/androidTest/`. Check how a piece of UI looks with a screenshot test in `app/src/screenshotTest/`.
 
 ## Conventions
 

@@ -15,9 +15,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.series.SeriesMember
@@ -40,18 +38,6 @@ internal fun seriesBook(position: Int?, series: String? = "Dune") = testDetailBo
 /** The fan model for [n] members with this book at [current] (0-based, or absent when null). */
 internal fun fanModel(n: Int, current: Int?, list: List<SeriesMember> = members(n)) =
     seriesFanModel(seriesBook(current), list)!!
-
-/** [dp] in pixels for this rule's density. */
-internal fun ComposeContentTestRule.px(dp: Dp): Float = with(density) { dp.toPx() }
-
-/**
- * The node's bounds in root coordinates before any ancestor clip. A row that scrolls clips its cards' semantics
- * bounds, so a card past the viewport would report a clamped edge; its layout position is what the fan defines.
- */
-internal fun SemanticsNodeInteraction.layoutBounds(): Rect = fetchSemanticsNode().let { node ->
-    val origin = node.positionInRoot
-    Rect(origin.x, origin.y, origin.x + node.size.width, origin.y + node.size.height)
-}
 
 /** The `OnClick` label of a node, as TalkBack reads it. */
 internal fun SemanticsNodeInteraction.clickLabel(): String =

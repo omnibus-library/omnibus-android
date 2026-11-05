@@ -51,6 +51,7 @@ private val BANNER_LOCATION = RelocateData(page = 361, totalPages = 661, pct = 5
 
 // TC-108 to TC-113. Tests use tags, text and relative bounds only, and never pin a window size, so they
 // hold on the 320dp CI AVD and on a phone-sized one.
+/** Callbacks, when the banner shows, and touch handling. ReaderSyncOfferBannerScreenshotTest covers how it looks. */
 class ReaderSyncOfferBannerTest {
 
     @get:Rule
@@ -134,7 +135,7 @@ class ReaderSyncOfferBannerTest {
 
     // TC-108
     @Test
-    fun tc108_bannerShowsCopyAndActions() {
+    fun tc108_goAcceptsAndDismissDismisses() {
         var accepted = 0
         var dismissed = 0
         rule.setContent {
@@ -149,11 +150,6 @@ class ReaderSyncOfferBannerTest {
                 }
             }
         }
-
-        rule.onNodeWithText(TITLE).assertIsDisplayed()
-        rule.onNodeWithText(DETAIL).assertIsDisplayed()
-        rule.onNodeWithText("Go").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Dismiss").assertIsDisplayed()
 
         rule.onNodeWithText("Go").performClick()
         rule.onNodeWithContentDescription("Dismiss").performClick()

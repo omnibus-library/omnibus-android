@@ -18,7 +18,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
@@ -26,7 +25,6 @@ import androidx.compose.ui.test.performTextReplacement
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.metadata.MetadataListKind
 import com.omnibus.omnibus.data.metadata.VocabularyEntry
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.more.pressBackKey
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
@@ -43,7 +41,7 @@ private class SheetHolder(initial: ChipEditUIState) {
 
 private const val TITLE_BOOK = "The Left Hand of Darkness"
 
-/** The sheet's content, rendered alone: its header, chips, field, suggestions, create row and notes. */
+/** The sheet's content: removing, filtering, adding, limits, offline and dismissal. ChipEditSheetScreenshotTest covers how it looks. */
 class ChipEditSheetTest {
 
     @get:Rule
@@ -83,28 +81,6 @@ class ChipEditSheetTest {
     private fun pool(vararg entries: Pair<String, Int>) =
         PoolState.Loaded(entries.map { (name, count) -> VocabularyEntry(name, count.toLong()) })
 
-    // TC-79
-    @Test
-    fun issue101_r5_sheetShowsTitleAndHint() {
-        rule.setSheet(editorState(genres = listOf("Noir")))
-
-        rule.onNodeWithTag(chipEdit.TITLE).assertTextEquals(
-            detailText(R.string.book_detail_chipedit_title, detailText(R.string.book_detail_chips_genres), TITLE_BOOK),
-        )
-        rule.onNodeWithText(detailText(R.string.book_detail_chipedit_hint)).assertExists()
-    }
-
-    // TC-79
-    @Test
-    fun issue101_r5_sheetShowsTitleAndHintForTags() {
-        rule.setSheet(editorState(tags = listOf("Cozy")), kind = MetadataListKind.Tags)
-
-        rule.onNodeWithTag(chipEdit.TITLE).assertTextEquals(
-            detailText(R.string.book_detail_chipedit_title, detailText(R.string.book_detail_chips_tags), TITLE_BOOK),
-        )
-        rule.onNodeWithText(detailText(R.string.book_detail_chipedit_hint)).assertExists()
-    }
-
     // TC-80
     @Test
     fun issue101_ac3_currentChipsAreRemoveButtons() {
@@ -115,36 +91,6 @@ class ChipEditSheetTest {
             rule.onNodeWithContentDescription(detailText(R.string.book_detail_chipedit_remove, value))
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
         }
-        val sheet = rule.onNodeWithTag(chipEdit.SHEET).bounds()
-        values.forEach { value ->
-            val chip = rule.onNodeWithContentDescription(detailText(R.string.book_detail_chipedit_remove, value)).bounds()
-            assertTrue("$value lies outside the sheet", chip.left >= sheet.left - 1 && chip.right <= sheet.right + 1)
-        }
-    }
-
-    // TC-81
-    @Test
-    fun issue101_r5_emptyListShowsPlaceholder() {
-        rule.setSheet(editorState(genres = emptyList()))
-
-        rule.onNodeWithTag(chipEdit.EMPTY).assertTextEquals(detailText(R.string.book_detail_chipedit_empty))
-        rule.onAllNodesWithTag(chipEdit.CHIP).assertCountEquals(0)
-    }
-
-    // TC-82
-    @Test
-    fun issue101_r5_fieldLabelMatchesKind() {
-        rule.setSheet(editorState(genres = listOf("Noir")))
-
-        rule.onNodeWithText(detailText(R.string.book_detail_chipedit_field_genres), useUnmergedTree = true).assertExists()
-    }
-
-    // TC-82
-    @Test
-    fun issue101_r5_fieldLabelMatchesKindForTags() {
-        rule.setSheet(editorState(tags = listOf("Cozy")), kind = MetadataListKind.Tags)
-
-        rule.onNodeWithText(detailText(R.string.book_detail_chipedit_field_tags), useUnmergedTree = true).assertExists()
     }
 
     // TC-83
@@ -156,21 +102,6 @@ class ChipEditSheetTest {
         rule.waitForIdle()
 
         assertEquals(listOf("Noir"), removed)
-    }
-
-    // TC-84
-    @Test
-    fun issue101_ac4_showsAtMostFiveSuggestionsWithBookCounts() {
-        val pool = pool(
-            "Alpha" to 1, "Beta" to 4, "Gamma" to 9, "Delta" to 2,
-            "Epsilon" to 7, "Zeta" to 3, "Eta" to 5, "Theta" to 6,
-        )
-        rule.setSheet(editorState(pools = mapOf(MetadataListKind.Genres to pool)))
-
-        rule.onAllNodesWithTag(chipEdit.SUGGESTION).assertCountEquals(5)
-        rule.onNode(hasTestTag(chipEdit.SUGGESTION) and hasText("Alpha")).assertTextEquals("Alpha", "1 book")
-        rule.onNode(hasTestTag(chipEdit.SUGGESTION) and hasText("Beta")).assertTextEquals("Beta", "4 books")
-        rule.onNode(hasTestTag(chipEdit.SUGGESTION) and hasText("Gamma")).assertTextEquals("Gamma", "9 books")
     }
 
     // TC-85
@@ -196,17 +127,6 @@ class ChipEditSheetTest {
         rule.waitForIdle()
 
         assertEquals(listOf("Urban Fantasy"), added)
-    }
-
-    // TC-87
-    @Test
-    fun issue101_ac4_suggestionsLeaveOutCurrentChips() {
-        rule.setSheet(
-            editorState(genres = listOf("Cozy"), pools = mapOf(MetadataListKind.Genres to pool("cozy" to 3, "Noir" to 1))),
-        )
-
-        rule.onAllNodesWithTag(chipEdit.SUGGESTION).assertCountEquals(1)
-        rule.onAllNodes(hasTestTag(chipEdit.SUGGESTION) and hasText("cozy", ignoreCase = true)).assertCountEquals(0)
     }
 
     // TC-88
@@ -287,24 +207,6 @@ class ChipEditSheetTest {
         rule.onNodeWithTag(chipEdit.CHIP).assertIsEnabled().performClick()
         rule.waitForIdle()
         assertEquals(listOf("Noir"), removed)
-    }
-
-    // TC-94
-    @Test
-    fun issue101_ac4_poolLoadingStillAllowsAddAsNew() {
-        rule.setSheet(editorState(entry = "Grimdark", pools = mapOf(MetadataListKind.Genres to PoolState.Loading)))
-
-        rule.onAllNodesWithTag(chipEdit.SUGGESTION).assertCountEquals(0)
-        rule.onNodeWithTag(chipEdit.CREATE).assertExists()
-    }
-
-    // TC-94
-    @Test
-    fun issue101_ac4_poolFailedStillAllowsAddAsNew() {
-        rule.setSheet(editorState(entry = "Grimdark", pools = mapOf(MetadataListKind.Genres to PoolState.Failed)))
-
-        rule.onAllNodesWithTag(chipEdit.SUGGESTION).assertCountEquals(0)
-        rule.onNodeWithTag(chipEdit.CREATE).assertExists()
     }
 
     // TC-93

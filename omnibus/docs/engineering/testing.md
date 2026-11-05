@@ -2,6 +2,15 @@
 * Non-Android Kotlin/KMP files should be tested using Kotest JUnit test runner based unit tests.
 * Files/functions that require Android context should be tested via Android instrumentation testing.
 * When possible, tests should be structured following Kotest' [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec)
+## Screenshot tests
+
+Tests whose only job is to check that a piece of UI looks right are screenshot tests, not instrumented tests. They render a `@Preview` composable on the JVM with Layoutlib (no emulator) and compare it with a reference image.
+
+* Put them in `app/src/screenshotTest/kotlin/`, mirroring the package of the composable. Mark each `@Preview` function with `@PreviewTest`. Use `@PreviewLightDark` for light and dark, and wrap the content in a `Surface(color = MaterialTheme.colorScheme.background)`, because a preview has no ground of its own.
+* Record or update references with `./gradlew updateDebugScreenshotTestDefaultTestSuite`, then run `./gradlew testDebugScreenshotTestDefaultTestSuite` to check them. Run them as two separate invocations. References are in `app/src/screenshotTestDefaultDebug/reference/` and are committed; review the diff of an updated image like code. The HTML report is in `app/build/reports/tests/`.
+* Renaming a `@PreviewTest` function orphans its reference image, so re-record after a rename.
+* A screenshot is not an assertion about behaviour. Callbacks, semantics, and whether something renders at all stay in instrumented tests, and text formatting belongs in a unit test of the formatter.
+
 ## Instrumented tests must not depend on screen size
 
 Instrumented tests run on whatever device is attached: a 320dp emulator in CI, a 411dp Pixel locally, a foldable. A test that only passes at one width fails somewhere else, usually as a timeout that hides the cause.

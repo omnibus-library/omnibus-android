@@ -1,3 +1,6 @@
+import com.android.build.api.variant.HasHostTestsBuilder
+import com.android.build.api.variant.HostTestBuilder
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -77,9 +80,31 @@ android {
         compose = true
     }
     testOptions {
-        unitTests.all {
-            it.useJUnitPlatform()
+        unitTests {
+            // The screenshot tests resolve themes and resources through the unit-test resource APK.
+            isIncludeAndroidResources = true
+            all {
+                it.useJUnitPlatform()
+            }
         }
+        // Host-side screenshot tests of composable previews, in src/screenshotTest. References live in
+        // src/screenshotTestDebug/reference.
+        screenshotTests.create("screenshotTest") {
+            engineVersion = libs.versions.screenshot.get()
+            targetVariants.add("debug")
+            dependencies {
+                implementation(libs.androidx.compose.ui.tooling)
+                implementation(libs.screenshot.validation.api)
+            }
+        }
+    }
+}
+
+androidComponents {
+    beforeVariants {
+        // The Compose preview engine behind the screenshot tests registers a task for every variant and
+        // fails to configure one that has no unit tests.
+        (it as HasHostTestsBuilder).hostTests[HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
     }
 }
 

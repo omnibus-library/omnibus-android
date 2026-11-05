@@ -9,9 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
+/** Taps, semantics and scrolling. BookShelfCardScreenshotTest covers how a card looks. */
 class BookShelfTest {
 
     @get:Rule
@@ -41,14 +40,6 @@ class BookShelfTest {
                 BookShelfCard(identity(1), title, subtitle, onClick, onClickLabel)
             }
         }
-    }
-
-    // #105 TC-31
-    @Test
-    fun tc31_withoutASubtitleNoSubtitleIsDrawn() {
-        setCard(subtitle = null)
-
-        rule.onAllNodesWithTag(BookShelfTestTags.SUBTITLE, useUnmergedTree = true).assertCountEquals(0)
     }
 
     // #105 TC-32

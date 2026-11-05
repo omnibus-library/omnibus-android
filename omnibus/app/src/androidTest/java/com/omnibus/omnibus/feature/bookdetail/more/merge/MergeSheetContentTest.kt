@@ -17,7 +17,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.SemanticsProperties
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
@@ -25,10 +24,10 @@ import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.more.pressBackKey
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** The sheet body's focus, typing, retry, choosing, confirming, disabling and back. MergeSheetScreenshotTest covers how it looks. */
 class MergeSheetContentTest {
 
     @get:Rule
@@ -78,26 +77,13 @@ class MergeSheetContentTest {
 
     // TC-52
     @Test
-    fun issue120_tc52_noteFollowsTheSearchState() {
+    fun issue120_tc52_searchingShowsTheSpinnerInPlaceOfTheNote() {
         val state = mutableStateOf(MergeUIState(sheetOpen = true))
         setBody(state)
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(idle)
 
         rule.step(state) { copy(query = "dune", searching = true) }
         rule.onNodeWithTag(MergeTestTags.SPINNER, useUnmergedTree = true).assertExists()
         rule.onAllNodesWithText(idle).assertCountEquals(0)
-
-        rule.step(state) { copy(searching = false, query = "dune", candidates = listOf(a)) }
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(noteCount(1))
-
-        rule.step(state) { copy(searching = false, query = "dune", candidates = listOf(a, b, c)) }
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(noteCount(3))
-
-        rule.step(state) { copy(searching = false, query = "zzz", candidates = emptyList()) }
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(detailText(R.string.book_detail_merge_note_none, "zzz"))
-
-        rule.step(state) { copy(searching = false, query = "dune", candidates = emptyList(), isOnline = false) }
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertTextEquals(needsConnection)
     }
 
     // TC-53
@@ -130,8 +116,6 @@ class MergeSheetContentTest {
         val rowA = rule.onNodeWithTag(MergeTestTags.candidate(a.uuid))
         val rowB = rule.onNodeWithTag(MergeTestTags.candidate(b.uuid))
         val rowC = rule.onNodeWithTag(MergeTestTags.candidate(c.uuid))
-        assertTrue("rows out of order", rowA.top() < rowB.top() && rowB.top() < rowC.top())
-
         rowA.assertTextEquals("Alpha", "Ann", "EPUB")
         rowB.assertTextEquals("Bravo", "Bea · 1902", "Same series · EPUB, M4B")
         rowC.assertTextEquals("Charlie", "Cy")
@@ -163,10 +147,6 @@ class MergeSheetContentTest {
         val body = rule.onNodeWithTag(MergeTestTags.CONFIRM_BODY).fetchSemanticsNode()
             .config[SemanticsProperties.Text].single()
         assertEquals(detailText(R.string.book_detail_merge_confirm_body, b.displayTitle, target.displayTitle), body.text)
-        val bold = body.spanStyles
-            .filter { it.item.fontWeight == FontWeight.Bold }
-            .map { body.text.substring(it.start, it.end) }
-        assertEquals(listOf(b.displayTitle, target.displayTitle), bold)
 
         rule.onAllNodesWithTag(MergeTestTags.FIELD).assertCountEquals(0)
         rule.onAllNodesWithTag(MergeTestTags.candidate(b.uuid)).assertCountEquals(0)
@@ -183,31 +163,16 @@ class MergeSheetContentTest {
 
     // TC-57
     @Test
-    fun issue120_tc57_confirmLayoutAndOffline() {
+    fun issue120_tc57_offlineDisablesMergeAndShowsTheNote() {
         val state = mutableStateOf(MergeUIState(sheetOpen = true, step = MergeStep.Confirm(b), isOnline = true))
         setBody(state)
 
-        val covers = rule.onNodeWithTag(MergeTestTags.CONFIRM_COVERS, useUnmergedTree = true)
-        val body = rule.onNodeWithTag(MergeTestTags.CONFIRM_BODY)
-        val back = rule.onNodeWithTag(MergeTestTags.BACK)
-        val merge = rule.onNodeWithTag(MergeTestTags.MERGE)
-        assertTrue("covers must sit above the body", covers.top() < body.top())
-        assertTrue("body must sit above the buttons", body.top() < back.top())
-        assertTrue(
-            "Back must sit before Merge",
-            back.fetchSemanticsNode().positionInRoot.x < merge.fetchSemanticsNode().positionInRoot.x,
-        )
-        merge.assertIsEnabled()
+        rule.onNodeWithTag(MergeTestTags.MERGE).assertIsEnabled()
         rule.onAllNodesWithTag(MergeTestTags.OFFLINE_NOTE).assertCountEquals(0)
 
         rule.step(state) { copy(isOnline = false) }
         rule.onNodeWithTag(MergeTestTags.MERGE).assertIsNotEnabled()
-        val offlineNote = rule.onNodeWithTag(MergeTestTags.OFFLINE_NOTE)
-        offlineNote.assertTextEquals(needsConnection)
-        assertTrue(
-            "offline note must sit between the body and the buttons",
-            body.top() < offlineNote.top() && offlineNote.top() < back.top(),
-        )
+        rule.onNodeWithTag(MergeTestTags.OFFLINE_NOTE).assertTextEquals(needsConnection)
     }
 
     // TC-58
@@ -237,7 +202,6 @@ class MergeSheetContentTest {
 
         val error = rule.onNodeWithTag(MergeTestTags.MERGE_ERROR)
         error.assertTextEquals(detailText(R.string.book_detail_merge_failed))
-        assertTrue("error must sit below the body", rule.onNodeWithTag(MergeTestTags.CONFIRM_BODY).top() < error.top())
         rule.onNodeWithTag(MergeTestTags.BACK).assertIsEnabled()
         rule.onNodeWithTag(MergeTestTags.MERGE).assertIsEnabled()
 

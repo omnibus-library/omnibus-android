@@ -29,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.util.Locale
 
+/** Callbacks, gestures, semantics and locale formatting. SpeedSheetScreenshotTest covers how the sheet looks. */
 class SpeedSheetContentTest {
 
     @get:Rule
@@ -65,7 +66,7 @@ class SpeedSheetContentTest {
         rule.onNodeWithTag(SpeedSheetTags.FASTER).performScrollTo().assertIsDisplayed()
     }
 
-    // #168 TC-77: R2: the rate is in the locale's digits and sits on the title's row
+    // #168 TC-77: R2: the rate is in the locale's digits
     @Test
     fun headerShowsCurrentRateInLocaleDigits() {
         var german by mutableStateOf(false)
@@ -77,43 +78,11 @@ class SpeedSheetContentTest {
         }
 
         rule.onNodeWithTag(SpeedSheetTags.HEADER_RATE).assertTextEquals("1.25×")
-        assertSameRow()
 
         rule.runOnIdle { german = true }
         rule.waitForIdle()
 
         rule.onNodeWithTag(SpeedSheetTags.HEADER_RATE).assertTextEquals("0,75×")
-        assertSameRow()
-    }
-
-    /** The header rate's vertical centre lies within the title's top and bottom, so both share one row. */
-    private fun assertSameRow() {
-        val title = rule.onNodeWithTag(SpeedSheetTags.TITLE).fetchSemanticsNode().boundsInRoot
-        val rate = rule.onNodeWithTag(SpeedSheetTags.HEADER_RATE).fetchSemanticsNode().boundsInRoot
-        val centre = (rate.top + rate.bottom) / 2
-        assertTrue("the rate centre $centre lies in the title row ${title.top}..${title.bottom}", centre >= title.top && centre <= title.bottom)
-    }
-
-    // #168 TC-78: R3: eight presets in order, two rows of four, the first four sharing a row
-    @Test
-    fun eightPresetsInTwoRowsOfFour() {
-        rule.setContent {
-            LocalizedSpeedSheetContent(locale = Locale.US, uiState = SpeedUIState.forRate(1.0))
-        }
-        val labels = listOf("0.5×", "0.8×", "1.0×", "1.1×", "1.2×", "1.5×", "1.8×", "2.0×")
-        labels.forEachIndexed { index, label ->
-            rule.onNodeWithTag(SpeedSheetTags.preset(index)).assertTextEquals(label)
-        }
-
-        val bounds = labels.indices.map { rule.onNodeWithTag(SpeedSheetTags.preset(it)).fetchSemanticsNode().boundsInRoot }
-        for (column in 1..3) {
-            assertEquals(bounds[0].top, bounds[column].top)
-            assertTrue(bounds[column].left > bounds[column - 1].left)
-        }
-        for (column in 4..7) {
-            assertTrue(bounds[column].top > bounds[0].top)
-            assertEquals(bounds[column - 4].left, bounds[column].left)
-        }
     }
 
     // #168 TC-80: R3, R10: a rate between presets selects no preset

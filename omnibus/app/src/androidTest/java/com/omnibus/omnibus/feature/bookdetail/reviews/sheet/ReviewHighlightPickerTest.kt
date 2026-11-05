@@ -10,11 +10,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -29,8 +25,8 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * The "From your highlights" picker: its title and subtitle, the loading, failed and empty states, the rows and their
- * footers, and picking a row.
+ * The "From your highlights" picker: its heading, retry, and picking a row. ReviewHighlightPickerScreenshotTest covers
+ * how each state looks.
  */
 class ReviewHighlightPickerTest {
 
@@ -72,49 +68,26 @@ class ReviewHighlightPickerTest {
     )
 
     @Test
-    fun tc97_theTitleIsAHeadingAndTheSubtitleExplainsTheTap() {
+    fun tc97_theTitleIsAHeading() {
         show(mutableStateOf(PickerContent.Loading))
 
-        rule.onNodeWithTag(ReviewSheetTestTags.PICKER_TITLE).assertTextEquals("From your highlights")
         rule.onNodeWithTag(ReviewSheetTestTags.PICKER_TITLE)
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        rule.onNodeWithText("Tap one to quote it in your review.").assertExists()
     }
 
     @Test
-    fun tc98_theFourStatesShowTheirCopyRetryCallsBackAndRowsAreListed() {
+    fun tc98_retryCallsBackAndLoadedRowsAreListed() {
         var retries = 0
-        val content = mutableStateOf<PickerContent>(PickerContent.Loading)
+        val content = mutableStateOf<PickerContent>(PickerContent.Failed)
         show(content, onRetry = { retries++ })
-        rule.onNodeWithText("Loading your highlights…").assertExists()
 
-        content.value = PickerContent.Failed
-        rule.waitForIdle()
-        rule.onNodeWithText("Couldn't load your highlights").assertExists()
-        rule.onNodeWithText("Check your connection and try again.").assertExists()
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
-
-        content.value = PickerContent.Loaded(emptyList())
-        rule.waitForIdle()
-        rule.onNodeWithText("No highlights yet").assertExists()
-        rule.onNodeWithText("Highlight a passage while you read and it will show up here.").assertExists()
 
         content.value = PickerContent.Loaded(listOf(row(1L, "First", null), row(2L, "Second", 3)))
         rule.waitForIdle()
         rule.onNodeWithTag(HighlightsTestTags.row(1L)).assertExists()
         rule.onNodeWithTag(HighlightsTestTags.row(2L)).assertExists()
-    }
-
-    @Test
-    fun tc99_aRowShowsItsPassageWithTheChapterFooterOnlyWhenTheChapterIsKnown() {
-        show(mutableStateOf(PickerContent.Loaded(listOf(row(1L, "Placed passage", 3), row(2L, "Unplaced passage", null)))))
-
-        rule.onNodeWithTag(HighlightsTestTags.row(1L)).assertTextContains("Placed passage", substring = true)
-        rule.onNodeWithTag(HighlightsTestTags.row(1L)).assertTextContains("Chapter 3", substring = true)
-        rule.onNodeWithTag(HighlightsTestTags.row(2L)).assertTextContains("Unplaced passage", substring = true)
-        rule.onNode(hasTestTag(HighlightsTestTags.row(2L)) and hasText("Chapter", substring = true))
-            .assertDoesNotExist()
     }
 
     @Test
