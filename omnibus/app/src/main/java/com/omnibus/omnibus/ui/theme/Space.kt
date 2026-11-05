@@ -20,4 +20,7 @@ object Radius {
     val md = 10.dp
     val lg = 14.dp
     val xl = 22.dp
+
+    /** Bar and FAB corners (navCornerRadius, P-BAR-5). Atrium's scale has no 16. */
+    val chrome = 16.dp
 }

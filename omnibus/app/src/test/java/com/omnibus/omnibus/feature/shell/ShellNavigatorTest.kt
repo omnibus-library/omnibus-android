@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.shell
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.shell.chrome.ChromeState
 import androidx.navigation3.runtime.NavKey
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -148,6 +149,21 @@ class ShellNavigatorTest : DescribeSpec({
             navigator.back() shouldBe true
 
             stack(ShellTab.Library) shouldBe listOf(LibraryRoot)
+        }
+    }
+
+    describe("chromeState") {
+        // P-VIS-1, I-STATE-1
+        it("TC-31: follows the selected tab") {
+            navigator.navigateTo(BookDetailRoute("abc"))
+            navigator.chromeState.visible shouldBe false
+
+            navigator.select(ShellTab.Search)
+            navigator.chromeState shouldBe ChromeState(visible = true, fabVisible = false)
+
+            navigator.select(ShellTab.Library)
+            navigator.chromeState.visible shouldBe false
+            stack(ShellTab.Library) shouldBe listOf(LibraryRoot, BookDetailRoute("abc"))
         }
     }
 
