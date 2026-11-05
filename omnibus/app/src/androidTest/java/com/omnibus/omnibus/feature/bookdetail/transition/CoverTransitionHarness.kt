@@ -140,7 +140,6 @@ internal class CoverTransitionHarness(
                                             opened += uuid
                                             stack.add(HarnessDetail(uuid))
                                         },
-                                        onAddBooks = {},
                                         onTransientErrorShown = {},
                                         bottomInset = 0.dp,
                                         onResume = { resumed += it },

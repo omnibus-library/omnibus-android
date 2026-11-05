@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -240,7 +242,12 @@ internal fun BookDetailScreenContent(
                                     reducedMotion = reducedMotion,
                                 )
                             }
-                            Spacer(Modifier.height(actionAreaDp))
+                            // Without an action area the shell no longer consumes the gesture bar, so the last section needs its own inset.
+                            if (hasActionArea) {
+                                Spacer(Modifier.height(actionAreaDp))
+                            } else {
+                                Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                            }
                         }
                     }
                 }

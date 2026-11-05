@@ -76,7 +76,6 @@ class LibraryScreenTest {
                         onRefresh = {},
                         onLoadMore = {},
                         onOpenBook = {},
-                        onAddBooks = {},
                         onTransientErrorShown = {},
                         bottomInset = 0.dp,
                     )
@@ -112,17 +111,12 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun tc65_mastheadIsAHeadingAndAddButtonFires() {
-        var adds = 0
-        setLibrary(
-            LibraryUIState(books = listOf(book(1L), book(2L))),
-            onAddBooks = { adds++ },
-        )
+    fun tc65_mastheadIsAHeadingWithNoAddButton() {
+        setLibrary(LibraryUIState(books = listOf(book(1L), book(2L))))
 
         rule.onNode(isHeading()).assertTextContains(LIBRARY_TITLE, substring = true)
 
-        rule.onNodeWithContentDescription(ADD_LABEL).performClick()
-        assertEquals(1, adds)
+        rule.onNodeWithContentDescription(ADD_LABEL).assertDoesNotExist()
     }
 
     @Test
@@ -178,7 +172,6 @@ class LibraryScreenTest {
                         onRefresh = {},
                         onLoadMore = {},
                         onOpenBook = {},
-                        onAddBooks = {},
                         onTransientErrorShown = {},
                         bottomInset = 0.dp,
                     )
@@ -229,7 +222,6 @@ class LibraryScreenTest {
                         onRefresh = {},
                         onLoadMore = {},
                         onOpenBook = {},
-                        onAddBooks = {},
                         onTransientErrorShown = {},
                         bottomInset = 0.dp,
                     )
@@ -261,7 +253,6 @@ class LibraryScreenTest {
                         onRefresh = {},
                         onLoadMore = {},
                         onOpenBook = {},
-                        onAddBooks = {},
                         onTransientErrorShown = {
                             shown++
                             uiState.value = uiState.value.copy(transientError = null)
@@ -464,7 +455,6 @@ class LibraryScreenTest {
         rule.runOnIdle { uiState.value = uiState.value.copy(isOffline = false) }
         rule.waitForIdle()
         rule.onNodeWithTag(OfflinePillTestTags.PILL, useUnmergedTree = true).assertDoesNotExist()
-        rule.onNodeWithContentDescription(ADD_LABEL, useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -571,7 +561,6 @@ class LibraryScreenTest {
     private fun setLibrary(
         uiState: LibraryUIState,
         onOpenBook: (String) -> Unit = {},
-        onAddBooks: () -> Unit = {},
         onLoadMore: (Int) -> Unit = {},
         onRefresh: () -> Unit = {},
         onSelectCategory: (LibraryCategory) -> Unit = {},
@@ -582,7 +571,6 @@ class LibraryScreenTest {
     ) = setLibraryState(
         uiState = mutableStateOf(uiState),
         onOpenBook = onOpenBook,
-        onAddBooks = onAddBooks,
         onLoadMore = onLoadMore,
         onRefresh = onRefresh,
         onSelectCategory = onSelectCategory,
@@ -596,7 +584,6 @@ class LibraryScreenTest {
     private fun setLibraryState(
         uiState: State<LibraryUIState>,
         onOpenBook: (String) -> Unit = {},
-        onAddBooks: () -> Unit = {},
         onLoadMore: (Int) -> Unit = {},
         onRefresh: () -> Unit = {},
         onSelectCategory: (LibraryCategory) -> Unit = {},
@@ -620,7 +607,6 @@ class LibraryScreenTest {
                         onRefresh = onRefresh,
                         onLoadMore = onLoadMore,
                         onOpenBook = onOpenBook,
-                        onAddBooks = onAddBooks,
                         onTransientErrorShown = {},
                         bottomInset = 0.dp,
                         onSelectCategory = onSelectCategory,

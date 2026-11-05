@@ -5,18 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -40,10 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,11 +68,11 @@ import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
+import com.omnibus.omnibus.feature.shell.ui.LocalShellContentPadding
 import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.components.Masthead
-import com.omnibus.omnibus.ui.components.MastheadAddButton
 import com.omnibus.omnibus.ui.components.OfflinePill
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -120,15 +112,12 @@ private const val HEADER_ITEM_COUNT = 1
  * hoisted here so the saveable-state decorator restores scroll on back.
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
- * @param onAddBooks Called when the masthead's add button is tapped.
  * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
  * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryScreen(
     onOpenBook: (uuid: String) -> Unit,
-    onAddBooks: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenReader: (bookUuid: String) -> Unit = {},
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
@@ -141,10 +130,8 @@ fun LibraryScreen(
     // Runs each time the entry is composed again, so returning from the reader, the player or detail reloads the cards.
     LaunchedEffect(Unit) { viewModel.libraryShown() }
 
-    // The shell consumes the navigation bar above the tab bar. Only the part it did not consume
-    // is added as bottom padding here, so the last row clears the tab bar without a doubled inset.
-    var consumed by remember { mutableStateOf(WindowInsets(0)) }
-    val bottomInset = WindowInsets.navigationBars.exclude(consumed).asPaddingValues().calculateBottomPadding()
+    // The bottom the shell's floating chrome needs; the grid scrolls its last row clear of it.
+    val bottomInset = LocalShellContentPadding.current.calculateBottomPadding()
 
     LibraryScreenContent(
         uiState = uiState,
@@ -152,10 +139,9 @@ fun LibraryScreen(
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMoreIfNeeded,
         onOpenBook = onOpenBook,
-        onAddBooks = onAddBooks,
         onTransientErrorShown = viewModel::transientErrorShown,
         bottomInset = bottomInset,
-        modifier = modifier.onConsumedWindowInsetsChanged { consumed = it },
+        modifier = modifier,
         onSelectCategory = viewModel::selectCategory,
         onSelectSort = viewModel::selectSort,
         onToggleDirection = viewModel::toggleDirection,
@@ -178,7 +164,8 @@ fun LibraryScreen(
  * [LibraryUIState]s.
  *
  * @param onLoadMore Called with the index of the last visible book whenever it changes.
- * @param bottomInset Navigation bar padding the caller could not consume, added below the grid.
+ * @param bottomInset Bottom padding the shell's floating chrome needs ([LocalShellContentPadding]). The grid scrolls its
+ * last row clear of it; the other states and the snackbar sit above it.
  * @param onSelectCategory Called with the category picked in the filter menu.
  * @param onSelectSort Called with the sort key picked in the filter menu.
  * @param onToggleDirection Called when the Direction row is tapped.
@@ -202,7 +189,6 @@ internal fun LibraryScreenContent(
     onRefresh: () -> Unit,
     onLoadMore: (lastVisibleBookIndex: Int) -> Unit,
     onOpenBook: (uuid: String) -> Unit,
-    onAddBooks: () -> Unit,
     onTransientErrorShown: () -> Unit,
     bottomInset: Dp,
     modifier: Modifier = Modifier,
@@ -254,7 +240,7 @@ internal fun LibraryScreenContent(
         when (val screen = uiState.screen) {
             LibraryScreenState.Loading -> LoadingStateView(
                 label = stringResource(R.string.library_loading),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(bottom = bottomInset),
             )
 
             is LibraryScreenState.Error -> ErrorStateView(
@@ -262,13 +248,13 @@ internal fun LibraryScreenContent(
                 message = libraryErrorText(screen.error),
                 actionLabel = stringResource(R.string.library_try_again),
                 onRetry = onRetry,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(bottom = bottomInset),
             )
 
             LibraryScreenState.Empty -> PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(bottom = bottomInset),
             ) {
                 EmptyLibrary()
             }
@@ -281,7 +267,6 @@ internal fun LibraryScreenContent(
                 LibraryGrid(
                     uiState = uiState,
                     onOpenBook = onOpenBook,
-                    onAddBooks = onAddBooks,
                     onLoadMore = onLoadMore,
                     onSelectCategory = onSelectCategory,
                     onSelectSort = onSelectSort,
@@ -300,7 +285,7 @@ internal fun LibraryScreenContent(
 
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset),
         )
     }
 }
@@ -349,7 +334,6 @@ private fun EmptyLibrary() {
 private fun LibraryGrid(
     uiState: LibraryUIState,
     onOpenBook: (uuid: String) -> Unit,
-    onAddBooks: () -> Unit,
     onLoadMore: (lastVisibleBookIndex: Int) -> Unit,
     onSelectCategory: (LibraryCategory) -> Unit,
     onSelectSort: (LibrarySort) -> Unit,
@@ -386,7 +370,7 @@ private fun LibraryGrid(
             contentPadding = PaddingValues(
                 start = Spacing.screen,
                 end = Spacing.screen,
-                bottom = 40.dp + bottomInset,
+                bottom = bottomInset,
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize().testTag(LibraryTestTags.GRID),
@@ -396,7 +380,6 @@ private fun LibraryGrid(
                 Column(Modifier.bleedHorizontally(Spacing.screen)) {
                     Masthead(title = stringResource(R.string.library_title)) {
                         OfflinePill(visible = uiState.isOffline)
-                        MastheadAddButton(onAddBooks = onAddBooks)
                     }
                     if (uiState.continueCards.isNotEmpty()) {
                         // 30 dp from the masthead's own bottom padding, and 30 dp from the card or its dots to the heading,
@@ -551,7 +534,6 @@ private fun LibraryPreviewContent(uiState: LibraryUIState) {
             onRefresh = {},
             onLoadMore = {},
             onOpenBook = {},
-            onAddBooks = {},
             onTransientErrorShown = {},
             bottomInset = 0.dp,
         )
