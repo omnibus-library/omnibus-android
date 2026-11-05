@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/omnibus-library/omnibus-android/compare/v0.1.1...v0.1.2) (2026-11-05)
+
+
+### Features
+
+* **bookdetail:** add the listen and immersive read buttons ([#190](https://github.com/omnibus-library/omnibus-android/issues/190)) ([3c7d7bd](https://github.com/omnibus-library/omnibus-android/commit/3c7d7bd63e68740b1d698f5700f8a2f4c68b1456))
+
 ## [0.1.1](https://github.com/omnibus-library/omnibus-android/compare/v0.1.0...v0.1.1) (2026-11-05)
 
 
