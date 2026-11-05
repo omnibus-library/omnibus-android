@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -44,6 +43,7 @@ private fun ComposeContentTestRule.setStage(
     }
 }
 
+/** When the stage line shows, and its refreshes. WishlistLineScreenshotTest covers its wording for each source. */
 class WishlistStageSectionTest {
 
     @get:Rule
@@ -51,60 +51,6 @@ class WishlistStageSectionTest {
 
     private fun present(source: WishlistSource?) =
         WishlistState.Present(WishlistEntry(id = 1, addedAtMillis = 1_700_000_000_000, source = source))
-
-    // TC-42
-    @Test
-    fun issue119_tc42_scanLineNamesTheScan() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Scan)) }
-        rule.setStage({ book }, fake)
-
-        rule.onNodeWithTag(WishlistTestTags.LINE)
-            .assertTextEquals("On your wishlist · added from a scan")
-    }
-
-    // TC-42
-    @Test
-    fun issue119_tc42_detailLineNamesThisPage() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Detail)) }
-        rule.setStage({ book }, fake)
-
-        rule.onNodeWithTag(WishlistTestTags.LINE)
-            .assertTextEquals("On your wishlist · added from this page")
-    }
-
-    // TC-42
-    @Test
-    fun issue119_tc42_manualLineNamesAnIsbnYouEntered() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Manual)) }
-        rule.setStage({ book }, fake)
-
-        rule.onNodeWithTag(WishlistTestTags.LINE)
-            .assertTextEquals("On your wishlist · added from an ISBN you entered")
-    }
-
-    // TC-42
-    @Test
-    fun issue119_tc42_searchLineNamesATitleSearch() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Search)) }
-        rule.setStage({ book }, fake)
-
-        rule.onNodeWithTag(WishlistTestTags.LINE)
-            .assertTextEquals("On your wishlist · added from a title search")
-    }
-
-    // TC-43
-    @Test
-    fun issue119_tc43_unknownSourceShowsTheLineWithoutAPhrase() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(null)) }
-        rule.setStage({ book }, fake)
-
-        rule.onNodeWithTag(WishlistTestTags.LINE).assertTextEquals("On your wishlist")
-    }
 
     // TC-45
     @Test
