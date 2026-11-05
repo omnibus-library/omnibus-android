@@ -94,8 +94,9 @@ class OmnibusTabBarTest {
     }
 
     @Test
-    fun largeFontGrowsTheBarAndKeepsLabelsOnOneLine() {
-        // TC-36: at 2x font scale the bar grows, and every label stays on one line (P-A11Y-3)
+    fun largeFontKeepsEveryTabInsideTheBarOnOneLine() {
+        // TC-36: at 2x font scale the bar is no shorter, every tab and label sits inside it, and every label stays on
+        // one line (P-A11Y-3). The bar grows only when its labels need it (I-LAY-6), so its height isn't asserted to grow.
         val fontScale = mutableFloatStateOf(1f)
         rule.setContent {
             val density = LocalDensity.current
@@ -109,8 +110,13 @@ class OmnibusTabBarTest {
 
         fontScale.floatValue = 2f
         rule.waitForIdle()
-        val largeHeight = rule.onNodeWithTag(OmnibusTabBarTestTags.BAR).getBoundsInRoot().heightDp
-        assertTrue("the bar should grow at 2x font scale, was $normalHeight then $largeHeight", largeHeight > normalHeight)
+        val bar = rule.onNodeWithTag(OmnibusTabBarTestTags.BAR).getBoundsInRoot()
+        assertTrue("the bar should not shrink at 2x font scale, was $normalHeight then ${bar.heightDp}", bar.heightDp >= normalHeight)
+
+        labels.forEachIndexed { index, label ->
+            assertInside("tab $index", rule.onNodeWithTag(OmnibusTabBarTestTags.tab(index)).getBoundsInRoot(), bar)
+            assertInside("label $label", rule.onNodeWithText(label, useUnmergedTree = true).getBoundsInRoot(), bar)
+        }
 
         labels.forEach { label ->
             val results = mutableListOf<TextLayoutResult>()
@@ -164,7 +170,21 @@ class OmnibusTabBarTest {
 
     private val DpRect.widthDp get() = right - left
 
+    /** Asserts [inner] lies within [outer], with half a dp of slack for rounding. */
+    private fun assertInside(what: String, inner: DpRect, outer: DpRect) {
+        val inside = inner.left >= outer.left - HALF_DP &&
+            inner.top >= outer.top - HALF_DP &&
+            inner.right <= outer.right + HALF_DP &&
+            inner.bottom <= outer.bottom + HALF_DP
+        assertTrue("$what should sit inside the bar: $inner within $outer", inside)
+    }
+
     private val DpRect.heightDp get() = bottom - top
+
+    private companion object {
+        /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
+        val HALF_DP = 0.5.dp
+    }
 
     private class RecordingHaptics : HapticFeedback {
         val performed = mutableListOf<HapticFeedbackType>()
