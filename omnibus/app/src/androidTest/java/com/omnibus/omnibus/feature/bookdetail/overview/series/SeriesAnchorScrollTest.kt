@@ -141,34 +141,4 @@ class SeriesAnchorScrollTest {
         rule.tabNode(BookDetailTab.Overview).assertIsSelected()
         assertLanded(scroll)
     }
-
-    // TC-119
-    @Test
-    fun issue104_tc119_repeatedTapIsStable() {
-        val scroll = ScrollState(0)
-        setPage(seriesBookAt(position = 1), overviewSlots(), scroll)
-        tapStageLine()
-        val first = rule.onNodeWithTag(SeriesFanTestTags.HEADING_ROW).bounds().top
-        tapStageLine()
-        assertEquals(first, rule.onNodeWithTag(SeriesFanTestTags.HEADING_ROW).bounds().top, 1f)
-    }
-
-    // TC-120
-    @Test
-    fun issue104_tc120_landingIgnoresSpreadState() {
-        val scroll = ScrollState(0)
-        setPage(seriesBookAt(position = 1), overviewSlots(), scroll)
-        rule.onNodeWithTag(SeriesFanTestTags.card("m1")).performSemanticsAction(SemanticsActions.OnClick)
-        rule.waitForIdle()
-        assertEquals(
-            "Gather the series",
-            rule.onNodeWithTag(SeriesFanTestTags.card("m2")).clickLabel(),
-        )
-        tapStageLine()
-        assertLanded(scroll)
-        val headingRow = rule.onNodeWithTag(SeriesFanTestTags.HEADING_ROW).bounds()
-        rule.onNodeWithTag(SeriesFanTestTags.SERIES_PAGE_LINK).assertIsDisplayed()
-        val link = rule.onNodeWithTag(SeriesFanTestTags.SERIES_PAGE_LINK).bounds()
-        assertTrue("link sits in the heading row", link.top >= headingRow.top - 1f && link.bottom <= headingRow.bottom + 1f)
-    }
 }

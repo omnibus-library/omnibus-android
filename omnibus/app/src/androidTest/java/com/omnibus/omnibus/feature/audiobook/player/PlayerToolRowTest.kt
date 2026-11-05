@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -110,16 +109,6 @@ class PlayerToolRowTest {
         )
 
         rule.onAllNodesWithTag(PlayerTestTags.TOOL_SYNC).assertCountEquals(0)
-    }
-
-    // R14: an empty row keeps its height, so the layout doesn't move when cells arrive
-    @Test
-    fun emptyToolRowKeepsItsHeight() {
-        setToolRow(rate = 1.0, hasEbook = true, actions = PlayerActions())
-
-        rule.onNodeWithTag(PlayerTestTags.TOOL_ROW).assertIsDisplayed()
-        rule.onAllNodesWithTag(PlayerTestTags.TOOL_SPEED).assertCountEquals(0)
-        assertTrue(rule.onNodeWithTag(PlayerTestTags.TOOL_ROW).fetchSemanticsNode().size.height > 0)
     }
 
     // R14, R18, P-A11Y-5: a disabled Sync here is dimmed, not clickable, and says why

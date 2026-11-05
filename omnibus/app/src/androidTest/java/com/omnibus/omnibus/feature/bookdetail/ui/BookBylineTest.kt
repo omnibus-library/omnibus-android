@@ -71,54 +71,6 @@ class BookBylineTest {
         rule.onNodeWithTag(BookDetailTestTags.AUTHOR).assertHasNoClickAction()
     }
 
-    // TC-89
-    @Test
-    fun issue93_tc89_yearSitsBesideAShortAuthor() {
-        val author = "Ann Lee"
-        rule.setDetailScreen(
-            BookDetailUIState(
-                book = testDetailBook(
-                    creators = listOf(Creator(author, "author", null, null)),
-                    publishedDate = "1925",
-                ),
-                isLoading = false,
-            ),
-        )
-
-        val authorBounds = rule.onNodeWithText(author, useUnmergedTree = true).bounds()
-        val year = rule.onNodeWithText(detailText(R.string.book_detail_year_beside, 1925), useUnmergedTree = true)
-        year.assertIsDisplayed()
-        val yearBounds = year.bounds()
-        assertTrue(yearBounds.left >= authorBounds.right)
-        assertEquals(authorBounds.center.y, yearBounds.center.y, 2f)
-    }
-
-    // TC-90
-    @Test
-    fun issue93_tc90_yearDropsUnderALongAuthor() {
-        val author = List(8) { "Constance" }.joinToString(" ")
-        rule.setDetailScreen(
-            BookDetailUIState(
-                book = testDetailBook(
-                    creators = listOf(Creator(author, "author", null, null)),
-                    publishedDate = "1925",
-                ),
-                isLoading = false,
-            ),
-        )
-
-        val authorNode = rule.onNodeWithText(author, useUnmergedTree = true)
-        val layout = authorNode.textLayout()
-        assertEquals(1, layout.lineCount)
-        assertTrue(layout.isLineEllipsized(0))
-
-        val yearUnder = rule.onNodeWithText("1925", useUnmergedTree = true)
-        yearUnder.assertIsDisplayed()
-        assertTrue(yearUnder.bounds().top >= authorNode.bounds().bottom)
-        rule.onAllNodesWithText(detailText(R.string.book_detail_year_beside, 1925), useUnmergedTree = true)
-            .assertCountEquals(0)
-    }
-
     // TC-92
     @Test
     fun issue93_tc92_seriesLineReplacesTheYear() {

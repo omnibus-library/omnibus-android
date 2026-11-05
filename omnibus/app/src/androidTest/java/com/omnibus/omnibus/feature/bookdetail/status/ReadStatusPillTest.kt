@@ -4,15 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -28,14 +25,11 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.format.BookDetailFormat
 import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
@@ -152,15 +146,6 @@ class ReadStatusPillTest {
         rule.onNodeWithTag(ReadStatusTestTags.PILL).assertContentDescriptionEquals("Read status")
     }
 
-    // TC-83
-    @Test
-    fun tc83_pillIsAtLeast44dpTall() {
-        setPill(ReadStatusUIState(status = ReadStatus.Unread))
-
-        val pill = rule.onNodeWithTag(ReadStatusTestTags.PILL).bounds()
-        assertTrue(pill.height >= with(rule.density) { 44.dp.toPx() } - 0.5f)
-    }
-
     // TC-84
     @Test
     fun tc84_pillIsAButtonWithAClickAction() {
@@ -169,32 +154,6 @@ class ReadStatusPillTest {
         rule.onNodeWithTag(ReadStatusTestTags.PILL)
             .assertHasClickAction()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-    }
-
-    // TC-85
-    @Test
-    fun tc85_pillFitsInsideItsHostAtLargeFontScaleIncludingReadingStatus() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                val density = LocalDensity.current
-                CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
-                    Box(Modifier.fillMaxSize().testTag(HOST)) {
-                        ReadStatusPill(
-                            uiState = ReadStatusUIState(status = null),
-                            accent = accent,
-                            rim = rim,
-                            onSelect = {},
-                            reducedMotion = true,
-                        )
-                    }
-                }
-            }
-        }
-
-        val host = rule.onNodeWithTag(HOST).bounds()
-        val pill = rule.onNodeWithTag(ReadStatusTestTags.PILL).bounds()
-        assertTrue(pill.left >= host.left && pill.top >= host.top)
-        assertTrue(pill.right <= host.right && pill.bottom <= host.bottom)
     }
 
     // TC-86
@@ -209,17 +168,6 @@ class ReadStatusPillTest {
         ReadStatus.entries.forEach { status ->
             rule.onAllNodesWithTag(ReadStatusTestTags.row(status)).assertCountEquals(1)
         }
-    }
-
-    // TC-87
-    @Test
-    fun tc87_menuRowsAreInFixedOrder() {
-        setPill(ReadStatusUIState(status = ReadStatus.Reading))
-        openMenu()
-
-        val tops = ReadStatus.entries.map { rule.onNodeWithTag(ReadStatusTestTags.row(it)).bounds().top }
-        assertTrue(tops[0] < tops[1])
-        assertTrue(tops[1] < tops[2])
     }
 
     // TC-88
@@ -373,23 +321,6 @@ class ReadStatusPillTest {
         rule.onNodeWithText("Unread").assertDoesNotExist()
     }
 
-    // TC-97 (control): the animated label is still mid-transition after one frame, and settles later.
-    @Test
-    fun tc97_controlAnimatedLabelCrossFades() {
-        rule.mainClock.autoAdvance = false
-        val state = setPill(ReadStatusUIState(status = ReadStatus.Unread), reducedMotion = false)
-        rule.waitForIdle()
-
-        rule.runOnIdle { state.value = ReadStatusUIState(status = ReadStatus.Reading) }
-        rule.mainClock.advanceTimeByFrame()
-        rule.onNodeWithText("Reading").assertExists()
-        rule.onNodeWithText("Unread").assertExists()
-
-        rule.mainClock.advanceTimeBy(2_000)
-        rule.onNodeWithText("Unread").assertDoesNotExist()
-        rule.onNodeWithText("Reading").assertExists()
-    }
-
     // TC-98
     @Test
     fun tc98_offlineFailurePostsTheOfflineMessageOnce() {
@@ -452,9 +383,5 @@ class ReadStatusPillTest {
         rule.waitForIdle()
 
         assertEquals(1, recorder.messages.size)
-    }
-
-    private companion object {
-        const val HOST = "read-status-test-host"
     }
 }

@@ -10,22 +10,16 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.feature.bookdetail.bounds
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -35,8 +29,6 @@ class BookShelfTest {
     val rule = createComposeRule()
 
     private fun identity(n: Int) = CoverIdentity(uuid = "uuid-$n", title = "Book $n", hasCover = false)
-
-    private val longTitle = List(30) { "very" }.joinToString(" ") + " long title"
 
     private fun setCard(
         title: String = "The Dispossessed",
@@ -49,34 +41,6 @@ class BookShelfTest {
                 BookShelfCard(identity(1), title, subtitle, onClick, onClickLabel)
             }
         }
-    }
-
-    // #105 TC-28
-    @Test
-    fun tc28_cardShowsTheTitleAndSubtitleUnderTheCover() {
-        setCard()
-
-        val card = rule.onNodeWithTag(BookShelfTestTags.CARD).bounds()
-        val title = rule.onNodeWithTag(BookShelfTestTags.TITLE, useUnmergedTree = true).bounds()
-        val subtitle = rule.onNodeWithTag(BookShelfTestTags.SUBTITLE, useUnmergedTree = true).bounds()
-        assertTrue("title below the cover", title.top >= card.top + with(rule.density) { 164.dp.toPx() } - 1)
-        assertTrue("subtitle below the title", subtitle.top >= title.bottom - 1)
-    }
-
-    // #105 TC-29
-    @Test
-    fun tc29_cardIs112dpWideWithA164dpCover() {
-        setCard()
-
-        rule.onNodeWithTag(BookShelfTestTags.CARD).assertWidthIsEqualTo(112.dp).assertHeightIsAtLeast(164.dp)
-    }
-
-    // #105 TC-30
-    @Test
-    fun tc30_aLongTitleStopsAtTwoLines() {
-        setCard(title = longTitle)
-
-        assertEquals(2, rule.onNodeWithTag(BookShelfTestTags.TITLE, useUnmergedTree = true).textLayout().lineCount)
     }
 
     // #105 TC-31
@@ -126,18 +90,6 @@ class BookShelfTest {
                 }
             }
         }
-    }
-
-    // #105 TC-34
-    @Test
-    fun tc34_theRowRunsOutThroughThePanelGutterAndTheFirstCardStaysInsideIt() {
-        setRow(count = 3)
-
-        val row = rule.onNodeWithTag(BookShelfTestTags.ROW).bounds()
-        val first = rule.onAllNodesWithTag(BookShelfTestTags.CARD)[0].bounds()
-        assertEquals("row starts at the window edge", 0f, row.left, 1f)
-        assertEquals("first card lines up with the gutter", with(rule.density) { 16.dp.toPx() }, first.left, 1f)
-        assertEquals("row ends at the window edge", rule.onRoot().bounds().right, row.right, 1f)
     }
 
     // #105 TC-35

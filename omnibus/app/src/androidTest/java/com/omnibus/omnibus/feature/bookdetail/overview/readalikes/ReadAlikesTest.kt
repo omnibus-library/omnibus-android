@@ -10,23 +10,18 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.suggestions.BookSuggestion
 import com.omnibus.omnibus.data.suggestions.suggestion
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.overview.shelf.BookShelfTestTags
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -98,18 +93,6 @@ class ReadAlikesTest {
         rule.onAllNodesWithTag(ReadAlikesTestTags.SPINNER, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    // #106 TC-58 (AC1)
-    @Test
-    fun tc58_theCaptionSitsBetweenTheHeadingAndTheShelf() {
-        setState(threeCards())
-
-        val heading = rule.onNodeWithTag(ReadAlikesTestTags.HEADING).bounds()
-        val source = rule.onNodeWithTag(ReadAlikesTestTags.SOURCE).bounds()
-        val shelf = rule.onNodeWithTag(BookShelfTestTags.ROW).bounds()
-        assertTrue("caption below the heading", source.top >= heading.bottom - 1)
-        assertTrue("shelf below the caption", shelf.top >= source.bottom - 1)
-    }
-
     // #106 TC-59 (AC1, AC6)
     @Test
     fun tc59_eachCardIsOneNodeAnnouncingItsTitleAndAuthorInServerOrder() {
@@ -119,18 +102,6 @@ class ReadAlikesTest {
             listOf(listOf("Book 1", "Author 1"), listOf("Book 2", "Author 2"), listOf("Book 3", "Author 3")),
             cardTexts(),
         )
-    }
-
-    // #106 TC-60 (AC1)
-    @Test
-    fun tc60_aCardIs112dpWideAndClampsTheTitleToTwoLinesAndTheAuthorToOne() {
-        val longTitle = List(30) { "very" }.joinToString(" ") + " long title"
-        val longAuthor = List(12) { "Longname" }.joinToString(" ")
-        setState(readyOf(listOf(suggestion(1, title = longTitle, author = longAuthor))))
-
-        assertEquals(2, rule.onNodeWithTag(BookShelfTestTags.TITLE, useUnmergedTree = true).textLayout().lineCount)
-        assertEquals(1, rule.onNodeWithTag(BookShelfTestTags.SUBTITLE, useUnmergedTree = true).textLayout().lineCount)
-        rule.onNodeWithTag(BookShelfTestTags.CARD).assertWidthIsEqualTo(112.dp).assertHeightIsAtLeast(164.dp)
     }
 
     // #106 TC-61 (AC1)

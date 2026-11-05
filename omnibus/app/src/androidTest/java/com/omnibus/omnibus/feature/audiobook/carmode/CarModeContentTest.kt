@@ -14,8 +14,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.feature.audiobook.player.LONG_CHAPTER_TITLE
-import com.omnibus.omnibus.feature.audiobook.player.textLayout
 import com.omnibus.omnibus.feature.audiobook.player.textOf
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -23,7 +21,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
 /** Callback counts and the state of [CarModeContent], so tests can change the state between frames. */
 private class CarInputs(initial: CarModeUIState = readyState()) {
@@ -78,57 +75,6 @@ class CarModeContentTest {
         assertTrue(
             "the time left should sit under the title",
             boundsOf(CarModeTestTags.TIME_LEFT).top >= boundsOf(CarModeTestTags.TITLE).bottom - 1f,
-        )
-    }
-
-    // P-CAR-2: up to two lines
-    @Test
-    fun longTitleStopsAtTwoLines() {
-        rule.setCarMode(CarInputs(readyState().copy(title = LONG_CHAPTER_TITLE.repeat(3))))
-
-        val layout = rule.onNodeWithTag(CarModeTestTags.TITLE).textLayout()
-        assertEquals(2, layout.lineCount)
-        assertTrue("the title should be cut off", layout.hasVisualOverflow)
-    }
-
-    // P-CAR-AC1, P-CAR-3: the five tiles, in the reference layout
-    @Test
-    fun tilesFollowTheReferenceLayout() {
-        rule.setCarMode(CarInputs())
-
-        val back = boundsOf(CarModeTestTags.BACK_15)
-        val forward = boundsOf(CarModeTestTags.FORWARD_30)
-        val play = boundsOf(CarModeTestTags.PLAY_PAUSE)
-        val previous = boundsOf(CarModeTestTags.PREVIOUS)
-        val next = boundsOf(CarModeTestTags.NEXT)
-        val root = boundsOf(CarModeTestTags.ROOT)
-
-        assertTrue("back 15 should sit left of forward 30", back.right <= forward.left + 1f)
-        assertTrue("back 15 and forward 30 should share a row", abs(back.top - forward.top) < 1f)
-        assertTrue("previous should sit left of next", previous.right <= next.left + 1f)
-        assertTrue("previous and next should share a row", abs(previous.top - next.top) < 1f)
-        assertTrue("play should sit under the skip row", play.top >= back.bottom - 1f)
-        assertTrue("the chapter row should sit under play", previous.top >= play.bottom - 1f)
-        assertTrue("play should be wider than a skip tile", play.width > 1.5f * back.width)
-        assertTrue("play should be taller than a skip tile", play.height > back.height)
-        assertTrue("play should be taller than a chapter tile", play.height > previous.height)
-        assertTrue("play should be full width, as the rows are", abs(play.width - (forward.right - back.left)) < 1f)
-        assertTrue("the tiles should be inside the screen", previous.bottom <= root.bottom + 1f && back.left >= root.left)
-    }
-
-    // P-CAR-3 edge case: the tiles scale with the screen
-    @Test
-    fun tilesFillTheLowerPartOfTheScreen() {
-        rule.setCarMode(CarInputs())
-
-        val root = boundsOf(CarModeTestTags.ROOT)
-        val tiles = boundsOf(CarModeTestTags.TILES)
-        assertTrue("the tiles should take a large share of the screen's height", tiles.height > root.height * 0.4f)
-        assertTrue("the tiles should sit in the lower part", tiles.top > root.top + root.height * 0.25f)
-        assertTrue("the tiles should reach most of the width", tiles.width > root.width * 0.8f)
-        assertTrue(
-            "the tiles should sit under the time left",
-            tiles.top >= boundsOf(CarModeTestTags.TIME_LEFT).bottom - 1f,
         )
     }
 

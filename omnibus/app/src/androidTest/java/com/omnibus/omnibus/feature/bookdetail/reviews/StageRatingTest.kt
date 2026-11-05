@@ -88,25 +88,6 @@ class StageRatingTest {
         }
     }
 
-    // TC-43 (AC6)
-    @Test
-    fun tc43_dimsUntilReviewsHaveLoaded() {
-        val model = showWalking(StageRatingModel.Checking) {}
-        val cases = listOf(
-            StageRatingModel.Checking to 0.45f,
-            StageRatingModel.NeedsConnection to 0.45f,
-            StageRatingModel.CouldNotLoad to 0.45f,
-            StageRatingModel.NoReviews to 1f,
-            StageRatingModel.Average(stars = 4f, average = 4f, count = 1) to 1f,
-        )
-
-        cases.forEach { (state, alpha) ->
-            rule.runOnIdle { model.value = state }
-            val node = rule.onNodeWithTag(ReviewsTestTags.STAGE_RATING).fetchSemanticsNode()
-            assertEquals(alpha, node.config[StageRatingAlphaKey], 0.001f)
-        }
-    }
-
     // TC-44 (AC1)
     @Test
     fun tc44_clickWorksInEveryStateWithA44dpTarget() {

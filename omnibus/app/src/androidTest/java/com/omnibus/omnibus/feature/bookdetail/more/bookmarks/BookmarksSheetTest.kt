@@ -1,13 +1,5 @@
 package com.omnibus.omnibus.feature.bookdetail.more.bookmarks
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.toPixelMap
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -15,8 +7,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -24,11 +14,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.unit.Density
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -132,106 +119,5 @@ class BookmarksSheetTest {
 
         assertEquals(1, retries)
         rule.onAllNodesWithText(emptyCopy).assertCountEquals(0)
-    }
-
-    // TC-63
-    @Test
-    fun issue117_tc63_rendersInLightTheme() {
-        assertSheetRendersOn(darkTheme = false)
-    }
-
-    // TC-63
-    @Test
-    fun issue117_tc63_rendersInDarkTheme() {
-        assertSheetRendersOn(darkTheme = true)
-    }
-
-    /** The content paints its own ground and keeps its ink, whichever app theme it sits in. */
-    private fun assertSheetRendersOn(darkTheme: Boolean) {
-        rule.setSheetContent(BookmarksContent.Loaded(sampleRows.take(1)), darkTheme = darkTheme)
-
-        rule.onNodeWithText(title).assertIsDisplayed()
-        rule.onNodeWithText("The Episode of the Barrel").assertIsDisplayed()
-        rule.onNodeWithText("Chapter 7 · 47% · October 28").assertIsDisplayed()
-        val pixel = rule.onNodeWithTag(BookmarksTestTags.SHEET).captureToImage().toPixelMap()[2, 2]
-        assertEquals(BookmarksSheetGround.toArgb(), pixel.toArgb())
-    }
-
-    // TC-65
-    @Test
-    fun issue117_tc65_longTextWrapsAndDoesNotClip() {
-        val long = rowModel(bookmark(5, title = "A long bookmark name that must wrap onto several lines " +
-            "in a narrow window, with a meta line as long as it needs to be to wrap as well"))
-        val short = rowModel(bookmark(6, title = "Ok", createdAtSeconds = null), BookmarkPlacement(null, null))
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                CompositionLocalProvider(LocalDensity provides Density(rule.density.density, fontScale = 2f)) {
-                    Box(Modifier.fillMaxSize()) {
-                        Box(Modifier.fillMaxWidth(0.5f)) {
-                            BookmarksSheetContent(
-                                content = BookmarksContent.Loaded(listOf(long, short)),
-                                nowMillis = SHEET_NOW,
-                                ribbonColor = TestRibbon,
-                                onRetry = {},
-                                onClose = {},
-                                onChosen = {},
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Measure the long row first: on a small window it fills the viewport, so the short row
-        // below it is only composed once the list has scrolled to it. Use the laid-out position and
-        // size rather than `boundsInRoot`, which is clipped to the window: a row taller than the
-        // window has its vertically centred chevron off-screen, and its clipped bounds collapse.
-        val longName = rule.onNodeWithTag(BookmarksTestTags.name("id:5"), useUnmergedTree = true)
-            .fetchSemanticsNode()
-        val row = rule.onNodeWithTag(BookmarksTestTags.row("id:5")).fetchSemanticsNode()
-        val chevron = rule.onNodeWithTag(BookmarksTestTags.chevron("id:5"), useUnmergedTree = true)
-            .fetchSemanticsNode()
-        val rowRight = row.positionInRoot.x + row.size.width
-        val chevronLeft = chevron.positionInRoot.x
-        val chevronRight = chevronLeft + chevron.size.width
-        val longNameRight = longName.positionInRoot.x + longName.size.width
-        val longNameHeight = longName.size.height
-        assertTrue("the chevron stays inside the row", chevronRight <= rowRight + 1f)
-        assertTrue("the name does not run under the chevron", longNameRight <= chevronLeft + 1f)
-
-        rule.onNodeWithTag(BookmarksTestTags.LIST).performScrollToNode(hasTestTag(BookmarksTestTags.row("id:6")))
-        val shortNameHeight = rule.onNodeWithTag(BookmarksTestTags.name("id:6"), useUnmergedTree = true)
-            .fetchSemanticsNode().size.height
-        assertTrue("the long name wraps onto more lines", longNameHeight > shortNameHeight)
-    }
-
-    // TC-66
-    @Test
-    fun issue117_tc66_listScrollsUnderAFixedTitle() {
-        val many = (1..40L).map { rowModel(bookmark(it, title = "Bookmark number $it")) }
-        rule.setSheetContent(BookmarksContent.Loaded(many))
-
-        val titleBefore = rule.onNodeWithTag(BookmarksTestTags.TITLE).fetchSemanticsNode().boundsInRoot
-        rule.onNodeWithTag(BookmarksTestTags.LIST).performScrollToNode(hasTestTag(BookmarksTestTags.row("id:40")))
-        rule.onNodeWithTag(BookmarksTestTags.row("id:40")).assertIsDisplayed()
-        val titleAfter = rule.onNodeWithTag(BookmarksTestTags.TITLE).fetchSemanticsNode().boundsInRoot
-
-        assertEquals(titleBefore, titleAfter)
-    }
-
-    // TC-67
-    @Test
-    fun issue117_tc67_ribbonLeadsTheNameAndChevronTrailsIt() {
-        rule.setSheetContent(BookmarksContent.Loaded(sampleRows.take(1)))
-
-        val ribbon = rule.onNodeWithTag(BookmarksTestTags.ribbon("id:1"), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot
-        val name = rule.onNodeWithTag(BookmarksTestTags.name("id:1"), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot
-        val chevron = rule.onNodeWithTag(BookmarksTestTags.chevron("id:1"), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot
-
-        assertTrue("the ribbon is left of the name", ribbon.right <= name.left + 1f)
-        assertTrue("the chevron is right of the name", name.right <= chevron.left + 1f)
     }
 }

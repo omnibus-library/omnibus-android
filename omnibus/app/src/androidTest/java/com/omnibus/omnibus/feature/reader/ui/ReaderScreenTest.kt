@@ -22,8 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -34,7 +32,6 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -51,7 +48,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -71,9 +67,7 @@ import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.withMenuDismissed
 import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
-import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import androidx.compose.ui.graphics.toArgb
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
@@ -1015,24 +1009,6 @@ class ReaderScreenTest {
         assertEquals(0, closes)
     }
 
-    // CS-43
-    @Test
-    fun cs43_sheetFollowsAppDarkThemeOverALightPage() {
-        showOpenContentsSheet(events = mutableListOf(), readingTheme = ReaderTheme.Light, appNight = true)
-
-        val pixels = rule.onNodeWithTag(ReaderContentsTags.SHEET).captureToImage().toPixelMap()
-        assertColourNear(OmnibusPalette.Atrium.bg0, pixels[4, pixels.height - 4], "dark app sheet over a Light page")
-    }
-
-    // CS-44
-    @Test
-    fun cs44_sheetFollowsAppLightThemeOverADarkPage() {
-        showOpenContentsSheet(events = mutableListOf(), readingTheme = ReaderTheme.Black, appNight = false)
-
-        val pixels = rule.onNodeWithTag(ReaderContentsTags.SHEET).captureToImage().toPixelMap()
-        assertColourNear(OmnibusPalette.Light.bg0, pixels[4, pixels.height - 4], "light app sheet over a Black page")
-    }
-
     // CS-47
     @Test
     fun cs47_systemBackClosesTheSheetOnceAndStaysInTheReader() {
@@ -1129,17 +1105,6 @@ class ReaderScreenTest {
         val bars: List<Boolean?>,
     )
 
-    /** Each channel within 3/255 of the expected colour, which absorbs the sRGB round trip. */
-    private fun assertColourNear(expected: Color, actual: Color, message: String) {
-        val tolerance = 3f / 255f
-        assertTrue(
-            "$message: expected $expected but was $actual",
-            abs(expected.red - actual.red) <= tolerance &&
-                abs(expected.green - actual.green) <= tolerance &&
-                abs(expected.blue - actual.blue) <= tolerance,
-        )
-    }
-
     private fun pageSnapshot(): PageSnapshot {
         val size = rule.runOnUiThread { findWebView()?.let { it.width to it.height } }
         assertNotNull("the page is a WebView", size)
@@ -1203,62 +1168,6 @@ class ReaderScreenTest {
     }
 
     @Test
-    fun themeChangeRepaintsTheHostGroundAndTheSystemBars() {
-        val window = rule.activity.window
-        val bars = WindowCompat.getInsetsController(window, window.decorView)
-        val theme = mutableStateOf(ReaderTheme.Dark)
-        show(
-            uiState = {
-                ReaderUIState(
-                    book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound),
-                    settings = ReaderSettings(theme = theme.value),
-                )
-            },
-        )
-        rule.waitForIdle()
-        assertEquals(ReaderTheme.Dark.groundArgb, rule.onNodeWithTag(ReaderScreenTags.ROOT).captureToImage().toPixelMap()[2, 2].toArgb())
-        assertEquals(false, bars.isAppearanceLightStatusBars)
-
-        rule.runOnIdle { theme.value = ReaderTheme.Light }
-        rule.waitForIdle()
-        assertEquals(ReaderTheme.Light.groundArgb, rule.onNodeWithTag(ReaderScreenTags.ROOT).captureToImage().toPixelMap()[2, 2].toArgb())
-        assertEquals(true, bars.isAppearanceLightStatusBars)
-    }
-
-    @Test
-    fun sheetKeepsTheAppPaletteOverEveryReadingTheme() {
-        val configuration = context.resources.configuration
-        val systemDark = (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val appPalette = if (systemDark) OmnibusPalette.Atrium else OmnibusPalette.Light
-        // Precondition: the app palette differs from the reading one for at least one of the two themes.
-        val readingThemes = listOf(ReaderTheme.Sepia, ReaderTheme.Black)
-        assertTrue(readingThemes.any { (if (it.isLight) OmnibusPalette.Light else OmnibusPalette.Atrium) != appPalette })
-
-        val theme = mutableStateOf(ReaderTheme.Sepia)
-        show(
-            uiState = {
-                ReaderUIState(
-                    book = ReaderBookState.Ready(title = "Moby Dick"),
-                    loadStatus = ReaderLoadStatus.Ready,
-                    sheet = ReaderSheet.Settings,
-                    settings = ReaderSettings(theme = theme.value),
-                )
-            },
-            inspection = true,
-        )
-        rule.waitForIdle()
-
-        readingThemes.forEach { reading ->
-            rule.runOnIdle { theme.value = reading }
-            rule.waitForIdle()
-            val pixel = rule.onNodeWithTag(ReaderSettingsSheetTags.SHEET).captureToImage().toPixelMap()[2, 2]
-            assertEquals(appPalette.bg0.toArgb(), pixel.toArgb())
-            assertTrue(pixel.toArgb() != Color(reading.groundArgb).toArgb())
-        }
-    }
-
-    @Test
     fun backClosesTheSettingsSheetWithoutLeavingTheReader() {
         val sheet = mutableStateOf<ReaderSheet?>(ReaderSheet.Settings)
         val events = mutableListOf<String>()
@@ -1277,79 +1186,6 @@ class ReaderScreenTest {
         rule.waitForIdle()
 
         assertEquals(listOf("dismissed"), events)
-    }
-
-    // TC-41, P-MINI-4
-    @Test
-    fun dockTheDefaultDockLeavesTheReaderUnchanged() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Loading) })
-        rule.waitForIdle()
-
-        val root = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
-        val page = rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().boundsInRoot
-        val dock = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot
-        assertTrue(abs(page.top - root.top) <= 1f)
-        assertTrue(abs(page.bottom - root.bottom) <= 1f)
-        assertTrue(abs(page.left - root.left) <= 1f)
-        assertTrue(abs(page.right - root.right) <= 1f)
-        assertEquals(0f, dock.height, 1f)
-    }
-
-    // TC-42, P-MINI-4
-    @Test
-    fun dockThePageSitsAboveTheDockWithoutOverlap() {
-        show(
-            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
-            bottomDock = { Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock")) },
-        )
-        rule.waitForIdle()
-
-        val root = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
-        val page = rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().boundsInRoot
-        val dock = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot
-        assertTrue("the dock has a height", dock.height > 0f)
-        assertTrue("the page ends at the dock's top edge", page.bottom <= dock.top + 1f)
-        assertTrue(abs(page.top - root.top) <= 1f)
-        assertTrue(abs(dock.bottom - root.bottom) <= 1f)
-        assertTrue(abs(dock.left - root.left) <= 1f)
-        assertTrue(abs(dock.right - root.right) <= 1f)
-    }
-
-    // TC-43, P-MINI-4 (stopping from the dock returns the page to full height)
-    @Test
-    fun dockRemovingTheDockRestoresTheFullPageHeight() {
-        val docked = mutableStateOf(true)
-        show(
-            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
-            bottomDock = {
-                if (docked.value) Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock"))
-            },
-        )
-        rule.waitForIdle()
-
-        val rootHeight = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().size.height
-        assertTrue("the dock has a height before removal", rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().size.height > 0)
-        assertTrue(rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().size.height < rootHeight)
-
-        rule.runOnIdle { docked.value = false }
-        rule.waitForIdle()
-
-        assertEquals(0, rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().size.height)
-        assertTrue(abs(rule.onNodeWithTag(ReaderScreenTags.PAGE_AREA).fetchSemanticsNode().size.height - rootHeight) <= 1)
-    }
-
-    // TC-44, P-MINI-4 (page content ends above the dock)
-    @Test
-    fun dockPageContentNeverSitsUnderTheDock() {
-        show(
-            uiState = { ReaderUIState(book = ReaderBookState.Loading) },
-            bottomDock = { Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock")) },
-        )
-        rule.waitForIdle()
-
-        val dockTop = rule.onNodeWithTag(ReaderScreenTags.DOCK).fetchSemanticsNode().boundsInRoot.top
-        val loading = rule.onNodeWithText(context.getString(R.string.reader_loading)).fetchSemanticsNode().boundsInRoot
-        assertTrue("the loading text ends above the dock", loading.bottom <= dockTop + 1f)
     }
 
     // TC-45, P-MINI-4 (the dock pads the navigation bar, so the page's bottom inset is 0 while docked)

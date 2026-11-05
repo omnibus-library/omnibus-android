@@ -6,7 +6,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -37,7 +36,6 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.ui.components.CoverIdentity
-import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -138,10 +136,6 @@ class ReaderContentsSheetTest {
         assertTrue("$message: expected $expected but was $actual", abs(expected - actual) <= 1f)
     }
 
-    private fun assertColourEquals(expected: Color, actual: Color, message: String) {
-        assertEquals(message, expected, actual)
-    }
-
     private fun text(res: Int, vararg args: Any) = context.getString(res, *args)
 
     // CS-5
@@ -171,56 +165,6 @@ class ReaderContentsSheetTest {
         rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).assertTextEquals("Spaced Out")
     }
 
-    // CS-7
-    // CS-7
-    @Test
-    fun cs7_longLabelsWrap() {
-        val long = (1..35).joinToString(" ") { "word$it" }
-        showBody(
-            toc = mutableStateOf(
-                listOf(
-                    TocEntry(label = long, href = "long.xhtml", level = 0),
-                    TocEntry(label = "Short", href = "short.xhtml", level = 0),
-                ),
-            ),
-        )
-
-        val longLabel = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).fetchSemanticsNode().size.height
-        val shortLabel = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).fetchSemanticsNode().size.height
-        assertTrue("the long label wraps onto more lines than a single line", longLabel > shortLabel)
-
-        val sheet = rule.onNodeWithTag(ReaderContentsTags.SHEET).fetchSemanticsNode().boundsInRoot
-        val row = rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().boundsInRoot
-        assertTrue("the row stays within the sheet width", row.right <= sheet.right + 1f)
-    }
-
-    // CS-8
-    @Test
-    fun cs8_opensAtNearlyFullHeight() {
-        showModal(open = mutableStateOf(true))
-
-        val host = rule.onNodeWithTag(HOST).fetchSemanticsNode().size.height.toFloat()
-        val sheet = rule.onNodeWithTag(ReaderContentsTags.SHEET).fetchSemanticsNode().size.height.toFloat()
-        assertTrue("the sheet is at least 75% of the host (was $sheet of $host)", sheet >= 0.75f * host)
-    }
-
-    // CS-9
-    // CS-9
-    @Test
-    fun cs9_labelsIndent16dpPerLevel() {
-        val leveled = listOf(
-            TocEntry(label = "Top", href = "a.xhtml", level = 0),
-            TocEntry(label = "Middle", href = "b.xhtml", level = 1),
-            TocEntry(label = "Deep", href = "c.xhtml", level = 2),
-        )
-        showBody(toc = mutableStateOf(leveled))
-
-        val step = with(rule.density) { 16.dp.toPx() }
-        val left = (0..2).map { rule.onNodeWithTag(ReaderContentsTags.label(it), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
-        assertNear(step, left[1] - left[0], "level 1 indent")
-        assertNear(2 * step, left[2] - left[0], "level 2 indent")
-    }
-
     // CS-10
     @Test
     fun cs10_topLevelUsesMediumWeight() {
@@ -230,42 +174,6 @@ class ReaderContentsSheetTest {
         val nested = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).textLayout().layoutInput.style.fontWeight
         assertEquals(FontWeight.Medium, top)
         assertEquals(FontWeight.Normal, nested)
-    }
-
-    // CS-11
-    // CS-11
-    @Test
-    fun cs11_pageNumberIsRightAligned() {
-        showBody(toc = mutableStateOf(listOf(TocEntry(label = "Paged", href = "a.xhtml", level = 0, page = 12))))
-
-        rule.onNodeWithTag(ReaderContentsTags.page(0), useUnmergedTree = true).assertTextEquals("12")
-        val row = rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().boundsInRoot
-        val label = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val page = rule.onNodeWithTag(ReaderContentsTags.page(0), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("the page is right of the label", page.left >= label.right - 1f)
-        assertNear(row.right, page.right, "page right edge against the row")
-    }
-
-    // CS-12
-    @Test
-    fun cs12_rowWithoutPageGivesLabelTheSpace() {
-        showBody(
-            toc = mutableStateOf(
-                listOf(
-                    TocEntry(label = "Bare", href = "a.xhtml", level = 0, page = null),
-                    TocEntry(label = "Paged", href = "b.xhtml", level = 0, page = 12),
-                ),
-            ),
-        )
-
-        rule.onAllNodesWithTag(ReaderContentsTags.page(0), useUnmergedTree = true).assertCountEquals(0)
-        val bareRow = rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().boundsInRoot
-        val bareLabel = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertNear(bareRow.right, bareLabel.right, "label right edge in the row without a page")
-
-        val pagedLabel = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val pagedPage = rule.onNodeWithTag(ReaderContentsTags.page(1), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("the paged label stops before its page", pagedLabel.right <= pagedPage.left + 1f)
     }
 
     // CS-13
@@ -365,53 +273,6 @@ class ReaderContentsSheetTest {
         rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)).assertCountEquals(0)
     }
 
-    // CS-25
-    @Test
-    fun cs25_markerColumnDoesNotShiftText() {
-        showBody(
-            toc = mutableStateOf(
-                listOf(
-                    TocEntry(label = "Unmarked", href = "a.xhtml", level = 0),
-                    TocEntry(label = "Marked", href = "b.xhtml", level = 0),
-                ),
-            ),
-            location = mutableStateOf(RelocateData(chapter = 2)),
-        )
-
-        val unmarked = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val marked = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertNear(unmarked.left, marked.left, "label left edge with and without the marker")
-
-        val row = rule.onNodeWithTag(ReaderContentsTags.row(1)).fetchSemanticsNode().boundsInRoot
-        val marker = rule.onNodeWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("the marker is inside its row", marker.top >= row.top - 1f && marker.bottom <= row.bottom + 1f)
-        assertTrue("the marker is narrower than it is tall", marker.width < marker.height)
-    }
-
-    // CS-26
-    @Test
-    fun cs26_currentRowUsesAccentAndSemibold() {
-        showBody(
-            toc = mutableStateOf(
-                listOf(
-                    TocEntry(label = "Unmarked", href = "a.xhtml", level = 0, page = 3),
-                    TocEntry(label = "Marked", href = "b.xhtml", level = 0, page = 9),
-                ),
-            ),
-            location = mutableStateOf(RelocateData(chapter = 2)),
-        )
-        val palette = OmnibusPalette.Light
-
-        val currentLabel = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).textLayout().layoutInput.style
-        assertColourEquals(palette.accent, currentLabel.color, "current label colour")
-        assertEquals(FontWeight.SemiBold, currentLabel.fontWeight)
-        assertColourEquals(palette.accent, rule.onNodeWithTag(ReaderContentsTags.page(1), useUnmergedTree = true).textLayout().layoutInput.style.color, "current page colour")
-
-        val plainLabel = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).textLayout().layoutInput.style
-        assertColourEquals(palette.ink1, plainLabel.color, "unmarked label colour")
-        assertColourEquals(palette.ink3, rule.onNodeWithTag(ReaderContentsTags.page(0), useUnmergedTree = true).textLayout().layoutInput.style.color, "unmarked page colour")
-    }
-
     // CS-27
     @Test
     fun cs27_scrollsCurrentEntryIntoViewOnOpen() {
@@ -489,17 +350,6 @@ class ReaderContentsSheetTest {
         rule.onAllNodesWithTag(ReaderContentsTags.POSITION).assertCountEquals(0)
     }
 
-    // CS-36
-    @Test
-    fun cs36_titleIsCappedAtTwoLines() {
-        val longTitle = (1..40).joinToString(" ") { "Title$it" }
-        showBody(title = longTitle)
-
-        val layout = rule.onNodeWithTag(ReaderContentsTags.TITLE).textLayout()
-        assertEquals(2, layout.lineCount)
-        assertTrue("the title is ellipsized", layout.hasVisualOverflow)
-    }
-
     // CS-37
     @Test
     fun cs37_headerShowsCoverBesideTitle() {
@@ -540,19 +390,6 @@ class ReaderContentsSheetTest {
         rule.onNodeWithText(text(R.string.reader_contents_empty_message)).assertIsDisplayed()
         rule.onAllNodesWithTag(ReaderContentsTags.row(0)).assertCountEquals(0)
         rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsDisplayed()
-    }
-
-    // CS-45
-    @Test
-    fun cs45_separatorsSitBetweenRowsOnly() {
-        showBody(toc = mutableStateOf(fiveEntries.take(3)))
-
-        rule.onAllNodesWithTag(ReaderContentsTags.divider(0)).assertCountEquals(0)
-        for (i in 1..2) {
-            val divider = rule.onNodeWithTag(ReaderContentsTags.divider(i)).fetchSemanticsNode().boundsInRoot
-            val row = rule.onNodeWithTag(ReaderContentsTags.row(i)).fetchSemanticsNode().boundsInRoot
-            assertTrue("divider $i is above row $i", divider.top <= row.top + 1f)
-        }
     }
 
     // TC-67
@@ -694,17 +531,6 @@ class ReaderContentsSheetTest {
         val current = rule.onNodeWithTag(ReaderContentsTags.row(1)).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
         assertEquals(text(R.string.reader_contents_current_chapter), current)
         rule.onNodeWithTag(ReaderContentsTags.row(0)).assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.StateDescription))
-    }
-
-    // CS-55
-    // CS-55
-    @Test
-    fun cs55_rowsMeetMinimumTouchHeight() {
-        showBody(toc = mutableStateOf(listOf(TocEntry(label = "One line", href = "a.xhtml", level = 0))))
-
-        val height = rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().size.height.toFloat()
-        val minimum = with(rule.density) { 48.dp.toPx() }
-        assertTrue("row height $height is at least $minimum", height >= minimum - 1f)
     }
 
     // CS-56

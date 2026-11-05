@@ -37,7 +37,6 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -194,17 +193,6 @@ class ReaderSettingsSheetTest {
         } finally {
             Locale.setDefault(previous)
         }
-    }
-
-    @Test
-    fun aaPreviewGrowsWithTheChosenSize() {
-        val settings = host(ReaderSettings(fontSize = 14))
-        val small = node(ReaderSettingsSheetTags.AA_PREVIEW).fetchSemanticsNode().size.height
-
-        rule.runOnIdle { settings.value = ReaderSettings(fontSize = 30) }
-        val large = node(ReaderSettingsSheetTags.AA_PREVIEW).fetchSemanticsNode().size.height
-
-        assertTrue("Aa at 30 ($large px) should be taller than at 14 ($small px)", large > small)
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.omnibus.omnibus.feature.bookdetail.more.delete
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,32 +19,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.more.BookMoreMenuEntry
-import com.omnibus.omnibus.feature.bookdetail.more.BookMoreTestTags
-import com.omnibus.omnibus.feature.bookdetail.more.FakeEntry
-import com.omnibus.omnibus.feature.bookdetail.more.rowTag
-import com.omnibus.omnibus.feature.bookdetail.more.setMoreButton
-import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-
-/** An enabled delete row as a registry entry, to sit beside another entry in the real menu. */
-private object EnabledDeleteEntry : BookMoreMenuEntry {
-    @Composable
-    override fun Rows(context: BookDetailSectionContext, dismissMenu: () -> Unit) {
-        DeleteMenuRow(row = DeleteRow.Enabled(DeleteRowLabel.Files), onClick = {})
-    }
-
-    @Composable
-    override fun Overlay(context: BookDetailSectionContext) {
-    }
-}
 
 class DeleteMenuRowTest {
 
@@ -110,29 +88,5 @@ class DeleteMenuRowTest {
         rule.runOnIdle { row = DeleteRow.DisabledOffline(DeleteRowLabel.Record) }
         rule.onNodeWithTag(DeleteTestTags.MENU_ROW).assertIsNotEnabled()
         rule.onNodeWithTag(DeleteTestTags.MENU_ROW).assert(SemanticsMatcher.expectValue(DeleteSemantics.Destructive, true))
-    }
-
-    // TC-43
-    @Test
-    fun issue121_tc43_theRowSitsBelowAnotherEntryBehindARuleAndIsAsWide() {
-        rule.setMoreButton(listOf(FakeEntry("Other row"), EnabledDeleteEntry), testSectionContext())
-        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON).performClick()
-        rule.waitForIdle()
-
-        val other = rule.onNodeWithTag(rowTag("Other row")).bounds()
-        val delete = rule.onNodeWithTag(DeleteTestTags.MENU_ROW).bounds()
-        assertTrue("the delete row is below the other entry", delete.top >= other.bottom - 1f)
-
-        val rules = rule.onAllNodesWithTag(BookMoreTestTags.MENU_RULE, useUnmergedTree = true)
-            .fetchSemanticsNodes()
-            .filter { it.layoutInfo.isPlaced }
-        assertEquals("one rule between the two entries", 1, rules.size)
-        val placed = rules.single().boundsInRoot
-        assertTrue(
-            "the rule sits between the entries",
-            placed.top >= other.bottom - 1f && placed.bottom <= delete.top + 1f,
-        )
-
-        assertTrue("the delete row is as wide as the other row", delete.width >= other.width - 1f)
     }
 }

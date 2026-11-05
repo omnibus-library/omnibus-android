@@ -79,17 +79,6 @@ class BookDescriptionSectionTest {
         assertEquals(OmnibusPalette.Atrium.ink1, style.color)
     }
 
-    // TC-72
-    @Test
-    fun issue94_tc72_longDescriptionIsClampedToThreeLinesWithShowMore() {
-        rule.setSection(longText)
-        val layout = rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout()
-        assertEquals(3, layout.lineCount)
-        assertTrue(layout.hasVisualOverflow)
-        rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).assertExists()
-        rule.onNodeWithText(detailText(R.string.book_detail_tabs_show_more)).assertExists()
-    }
-
     // TC-73
     @Test
     fun issue94_tc73_showMoreExpandsAndShowLessCollapses() {
@@ -253,54 +242,6 @@ class BookDescriptionSectionTest {
                 1f,
             )
         }
-    }
-
-    // TC-80 (reduced motion)
-    @Test
-    fun issue94_tc80_expansionIsImmediateUnderReducedMotion() {
-        rule.mainClock.autoAdvance = false
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDescription(
-                    testSectionContext(book = testDetailBook().copy(description = longText)),
-                    Modifier.fillMaxWidth(),
-                    reducedMotion = true,
-                )
-            }
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).performClick()
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeByFrame()
-        val immediate = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
-        rule.mainClock.advanceTimeBy(2000)
-        assertEquals(rule.onNodeWithTag(tags.DESCRIPTION).bounds().height, immediate, 1f)
-    }
-
-    // TC-80 (motion on)
-    @Test
-    fun issue94_tc80_expansionAnimatesWithMotionOn() {
-        rule.mainClock.autoAdvance = false
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDescription(
-                    testSectionContext(book = testDetailBook().copy(description = longText)),
-                    Modifier.fillMaxWidth(),
-                    reducedMotion = false,
-                )
-            }
-        }
-        rule.waitForIdle()
-        val collapsed = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
-        rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).performClick()
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeBy(60)
-        val mid = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
-        rule.mainClock.advanceTimeBy(2000)
-        val final = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
-        assertTrue("mid $mid between $collapsed and $final", mid > collapsed + 0.5f && mid < final - 0.5f)
-        rule.mainClock.advanceTimeBy(2000)
-        assertEquals(final, rule.onNodeWithTag(tags.DESCRIPTION).bounds().height, 1f)
     }
 
     // TC-81

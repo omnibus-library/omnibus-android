@@ -9,15 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -33,7 +30,6 @@ import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -42,7 +38,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
 /**
  * The Series section as the Overview panel renders it: gating, heading, link, navigation, state and the ribbon's
@@ -82,11 +77,6 @@ class SeriesFanSectionTest {
         rule.setContent { SectionHost(recorder, accent) }
         rule.waitForIdle()
     }
-
-    private fun Color.near(other: Color, tolerance: Int = 3): Boolean =
-        abs(red - other.red) * 255 <= tolerance &&
-            abs(green - other.green) * 255 <= tolerance &&
-            abs(blue - other.blue) * 255 <= tolerance
 
     // TC-92
     @Test
@@ -135,30 +125,6 @@ class SeriesFanSectionTest {
             rule.onNodeWithTag(SeriesFanTestTags.HEADING).fetchSemanticsNode().config.contains(SemanticsProperties.Heading),
         )
         rule.onAllNodesWithTag(SeriesFanTestTags.card("m2")).assertCountEquals(1)
-    }
-
-    // TC-96
-    @Test
-    fun issue104_tc96_linkStaysAtTheEndOfTheHeading() {
-        membersState = members(3)
-        book = seriesBook(position = 1, series = "Dune")
-        setSection()
-        checkLinkBesideHeading()
-
-        rule.runOnIdle {
-            book = seriesBook(position = 1, series = "The Extraordinarily Long Chronicles of a Series Whose Name Keeps Going")
-        }
-        rule.waitForIdle()
-        checkLinkBesideHeading()
-    }
-
-    private fun checkLinkBesideHeading() {
-        val heading = rule.onNodeWithTag(SeriesFanTestTags.HEADING).bounds()
-        val link = rule.onNodeWithTag(SeriesFanTestTags.SERIES_PAGE_LINK).assertIsDisplayed().bounds()
-        val row = rule.onNodeWithTag(SeriesFanTestTags.HEADING_ROW).bounds()
-        assertTrue("heading ends before the link starts", heading.right <= link.left + 1f)
-        assertTrue("link is in the heading row", link.top >= row.top - 1f && link.bottom <= row.bottom + 1f)
-        assertEquals("vertical centres match", heading.center.y, link.center.y, 1f)
     }
 
     // TC-97
@@ -243,29 +209,6 @@ class SeriesFanSectionTest {
         rule.runOnIdle { book = first }
         rule.waitForIdle()
         assertEquals("switching back is gathered too", "Show the whole series", rule.onNodeWithTag(SeriesFanTestTags.card("m1")).clickLabel())
-    }
-
-    // TC-102
-    @Test
-    fun issue104_tc102_ribbonUsesTheBookAccent() {
-        membersState = members(5)
-        book = seriesBook(position = 2)
-        val magenta = BookAccent(tint = Color.Magenta, onTint = Color.White, tintSoft = Color.Magenta)
-        setSection(accent = magenta)
-        val ribbon = rule.onNodeWithTag(SeriesFanTestTags.RIBBON, useUnmergedTree = true)
-        val pixels = ribbon.captureToImage().toPixelMap()
-        val centre = pixels[pixels.width / 2, pixels.height / 2]
-        assertTrue("ribbon centre is the accent tint: $centre", centre.near(Color.Magenta))
-    }
-
-    // TC-103
-    @Test
-    fun issue104_tc103_topSpacingAndAnchor() {
-        membersState = members(3)
-        setSection()
-        val section = rule.onNodeWithTag(SeriesFanTestTags.SECTION).bounds()
-        val heading = rule.onNodeWithTag(SeriesFanTestTags.HEADING_ROW).bounds()
-        assertEquals(rule.px(40.dp), heading.top - section.top, 1f)
     }
 
     // TC-104

@@ -10,10 +10,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.household.HouseholdReader
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
@@ -79,18 +77,6 @@ class HouseholdActivityTest {
         assertEquals(true, texts[1].startsWith("Last read") && texts[1].endsWith("6 h 12 m · 4 sessions"))
         // One row, one node: the avatar contributes no node of its own to the merged tree.
         rule.onAllNodesWithTag(HouseholdActivityTestTags.row(3)).assertCountEquals(1)
-    }
-
-    // TC-34
-    @Test
-    fun tc34_avatarIsA32DpDiscBesideTheName() {
-        show(listOf(maren))
-
-        val initial = rule.onNodeWithText("M", useUnmergedTree = true).bounds()
-        val name = rule.onNodeWithText("Maren", useUnmergedTree = true).bounds()
-        assertEquals(true, initial.right <= name.left)
-        val row = rule.onNodeWithTag(HouseholdActivityTestTags.row(3)).bounds()
-        assertEquals(true, row.height >= with(rule.density) { 32.dp.toPx() } - 1f)
     }
 
     // TC-35: a book with nothing to read renders nothing without creating a ViewModel

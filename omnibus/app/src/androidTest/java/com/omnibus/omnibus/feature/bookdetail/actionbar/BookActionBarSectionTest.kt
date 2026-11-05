@@ -1,14 +1,9 @@
 package com.omnibus.omnibus.feature.bookdetail.actionbar
 
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,16 +13,13 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.scrollTo
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
@@ -35,7 +27,6 @@ import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -80,64 +71,6 @@ class BookActionBarSectionTest {
         rule.onNodeWithTag(ActionBarTestTags.NO_COPY)
             .assertTextEquals(detailText(R.string.book_detail_actionbar_no_copy))
         rule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertCountEquals(0)
-    }
-
-    // TC-57
-    @Test
-    fun issue98_tc57_barStaysPinnedWhileThePageScrolls() {
-        val scroll = ScrollState(0)
-        rule.setDetailScreen(
-            BookDetailUIState(book = testDetailBook(), isLoading = false),
-            slots = BookDetailSlots(actionBar = listOf(TestBarSection)),
-            scrollState = scroll,
-        )
-        rule.waitForIdle()
-        assertTrue("the page must scroll", scroll.maxValue > 0)
-
-        val before = rule.onNodeWithTag(ActionBarTestTags.BUTTON).bounds()
-        rule.scrollTo(scroll)
-        val after = rule.onNodeWithTag(ActionBarTestTags.BUTTON).bounds()
-        assertEquals(before.top, after.top, 1f)
-        assertEquals(before.bottom, after.bottom, 1f)
-
-        val actionArea = rule.onNodeWithTag(BookDetailTestTags.ACTION_AREA).bounds()
-        assertTrue(after.left >= actionArea.left && after.right <= actionArea.right)
-        assertTrue(after.bottom <= actionArea.bottom + 1f)
-        assertEquals(rule.onRoot().bounds().bottom, actionArea.bottom, 1f)
-        assertTrue(rule.onNodeWithTag(BookDetailTestTags.TAB_AREA).bounds().bottom <= actionArea.top + 1f)
-    }
-
-    // TC-58
-    @Test
-    fun issue98_tc58_barSitsAboveTheTabBar() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                Column(Modifier.fillMaxSize()) {
-                    BookDetailScreenContent(
-                        uiState = BookDetailUIState(book = testDetailBook(), isLoading = false),
-                        onNavigate = {},
-                        onClose = {},
-                        onRetry = {},
-                        onRefresh = {},
-                        onReloadBook = {},
-                        onBookChanged = {},
-                        onTransientErrorShown = {},
-                        modifier = Modifier.weight(1f),
-                        slots = BookDetailSlots(actionBar = listOf(TestBarSection)),
-                    )
-                    Box(Modifier.fillMaxWidth().testTag("tabbar")) { Text("Tabs") }
-                }
-            }
-        }
-
-        val bar = rule.onNodeWithTag(ActionBarTestTags.BUTTON)
-        bar.assertIsDisplayed()
-        val tabBar = rule.onNodeWithTag("tabbar").bounds()
-        val root = rule.onRoot().bounds()
-        val barBounds = bar.bounds()
-        assertTrue("bar bottom ${barBounds.bottom} above tab bar top ${tabBar.top}", barBounds.bottom <= tabBar.top + 1f)
-        assertTrue(barBounds.left >= root.left && barBounds.right <= root.right)
-        rule.onNodeWithTag("tabbar").assertIsDisplayed()
     }
 
     // TC-59

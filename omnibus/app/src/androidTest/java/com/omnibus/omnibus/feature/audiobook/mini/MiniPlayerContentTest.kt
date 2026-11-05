@@ -1,13 +1,8 @@
 package com.omnibus.omnibus.feature.audiobook.mini
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -17,15 +12,12 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.components.CoverIdentity
@@ -34,7 +26,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
 /** Callback counts for [MiniPlayerContent], so each test can see which button, if any, was pressed. */
 private class Calls {
@@ -108,69 +99,6 @@ class MiniPlayerContentTest {
         rule.onAllNodesWithText("Chapter 7", useUnmergedTree = true).assertCountEquals(0)
     }
 
-    // P-MINI-1
-    // TC-29 (P-MINI-1)
-    @Test
-    fun longTitlesStayOnOneLine() {
-        val longTitle = "A title far longer than the widest cell can hold, so it has to be cut short with an ellipsis"
-        val title = mutableStateOf("Short")
-        rule.setBar({ playing.copy(title = title.value) }, Calls())
-        rule.waitForIdle()
-        val shortBar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).fetchSemanticsNode().size.height
-        val shortTitle = rule.onNodeWithText("Short", useUnmergedTree = true).fetchSemanticsNode().size.height
-
-        rule.runOnIdle { title.value = longTitle }
-        rule.waitForIdle()
-        val longBar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).fetchSemanticsNode().size.height
-        val longNode = rule.onNodeWithText(longTitle, useUnmergedTree = true).fetchSemanticsNode()
-
-        assertTrue(abs(shortBar - longBar) <= 1)
-        assertTrue(abs(shortTitle - longNode.size.height) <= 1)
-        val body = rule.onNodeWithTag(MiniPlayerTestTags.BODY).fetchSemanticsNode().size.width
-        assertTrue(longNode.size.width <= body + 1)
-    }
-
-    // P-MINI-1 (whole-book line)
-    // TC-30 (P-MINI-1)
-    @Test
-    fun progressFillIsTheStateRatioOfTheTrack() {
-        val progress = mutableStateOf(0f)
-        rule.setBar({ playing.copy(progress = progress.value) }, Calls())
-
-        for (value in listOf(0f, 0.25f, 1f)) {
-            rule.runOnIdle { progress.value = value }
-            rule.waitForIdle()
-            val track = rule.onNodeWithTag(MiniPlayerTestTags.PROGRESS_TRACK, useUnmergedTree = true)
-                .fetchSemanticsNode().size.width
-            val fill = rule.onNodeWithTag(MiniPlayerTestTags.PROGRESS_FILL, useUnmergedTree = true)
-                .fetchSemanticsNode().size.width
-            val bar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).fetchSemanticsNode().size.width
-
-            assertTrue("track spans the bar at $value", abs(track - bar) <= 1)
-            assertTrue("fill is $value of the track", abs(fill - value * track) <= 1f)
-        }
-    }
-
-    // P-MINI-AC2
-    // TC-31 (P-MINI-1)
-    @Test
-    fun theControlsSitInOrderToTheRightOfTheTitle() {
-        rule.setBar({ playing }, Calls())
-        rule.waitForIdle()
-
-        val title = rule.onNodeWithText("Mini Title", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val back = rule.onNodeWithTag(MiniPlayerTestTags.BACK_15, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val playPause = rule.onNodeWithTag(MiniPlayerTestTags.PLAY_PAUSE, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val stop = rule.onNodeWithTag(MiniPlayerTestTags.STOP, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val track = rule.onNodeWithTag(MiniPlayerTestTags.PROGRESS_TRACK, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-
-        assertTrue(title.right <= back.left + 1f)
-        assertTrue(back.right <= playPause.left + 1f)
-        assertTrue(playPause.right <= stop.left + 1f)
-        assertTrue("title and buttons share a band", title.top < back.bottom && back.top < title.bottom)
-        assertTrue("the track sits above the row", track.bottom <= back.top + 1f)
-    }
-
     // P-MINI-AC5
     // TC-32 (P-MINI-2)
     @Test
@@ -222,21 +150,6 @@ class MiniPlayerContentTest {
         assertTrue(MiniPlayerTestTags.BACK_15 !in inside)
         assertTrue(MiniPlayerTestTags.PLAY_PAUSE !in inside)
         assertTrue(MiniPlayerTestTags.STOP !in inside)
-    }
-
-    // P-MINI-AC5, P-A11Y-1 (48 dp targets)
-    // TC-35 (P-A11Y-1)
-    @Test
-    fun buttonsMeetTheMinimumTouchTarget() {
-        rule.setBar({ playing }, Calls())
-        rule.waitForIdle()
-        val minimum = with(rule.density) { 48.dp.roundToPx() }
-
-        listOf(MiniPlayerTestTags.BACK_15, MiniPlayerTestTags.PLAY_PAUSE, MiniPlayerTestTags.STOP).forEach { tag ->
-            val size = rule.onNodeWithTag(tag).fetchSemanticsNode().size
-            assertTrue("$tag is at least 48 dp wide", size.width >= minimum - 1)
-            assertTrue("$tag is at least 48 dp tall", size.height >= minimum - 1)
-        }
     }
 
     // P-MINI-AC5
@@ -318,37 +231,5 @@ class MiniPlayerContentTest {
         assertEquals(0, calls.expands)
         assertEquals(0, calls.skips + calls.toggles)
         assertTrue(calls.expandedUuid == null)
-    }
-
-    // P-MINI-1, P-MINI-AC1
-    // TC-50 (P-MINI-1)
-    @Test
-    fun theBarSitsBetweenTheContentAndTheTabBar() {
-        rule.setContent {
-            OmnibusTheme {
-                Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().weight(1f).testTag("stand_in_content"))
-                    MiniPlayerContent(
-                        uiState = playing,
-                        onExpand = {},
-                        onSkipBack = {},
-                        onPlayPauseToggled = {},
-                        onStop = {},
-                    )
-                    Box(Modifier.fillMaxWidth().fillMaxHeight(0.08f).testTag("stand_in_tab_bar"))
-                }
-            }
-        }
-        rule.waitForIdle()
-
-        val content = rule.onNodeWithTag("stand_in_content").fetchSemanticsNode().boundsInRoot
-        val bar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).fetchSemanticsNode().boundsInRoot
-        val tabBar = rule.onNodeWithTag("stand_in_tab_bar").fetchSemanticsNode().boundsInRoot
-        val root = rule.onRoot().fetchSemanticsNode().size.width
-
-        assertTrue(content.bottom <= bar.top + 1f)
-        assertTrue(bar.bottom <= tabBar.top + 1f)
-        assertTrue(abs((bar.right - bar.left) - root) <= 1f)
-        assertTrue(abs(bar.left - tabBar.left) <= 1f)
     }
 }

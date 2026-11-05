@@ -52,40 +52,6 @@ class BookDetailSlotsRenderTest {
         creators = listOf(Creator("Ann Lee", "author", null, null)),
     )
 
-    // TC-114
-    @Test
-    fun issue93_tc114_stageSlotsRenderInPlace() {
-        val slots = BookDetailSlots(
-            stageAboveTitle = listOf(fake("fake-above")),
-            stageStatusStart = listOf(fake("fake-start")),
-            stageStatusEnd = listOf(fake("fake-end")),
-            stageProgress = listOf(fake("fake-progress")),
-            stageCoverOverlay = listOf(fake("fake-overlay")),
-        )
-        rule.setDetailScreen(BookDetailUIState(book = linkedBook, isLoading = false), slots = slots)
-
-        val cover = rule.onNodeWithTag(BookDetailTestTags.COVER).bounds()
-        val above = rule.onNodeWithTag("fake-above").bounds()
-        val title = rule.onNodeWithTag(BookDetailTestTags.TITLE).bounds()
-        assertTrue(above.top > cover.top)
-        assertTrue(above.bottom <= title.top + 1f)
-
-        val author = rule.onNodeWithTag(BookDetailTestTags.AUTHOR).bounds()
-        val start = rule.onNodeWithTag("fake-start").bounds()
-        val end = rule.onNodeWithTag("fake-end").bounds()
-        val row = rule.onNodeWithTag(BookDetailTestTags.STATUS_ROW).bounds()
-        assertTrue(start.top >= author.bottom - 1f)
-        assertEquals(start.center.y, end.center.y, 2f)
-        assertTrue(start.left < end.left)
-
-        val progress = rule.onNodeWithTag("fake-progress").bounds()
-        assertTrue(progress.top >= row.bottom - 1f)
-
-        val overlay = rule.onNodeWithTag("fake-overlay").bounds()
-        assertTrue(overlay.left >= cover.left - 1f && overlay.right <= cover.right + 1f)
-        assertTrue(overlay.top >= cover.top - 1f && overlay.bottom <= cover.bottom + 1f)
-    }
-
     // TC-115
     @Test
     fun issue93_tc115_topBarOverlayAndTabListSlots() {

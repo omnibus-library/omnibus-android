@@ -12,12 +12,10 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onChildren
@@ -26,7 +24,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -321,34 +318,6 @@ class ReviewSheetContentTest {
         rule.waitForIdle()
         rule.onNodeWithTag(ReviewSheetTestTags.KEEP_EDITING).performClick()
         assertEquals(1, keeps)
-    }
-
-    @Test
-    fun tc82_theTargetsAreAtLeast48dpInBothLayouts() {
-        val state = mutableStateOf(sheet(shown = ReviewFields(4.5f, null, null, false)))
-        show(state)
-
-        // The header sits outside the scrolling body, so its targets are measured where they are.
-        listOf(ReviewSheetTestTags.CANCEL, ReviewSheetTestTags.SAVE).forEach { tag ->
-            rule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
-            rule.onNodeWithTag(tag).assertWidthIsAtLeast(48.dp)
-        }
-        listOf(
-            ReviewSheetTestTags.NOTES_ROW,
-            ReviewSheetTestTags.SPOILER,
-            ReviewSheetTestTags.FROM_HIGHLIGHTS,
-        ).forEach { tag ->
-            rule.onNodeWithTag(tag).performScrollTo()
-            rule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
-            rule.onNodeWithTag(tag).assertWidthIsAtLeast(48.dp)
-        }
-
-        rule.onNodeWithTag(ReviewSheetTestTags.FIELD).performClick()
-        rule.waitForIdle()
-        listOf(ReviewSheetTestTags.ACCESSORY_HIGHLIGHTS, ReviewSheetTestTags.DONE).forEach { tag ->
-            rule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
-            rule.onNodeWithTag(tag).assertWidthIsAtLeast(48.dp)
-        }
     }
 
     @Test

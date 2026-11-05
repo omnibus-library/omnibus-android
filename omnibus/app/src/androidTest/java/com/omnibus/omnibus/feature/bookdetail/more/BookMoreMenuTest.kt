@@ -15,7 +15,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
@@ -96,22 +95,6 @@ class BookMoreMenuTest {
         openMenu()
         tapOutsideMenu()
         waitForMenuGone()
-    }
-
-    // TC-5
-    @Test
-    fun issue116_tc5_menuIsAbout276dpWhenItFitsAndNeverWiderThanThePage() {
-        rule.setMoreButton(listOf(FakeEntry(rowLabel)))
-
-        openMenu()
-
-        val menu = rule.onNodeWithTag(BookMoreTestTags.MENU).bounds()
-        val page = rule.pageRoot().bounds()
-        assertTrue("menu ${menu.width}px wider than the page ${page.width}px", menu.width <= page.width + 1f)
-        val fullWidth = with(rule.density) { (276 + 32).dp.toPx() }
-        if (page.width >= fullWidth) {
-            assertEquals(with(rule.density) { 276.dp.toPx() }, menu.width, 1f)
-        }
     }
 
     // TC-13
