@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail.finish
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,12 +17,10 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.Oklch
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,6 +35,7 @@ private val sampleTotals = listOf(FinishTotal.Days(17), FinishTotal.Sessions(13)
 /** The Sherlock Holmes member the next row points at. */
 private val nextMember = SeriesMember("uuid-3", "The Sign of the Four", "3", null, null, false)
 
+/** Clicks and semantics. FinishCardScreenshotTest covers how each card looks. */
 class FinishCardTest {
 
     @get:Rule
@@ -61,37 +59,6 @@ class FinishCardTest {
                 }
             }
         }
-    }
-
-    @Test
-    fun issue97_tc29_anUnratedFinishedBookShowsTotalsAndLeaveAReview() {
-        setCard(FinishCardModel("The Hound", sampleTotals, FinishAction.Review))
-
-        rule.onNodeWithText(detailText(R.string.book_detail_finish_title, "The Hound")).assertIsDisplayed()
-        val totals = rule.onNodeWithTag(FinishTestTags.TOTALS)
-        totals.assertIsDisplayed()
-        val expected = sampleTotals.totalsText(finishWording(InstrumentationRegistry.getInstrumentation().targetContext.resources))
-        assertEquals(expected, totals.fetchSemanticsNode().config[SemanticsProperties.Text].single().text)
-        rule.onNodeWithText(detailText(R.string.book_detail_finish_review_title)).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_finish_review_detail)).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue97_tc30_noFinishDateShowsTheCardWithoutTotals() {
-        setCard(FinishCardModel("The Hound", emptyList(), FinishAction.Review))
-
-        rule.onNodeWithTag(FinishTestTags.TITLE).assertIsDisplayed()
-        rule.onNodeWithTag(FinishTestTags.TOTALS).assertDoesNotExist()
-        rule.onNodeWithTag(FinishTestTags.REVIEW_ROW).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue97_tc31_anUnknownReviewShowsNoActionRow() {
-        setCard(FinishCardModel("The Hound", sampleTotals, null))
-
-        rule.onNodeWithTag(FinishTestTags.CARD).assertIsDisplayed()
-        rule.onNodeWithTag(FinishTestTags.REVIEW_ROW).assertDoesNotExist()
-        rule.onNodeWithTag(FinishTestTags.NEXT_ROW).assertDoesNotExist()
     }
 
     @Test
@@ -123,10 +90,6 @@ class FinishCardTest {
 
         rule.onNodeWithText(detailText(R.string.book_detail_finish_next_title, "The Sign of the Four")).assertIsDisplayed()
         rule.onNodeWithText(detailText(R.string.book_detail_finish_next_detail, "3", "Sherlock Holmes")).assertIsDisplayed()
-
-        val titleBottom = rule.onNodeWithTag(FinishTestTags.TITLE).bounds().bottom
-        val rowTop = rule.onNodeWithTag(FinishTestTags.NEXT_ROW).bounds().top
-        assertTrue("row top $rowTop is above the title bottom $titleBottom", rowTop >= titleBottom)
 
         rule.onNodeWithTag(FinishTestTags.NEXT_ROW).performClick()
 

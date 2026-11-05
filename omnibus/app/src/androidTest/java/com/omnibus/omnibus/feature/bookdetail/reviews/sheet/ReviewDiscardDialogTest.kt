@@ -1,9 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.sheet
 
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -11,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
-/** The discard confirmation: its copy, its two buttons, and the dismiss path, which keeps the draft. */
+/** The discard confirmation's two buttons and the dismiss path, which keeps the draft. ReviewDiscardDialogScreenshotTest covers how it looks. */
 class ReviewDiscardDialogTest {
 
     @get:Rule
@@ -24,16 +22,6 @@ class ReviewDiscardDialogTest {
                 ReviewDiscardDialog(onDiscard = onDiscard, onKeepEditing = onKeepEditing)
             }
         }
-    }
-
-    @Test
-    fun tc101_theDialogSaysWhatIsLostWithDiscardAndKeepEditing() {
-        show(onDiscard = {}, onKeepEditing = {})
-
-        rule.onNodeWithText("Discard your review?").assertExists()
-        rule.onNodeWithText("Your stars and what you wrote here won't be saved.").assertExists()
-        rule.onNodeWithTag(ReviewSheetTestTags.DISCARD).assertTextEquals("Discard")
-        rule.onNodeWithTag(ReviewSheetTestTags.KEEP_EDITING).assertTextEquals("Keep editing")
     }
 
     @Test

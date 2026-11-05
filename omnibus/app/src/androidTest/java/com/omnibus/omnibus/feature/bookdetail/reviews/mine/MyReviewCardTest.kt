@@ -6,12 +6,10 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -26,23 +24,20 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.toSize
 import androidx.test.espresso.Espresso
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.reviews.Review
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.reviews.stars.StarRatingInputTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * The Your review card: its heading and note, the write and delete controls, the text and private notes, the delete
- * confirmation, and the unknown states. Sizes are minimums or ratios of the card's own bounds, never fixed.
+ * The Your review card: its semantics, the write and delete controls, the delete confirmation, the unknown states and
+ * motion. Sizes are minimums, never fixed. MyReviewCardScreenshotTest covers how each state looks.
  */
 class MyReviewCardTest {
 
@@ -96,30 +91,22 @@ class MyReviewCardTest {
 
     // TC-64 (R9, R13)
     @Test
-    fun tc64_aNewCardHasItsHeadingNoteAndNoActions() {
+    fun tc64_aNewCardHasAHeadingAndUnratedStars() {
         show(MyReviewModel.Known(null))
 
         rule.onNodeWithTag(MyReviewTestTags.HEADING)
-            .assertTextEquals(detailText(R.string.book_detail_rate_title))
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        rule.onNodeWithTag(MyReviewTestTags.NOTE)
-            .assertTextEquals(detailText(R.string.book_detail_rate_note_unrated))
         assertStateDescription(detailText(R.string.book_detail_rate_stars_unrated))
-        rule.onNodeWithTag(MyReviewTestTags.TRASH).assertDoesNotExist()
-        rule.onNodeWithTag(MyReviewTestTags.PENCIL).assertDoesNotExist()
-        rule.onNodeWithTag(MyReviewTestTags.PROMPT).assertDoesNotExist()
     }
 
     // TC-64 (R9, R13)
     @Test
-    fun tc64_theNoteFollowsTheRatingAndSitsBelowTheStars() {
+    fun tc64_theNoteAndTheStarStateFollowTheRating() {
         val model = walk(MyReviewModel.Known(review(rating = 4.5f)))
 
         rule.onNodeWithTag(MyReviewTestTags.NOTE)
             .assertTextEquals(detailText(R.string.book_detail_rate_note_rated, "4.5"))
         assertStateDescription(detailText(R.string.book_detail_rate_stars_state, "4.5"))
-        val stars = rule.onNodeWithTag(StarRatingInputTestTags.ROW).bounds()
-        assertTrue(rule.onNodeWithTag(MyReviewTestTags.NOTE).bounds().top >= stars.bottom - 0.5f)
 
         rule.runOnIdle { model.value = MyReviewModel.Known(review(rating = 4f)) }
         rule.onNodeWithTag(MyReviewTestTags.NOTE).assertTextEquals(detailText(R.string.book_detail_rate_note_rated, "4"))
@@ -127,7 +114,7 @@ class MyReviewCardTest {
 
     // TC-67 (R14)
     @Test
-    fun tc67_aLongSpoilerTextShowsInFullBesideThePrivateNotes() {
+    fun tc67_aLongSpoilerTextShowsInFullWithoutAVeil() {
         val paragraphs = List(8) { "Paragraph $it, which goes on a while so that the review is long." }
         val markdown = paragraphs.joinToString("\n\n").replaceFirst("Paragraph 0", "Paragraph *zero*")
         show(MyReviewModel.Known(review(rating = 4f, text = markdown, notes = "Only mine", spoiler = true)))
@@ -137,23 +124,6 @@ class MyReviewCardTest {
         rule.onNodeWithText(detailText(R.string.book_detail_reviews_read_more)).assertDoesNotExist()
         rule.onNodeWithText(detailText(R.string.book_detail_reviews_show_review)).assertDoesNotExist()
         rule.onNodeWithText(detailText(R.string.book_detail_reviews_spoiler_warning)).assertDoesNotExist()
-
-        // The long text pushes the box below the window, where boundsInRoot is clipped, so compare layout bounds.
-        val box = rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).layoutBounds()
-        val label = rule.onNodeWithText(detailText(R.string.book_detail_rate_private_notes)).layoutBounds()
-        val notes = rule.onNodeWithText("Only mine").layoutBounds()
-        assertTrue(label.top >= box.top && label.bottom <= box.bottom)
-        assertTrue(notes.top >= label.bottom && notes.bottom <= box.bottom)
-        assertTrue(box.top >= rule.onNodeWithTag(MyReviewTestTags.TEXT).layoutBounds().bottom)
-    }
-
-    // TC-67 (R14)
-    @Test
-    fun tc67_withoutPrivateNotesThereIsNoNotesBox() {
-        show(MyReviewModel.Known(review(rating = 4f, text = "Just the text")))
-
-        rule.onNodeWithTag(MyReviewTestTags.TEXT).assertTextEquals("Just the text")
-        rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).assertDoesNotExist()
     }
 
     // TC-69 (R10, R14)
@@ -196,18 +166,13 @@ class MyReviewCardTest {
 
     // TC-70 (R10)
     @Test
-    fun tc70_theTrashShowsOnlyWithAReviewAndEndsTheHeader() {
+    fun tc70_theTrashShowsOnlyWithAReview() {
         val model = walk(MyReviewModel.Known(review(rating = 4f)), onCompose = {})
 
         rule.onNodeWithTag(MyReviewTestTags.TRASH)
             .assertContentDescriptionEquals(detailText(R.string.book_detail_rate_delete))
             .assertWidthIsAtLeast(44.dp)
             .assertHeightIsAtLeast(44.dp)
-        val pencil = rule.onNodeWithTag(MyReviewTestTags.PENCIL).bounds()
-        val trash = rule.onNodeWithTag(MyReviewTestTags.TRASH).bounds()
-        val heading = rule.onNodeWithTag(MyReviewTestTags.HEADING).bounds()
-        assertTrue(pencil.left < trash.left)
-        assertTrue(trash.right >= heading.right)
 
         rule.runOnIdle { model.value = MyReviewModel.Known(null) }
         rule.onNodeWithTag(MyReviewTestTags.TRASH).assertDoesNotExist()
@@ -392,8 +357,4 @@ class MyReviewCardTest {
         rule.onNodeWithTag(MyReviewTestTags.NOTES_BOX).assertDoesNotExist()
         rule.onNodeWithTag(MyReviewTestTags.TRASH).assertDoesNotExist()
     }
-
-    /** The node's layout rectangle in the root, which unlike `boundsInRoot` is not clipped to the window. */
-    private fun SemanticsNodeInteraction.layoutBounds(): Rect =
-        fetchSemanticsNode().let { Rect(it.positionInRoot, it.size.toSize()) }
 }

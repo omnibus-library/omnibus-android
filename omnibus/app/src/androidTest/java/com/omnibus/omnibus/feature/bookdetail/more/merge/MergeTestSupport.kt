@@ -2,8 +2,6 @@ package com.omnibus.omnibus.feature.bookdetail.more.merge
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.test.platform.app.InstrumentationRegistry
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
@@ -36,11 +34,3 @@ internal fun mergeBook(
 /** The texts of the node, one per `Text` child in the merged tree. */
 internal fun SemanticsNodeInteraction.texts(): List<String> =
     runCatching { fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text } }.getOrDefault(emptyList())
-
-/** The vertical position of the node in its root, which is unclipped, so scrolled-out nodes still order correctly. */
-internal fun SemanticsNodeInteraction.top(): Float = fetchSemanticsNode().positionInRoot.y
-
-/** The result-count note for [count], from the app's plurals. */
-internal fun noteCount(count: Int): String =
-    InstrumentationRegistry.getInstrumentation().targetContext.resources
-        .getQuantityString(R.plurals.book_detail_merge_note_count, count, count)

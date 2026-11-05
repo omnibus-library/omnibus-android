@@ -19,7 +19,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
@@ -33,7 +32,6 @@ import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.feature.bookdetail.tabs.tabNode
 import com.omnibus.omnibus.feature.bookdetail.tabs.BookDetailTabsTestTags
 import com.omnibus.omnibus.feature.bookdetail.tabs.assertExists
-import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,7 +40,7 @@ import org.junit.Rule
 import org.junit.Test
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 
-/** The description section in the Overview panel: stripped text, clamp, toggle, width and motion. */
+/** The description section: clamp, toggle, saved state, width and placement. BookDescriptionScreenshotTest covers how it looks. */
 class BookDescriptionSectionTest {
 
     @get:Rule
@@ -65,18 +63,6 @@ class BookDescriptionSectionTest {
             }
         }
         waitForIdle()
-    }
-
-    // TC-71
-    @Test
-    fun issue94_tc71_descriptionShowsTheStrippedTextInTheBodyStyle() {
-        rule.setSection("<p>First paragraph &amp; more.</p><p>Second<br>line</p>")
-        rule.onNodeWithTag(tags.DESCRIPTION_TEXT).assertTextEquals("First paragraph & more.\n\nSecond\nline")
-        val style = rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout().layoutInput.style
-        assertEquals(16f, style.fontSize.value, 0.01f)
-        assertEquals(24f, style.lineHeight.value, 0.01f)
-        assertEquals(FontWeight.Normal, style.fontWeight)
-        assertEquals(OmnibusPalette.Atrium.ink1, style.color)
     }
 
     // TC-73
@@ -126,19 +112,6 @@ class BookDescriptionSectionTest {
         rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).assertExists()
     }
 
-    // TC-75
-    @Test
-    fun issue94_tc75_shortDescriptionShowsNoToggleAndNoExtraSpace() {
-        rule.setSection("A short sentence about the book.")
-        rule.onNodeWithTag(tags.DESCRIPTION_TEXT).assertExists()
-        rule.onAllNodesWithTag(tags.DESCRIPTION_TOGGLE).assertCountEquals(0)
-        assertEquals(
-            rule.onNodeWithTag(tags.DESCRIPTION_TEXT).bounds().height,
-            rule.onNodeWithTag(tags.DESCRIPTION).bounds().height,
-            1f,
-        )
-    }
-
     // TC-76
     @Test
     fun issue94_tc76_toggleIsA44DpButtonLabelledByItsText() {
@@ -147,11 +120,6 @@ class BookDescriptionSectionTest {
         assertEquals(Role.Button, toggle.fetchSemanticsNode().config[SemanticsProperties.Role])
         toggle.assertTextEquals(detailText(R.string.book_detail_tabs_show_more))
         assertTrue(toggle.bounds().height >= rule.dp(44.dp) - 1f)
-
-        val label = rule.onNodeWithText(detailText(R.string.book_detail_tabs_show_more), useUnmergedTree = true)
-        assertEquals(15f, label.textLayout().layoutInput.style.fontSize.value, 0.01f)
-        assertEquals(FontWeight.SemiBold, label.textLayout().layoutInput.style.fontWeight)
-        assertEquals(toggle.bounds().left, label.bounds().left, 1f)
     }
 
     // TC-77

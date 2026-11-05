@@ -4,29 +4,23 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** Author navigation and which byline lines are clickable. BookBylineScreenshotTest covers how the byline looks. */
 class BookBylineTest {
 
     @get:Rule
@@ -58,7 +52,7 @@ class BookBylineTest {
 
     // TC-87
     @Test
-    fun issue93_tc87_unlinkedAuthorIsPlainText() {
+    fun issue93_tc87_unlinkedAuthorIsNotClickable() {
         val author = "Ann Lee"
         rule.setDetailScreen(
             BookDetailUIState(
@@ -67,13 +61,12 @@ class BookBylineTest {
             ),
         )
 
-        rule.onNodeWithText(author, useUnmergedTree = true).assertIsDisplayed()
         rule.onNodeWithTag(BookDetailTestTags.AUTHOR).assertHasNoClickAction()
     }
 
     // TC-92
     @Test
-    fun issue93_tc92_seriesLineReplacesTheYear() {
+    fun issue93_tc92_seriesLineWithoutASeriesSectionIsNotClickable() {
         rule.setDetailScreen(
             BookDetailUIState(
                 book = testDetailBook(
@@ -86,12 +79,6 @@ class BookBylineTest {
             ),
         )
 
-        val author = rule.onNodeWithText("Frank Herbert", useUnmergedTree = true).bounds()
-        val series = rule.onNodeWithText("Dune, book 3", useUnmergedTree = true)
-        series.assertIsDisplayed().assertHasNoClickAction()
-        assertTrue(series.bounds().top >= author.bottom)
-        val decoration = series.textLayout().layoutInput.style.textDecoration
-        assertTrue(decoration == null || decoration == TextDecoration.None)
-        rule.onAllNodesWithText("1965", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithText("Dune, book 3", useUnmergedTree = true).assertHasNoClickAction()
     }
 }

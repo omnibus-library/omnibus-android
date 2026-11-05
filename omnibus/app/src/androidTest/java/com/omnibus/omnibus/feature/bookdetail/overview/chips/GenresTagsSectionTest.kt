@@ -17,7 +17,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import com.omnibus.omnibus.R
@@ -36,7 +35,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The Genres and Tags rows of the Overview panel: which rows show, scrolling, touch size, taps and reading order. */
+/** The Genres and Tags rows: hiding when empty, scrolling, taps and reading order. GenresTagsScreenshotTest covers how they look. */
 class GenresTagsSectionTest {
 
     @get:Rule
@@ -60,39 +59,6 @@ class GenresTagsSectionTest {
 
     private fun chipIn(row: String, text: String): SemanticsNodeInteraction =
         rule.onNode(hasTestTag(tags.CHIP) and hasText(text) and hasAnyAncestor(hasTestTag(row)))
-
-    // AC1
-    @Test
-    fun issue100_ac1_bookWithGenresAndTagsShowsBothRowsWithTheirChips() {
-        rule.setSection(bookWith(listOf("Science Fiction", "Dystopia"), listOf("Utopia", "Anthropology")))
-
-        rule.onNodeWithTag(tags.GENRES_ROW).assertIsDisplayed()
-        rule.onNodeWithTag(tags.TAGS_ROW).assertIsDisplayed()
-        rule.onNode(hasText(detailText(R.string.book_detail_chips_genres)) and hasAnyAncestor(hasTestTag(tags.GENRES_ROW)))
-            .assertIsDisplayed()
-        rule.onNode(hasText(detailText(R.string.book_detail_chips_tags)) and hasAnyAncestor(hasTestTag(tags.TAGS_ROW)))
-            .assertIsDisplayed()
-        chipIn(tags.GENRES_ROW, "Science Fiction").assertIsDisplayed()
-        chipIn(tags.GENRES_ROW, "Dystopia").assertIsDisplayed()
-        chipIn(tags.TAGS_ROW, "Utopia").assertIsDisplayed()
-        chipIn(tags.TAGS_ROW, "Anthropology").assertIsDisplayed()
-    }
-
-    // AC1
-    @Test
-    fun issue100_ac1_tagsRowWithoutValuesIsNotShown() {
-        rule.setSection(bookWith(listOf("Fantasy"), emptyList()))
-        rule.onNodeWithTag(tags.GENRES_ROW).assertIsDisplayed()
-        rule.onAllNodesWithTag(tags.TAGS_ROW).assertCountEquals(0)
-    }
-
-    // AC1
-    @Test
-    fun issue100_ac1_genresRowWithoutValuesIsNotShown() {
-        rule.setSection(bookWith(emptyList(), listOf("Epic")))
-        rule.onAllNodesWithTag(tags.GENRES_ROW).assertCountEquals(0)
-        rule.onNodeWithTag(tags.TAGS_ROW).assertIsDisplayed()
-    }
 
     // AC1
     @Test

@@ -12,13 +12,10 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,10 +23,8 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * The stateless [SeriesFan]: the gathered hand, the spread row, the taps, the motion and the semantics.
- *
- * No case pins a screen size. Widths come from the section's own bounds and every expected distance is a density
- * conversion of a design dp.
+ * The stateless [SeriesFan]: the taps, scrolling and semantics. SeriesFanScreenshotTest covers how the hand and the
+ * row look.
  */
 class SeriesFanTest {
 
@@ -39,24 +34,6 @@ class SeriesFanTest {
     private fun ComposeContentTestRule.cardNode(uuid: String) = onNodeWithTag(SeriesFanTestTags.card(uuid))
 
     private fun ComposeContentTestRule.row() = onNodeWithTag(SeriesFanTestTags.ROW)
-
-    // TC-68
-    @Test
-    fun issue104_tc68_ribbonOnThisBookOnly() {
-        rule.setFan(FanState(fanModel(5, current = 2)))
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(SeriesFanTestTags.RIBBON, useUnmergedTree = true).assertCountEquals(1)
-
-        val card = rule.cardNode("m3").layoutBounds()
-        val ribbon = rule.onNodeWithTag(SeriesFanTestTags.RIBBON, useUnmergedTree = true).bounds()
-        assertTrue("ribbon inside the card horizontally", ribbon.left >= card.left && ribbon.right <= card.right)
-        assertTrue("ribbon right of centre", ribbon.center.x > card.center.x)
-        assertTrue("ribbon top within 4 dp above the card", ribbon.top <= card.top && ribbon.top >= card.top - rule.px(4.dp))
-        assertTrue(
-            "ribbon bottom in the card's top quarter",
-            ribbon.bottom > card.top && ribbon.bottom <= card.top + card.height / 4f,
-        )
-    }
 
     // TC-71
     @Test
@@ -134,12 +111,9 @@ class SeriesFanTest {
 
     // TC-81
     @Test
-    fun issue104_tc81_absentBookIsUnmarked() {
+    fun issue104_tc81_absentBookIsNeitherSelectedNorNamed() {
         rule.setFan(FanState(fanModel(4, current = null)))
         rule.waitForIdle()
-        rule.onAllNodesWithTag(SeriesFanTestTags.RIBBON, useUnmergedTree = true).assertCountEquals(0)
-        val tops = (1..4).map { rule.cardNode("m$it").layoutBounds().top }
-        tops.forEach { assertEquals(tops.first(), it, 1f) }
         (1..4).forEach { i ->
             val node = rule.cardNode("m$i")
             assertFalse("no Selected on card $i", node.fetchSemanticsNode().config.contains(SemanticsProperties.Selected))
