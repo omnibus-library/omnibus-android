@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.1](https://github.com/omnibus-library/omnibus-android/compare/v0.1.0...v0.1.1) (2026-11-05)
+
+
+### Features
+
+* **audiobook:** add bookmarks and sync here to the player ([#180](https://github.com/omnibus-library/omnibus-android/issues/180)) ([3279796](https://github.com/omnibus-library/omnibus-android/commit/3279796ba91e2e47ff0601345ee0ee49f4d2aafc))
+* **audiobook:** add car mode ([#184](https://github.com/omnibus-library/omnibus-android/issues/184)) ([ee5b08a](https://github.com/omnibus-library/omnibus-android/commit/ee5b08a8e94eceef101d59a1976d841a9f6429ac))
+* **audiobook:** add position resume, save and listening sessions ([#176](https://github.com/omnibus-library/omnibus-android/issues/176)) ([889590d](https://github.com/omnibus-library/omnibus-android/commit/889590d7aabe61d0c58d87e3faa02821f6837f76))
+* **audiobook:** add resume offers from another device and the ebook ([#179](https://github.com/omnibus-library/omnibus-android/issues/179)) ([db07a53](https://github.com/omnibus-library/omnibus-android/commit/db07a535c459cf07dd2a1b82e312d315b7e4f752))
+* **audiobook:** add the audiobook player screen ([#177](https://github.com/omnibus-library/omnibus-android/issues/177)) ([67ac534](https://github.com/omnibus-library/omnibus-android/commit/67ac534287ef5a01a19497b5d92da82e0c9f5e09))
+* **audiobook:** add the chapters sheet ([#181](https://github.com/omnibus-library/omnibus-android/issues/181)) ([82d6361](https://github.com/omnibus-library/omnibus-android/commit/82d636151b1cda53dc3db88cc5d01b62b2caa64c))
+* **audiobook:** add the mini player and reader dock ([#178](https://github.com/omnibus-library/omnibus-android/issues/178)) ([58ed53d](https://github.com/omnibus-library/omnibus-android/commit/58ed53d41140de9b696c872b902f0d07951bd3b8))
+* **audiobook:** add the playback service and media session ([#174](https://github.com/omnibus-library/omnibus-android/issues/174)) ([0d1673f](https://github.com/omnibus-library/omnibus-android/commit/0d1673f1cf70b654e4873b3a6c8874a5f84a6af9))
+* **audiobook:** add the playback speed sheet and per-book rate storage ([#183](https://github.com/omnibus-library/omnibus-android/issues/183)) ([b5fdde1](https://github.com/omnibus-library/omnibus-android/commit/b5fdde127af19e08dbb87143b5164091e8e12d04))
+* **audiobook:** add the sleep timer ([#182](https://github.com/omnibus-library/omnibus-android/issues/182)) ([43d6690](https://github.com/omnibus-library/omnibus-android/commit/43d66905fecb3917d7412e20425edcbdadf23496))
+* **bookdetail:** add bookmarks to the more menu ([#160](https://github.com/omnibus-library/omnibus-android/issues/160)) ([bb72249](https://github.com/omnibus-library/omnibus-android/commit/bb722497a0b64ee9fe2dd765792e2cc3022ca240))
+
 ## 0.1.0 (2026-11-03)
 
 
