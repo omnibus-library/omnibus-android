@@ -47,5 +47,27 @@ class ActionBarResourcesTest : DescribeSpec({
             (raw.split("%1\$d").size - 1) shouldBe 1
             String.format(raw, 7) shouldBe "Continue · Chapter 7"
         }
+
+        it("#99 TC-52: listen strings are prefixed and say the expected thing") {
+            val file = File(valuesDir, "strings_book_detail_listen.xml")
+            file.exists() shouldBe true
+            val strings = stringsIn(file)
+
+            strings shouldContainExactly mapOf(
+                "book_detail_listen_listen" to "Listen",
+                "book_detail_listen_listen_offline" to "Listen. The audiobook needs a connection.",
+                "book_detail_listen_read" to "Read",
+                "book_detail_listen_immersive_read" to "Immersive read",
+                "book_detail_listen_choose_file" to "Choose a file",
+                "book_detail_listen_close" to "Close",
+                "book_detail_listen_continues" to "Continues where you left off",
+                "book_detail_listen_starts_over" to "Starts from the beginning",
+            )
+            strings.keys.all { it.startsWith("book_detail_listen_") } shouldBe true
+
+            val otherNames = valuesDir.listFiles { f -> f.name.endsWith(".xml") && f != file }!!
+                .flatMap { stringsIn(it).keys }
+            otherNames.filter { it in strings.keys } shouldBe emptyList()
+        }
     }
 })

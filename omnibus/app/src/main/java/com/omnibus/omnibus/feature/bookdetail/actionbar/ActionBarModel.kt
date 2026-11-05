@@ -47,7 +47,7 @@ sealed interface ActionBarModel {
 
 /**
  * The label of a [ActionBarModel.Primary] button. The text is mapped in the composable, so this stays free of Android.
- * #99's extra buttons are added beside the main button in the composable, not here.
+ * The round buttons beside the main button come from [roundActions], not from this label.
  */
 sealed interface ActionLabel {
 

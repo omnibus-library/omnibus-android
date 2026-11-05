@@ -1,0 +1,18 @@
+<resources>
+    <!-- The round button that opens the audiobook player. -->
+    <string name="book_detail_listen_listen">Listen</string>
+    <!-- The Listen button's description when the audiobook cannot be opened offline. It is disabled. -->
+    <string name="book_detail_listen_listen_offline">Listen. The audiobook needs a connection.</string>
+    <!-- The round button that opens the reader, shown in place of Listen when the main button is listening. -->
+    <string name="book_detail_listen_read">Read</string>
+    <!-- The round button that starts the audiobook in the background and opens the reader. -->
+    <string name="book_detail_listen_immersive_read">Immersive read</string>
+    <!-- The title of the sheet that picks one of a book's audio files. -->
+    <string name="book_detail_listen_choose_file">Choose a file</string>
+    <!-- The content description of the close button on the file chooser sheet. -->
+    <string name="book_detail_listen_close">Close</string>
+    <!-- A file row's status when it holds the saved listening position. -->
+    <string name="book_detail_listen_continues">Continues where you left off</string>
+    <!-- A file row's status when it does not hold the saved listening position. -->
+    <string name="book_detail_listen_starts_over">Starts from the beginning</string>
+</resources>
