@@ -4,8 +4,12 @@ import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
 import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
 import com.omnibus.omnibus.data.bookprogress.chapters
 import com.omnibus.omnibus.data.bookprogress.readingRecord
+import com.omnibus.omnibus.data.library.FakeBookAvailability
+import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
 import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
@@ -14,6 +18,8 @@ import com.omnibus.omnibus.feature.bookdetail.progress.bookReadingProgress
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.floats.plusOrMinus
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
@@ -26,17 +32,24 @@ private const val UUID = "uuid-1"
 
 private fun known(status: ReadStatus) = ReadStatusState.Known(ReadStatusRecord(status, 1L, null))
 
-/** A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. */
-private class Harness {
+/**
+ * A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. [online] sets the monitor's
+ * first answer, and [availability] answers for a book that is not online.
+ */
+private class Harness(online: Boolean = true) {
     val progress = FakeBookProgressRepository()
     val status = FakeReadStatusRepository()
+    val connectivity = FakeConnectivityMonitor(online)
+    val availability = FakeBookAvailability(answer = false)
+    val controller = FakeAudiobookController()
     val collecting = CollectingScope()
-    val vm = ActionBarViewModel(UUID, progress, status).also { collecting.collect(it.uiState) }
+    val vm = ActionBarViewModel(UUID, progress, status, connectivity, availability, controller)
+        .also { collecting.collect(it.uiState) }
 }
 
-/** Runs [block] on a [Harness], and cancels its collection afterwards. */
-private inline fun withHarness(block: Harness.() -> Unit) {
-    val harness = Harness()
+/** Runs [block] on a [Harness] that starts [online], and cancels its collection afterwards. */
+private inline fun withHarness(online: Boolean = true, block: Harness.() -> Unit) {
+    val harness = Harness(online)
     try {
         harness.block()
     } finally {
@@ -173,6 +186,74 @@ class ActionBarViewModelTest : DescribeSpec({
                 vm.reload(1)
 
                 vm.uiState.value.progress.shouldBeNull()
+            }
+        }
+    }
+
+    describe("listen availability") {
+
+        it("#99 TC-15: online, the audiobook is listenable and nothing is looked up") {
+            withHarness {
+                vm.uiState.value.listenAvailable shouldBe true
+                availability.calls.shouldBeEmpty()
+            }
+        }
+
+        it("#99 TC-16: offline and not downloaded, Listen is not available and the audiobook is asked about") {
+            withHarness(online = false) {
+                vm.reload(1)
+                vm.uiState.value.listenAvailable shouldBe false
+                availability.calls shouldContain (UUID to ProgressFormat.Listening)
+            }
+        }
+
+        it("#99 TC-17: offline but downloaded, Listen is available") {
+            withHarness(online = false) {
+                availability.answer = true
+                vm.reload(1)
+                vm.uiState.value.listenAvailable shouldBe true
+            }
+        }
+
+        it("#99 TC-18: Listen follows connectivity: online, offline, online") {
+            withHarness {
+                val seen = mutableListOf(vm.uiState.value.listenAvailable)
+                connectivity.isOnline.value = false
+                seen += vm.uiState.value.listenAvailable
+                connectivity.isOnline.value = true
+                seen += vm.uiState.value.listenAvailable
+                seen shouldBe listOf(true, false, true)
+            }
+        }
+
+        it("#99 TC-19: built offline, Listen starts unavailable before anything else happens") {
+            withHarness(online = false) {
+                vm.uiState.value.listenAvailable shouldBe false
+            }
+        }
+
+        it("#99 TC-20: a reload picks up a download made meanwhile") {
+            withHarness(online = false) {
+                vm.reload(1)
+                vm.uiState.value.listenAvailable shouldBe false
+
+                availability.answer = true
+                vm.reload(2)
+                vm.uiState.value.listenAvailable shouldBe true
+            }
+        }
+    }
+
+    describe("the immersive read") {
+
+        it("#99 TC-47: the immersive read loads the audiobook with autoplay, on the given file or none") {
+            withHarness {
+                vm.onImmersiveRead(5L)
+                vm.onImmersiveRead(null)
+                controller.commands shouldBe listOf(
+                    FakeAudiobookController.Command.Load(UUID, 5L, null, true),
+                    FakeAudiobookController.Command.Load(UUID, null, null, true),
+                )
             }
         }
     }
