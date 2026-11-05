@@ -55,6 +55,10 @@ internal object ActionBarTestTags {
     const val NO_COPY = "book-action-bar-no-copy"
     const val FIND_COPY = "book-action-bar-find-copy"
     const val CHECK_IN = "book-action-bar-check-in"
+    const val ROUND_READ = "book-action-bar-round-read"
+    const val ROUND_LISTEN = "book-action-bar-round-listen"
+    const val ROUND_IMMERSIVE = "book-action-bar-round-immersive"
+    const val LISTEN_BAR = "book-action-bar-listen-bar"
 }
 
 /** The Check in pill's wash and 1 dp rim. */
