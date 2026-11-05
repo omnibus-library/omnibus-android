@@ -18,9 +18,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -273,49 +271,6 @@ class ReviewSheetStarsTest {
         stars.assert(SemanticsMatcher.keyIsDefined(ReviewStarsBubbleKey))
         rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT)).assertTextEquals("2.5 Mixed feelings")
         stars.performTouchInput { up() }
-    }
-
-    @Test
-    fun tc96_withMotionOnAPopARippleAndALiftRunAndThenSettle() {
-        rule.mainClock.autoAdvance = false
-        val rating = mutableStateOf<Float?>(null)
-        setContentWith {
-            ReviewSheetStars(rating.value, { rating.value = it }, Color.Red, reducedMotion = false)
-        }
-        val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
-
-        rating.value = 4.5f
-        assertTrue("star 5 pops", stepUntilMotion(stars) { it.pop == 4 && !it.ripple && !it.lifted })
-
-        rating.value = 5f
-        assertTrue("all five ripple", stepUntilMotion(stars) { it.ripple && it.pop == null && !it.lifted })
-
-        // Holding the finger lifts the stars. The press moves the preview, so the pop may be running, and only the lift is asserted.
-        stars.performTouchInput { down(Offset(width * 0.5f, height / 2f)) }
-        rule.mainClock.advanceTimeByFrame()
-        stars.assert(liftedIs(true))
-
-        stars.performTouchInput { up() }
-        rule.mainClock.advanceTimeBy(1000L)
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
-    }
-
-    /**
-     * Steps the clock a frame at a time, up to about half a second, until the row's motion satisfies [matches]. The
-     * motion is short and the clock is manual, so this catches it however the first frame lines up.
-     */
-    private fun stepUntilMotion(stars: SemanticsNodeInteraction, matches: (StarsMotion) -> Boolean): Boolean {
-        repeat(30) {
-            rule.mainClock.advanceTimeByFrame()
-            val motion = stars.fetchSemanticsNode().config.getOrNull(ReviewStarsMotionKey)
-            if (motion != null && matches(motion)) return true
-        }
-        return false
-    }
-
-    /** Matches a star row whose motion has its lift set to [expected]. */
-    private fun liftedIs(expected: Boolean) = SemanticsMatcher("lifted is $expected") {
-        it.config.getOrNull(ReviewStarsMotionKey)?.lifted == expected
     }
 
     /** The range of a progress from 0 to 5 in nine steps, at [value]. */

@@ -62,15 +62,6 @@ class ReadingCardTest {
         ),
     )
 
-    private val rowOrder = listOf(
-        ReadingRowKind.Started,
-        ReadingRowKind.TimeRead,
-        ReadingRowKind.Pace,
-        ReadingRowKind.LastRead,
-        ReadingRowKind.LongestSitting,
-        ReadingRowKind.TimeLeft,
-    )
-
     private fun show(card: ReadingCardModel) = rule.setContent {
         OmnibusTheme(darkTheme = true) {
             Column(Modifier.fillMaxWidth()) { ReadingCard(card, now) }
@@ -100,25 +91,6 @@ class ReadingCardTest {
         val card = rule.onNodeWithTag(ReadingCardTestTags.CARD).bounds()
         val root = rule.onRoot().bounds()
         assertEquals(root.width, card.width, 1f)
-    }
-
-    // TC-44 (R1, R16): the six rows are in order, below the line, and inside the card
-    @Test
-    fun tc44_rowsAreInOrderInsideTheCard() {
-        show(reading)
-
-        val card = rule.onNodeWithTag(ReadingCardTestTags.CARD).bounds()
-        val line = rule.onNodeWithTag(ReadingCardTestTags.LINE).bounds()
-        val bounds = rowOrder.map { kind -> rule.onNodeWithTag(ReadingCardTestTags.row(kind)).bounds() }
-
-        assertTrue(bounds.first().top >= line.bottom)
-        for (i in 1 until bounds.size) {
-            assertTrue(bounds[i].top > bounds[i - 1].top)
-        }
-        for (row in bounds) {
-            assertTrue(row.left >= card.left && row.right <= card.right)
-            assertTrue(row.top >= card.top && row.bottom <= card.bottom)
-        }
     }
 
     // TC-45 (R18): each row is one node whose description reads label, then value

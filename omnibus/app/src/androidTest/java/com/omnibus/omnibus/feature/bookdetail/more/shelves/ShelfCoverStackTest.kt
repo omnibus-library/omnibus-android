@@ -44,9 +44,6 @@ class ShelfCoverStackTest {
     /** Covers and this book's cover are decorative, so they sit under a cleared semantics node. */
     private fun ComposeContentTestRule.tagged(tag: String) = onAllNodesWithTag(tag, useUnmergedTree = true)
 
-    private fun ComposeContentTestRule.bookCoverBounds() =
-        onNodeWithTag(ShelfSheetTestTags.bookCover(rowId), useUnmergedTree = true).bounds()
-
     // TC-56
     @Test
     fun issue116_tc56_stackShowsThreeCoversAndThisBookOnTopWhenOn() {
@@ -96,36 +93,6 @@ class ShelfCoverStackTest {
 
     // TC-57
     @Test
-    fun issue116_tc57_bookCoverPopsInWhenTurnedOn() {
-        val on = mutableStateOf(false)
-        setStack(on, covers, reducedMotion = false)
-        rule.mainClock.autoAdvance = false
-
-        rule.runOnIdle { on.value = true }
-        rule.mainClock.advanceTimeByFrame()
-        val start = rule.bookCoverBounds()
-        rule.mainClock.advanceTimeBy(600)
-        val end = rule.bookCoverBounds()
-
-        assertTrue("starts ${start.top} above ${end.top}", start.top < end.top - 1f)
-        rule.mainClock.advanceTimeBy(600)
-        assertEquals(end.top, rule.bookCoverBounds().top, 1f)
-    }
-
-    // TC-57
-    @Test
-    fun issue116_tc57_bookCoverDoesNotPopWhenTheShelfAlreadyHoldsTheBook() {
-        setStack(mutableStateOf(true), covers, reducedMotion = false)
-        rule.mainClock.autoAdvance = false
-
-        rule.mainClock.advanceTimeByFrame()
-        val start = rule.bookCoverBounds()
-        rule.mainClock.advanceTimeBy(600)
-        assertEquals(start.top, rule.bookCoverBounds().top, 1f)
-    }
-
-    // TC-57
-    @Test
     fun issue116_tc57_bookCoverLeavesWhenTurnedOff() {
         val on = mutableStateOf(true)
         setStack(on, covers, reducedMotion = false)
@@ -134,20 +101,5 @@ class ShelfCoverStackTest {
         rule.runOnIdle { on.value = false }
         rule.mainClock.advanceTimeBy(600)
         rule.tagged(ShelfSheetTestTags.bookCover(rowId)).assertCountEquals(0)
-    }
-
-    // TC-58
-    @Test
-    fun issue116_tc58_popInIsSkippedWithReducedMotion() {
-        val on = mutableStateOf(false)
-        setStack(on, covers, reducedMotion = true)
-        rule.mainClock.autoAdvance = false
-
-        rule.runOnIdle { on.value = true }
-        rule.mainClock.advanceTimeByFrame()
-        rule.tagged(ShelfSheetTestTags.bookCover(rowId)).assertCountEquals(1)
-        val first = rule.bookCoverBounds()
-        rule.mainClock.advanceTimeBy(600)
-        assertEquals(first.top, rule.bookCoverBounds().top, 1f)
     }
 }

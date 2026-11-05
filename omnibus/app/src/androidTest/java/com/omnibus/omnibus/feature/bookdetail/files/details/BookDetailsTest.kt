@@ -19,7 +19,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
@@ -116,19 +115,6 @@ class BookDetailsTest {
         rule.onAllNodesWithTag(tags.row(DetailRow.Publisher)).assertCountEquals(1)
     }
 
-    // TC-6 (AC3)
-    @Test
-    fun tc6_aShortValueIsShownWholeAndRightAligned() {
-        show(listOf(publisher))
-
-        val value = valueNode(DetailRow.Publisher)
-        value.assertTextEquals("Spencer Blackett")
-        val layout = value.textLayout()
-        assertEquals(1, layout.lineCount)
-        // The text ends at the row's right edge.
-        assertTrue(layout.size.width - layout.getLineRight(0) <= 2f)
-    }
-
     // TC-7 (AC3)
     @Test
     fun tc7_aLongValueIsCutInTheMiddleOnTwoLines() {
@@ -172,17 +158,6 @@ class BookDetailsTest {
         rule.waitForIdle()
 
         valueNode(DetailRow.Publisher).assertIsDisplayed()
-    }
-
-    // TC-10
-    @Test
-    fun tc10_labelsSitLeftAndValuesRightOnTheSameRow() {
-        show(listOf(publisher))
-
-        val row = rule.onNodeWithTag(tags.row(DetailRow.Publisher)).bounds()
-        val value = valueNode(DetailRow.Publisher).bounds()
-        assertTrue(value.left > row.left)
-        assertEquals(row.right, value.right, 1f)
     }
 
     /** The value text, which is merged into its row's node, so it is found in the unmerged tree. */

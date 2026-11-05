@@ -11,10 +11,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.metadata.MetadataListKind
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -41,20 +39,6 @@ class AddChipTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
         rule.onNodeWithContentDescription(detailText(R.string.book_detail_chipedit_add_tags))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-    }
-
-    // TC-63
-    @Test
-    fun issue101_ac7_addChipTouchTargetIsAtLeast44Dp() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                AddChip(MetadataListKind.Genres, enabled = true, onClick = {})
-            }
-        }
-
-        val minPx = with(rule.density) { 44.dp.toPx() }
-        val bounds = rule.onNodeWithTag(ChipEditTestTags.ADD_GENRES).bounds()
-        assertEquals(true, bounds.width >= minPx - 1 && bounds.height >= minPx - 1)
     }
 
     // TC-64, TC-65

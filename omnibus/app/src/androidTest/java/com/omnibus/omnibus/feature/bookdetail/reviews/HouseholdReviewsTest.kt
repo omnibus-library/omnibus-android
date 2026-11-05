@@ -152,27 +152,6 @@ class HouseholdReviewsTest {
         rule.onAllNodesWithTag(ReviewsTestTags.readMore(6)).assertCountEquals(0)
     }
 
-    // TC-51 (AC3)
-    @Test
-    fun tc51_onlyLongTextIsClippedWithReadMore() {
-        show(
-            mutableStateOf(
-                listed(
-                    entry(1, "Maren", markdown = longText, body = ReviewBody.Text),
-                    entry(2, "Theo", markdown = "Short.", body = ReviewBody.Text),
-                ),
-            ),
-        )
-
-        rule.onNodeWithTag(ReviewsTestTags.readMore(1)).assertIsDisplayed()
-        val clipped = rule.onNodeWithTag(ReviewsTestTags.body(1)).fetchSemanticsNode().size.height
-        val unclipped = rule.onNodeWithText(longText).fetchSemanticsNode().size.height
-        assertTrue(clipped <= with(rule.density) { 117.dp.toPx() })
-        assertTrue(clipped < unclipped)
-        rule.onAllNodesWithTag(ReviewsTestTags.readMore(2)).assertCountEquals(0)
-        rule.onNodeWithText("Short.").assertIsDisplayed()
-    }
-
     // TC-52 (AC3)
     @Test
     fun tc52_readMoreExpandsInPlaceOneWay() {

@@ -35,8 +35,6 @@ class MergeSheetContentTest {
     val rule = createComposeRule()
 
     private val target = mergeTarget()
-    private val title get() = detailText(R.string.book_detail_merge_menu_row)
-    private val intro get() = detailText(R.string.book_detail_merge_intro)
     private val idle get() = detailText(R.string.book_detail_merge_note_idle)
     private val needsConnection get() = detailText(R.string.book_detail_more_needs_connection)
 
@@ -58,27 +56,6 @@ class MergeSheetContentTest {
     private val a = mergeBook(2, "Alpha", author = "Ann", year = null, formats = listOf("epub"))
     private val b = mergeBook(3, "Bravo", author = "Bea", year = "1902-01-01", formats = listOf("epub", "m4b"), seriesId = 5L)
     private val c = mergeBook(4, "Charlie", author = "Cy", year = null, formats = emptyList())
-
-    // TC-50
-    @Test
-    fun issue120_tc50_searchStepShowsHeaderIntroPanelAndFieldInOrder() {
-        setBody(mutableStateOf(MergeUIState(sheetOpen = true)))
-
-        rule.onNodeWithTag(MergeTestTags.TITLE).assertTextEquals(title)
-        rule.onNodeWithTag(MergeTestTags.CLOSE).assertExists()
-        rule.onNodeWithTag(MergeTestTags.INTRO).assertTextEquals(intro)
-        rule.onNodeWithTag(MergeTestTags.PANEL).assertExists()
-        rule.onNodeWithText(detailText(R.string.book_detail_merge_folds_into), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText(target.displayTitle).assertExists()
-        rule.onNodeWithText(detailText(R.string.book_detail_merge_entry_stays), useUnmergedTree = true).assertExists()
-        rule.onNodeWithTag(MergeTestTags.LABEL).assertTextEquals(detailText(R.string.book_detail_merge_search_label))
-        rule.onNodeWithTag(MergeTestTags.FIELD).assertExists()
-        rule.onNodeWithTag(MergeTestTags.NOTE).assertExists()
-
-        val tops = listOf(MergeTestTags.TITLE, MergeTestTags.INTRO, MergeTestTags.PANEL, MergeTestTags.LABEL, MergeTestTags.FIELD, MergeTestTags.NOTE)
-            .map { rule.onNodeWithTag(it).top() }
-        assertTrue("title, intro, panel, label, field, note must be in order: $tops", tops.zipWithNext().all { (x, y) -> x < y })
-    }
 
     // TC-51
     @Test

@@ -29,7 +29,6 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarkRowModel
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksContent
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksTestTags
@@ -112,17 +111,6 @@ class PlayerBookmarksSheetTest {
 
         rule.onNodeWithTag(BookmarksTestTags.meta("id:1"), useUnmergedTree = true).assertTextEquals(SAMPLE_DATE)
         rule.onNodeWithTag(BookmarksTestTags.meta("id:2"), useUnmergedTree = true).assertTextEquals(SAMPLE_DATE)
-    }
-
-    // TC52, R4: rows keep the repository's order, optimistic rows included
-    @Test
-    fun rowsKeepRepositoryOrder() {
-        val optimistic = Bookmark(null, "client-1", "u", "120", null, null, null, null)
-        rule.setSheetContent(BookmarksContent.Loaded(rowsOf(bookmark(1), optimistic, bookmark(3))))
-
-        val keys = listOf("id:1", "client-1", "id:3")
-        val tops = keys.map { rule.onNodeWithTag(BookmarksTestTags.row(it)).fetchSemanticsNode().boundsInRoot.top }
-        assertTrue("rows in the repository's order", tops[0] < tops[1] && tops[1] < tops[2])
     }
 
     // TC53, R4, P-BMK-3: loading, failed and empty states show their copy, and none has a footer

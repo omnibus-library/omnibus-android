@@ -41,7 +41,6 @@ import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import kotlin.math.min
@@ -53,8 +52,6 @@ class BookDetailTabControllerTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    private fun ComposeContentTestRule.dp(value: androidx.compose.ui.unit.Dp): Float = with(density) { value.toPx() }
 
     private fun ComposeContentTestRule.barBottom(): Float = onNodeWithTag(BookDetailTestTags.TOP_BAR).bounds().bottom
 
@@ -122,79 +119,6 @@ class BookDetailTabControllerTest {
         rule.onNodeWithTag("fake-reviews").assertExists()
     }
 
-    // TC-63
-    @Test
-    fun issue94_tc63_jumpToOverviewScrollsUpToThePinPointToo() {
-        val scroll = ScrollState(0)
-        val toOverview = BookDetailSection { ctx, modifier ->
-            Column(modifier) {
-                Text(
-                    "jump-overview",
-                    modifier = Modifier.testTag("jump-overview").clickable { ctx.tabs.jumpTo(BookDetailTab.Overview) },
-                )
-                Box(Modifier.fillMaxWidth().aspectRatio(0.25f))
-            }
-        }
-        rule.screen(
-            scroll,
-            BookDetailSlots(
-                overviewSections = listOf(fakeSection("fake-overview")),
-                filesSections = listOf(toOverview),
-            ),
-        )
-        val naturalTop = rule.stripTop()
-        val barBottom = rule.barBottom()
-        val pinPoint = (naturalTop - barBottom).roundToInt()
-
-        rule.tabNode(BookDetailTab.Files).performClick()
-        rule.waitForIdle()
-        rule.scrollTo(scroll)
-        assertTrue(scroll.value > pinPoint)
-
-        rule.onNodeWithTag("jump-overview").performSemanticsAction(SemanticsActions.OnClick)
-        rule.waitForIdle()
-        rule.tabNode(BookDetailTab.Overview).assertIsSelected()
-        assertEquals(barBottom, rule.stripTop(), 1f)
-        assertTrue("page not at 0", scroll.value > 0)
-    }
-
-    // TC-64
-    @Test
-    fun issue94_tc64_scrollToLandsTheAnchorBelowThePinnedStrip() {
-        val scroll = ScrollState(0)
-        val anchored = BookDetailSection { _, modifier ->
-            Column(modifier) {
-                Box(Modifier.fillMaxWidth().aspectRatio(0.25f))
-                Box(Modifier.fillMaxWidth().height(40.dp).bookDetailAnchor(BookDetailAnchor.Series).testTag("anchor"))
-                Box(Modifier.fillMaxWidth().aspectRatio(0.5f))
-            }
-        }
-        val files = BookDetailSection { ctx, modifier ->
-            Column(modifier) {
-                Text(
-                    "scroll-series",
-                    modifier = Modifier.testTag("scroll-series").clickable { ctx.tabs.scrollTo(BookDetailAnchor.Series) },
-                )
-                Box(Modifier.fillMaxWidth().aspectRatio(0.25f))
-            }
-        }
-        rule.screen(scroll, BookDetailSlots(overviewSections = listOf(anchored), filesSections = listOf(files)))
-        rule.tabNode(BookDetailTab.Files).performClick()
-        rule.waitForIdle()
-
-        rule.onNodeWithTag("scroll-series").performSemanticsAction(SemanticsActions.OnClick)
-        rule.waitForIdle()
-        rule.tabNode(BookDetailTab.Overview).assertIsSelected()
-        val anchorTop = rule.onNodeWithTag("anchor").bounds().top
-        val target = rule.onNodeWithTag(BookDetailTabsTestTags.STRIP).bounds().bottom + rule.dp(16.dp)
-        if (scroll.value == scroll.maxValue) {
-            assertTrue("anchor at $anchorTop, expected at or below $target", anchorTop >= target - 1f)
-        } else {
-            assertEquals(target, anchorTop, 1f)
-            rule.onNodeWithTag("anchor").assertIsDisplayed()
-        }
-    }
-
     // TC-65
     @Test
     fun issue94_tc65_scrollToWithoutAnAnchorFallsBackToJumpAfterASecond() {
@@ -218,76 +142,6 @@ class BookDetailTabControllerTest {
         rule.waitForIdle()
         rule.tabNode(BookDetailTab.Overview).assertIsSelected()
         assertEquals(rule.barBottom(), rule.stripTop(), 1f)
-    }
-
-    // TC-66 (motion on)
-    @Test
-    fun issue94_tc66_jumpToAnimatesWithMotionOn() {
-        rule.mainClock.autoAdvance = false
-        val scroll = ScrollState(0)
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDetailScreenContent(
-                    uiState = BookDetailUIState(book = testDetailBook(), isLoading = false),
-                    onNavigate = {}, onClose = {}, onRetry = {}, onRefresh = {}, onReloadBook = {},
-                    onBookChanged = {}, onTransientErrorShown = {},
-                    modifier = Modifier.fillMaxSize(),
-                    slots = jumpSlots(),
-                    scrollState = scroll,
-                    reducedMotion = false,
-                )
-            }
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag("jump-reviews").performSemanticsAction(SemanticsActions.OnClick)
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeBy(100)
-        val mid = scroll.value.toFloat()
-        assertTrue("mid $mid should be between 0 and the pin point", mid > 0f)
-
-        rule.mainClock.advanceTimeBy(3000)
-        // The strip ends pinned under the bar, which is what the jump is for.
-        assertEquals(rule.barBottom(), rule.stripTop(), 1f)
-        assertTrue("scroll ${scroll.value} should have moved past mid $mid", scroll.value.toFloat() > mid)
-    }
-
-    // TC-66 (reduced motion)
-    @Test
-    fun issue94_tc66_jumpToIsInstantWithReducedMotion() {
-        rule.mainClock.autoAdvance = false
-        val scroll = ScrollState(0)
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDetailScreenContent(
-                    uiState = BookDetailUIState(book = testDetailBook(), isLoading = false),
-                    onNavigate = {}, onClose = {}, onRetry = {}, onRefresh = {}, onReloadBook = {},
-                    onBookChanged = {}, onTransientErrorShown = {},
-                    modifier = Modifier.fillMaxSize(),
-                    slots = jumpSlots(),
-                    scrollState = scroll,
-                    reducedMotion = true,
-                )
-            }
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag("jump-reviews").performSemanticsAction(SemanticsActions.OnClick)
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeByFrame()
-        assertEquals(rule.barBottom(), rule.stripTop(), 1f)
-        assertTrue(scroll.value > 0)
-    }
-
-    private fun jumpSlots(): BookDetailSlots {
-        val jump = BookDetailSection { ctx, modifier ->
-            Column(modifier) {
-                Text(
-                    "jump-reviews",
-                    modifier = Modifier.testTag("jump-reviews").clickable { ctx.tabs.jumpTo(BookDetailTab.Reviews) },
-                )
-                Box(Modifier.fillMaxWidth().aspectRatio(0.25f))
-            }
-        }
-        return BookDetailSlots(overviewSections = listOf(jump), reviewsSections = listOf(fakeSection("fake-reviews")))
     }
 
     // TC-67

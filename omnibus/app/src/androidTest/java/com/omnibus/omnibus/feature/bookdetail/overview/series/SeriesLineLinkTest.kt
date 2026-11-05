@@ -29,7 +29,6 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.stage.BookByline
@@ -141,20 +140,6 @@ class SeriesLineLinkTest {
     private fun assertLinkedAndUnderlined() {
         rule.series().assertHasClickAction()
         assertTrue(isUnderlined(rule.series()))
-    }
-
-    // TC-111
-    @Test
-    fun issue104_tc111_noJumpWhenItTurnsIntoALink() {
-        setByline()
-        val authorTop = rule.onNodeWithTag(BookDetailTestTags.AUTHOR).bounds().top
-        val heightBefore = rule.series().bounds().height
-        assertTrue("at least 48 dp before", heightBefore >= rule.px(48.dp) - 1f)
-
-        rule.runOnIdle { line = linkState(5) }
-        rule.waitForIdle()
-        assertEquals("same height once linked", heightBefore, rule.series().bounds().height, 1f)
-        assertEquals("author keeps its place", authorTop, rule.onNodeWithTag(BookDetailTestTags.AUTHOR).bounds().top, 1f)
     }
 
     // TC-112

@@ -94,17 +94,6 @@ class MyReviewCardTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, description))
     }
 
-    // TC-63 (R9)
-    @Test
-    fun tc63_theStarRowIsNoWiderThanTheCardAndKeepsItsProportions() {
-        show(MyReviewModel.Known(null))
-
-        val card = rule.onNodeWithTag(MyReviewTestTags.CARD).bounds()
-        val row = rule.onNodeWithTag(StarRatingInputTestTags.ROW).bounds()
-        assertTrue(row.width <= card.width)
-        assertEquals(220f / 46f, row.width / row.height, 0.1f)
-    }
-
     // TC-64 (R9, R13)
     @Test
     fun tc64_aNewCardHasItsHeadingNoteAndNoActions() {

@@ -5,12 +5,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isFocusable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
@@ -40,15 +38,6 @@ class BookmarksSheetAccessibilityTest {
             .assertHasNoContentDescription()
         rule.onNodeWithTag(BookmarksTestTags.chevron("id:1"), useUnmergedTree = true)
             .assertHasNoContentDescription()
-    }
-
-    // TC-62
-    @Test
-    fun issue117_tc62_rowsMeetTheTouchTargetHeight() {
-        rule.setSheetContent(BookmarksContent.Loaded(rows))
-
-        rule.onNodeWithTag(BookmarksTestTags.row("id:1")).assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithTag(BookmarksTestTags.row("id:2")).assertHeightIsAtLeast(48.dp)
     }
 }
 

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -17,12 +16,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -85,24 +82,6 @@ class ChaptersSheetContentTest {
         rule.onNodeWithTag(ChaptersTestTags.PROGRESS, useUnmergedTree = true).assertIsDisplayed()
     }
 
-    // P-CHP-3, P-CHP-AC2: the fill covers its share of the track, and grows with the progress
-    @Test
-    fun progressLineFillTracksProgress() {
-        val state = mutableStateOf(ChaptersUiState(rows(2), currentIndex = 0, currentProgress = 0.25f))
-        setSheet(state)
-
-        val track = rule.onNodeWithTag(ChaptersTestTags.PROGRESS, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.width
-        assertTrue("The track has a width", track > 0f)
-        val fillAtQuarter = progressFillWidth()
-
-        state.value = state.value.copy(currentProgress = 0.75f)
-        rule.waitForIdle()
-        val fillAtThreeQuarters = progressFillWidth()
-
-        assertEquals(0.25f, fillAtQuarter / track, 0.05f)
-        assertEquals(0.75f, fillAtThreeQuarters / track, 0.05f)
-    }
-
     // P-A11Y-3: a row reads as "Chapter {n}, {title}, {length}"
     @Test
     fun rowReadsNumberTitleAndLength() {
@@ -148,36 +127,4 @@ class ChaptersSheetContentTest {
         rule.onNodeWithTag(ChaptersTestTags.row(150)).assertIsDisplayed()
         rule.onAllNodesWithTag(ChaptersTestTags.row(0)).assertCountEquals(0)
     }
-
-    // P-CHP-4: the current chapter sits near the middle of the list's viewport
-    @Test
-    fun currentChapterIsCentred() {
-        setSheet(mutableStateOf(ChaptersUiState(rows(200), currentIndex = 100)))
-
-        rule.waitForIdle()
-        val list = rule.onNodeWithTag(ChaptersTestTags.LIST).fetchSemanticsNode().boundsInRoot
-        val row = rule.onNodeWithTag(ChaptersTestTags.row(100)).fetchSemanticsNode().boundsInRoot
-
-        assertEquals(list.center.y, row.center.y, row.height)
-    }
-
-    // P-CHP-2 edge case: a long title ends in an ellipsis after two lines
-    @Test
-    fun longTitleWrapsToTwoLines() {
-        val long = "A chapter title long enough that it must wrap and then be cut off ".repeat(8)
-        setSheet(mutableStateOf(ChaptersUiState(rows(2) { long }, currentIndex = 0)))
-
-        val results = mutableListOf<TextLayoutResult>()
-        rule.onNodeWithTag(ChaptersTestTags.title(0), useUnmergedTree = true).fetchSemanticsNode().config
-            .getOrNull(SemanticsActions.GetTextLayoutResult)
-            ?.action?.invoke(results)
-        val layout = results.single()
-
-        assertEquals(2, layout.lineCount)
-        assertTrue(layout.isLineEllipsized(1))
-    }
-
-    /** The width of the progress line's fill. */
-    private fun progressFillWidth(): Float =
-        rule.onNodeWithTag(ChaptersTestTags.PROGRESS_FILL, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.width
 }

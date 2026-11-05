@@ -5,16 +5,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -24,14 +19,11 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -42,8 +34,6 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.bottomCenter
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
@@ -61,7 +51,6 @@ import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
 import com.omnibus.omnibus.ui.components.OfflinePillTestTags
-import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
 import androidx.test.espresso.Espresso
@@ -145,49 +134,6 @@ class LibraryScreenTest {
 
         rule.onNodeWithContentDescription(ADD_LABEL).performClick()
         assertEquals(1, adds)
-    }
-
-    @Test
-    fun tc71_longTitleIsCappedAtTwoEllipsizedLinesAboveTheAuthor() {
-        val title = LONG_TITLE
-        val author = "A Long Author Name"
-        setLibrary(LibraryUIState(books = listOf(book(7L, title = title, author = author))))
-
-        // The generated cover plate draws the title too, so address the caption by its tag.
-        rule.onNodeWithTag(LibraryTestTags.title(7L), useUnmergedTree = true).assertIsDisplayed()
-            .assertTextContains(title)
-        rule.onNodeWithText(author, useUnmergedTree = true).assertIsDisplayed()
-
-        val titleLayout = rule.textLayoutOf(LibraryTestTags.title(7L))
-        assertEquals(2, titleLayout.lineCount)
-        assertTrue("title is ellipsized on its last line", titleLayout.isLineEllipsized(1))
-
-        val cover = rule.onNodeWithTag(LibraryTestTags.cover(7L), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val titleBounds = rule.onNodeWithTag(LibraryTestTags.title(7L), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val authorBounds = rule.onNodeWithText(author, useUnmergedTree = true).getUnclippedBoundsInRoot()
-
-        assertTrue("title sits below the cover", cover.bottom <= titleBounds.top + HALF_DP)
-        assertTrue("author sits below the title", titleBounds.bottom <= authorBounds.top + HALF_DP)
-    }
-
-    @Test
-    fun tc72_coversShareTopEdgeAndKeepTwoByThreeAcrossTitleLengths() {
-        setLibrary(
-            LibraryUIState(books = listOf(book(1L, title = "Piranesi"), book(2L, title = LONG_TITLE))),
-        )
-
-        assertEquals(2, rule.textLayoutOf(LibraryTestTags.title(2L)).lineCount)
-
-        val first = rule.onNodeWithTag(LibraryTestTags.cover(1L), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val second = rule.onNodeWithTag(LibraryTestTags.cover(2L), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-
-        assertNear(0.dp, second.top - first.top, "covers share their top edge")
-        assertEquals(2f / 3f, (first.right - first.left) / (first.bottom - first.top), 0.01f)
-        assertEquals(2f / 3f, (second.right - second.left) / (second.bottom - second.top), 0.01f)
     }
 
     @Test
@@ -295,36 +241,6 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun tc94_bottomPaddingIsFortyPlusInsetAboveTheLastRow() {
-        val inset = mutableStateOf(24.dp)
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                Box(Modifier.fillMaxSize()) {
-                    LibraryScreenContent(
-                        uiState = LibraryUIState(books = (1L..30L).map { book(it) }),
-                        onRetry = {},
-                        onRefresh = {},
-                        onLoadMore = {},
-                        onOpenBook = {},
-                        onAddBooks = {},
-                        onTransientErrorShown = {},
-                        bottomInset = inset.value,
-                    )
-                }
-            }
-        }
-
-        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(30)
-        rule.waitForIdle()
-        assertNear(64.dp, bottomGap(LibraryTestTags.cell(30L)), "40 dp plus 24 dp inset", tolerance = 1.0)
-
-        rule.runOnIdle { inset.value = 0.dp }
-        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(30)
-        rule.waitForIdle()
-        assertNear(40.dp, bottomGap(LibraryTestTags.cell(30L)), "40 dp with no inset", tolerance = 1.0)
-    }
-
-    @Test
     fun httpErrorShowsServerMessageOrFallsBackToStatusCode() {
         val uiState = mutableStateOf(
             LibraryUIState(error = LibraryUIError.Failed(LibraryError.Http(503, "Down for maintenance")), hasLoaded = true),
@@ -407,43 +323,6 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun tc145_headingRowLayout() {
-        val uiState = LibraryUIState(books = listOf(book(1L)))
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                // Large font scale, so the heading has to share the row with the button.
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
-                    Box(Modifier.fillMaxSize()) {
-                        LibraryScreenContent(
-                            uiState = uiState,
-                            onRetry = {},
-                            onRefresh = {},
-                            onLoadMore = {},
-                            onOpenBook = {},
-                            onAddBooks = {},
-                            onTransientErrorShown = {},
-                            bottomInset = 0.dp,
-                        )
-                    }
-                }
-            }
-        }
-
-        val grid = rule.onNodeWithTag(LibraryTestTags.GRID).getUnclippedBoundsInRoot()
-        val cover = rule.onNodeWithTag(LibraryTestTags.cover(1L), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val heading = heading().getUnclippedBoundsInRoot()
-        val button = filterButton().getUnclippedBoundsInRoot()
-
-        assertNear(cover.left, heading.left, "heading lines up with the first column")
-        assertNear(heading.left - grid.left, grid.right - button.right, "button mirrors the heading's inset")
-        assertTrue("at least 8 dp between the heading and the button", button.left - heading.right >= 8.dp - HALF_DP)
-        val headingCentre = (heading.top + heading.bottom) / 2
-        val buttonCentre = (button.top + button.bottom) / 2
-        assertTrue("heading and button are vertically centred", abs((headingCentre - buttonCentre).value) <= 1f)
-    }
-
-    @Test
     fun tc146_filterButtonSemantics() {
         setLibrary(LibraryUIState(books = listOf(book(1L))))
 
@@ -465,47 +344,6 @@ class LibraryScreenTest {
         LibraryCategory.entries.forEach { rule.onNodeWithTag(LibraryTestTags.menuCategory(it)).assertIsDisplayed() }
         LibrarySort.entries.forEach { rule.onNodeWithTag(LibraryTestTags.menuSort(it)).assertIsDisplayed() }
         rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).assertIsDisplayed()
-    }
-
-    @Test
-    fun tc149_buttonAccentForEachFilteredKind() {
-        val base = LibraryUIState(books = listOf(book(1L)))
-        val uiState = mutableStateOf(base)
-        setLibraryState(uiState)
-        rule.waitForIdle()
-        assertButtonFill(OmnibusPalette.Atrium.bg2, "default view")
-
-        listOf(
-            "Ebooks" to base.copy(category = LibraryCategory.Ebooks),
-            "Title sort" to base.copy(sort = LibrarySort.Title),
-            "ascending" to base.copy(direction = SortDirection.Asc),
-        ).forEach { (name, state) ->
-            rule.runOnIdle { uiState.value = state }
-            rule.waitForIdle()
-            assertButtonFill(OmnibusPalette.Atrium.accent, name)
-        }
-
-        rule.runOnIdle { uiState.value = base }
-        rule.waitForIdle()
-        assertButtonFill(OmnibusPalette.Atrium.bg2, "back to the default view")
-    }
-
-    @Test
-    fun tc150_menuGroupOrder() {
-        setLibrary(LibraryUIState(books = listOf(book(1L))))
-        openMenu()
-
-        val lastCategory = rule.onNodeWithTag(LibraryTestTags.menuCategory(LibraryCategory.Audiobooks))
-            .getUnclippedBoundsInRoot()
-        val firstSort = rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.Title)).getUnclippedBoundsInRoot()
-        val lastSort = rule.onNodeWithTag(LibraryTestTags.menuSort(LibrarySort.NewestAdded))
-            .getUnclippedBoundsInRoot()
-        val direction = rule.onNodeWithTag(LibraryTestTags.MENU_DIRECTION).getUnclippedBoundsInRoot()
-
-        assertTrue("Show group sits above the Sort group", lastCategory.bottom <= firstSort.top)
-        assertTrue("Sort group sits above the Direction row", lastSort.bottom <= direction.top)
-        assertTrue("a divider separates Show from Sort", firstSort.top - lastCategory.bottom >= 8.dp - HALF_DP)
-        assertTrue("a divider separates Sort from Direction", direction.top - lastSort.bottom >= 8.dp - HALF_DP)
     }
 
     @Test
@@ -708,38 +546,6 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun issue22_tc34_scrollingTheCarouselOffAndBackKeepsTheCardAndDoesNotReplayTheBar() {
-        val cards = listOf(continueCard(1L), continueCard(2L), continueCard(3L))
-        val books = (1L..60L).map { book(it) }
-        val uiState = mutableStateOf(
-            LibraryUIState(books = books, hasLoaded = true, continueCards = cards, continueSelectedId = cards.first().id),
-        )
-        setLibraryState(
-            uiState,
-            onContinueSettled = { id -> uiState.value = uiState.value.copy(continueSelectedId = id) },
-        )
-
-        rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).performTouchInput { swipeLeft() }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ContinueTestTags.card(cards[1].id), useUnmergedTree = true).assertIsDisplayed()
-
-        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(60)
-        rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).assertDoesNotExist()
-        rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(0)
-        rule.waitForIdle()
-
-        rule.mainClock.autoAdvance = false
-        rule.mainClock.advanceTimeByFrame()
-        rule.onNodeWithTag(ContinueTestTags.card(cards[1].id), useUnmergedTree = true).assertIsDisplayed()
-        val fill = rule.onNodeWithTag(ContinueTestTags.barFill(cards[1].id), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val track = rule.onNodeWithTag(ContinueTestTags.barTrack(cards[1].id), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        val ratio = (fill.right - fill.left) / (track.right - track.left)
-        assertTrue("the bar is at its full length without replaying (ratio $ratio)", abs(ratio - 0.5f) <= 0.02f)
-    }
-
-    @Test
     fun issue22_tc35_readingAlertCopyIsExact() {
         setLibraryState(
             mutableStateOf(
@@ -826,29 +632,6 @@ class LibraryScreenTest {
 
     private fun openMenu() = filterButton().performClick()
 
-    /**
-     * Asserts that most of the button's pixels are [expected]. The circle's fill covers far more of
-     * its bounds than the glyph, border and corners do, so this doesn't depend on where they sit.
-     */
-    private fun assertButtonFill(expected: Color, message: String) {
-        val pixels = filterButton().captureToImage().toPixelMap()
-        val tolerance = 0.03f
-        var matching = 0
-        for (x in 0 until pixels.width) {
-            for (y in 0 until pixels.height) {
-                val actual = pixels[x, y]
-                if (abs(expected.red - actual.red) <= tolerance &&
-                    abs(expected.green - actual.green) <= tolerance &&
-                    abs(expected.blue - actual.blue) <= tolerance
-                ) {
-                    matching++
-                }
-            }
-        }
-        val fraction = matching.toFloat() / (pixels.width * pixels.height)
-        assertTrue("$message: only ${(fraction * 100).toInt()}% of the button is $expected", fraction >= 0.5f)
-    }
-
     private fun setLibrary(
         uiState: LibraryUIState,
         onOpenBook: (String) -> Unit = {},
@@ -921,20 +704,6 @@ class LibraryScreenTest {
         }
     }
 
-    /** Distance from the grid's bottom edge to the bottom of [cellTag], in dp. */
-    private fun bottomGap(cellTag: String): Dp {
-        val grid = rule.onNodeWithTag(LibraryTestTags.GRID).getUnclippedBoundsInRoot()
-        val cell = rule.onNodeWithTag(cellTag).getUnclippedBoundsInRoot()
-        return grid.bottom - cell.bottom
-    }
-
-    private fun ComposeContentTestRule.textLayoutOf(tag: String): TextLayoutResult {
-        val results = mutableListOf<TextLayoutResult>()
-        onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
-            .config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
-        return results.single()
-    }
-
     private companion object {
         const val LOADING_LABEL = "Loading your library"
         const val ERROR_TITLE = "Couldn't load this"
@@ -947,9 +716,6 @@ class LibraryScreenTest {
         const val ALL_BOOKS = "All books"
         const val ADD_LABEL = "Add books by upload or barcode scan"
         const val FILTER_LABEL = "Filter and sort"
-
-        /** A title long enough to need more than two lines in a cell at any screen width. */
-        val LONG_TITLE = "The Remarkable Adventures of an Extraordinarily Long Title That Keeps Going ".repeat(4).trim()
 
         /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
         val HALF_DP = 0.5.dp

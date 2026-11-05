@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,10 +13,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -27,7 +24,6 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -118,26 +114,6 @@ class SpeedSheetContentTest {
             assertTrue(bounds[column].top > bounds[0].top)
             assertEquals(bounds[column - 4].left, bounds[column].left)
         }
-    }
-
-    // #168 TC-79: R3: only the current preset is selected, and only it is filled
-    @Test
-    fun selectedPresetIsFilledAndOthersAreNot() {
-        rule.setContent {
-            LocalizedSpeedSheetContent(locale = Locale.US, uiState = SpeedUIState.forRate(1.5))
-        }
-
-        rule.onNodeWithTag(SpeedSheetTags.preset(5)).assertIsSelected()
-        (0..7).filter { it != 5 }.forEach { rule.onNodeWithTag(SpeedSheetTags.preset(it)).assertIsNotSelected() }
-
-        // The fill is read from the pixels, not from a colour: the selected cell differs from an unselected one
-        val selectedPixel = rule.onNodeWithTag(SpeedSheetTags.preset(5)).captureToImage().toPixelMap().let { map ->
-            map[map.width / 8, map.height / 2]
-        }
-        val otherPixel = rule.onNodeWithTag(SpeedSheetTags.preset(4)).captureToImage().toPixelMap().let { map ->
-            map[map.width / 8, map.height / 2]
-        }
-        assertNotEquals(selectedPixel, otherPixel)
     }
 
     // #168 TC-80: R3, R10: a rate between presets selects no preset

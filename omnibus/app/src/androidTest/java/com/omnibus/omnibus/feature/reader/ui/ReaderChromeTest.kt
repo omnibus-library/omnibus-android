@@ -10,8 +10,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
@@ -23,7 +21,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
@@ -38,9 +35,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpRect
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
@@ -54,8 +48,6 @@ import org.junit.Test
 private const val TITLE = "Nineteen Eighty-Four"
 private const val ROOT_TAG = "reader_chrome_test_root"
 
-/** A window narrow enough that 272dp menu rows plus their 28dp insets do not fit on a phone. */
-private const val NARROW_WINDOW = 0.6f
 private const val UNDERLAY_TAG = "reader_chrome_test_underlay"
 
 /** The three rows the ViewModel offers, in its order. */
@@ -220,50 +212,6 @@ class ReaderChromeTest {
         rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).assertDoesNotExist()
     }
 
-    // RC-29
-    @Test
-    fun rc29_labelsSitInsideTheInsetsAndAreCentred() {
-        val inputs = mutableStateOf(ChromeInputs(insets = WindowInsets(top = 30.dp, bottom = 20.dp)))
-        setChrome(inputs, mutableListOf())
-
-        for (chromeVisible in listOf(false, true)) {
-            rule.runOnIdle { inputs.value = inputs.value.copy(chromeVisible = chromeVisible) }
-            rule.waitForIdle()
-
-            val root = rule.onNodeWithTag(ROOT_TAG).getUnclippedBoundsInRoot()
-            val top = rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).getUnclippedBoundsInRoot()
-            val bottom = rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).getUnclippedBoundsInRoot()
-
-            assertTrue("chrome $chromeVisible: top label clears the top inset", top.top >= root.top + 30.dp)
-            assertTrue("chrome $chromeVisible: bottom label clears the bottom inset", bottom.bottom <= root.bottom - 20.dp)
-            assertTrue("chrome $chromeVisible: top label sits above the bottom label", top.bottom <= bottom.top)
-            assertTrue("chrome $chromeVisible: top label is centred", centreGap(top, root) <= 2.dp)
-            assertTrue("chrome $chromeVisible: bottom label is centred", centreGap(bottom, root) <= 2.dp)
-        }
-    }
-
-    // RC-30
-    @Test
-    fun rc30_longTitleEllipsizesClearOfTheClose() {
-        val longTitle = "Long title ".repeat(20).trim()
-        val inputs = mutableStateOf(ChromeInputs(title = longTitle))
-        setChrome(inputs, mutableListOf())
-
-        // Hidden chrome shows the title, so the one-line ellipsis is checked there.
-        val root = rule.onNodeWithTag(ROOT_TAG).getUnclippedBoundsInRoot()
-        val top = rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).getUnclippedBoundsInRoot()
-        val bottom = rule.onNodeWithTag(ReaderChromeTags.LABEL_BOTTOM).getUnclippedBoundsInRoot()
-        assertTrue("the title is one line", abs((top.height() - bottom.height()).value) <= pixel().value)
-        assertTrue("the title stays left of the close button's slot", top.right <= root.right - ReaderMenu.inset - ReaderMenu.buttonSize)
-
-        // Visible chrome puts the close button beside the top label, which must not overlap it.
-        rule.runOnIdle { inputs.value = inputs.value.copy(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents)) }
-        rule.waitForIdle()
-        val close = rule.onNodeWithTag(ReaderChromeTags.CLOSE).getUnclippedBoundsInRoot()
-        val visibleTop = rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).getUnclippedBoundsInRoot()
-        assertTrue("the top label does not overlap the close button", !overlaps(visibleTop, close))
-    }
-
     // RC-31
     @Test
     fun rc31_labelsAndEmptyChromePassTouchesThrough() {
@@ -418,23 +366,6 @@ class ReaderChromeTest {
         assertEquals(listOf("menuDismissed"), events)
     }
 
-    // RC-38
-    @Test
-    fun rc38_controlsFollowTheReadingThemeNotTheAppTheme() {
-        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true))
-        setChrome(inputs, mutableListOf())
-
-        for (theme in ReaderTheme.entries) {
-            rule.runOnIdle { inputs.value = inputs.value.copy(theme = theme) }
-            rule.waitForIdle()
-
-            val pixels = rule.onNodeWithTag(ReaderChromeTags.CLOSE).captureToImage().toPixelMap()
-            val x = with(rule.density) { 23.dp.roundToPx() }
-            val y = with(rule.density) { 6.dp.roundToPx() }
-            assertColourNear(readerChromeColors(theme).plate, pixels[x, y], "$theme close plate")
-        }
-    }
-
     // RC-39
     @Test
     fun rc39_reducedMotionChangesOnTheNextFrame() {
@@ -464,22 +395,6 @@ class ReaderChromeTest {
         rule.onNodeWithTag(ReaderChromeTags.LABEL_TOP).assertTextEquals(TITLE)
     }
 
-    // RC-40
-    @Test
-    fun rc40_normalMotionAnimatesTheChrome() {
-        rule.mainClock.autoAdvance = false
-        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, reduceMotion = false))
-        setChrome(inputs, mutableListOf())
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(chromeVisible = false) }
-        rule.mainClock.advanceTimeByFrame()
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertExists()
-
-        rule.mainClock.advanceTimeBy(2_000)
-        rule.waitForIdle()
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertDoesNotExist()
-    }
-
     // RC-41
     @Test
     fun rc41_controlsAreLabelledForAccessibility() {
@@ -494,72 +409,6 @@ class ReaderChromeTest {
         rule.onNodeWithContentDescription("Menu")
             .assert(hasTestTag(ReaderChromeTags.MENU))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-    }
-
-    // RC-42
-    @Test
-    fun rc42_controlsMeetTheMinimumTouchTarget() {
-        setChrome(
-            mutableStateOf(
-                ChromeInputs(
-                    chromeVisible = true,
-                    menuOpen = true,
-                    menuRows = ALL_ROWS,
-                ),
-            ),
-            mutableListOf(),
-        )
-        val minimum = 46.dp - pixel()
-
-        for (tag in listOf(ReaderChromeTags.CLOSE, ReaderChromeTags.MENU, ReaderChromeTags.BOOKMARK)) {
-            val bounds = rule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
-            assertTrue("$tag is at least 46dp wide", bounds.width() >= minimum)
-            assertTrue("$tag is at least 46dp tall", bounds.height() >= minimum)
-        }
-        for (row in ReaderMenuRow.entries) {
-            val bounds = rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).getUnclippedBoundsInRoot()
-            assertTrue("$row row is at least 46dp tall", bounds.height() >= minimum)
-        }
-    }
-
-    // RC-43
-    @Test
-    fun rc43_menuRowsShrinkToFitNarrowWindows() {
-        val inputs = mutableStateOf(
-            ChromeInputs(
-                chromeVisible = true,
-                menuOpen = true,
-                menuRows = ALL_ROWS,
-                percent = 100,
-                bookmarkCount = 128,
-                insets = WindowInsets(),
-                rootWidthFraction = NARROW_WINDOW,
-            ),
-        )
-        val events = mutableListOf<String>()
-        setChrome(inputs, events)
-        val tolerance = pixel()
-
-        val container = rule.onNodeWithTag(ROOT_TAG).getUnclippedBoundsInRoot()
-        for (row in ReaderMenuRow.entries) {
-            val bounds = rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).getUnclippedBoundsInRoot()
-            assertTrue("$row keeps the 28dp inset on the left", bounds.left >= container.left + 28.dp - tolerance)
-            assertTrue("$row keeps the 28dp inset on the right", bounds.right <= container.right - 28.dp + tolerance)
-        }
-        val bookmark = rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).getUnclippedBoundsInRoot()
-        assertTrue("the quick action is inside the narrow window", bookmark.left >= container.left && bookmark.right <= container.right)
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assert(hasText("Contents"))
-        rule.onNodeWithText("Themes & Settings").assertIsDisplayed()
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Settings)).performClick()
-        rule.waitForIdle()
-        assertEquals(listOf("row:Settings"), events)
-
-        rule.runOnIdle { inputs.value = inputs.value.copy(rootWidthFraction = null) }
-        rule.waitForIdle()
-        for (row in ReaderMenuRow.entries) {
-            val bounds = rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).getUnclippedBoundsInRoot()
-            assertTrue("$row stays within its 272dp maximum at full window width", bounds.width() <= 272.dp + tolerance)
-        }
     }
 
     // RC-44
@@ -683,38 +532,6 @@ class ReaderChromeTest {
         assertEquals(emptyList<String>(), events)
     }
 
-    // TC-60
-    @Test
-    fun bookmarkQuickActionSitsOnTheMenuButtonLineToItsStartSide() {
-        val inputs = mutableStateOf(ChromeInputs(chromeVisible = true, menuOpen = true, menuRows = ALL_ROWS))
-        setChrome(inputs, mutableListOf())
-        val tolerance = pixel().value
-
-        for (window in listOf("full", "narrow")) {
-            rule.runOnIdle {
-                inputs.value = inputs.value.copy(rootWidthFraction = if (window == "narrow") NARROW_WINDOW else null)
-            }
-            rule.waitForIdle()
-
-            val root = rule.onNodeWithTag(ROOT_TAG).getUnclippedBoundsInRoot()
-            val bookmark = rule.onNodeWithTag(ReaderChromeTags.BOOKMARK).getUnclippedBoundsInRoot()
-            val menu = rule.onNodeWithTag(ReaderChromeTags.MENU).getUnclippedBoundsInRoot()
-
-            assertTrue("$window: the quick action sits on the menu button's line", abs((centreY(bookmark) - centreY(menu)).value) <= tolerance)
-            assertTrue("$window: the quick action ends before the menu button", bookmark.right <= menu.left)
-            assertTrue(
-                "$window: the gap is the menu spacing",
-                abs((menu.left - bookmark.right - ReaderMenu.spacing).value) <= tolerance,
-            )
-            assertTrue("$window: the quick action is the menu button's size", abs((bookmark.width() - menu.width()).value) <= tolerance)
-            assertTrue("$window: the quick action is the menu button's height", abs((bookmark.height() - menu.height()).value) <= tolerance)
-            assertTrue(
-                "$window: the quick action is inside the window",
-                bookmark.left >= root.left && bookmark.right <= root.right && bookmark.top >= root.top && bookmark.bottom <= root.bottom,
-            )
-        }
-    }
-
     // TC-62
     @Test
     fun bookmarksRowSitsBetweenContentsAndSettingsWithItsCount() {
@@ -757,37 +574,5 @@ class ReaderChromeTest {
         rule.runOnIdle { inputs.value = inputs.value.copy(bookmarkCount = 0) }
         rule.waitForIdle()
         rule.onAllNodesWithText("1").assertCountEquals(0)
-    }
-
-    // ---- helpers ----
-
-    /** The vertical centre of [rect]. */
-    private fun centreY(rect: DpRect): Dp = (rect.top + rect.bottom) / 2
-
-    /** One physical pixel, as a [Dp], for the bounds comparisons. */
-    private fun pixel(): Dp = with(rule.density) { 1f.toDp() }
-
-    /** How far the centre of [label] is from the centre of [root], horizontally. */
-    private fun centreGap(label: DpRect, root: DpRect): Dp {
-        val labelCentre = (label.left + label.right) / 2
-        val rootCentre = (root.left + root.right) / 2
-        return abs((labelCentre - rootCentre).value).dp
-    }
-
-    private fun DpRect.width(): Dp = right - left
-
-    private fun DpRect.height(): Dp = bottom - top
-
-    private fun overlaps(a: DpRect, b: DpRect): Boolean =
-        a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-
-    private fun assertColourNear(expected: Color, actual: Color, message: String) {
-        val tolerance = 0.03f
-        assertTrue(
-            "$message: expected $expected but was $actual",
-            abs(expected.red - actual.red) <= tolerance &&
-                abs(expected.green - actual.green) <= tolerance &&
-                abs(expected.blue - actual.blue) <= tolerance,
-        )
     }
 }

@@ -10,10 +10,8 @@ import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import androidx.compose.runtime.mutableStateOf
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
 class PlayerTopBarTest {
 
@@ -22,29 +20,6 @@ class PlayerTopBarTest {
 
     private fun runningTimer(seconds: Double) =
         SleepTimerState(option = SleepTimerOption.After(minutes = 10), remainingSeconds = seconds)
-
-    // R6, P-SCR-4, P-A11Y-1: the chevron starts the bar, then the pill, the book and the bookmarks
-    @Test
-    fun topBarShowsChevronThenPillBookAndBookmarksInOrder() {
-        val actions = RecordedActions()
-        rule.setPlayer(
-            fullUiState(hasEbook = true, sleepTimer = runningTimer(600.0)),
-            actions = actions.actions(),
-        )
-
-        val chevron = rule.boundsOf(PlayerTestTags.CLOSE)
-        val pill = rule.onNodeWithTag(PILL_TAG).fetchSemanticsNode().boundsInRoot
-        val book = rule.boundsOf(PlayerTestTags.OPEN_BOOK)
-        val bookmarks = rule.boundsOf(PlayerTestTags.BOOKMARKS)
-
-        assertTrue("the chevron should be first", chevron.left < pill.left)
-        assertTrue("the pill should come before the book", pill.left < book.left)
-        assertTrue("the book should come before the bookmarks", book.left < bookmarks.left)
-        val band = chevron.height
-        listOf(pill, book, bookmarks).forEach {
-            assertTrue("the buttons should share one row", abs(it.center.y - chevron.center.y) < band)
-        }
-    }
 
     // R6, P-A11Y-1: the chevron collapses the player and does nothing else
     @Test

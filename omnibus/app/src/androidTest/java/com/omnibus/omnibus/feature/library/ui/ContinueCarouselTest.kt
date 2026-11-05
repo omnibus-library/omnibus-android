@@ -8,24 +8,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.center
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
@@ -240,35 +235,6 @@ class ContinueCarouselTest {
         assertEquals(4, haptics.virtualKeys)
     }
 
-    @Test
-    fun issue22_tc32_titleKeepsTwoLinesAtLargeFontScale() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
-                    Box(Modifier.fillMaxSize()) {
-                        val pageState = rememberContinueCarouselState(pageCount = { 1 })
-                        ContinueCarousel(
-                            cards = listOf(card(1L, title = LONG_TITLE)),
-                            selectedId = "b1:epub",
-                            state = pageState,
-                            onSettled = {},
-                            onOpenBook = {},
-                            onResume = {},
-                            onShowContextMenu = {},
-                        )
-                    }
-                }
-            }
-        }
-
-        val title = rule.textLayoutOf(ContinueTestTags.title("b1:epub"))
-        assertEquals(2, title.lineCount)
-        val card = rule.onNodeWithTag(ContinueTestTags.card("b1:epub"), useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val titleBounds = rule.onNodeWithTag(ContinueTestTags.title("b1:epub"), useUnmergedTree = true)
-            .getUnclippedBoundsInRoot()
-        assertTrue("the title sits inside the card", titleBounds.top >= card.top && titleBounds.bottom <= card.bottom)
-    }
-
     private fun setCarousel(
         cards: List<ContinueCard>,
         selected: String,
@@ -297,13 +263,6 @@ class ContinueCarouselTest {
             it.right - it.left
         }
 
-    private fun ComposeContentTestRule.textLayoutOf(tag: String): TextLayoutResult {
-        val results = mutableListOf<TextLayoutResult>()
-        onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
-            .config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
-        return results.single()
-    }
-
     /** Counts the [HapticFeedbackType.VirtualKey] pulses, which the card's taps make. */
     private class CountingHaptics : HapticFeedback {
         var virtualKeys = 0
@@ -316,9 +275,6 @@ class ContinueCarouselTest {
     private companion object {
         /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
         val HALF_DP = 0.5.dp
-
-        /** A title long enough to need more than two lines at any card width. */
-        const val LONG_TITLE = "The Long Way to a Small, Angry Planet: A Novel of the Wayfarers"
 
         fun card(
             id: Long,

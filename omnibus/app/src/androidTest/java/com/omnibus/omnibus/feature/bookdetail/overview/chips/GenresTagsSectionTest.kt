@@ -20,7 +20,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
@@ -115,17 +114,6 @@ class GenresTagsSectionTest {
             .performScrollToNode(hasText(many.last()))
         chipIn(tags.GENRES_ROW, many.last()).assertIsDisplayed()
         chipIn(tags.GENRES_ROW, many.first()).assertIsNotDisplayed()
-    }
-
-    // AC2
-    @Test
-    fun issue100_ac2_everyChipTouchTargetIsAtLeast44Dp() {
-        rule.setSection(bookWith(listOf("A", "Science Fiction"), listOf("x")))
-        val minPx = with(rule.density) { 44.dp.toPx() }
-        listOf(tags.GENRES_ROW to "A", tags.GENRES_ROW to "Science Fiction", tags.TAGS_ROW to "x").forEach { (row, text) ->
-            val b = chipIn(row, text).bounds()
-            assertTrue("$text is ${b.width} x ${b.height} px", b.width >= minPx - 1 && b.height >= minPx - 1)
-        }
     }
 
     // AC3

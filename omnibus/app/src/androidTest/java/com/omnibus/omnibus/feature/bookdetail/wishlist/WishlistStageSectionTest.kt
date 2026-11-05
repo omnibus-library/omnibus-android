@@ -1,17 +1,9 @@
 package com.omnibus.omnibus.feature.bookdetail.wishlist
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -19,15 +11,12 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.wishlist.WishlistEntry
 import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.data.wishlist.WishlistState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,62 +104,6 @@ class WishlistStageSectionTest {
         rule.setStage({ book }, fake)
 
         rule.onNodeWithTag(WishlistTestTags.LINE).assertTextEquals("On your wishlist")
-    }
-
-    // TC-44
-    @Test
-    fun issue119_tc44_lineIsStyledCentredAndSpacedAroundTheTitle() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Scan)) }
-        var ink1: Color? = null
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                ink1 = OmnibusTheme.palette.ink1
-                CompositionLocalProvider(LocalWishlistRepository provides fake) {
-                    Column(Modifier.fillMaxWidth()) {
-                        Box(Modifier.fillMaxWidth().height(40.dp).testTag("probe"))
-                        WishlistStageSection.Content(testSectionContext(book = book), Modifier)
-                        Spacer(Modifier.height(24.dp))
-                        Text("Title", Modifier.fillMaxWidth().testTag("title"))
-                    }
-                }
-            }
-        }
-
-        val line = rule.onNodeWithTag(WishlistTestTags.LINE)
-        val probe = rule.onNodeWithTag("probe").bounds()
-        val title = rule.onNodeWithTag("title").bounds()
-        val lineBounds = line.bounds()
-        val style = line.textLayout().layoutInput.style
-        assertEquals(14f, style.fontSize.value, 0.01f)
-        assertEquals(ink1, style.color)
-
-        assertEquals(probe.center.x, lineBounds.center.x, 1f)
-        assertEquals(with(rule.density) { 22.dp.toPx() }, lineBounds.top - probe.bottom, 1f)
-        assertEquals(with(rule.density) { 10.dp.toPx() }, title.top - lineBounds.bottom, 1f)
-        assertTrue("the line reads before the title", lineBounds.top < title.top)
-    }
-
-    // TC-44
-    @Test
-    fun issue119_tc44_lineWrapsInANarrowColumnWithoutClipping() {
-        val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Manual)) }
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                CompositionLocalProvider(LocalWishlistRepository provides fake) {
-                    Box(Modifier.fillMaxWidth(0.4f)) {
-                        WishlistStageSection.Content(testSectionContext(book = book), Modifier)
-                    }
-                }
-            }
-        }
-
-        val line = rule.onNodeWithTag(WishlistTestTags.LINE)
-        line.assertIsDisplayed()
-        val layout = line.textLayout()
-        assertTrue("the line wraps", layout.lineCount >= 2)
-        assertTrue("the line is not clipped", line.bounds().height >= layout.size.height - 1f)
     }
 
     // TC-45

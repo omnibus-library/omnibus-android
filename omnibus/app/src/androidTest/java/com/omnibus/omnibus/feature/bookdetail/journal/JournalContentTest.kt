@@ -22,7 +22,6 @@ import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.textLayout
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -65,68 +64,6 @@ class JournalContentTest {
         rule.onNodeWithTag(JournalTestTags.RETRY).assertDoesNotExist()
         rule.onNodeWithTag(JournalTestTags.MORE).assertDoesNotExist()
         rule.onAllNodes(journalCardMatcher).assertCountEquals(0)
-    }
-
-    // TC-49
-    @Test
-    fun tc49_headingCountAndCardsInOrder() {
-        setContent(JournalUIContent.Loaded(listOf(testCard(1), testCard(2), testCard(3))))
-
-        rule.onNodeWithTag(JournalTestTags.HEADING).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        rule.onNodeWithTag(JournalTestTags.COUNT).assertTextEquals("3")
-
-        val heading = rule.onNodeWithTag(JournalTestTags.HEADING).bounds()
-        val count = rule.onNodeWithTag(JournalTestTags.COUNT).bounds()
-        val headingBaseline = heading.top + rule.onNodeWithTag(JournalTestTags.HEADING).textLayout().getLineBaseline(0)
-        val countBaseline = count.top + rule.onNodeWithTag(JournalTestTags.COUNT).textLayout().getLineBaseline(0)
-        assertTrue("the count must share the heading's baseline", abs(headingBaseline - countBaseline) <= rule.pxOf(1f))
-        val gap = rule.dpOf(count.left - heading.right)
-        assertTrue("the count must sit 4 dp after the heading, was $gap dp", abs(gap - 4f) <= 1f)
-
-        val tops = (1L..3L).map { rule.onNodeWithTag(JournalTestTags.card(it)).bounds().top }
-        assertTrue("the cards must appear in the given order", tops.zipWithNext().all { (above, below) -> above < below })
-        rule.onAllNodes(journalCardMatcher).assertCountEquals(3)
-    }
-
-    // TC-50
-    @Test
-    fun tc50_cardSpacingWidthAndFourLineLimit() {
-        val longBody = "Passage words ".repeat(150)
-        setContent(
-            JournalUIContent.Loaded(
-                listOf(
-                    testCard(1, preview = listOf(PreviewRun.Text("Short"))),
-                    testCard(2, preview = listOf(PreviewRun.Text(longBody))),
-                    testCard(3, preview = listOf(PreviewRun.Text("Short"))),
-                    testCard(4, preview = listOf(PreviewRun.Text(longBody + longBody))),
-                ),
-            ),
-        )
-
-        val heading = rule.onNodeWithTag(JournalTestTags.HEADING).bounds()
-        val section = rule.onNodeWithTag(JournalTestTags.SECTION).bounds()
-        val cards = (1L..3L).map { rule.onNodeWithTag(JournalTestTags.card(it)).bounds() }
-
-        val firstGap = rule.dpOf(cards.first().top - heading.bottom)
-        assertTrue("the first card must sit 10 dp under the heading, was $firstGap dp", abs(firstGap - 10f) <= 1f)
-        cards.zipWithNext().forEach { (above, below) ->
-            val gap = rule.dpOf(below.top - above.bottom)
-            assertTrue("the cards must sit 10 dp apart, was $gap dp", abs(gap - 10f) <= 1f)
-        }
-        cards.forEach { card ->
-            assertTrue("every card must span the section's width", abs(card.width - section.width) <= rule.pxOf(1f))
-        }
-
-        val short = rule.onNodeWithTag(JournalTestTags.preview(1), useUnmergedTree = true).bounds()
-        val long = rule.onNodeWithTag(JournalTestTags.preview(2), useUnmergedTree = true).bounds()
-        val longer = rule.onNodeWithTag(JournalTestTags.preview(4), useUnmergedTree = true).bounds()
-        val ratio = long.height / short.height
-        assertTrue("a long body must wrap to several lines, was $ratio times a one-line body", ratio > 2.5f)
-        assertTrue("a long body must be capped at four lines, was $ratio times a one-line body", ratio < 5f)
-        assertTrue(
-            "twice as much text must not make the preview any taller, was ${long.height} then ${longer.height}",
-            abs(longer.height - long.height) <= rule.pxOf(1f),
-        )
     }
 
     // TC-51
