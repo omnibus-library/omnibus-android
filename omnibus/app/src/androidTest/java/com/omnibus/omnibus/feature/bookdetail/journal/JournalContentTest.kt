@@ -14,21 +14,16 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.bounds
-import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
+/** Retry, semantics and TalkBack text. JournalScreenshotTest covers how each state looks. */
 class JournalContentTest {
 
     @get:Rule
@@ -51,76 +46,18 @@ class JournalContentTest {
 
     // TC-48
     @Test
-    fun tc48_loadingShowsTheHeadingOnly() {
+    fun tc48_theHeadingIsAHeading() {
         setContent(JournalUIContent.Loading)
 
         rule.onNodeWithTag(JournalTestTags.HEADING)
-            .assertIsDisplayed()
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-            .assertTextEquals(detailText(R.string.book_detail_journal_heading))
-        rule.onNodeWithTag(JournalTestTags.COUNT).assertDoesNotExist()
-        rule.onNodeWithTag(JournalTestTags.EMPTY).assertDoesNotExist()
-        rule.onNodeWithTag(JournalTestTags.FAILED).assertDoesNotExist()
-        rule.onNodeWithTag(JournalTestTags.RETRY).assertDoesNotExist()
-        rule.onNodeWithTag(JournalTestTags.MORE).assertDoesNotExist()
-        rule.onAllNodes(journalCardMatcher).assertCountEquals(0)
-    }
-
-    // TC-51
-    @Test
-    fun tc51_bylinesShowAuthorDateAndDraft() {
-        val draft = detailText(R.string.book_detail_journal_draft)
-        setContent(
-            JournalUIContent.Loaded(
-                listOf(
-                    testCard(1, authorName = "Ann", isOwn = false, createdAtMillis = OCT_24_2025),
-                    testCard(2, authorName = "Ann", isOwn = true, createdAtMillis = OCT_15_2025),
-                    testCard(3, authorName = "Ann", isOwn = true, isDraft = true, createdAtMillis = OCT_9_2025),
-                    testCard(4, authorName = "", isOwn = true, createdAtMillis = null),
-                ),
-            ),
-        )
-
-        rule.onNodeWithTag(JournalTestTags.byline(1), useUnmergedTree = true)
-            .assertTextEquals("Ann · ${dateText(OCT_24_2025)}")
-        rule.onNodeWithTag(JournalTestTags.byline(2), useUnmergedTree = true)
-            .assertTextEquals(dateText(OCT_15_2025))
-        rule.onNodeWithTag(JournalTestTags.byline(3), useUnmergedTree = true)
-            .assertTextEquals("${dateText(OCT_9_2025)} · $draft")
-        rule.onAllNodes(hasTestTag(JournalTestTags.byline(4)), useUnmergedTree = true).assertCountEquals(0)
-    }
-
-    // TC-52
-    @Test
-    fun tc52_emptyShowsTheEmptyLineFourDpBelowTheHeading() {
-        setContent(JournalUIContent.Loaded(emptyList()))
-
-        rule.onNodeWithTag(JournalTestTags.EMPTY).assertTextEquals(detailText(R.string.book_detail_journal_empty))
-        rule.onNodeWithTag(JournalTestTags.COUNT).assertDoesNotExist()
-        rule.onAllNodes(journalCardMatcher).assertCountEquals(0)
-        rule.onNodeWithTag(JournalTestTags.RETRY).assertDoesNotExist()
-
-        val heading = rule.onNodeWithTag(JournalTestTags.HEADING).bounds()
-        val empty = rule.onNodeWithTag(JournalTestTags.EMPTY).bounds()
-        val gap = rule.dpOf(empty.top - heading.bottom)
-        assertTrue("the empty line must sit 4 dp under the heading, was $gap dp", abs(gap - 4f) <= 1f)
     }
 
     // TC-53
     @Test
-    fun tc53_failedShowsTheMessageAndTryAgainCallsRetry() {
+    fun tc53_tryAgainCallsRetryAndTheListComesBack() {
         var retries = 0
         val state = setContent(JournalUIContent.Failed, onRetry = { retries++ })
-
-        rule.onNodeWithTag(JournalTestTags.FAILED).assertTextEquals(detailText(R.string.book_detail_journal_failed))
-        rule.onNodeWithTag(JournalTestTags.COUNT).assertDoesNotExist()
-        val heading = rule.onNodeWithTag(JournalTestTags.HEADING).bounds()
-        val failed = rule.onNodeWithTag(JournalTestTags.FAILED).bounds()
-        val retry = rule.onNodeWithTag(JournalTestTags.RETRY).bounds()
-        val failedGap = rule.dpOf(failed.top - heading.bottom)
-        assertTrue("the message must sit 4 dp under the heading, was $failedGap dp", abs(failedGap - 4f) <= 1f)
-        val retryGap = rule.dpOf(retry.top - failed.bottom)
-        assertTrue("Try again must sit 12 dp under the message, was $retryGap dp", abs(retryGap - 12f) <= 1f)
 
         rule.onNodeWithTag(JournalTestTags.RETRY).assertIsDisplayed().performClick()
         rule.waitForIdle()
