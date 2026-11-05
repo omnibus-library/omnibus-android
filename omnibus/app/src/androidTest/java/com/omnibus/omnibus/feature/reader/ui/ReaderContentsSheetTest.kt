@@ -12,14 +12,12 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -28,8 +26,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
@@ -45,6 +41,7 @@ import org.junit.Test
 
 // Positions and sizes are relative (one node against another, or a fraction of the host), with a pixel of
 // slack for dp conversion. No test pins a screen size, so the cases hold on the 320dp CI AVD and a phone.
+/** Callbacks, scrolling, dismissal and semantics. ReaderContentsSheetScreenshotTest covers how each state looks. */
 class ReaderContentsSheetTest {
 
     @get:Rule
@@ -126,74 +123,11 @@ class ReaderContentsSheetTest {
         }
     }
 
-    private fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
-        val results = mutableListOf<TextLayoutResult>()
-        fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
-        return results.first()
-    }
-
     private fun assertNear(expected: Float, actual: Float, message: String) {
         assertTrue("$message: expected $expected but was $actual", abs(expected - actual) <= 1f)
     }
 
     private fun text(res: Int, vararg args: Any) = context.getString(res, *args)
-
-    // CS-5
-    // CS-5
-    @Test
-    fun cs5_listsEveryEntryInOrder() {
-        showBody()
-
-        var previousTop = Float.NEGATIVE_INFINITY
-        fiveEntries.forEachIndexed { i, entry ->
-            val row = rule.onNodeWithTag(ReaderContentsTags.row(i))
-            row.assertIsDisplayed()
-            row.fetchSemanticsNode().boundsInRoot.top.also { top ->
-                assertTrue("row $i is below row ${i - 1}", top > previousTop)
-                previousTop = top
-            }
-            rule.onNodeWithTag(ReaderContentsTags.label(i), useUnmergedTree = true).assertTextEquals(entry.label)
-        }
-    }
-
-    // CS-6
-    // CS-6
-    @Test
-    fun cs6_labelsAreTrimmed() {
-        showBody(toc = mutableStateOf(listOf(TocEntry(label = "   Spaced Out  ", href = "a.xhtml", level = 0))))
-
-        rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).assertTextEquals("Spaced Out")
-    }
-
-    // CS-10
-    @Test
-    fun cs10_topLevelUsesMediumWeight() {
-        showBody()
-
-        val top = rule.onNodeWithTag(ReaderContentsTags.label(0), useUnmergedTree = true).textLayout().layoutInput.style.fontWeight
-        val nested = rule.onNodeWithTag(ReaderContentsTags.label(1), useUnmergedTree = true).textLayout().layoutInput.style.fontWeight
-        assertEquals(FontWeight.Medium, top)
-        assertEquals(FontWeight.Normal, nested)
-    }
-
-    // CS-13
-    // CS-13
-    @Test
-    fun cs13_nonPositivePageShowsNothing() {
-        showBody(
-            toc = mutableStateOf(
-                listOf(
-                    TocEntry(label = "Alpha", href = "a.xhtml", level = 0, page = 0),
-                    TocEntry(label = "Beta", href = "b.xhtml", level = 0, page = -3),
-                ),
-            ),
-        )
-
-        rule.onAllNodesWithTag(ReaderContentsTags.page(0), useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodesWithTag(ReaderContentsTags.page(1), useUnmergedTree = true).assertCountEquals(0)
-        rule.onNodeWithTag(ReaderContentsTags.row(0)).assertTextEquals("Alpha")
-        rule.onNodeWithTag(ReaderContentsTags.row(1)).assertTextEquals("Beta")
-    }
 
     // CS-15
     @Test
@@ -231,26 +165,6 @@ class ReaderContentsSheetTest {
         rule.waitForIdle()
 
         assertEquals(listOf(toc[2]), chosen)
-    }
-
-    // CS-23
-    @Test
-    fun cs23_marksCurrentChapterByIndex() {
-        val toc = listOf(
-            TocEntry(label = "Same", href = "one.xhtml", level = 0),
-            TocEntry(label = "Same", href = "two.xhtml", level = 0),
-            TocEntry(label = "Same", href = "three.xhtml", level = 0),
-            TocEntry(label = "Same", href = "four.xhtml", level = 0),
-        )
-        showBody(toc = mutableStateOf(toc), location = mutableStateOf(RelocateData(chapter = 3)))
-
-        rule.onAllNodesWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).assertCountEquals(1)
-        val marker = rule.onNodeWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val centre = (marker.top + marker.bottom) / 2f
-        for (i in toc.indices) {
-            val row = rule.onNodeWithTag(ReaderContentsTags.row(i)).fetchSemanticsNode().boundsInRoot
-            assertEquals("marker inside row $i", i == 2, centre >= row.top && centre <= row.bottom)
-        }
     }
 
     // CS-24
@@ -321,47 +235,6 @@ class ReaderContentsSheetTest {
         rule.onNodeWithTag(ReaderContentsTags.row(0)).assertIsDisplayed()
     }
 
-    // CS-33
-    @Test
-    fun cs33_headerShowsPagePosition() {
-        showBody(location = mutableStateOf(RelocateData(page = 5, totalPages = 20, pct = 25)))
-
-        rule.onNodeWithTag(ReaderContentsTags.TITLE).assertIsDisplayed()
-        rule.onNodeWithTag(ReaderContentsTags.POSITION).assertTextEquals("Page 5 of 20")
-        rule.onNodeWithTag(ReaderContentsTags.POSITION).assertTextEquals(text(R.string.reader_contents_page_of, 5, 20))
-    }
-
-    // CS-34
-    @Test
-    fun cs34_headerFallsBackToPercent() {
-        showBody(location = mutableStateOf(RelocateData(page = 0, totalPages = 0, pct = 42)))
-
-        rule.onNodeWithTag(ReaderContentsTags.POSITION).assertTextEquals("42% through")
-        rule.onNodeWithTag(ReaderContentsTags.POSITION).assertTextEquals(text(R.string.reader_contents_percent_through, 42))
-    }
-
-    // CS-35
-    // CS-35
-    @Test
-    fun cs35_headerHasNoPositionWithoutLocation() {
-        showBody(location = mutableStateOf(null))
-
-        rule.onNodeWithTag(ReaderContentsTags.TITLE).assertIsDisplayed()
-        rule.onAllNodesWithTag(ReaderContentsTags.POSITION).assertCountEquals(0)
-    }
-
-    // CS-37
-    @Test
-    fun cs37_headerShowsCoverBesideTitle() {
-        showBody()
-
-        rule.onNodeWithTag(ReaderContentsTags.COVER).assertIsDisplayed()
-        val cover = rule.onNodeWithTag(ReaderContentsTags.COVER).fetchSemanticsNode().boundsInRoot
-        val title = rule.onNodeWithTag(ReaderContentsTags.TITLE).fetchSemanticsNode().boundsInRoot
-        assertTrue("the cover is left of the title", cover.right <= title.left + 1f)
-        assertTrue("the cover starts at or above the title", cover.top <= title.top + 1f)
-    }
-
     // CS-38
     @Test
     fun cs38_closeButtonDismisses() {
@@ -380,32 +253,9 @@ class ReaderContentsSheetTest {
         assertEquals(1, dismissals)
     }
 
-    // CS-41
-    @Test
-    fun cs41_emptyTocShowsEmptyState() {
-        showBody(toc = mutableStateOf(emptyList()))
-
-        rule.onNodeWithTag(ReaderContentsTags.EMPTY).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_contents_empty_title)).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_contents_empty_message)).assertIsDisplayed()
-        rule.onAllNodesWithTag(ReaderContentsTags.row(0)).assertCountEquals(0)
-        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsDisplayed()
-    }
-
-    // TC-67
-    @Test
-    fun bookmarksTabShowsLoading() {
-        showBody(initialTab = ReaderContentsTab.Bookmarks, status = mutableStateOf(ReaderBookmarksStatus.Loading))
-
-        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_LOADING).assertIsDisplayed()
-        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_LIST).assertCountEquals(0)
-        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_EMPTY).assertCountEquals(0)
-        rule.onAllNodesWithTag(ReaderContentsTags.BOOKMARKS_ERROR).assertCountEquals(0)
-    }
-
     // TC-68
     @Test
-    fun bookmarksTabShowsErrorAndRetries() {
+    fun bookmarksTabTryAgainRetries() {
         var retries = 0
         showBody(
             initialTab = ReaderContentsTab.Bookmarks,
@@ -413,28 +263,15 @@ class ReaderContentsSheetTest {
             onBookmarksRetry = { retries++ },
         )
 
-        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_ERROR).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_bookmarks_error_title)).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_bookmarks_error_message)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.reader_try_again)).performClick()
         rule.waitForIdle()
 
         assertEquals(1, retries)
     }
 
-    // TC-69
-    @Test
-    fun bookmarksTabShowsEmptyState() {
-        showBody(initialTab = ReaderContentsTab.Bookmarks)
-
-        rule.onNodeWithTag(ReaderContentsTags.BOOKMARKS_EMPTY).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_bookmarks_empty_title)).assertIsDisplayed()
-        rule.onNodeWithText(text(R.string.reader_bookmarks_empty_message)).assertIsDisplayed()
-    }
-
     // TC-70
     @Test
-    fun bookmarksTabListsRowsAndJumpsOnTap() {
+    fun bookmarksTabRowJumpsOnTap() {
         val bookmarks = listOf(
             Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", "The ferry", "Part One", 0.43f, null),
             Bookmark(2L, "client-2", "book-1", "epubcfi(/6/8)", null, "Crossing at Dusk", null, null),
@@ -447,22 +284,9 @@ class ReaderContentsSheetTest {
             onBookmarkChosen = { chosen += it },
         )
 
-        val first = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0))
-        val second = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(1))
-        val third = rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(2))
-        first.assert(hasText("The ferry")).assert(hasText("43%"))
-        second.assert(hasText("Crossing at Dusk"))
-        rule.onAllNodesWithTag(ReaderContentsTags.bookmarkPercent(1)).assertCountEquals(0)
-        third.assert(hasText(text(R.string.reader_bookmark_untitled))).assert(hasText("100%"))
-
-        val firstTop = first.fetchSemanticsNode().boundsInRoot.top
-        val secondTop = second.fetchSemanticsNode().boundsInRoot.top
-        val thirdTop = third.fetchSemanticsNode().boundsInRoot.top
-        assertTrue("rows keep the server order", firstTop < secondTop && secondTop < thirdTop)
-
-        first.performClick()
+        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(1)).performClick()
         rule.waitForIdle()
-        assertEquals(listOf(bookmarks[0]), chosen)
+        assertEquals(listOf(bookmarks[1]), chosen)
     }
 
     // TC-71

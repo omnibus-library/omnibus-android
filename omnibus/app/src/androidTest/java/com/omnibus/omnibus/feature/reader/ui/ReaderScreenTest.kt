@@ -85,6 +85,7 @@ import org.junit.Test
 
 // TC-64 to TC-81 (the screen cases). Tests assert on text and test tags, never on pixel positions or
 // fixed dp, so they hold on the 320dp CI AVD.
+/** Wiring, back handling, insets and the WebView. ReaderScreenScreenshotTest covers how the loading and error states look. */
 class ReaderScreenTest {
 
     @get:Rule
@@ -200,17 +201,6 @@ class ReaderScreenTest {
     private fun cssInset(name: String): Int? {
         val raw = evaluate("getComputedStyle(document.documentElement).getPropertyValue('$name')")
         return Regex("-?\\d+").find(raw)?.value?.toInt()
-    }
-
-    // TC-65
-    @Test
-    fun tc65_loadingWithATitleShowsTheTitleOnce() {
-        show(
-            uiState = { ReaderUIState(book = ReaderBookState.Ready(title = "Moby Dick"), loadStatus = ReaderLoadStatus.Loading) },
-            assetLoaderFactory = epubLoader,
-        )
-
-        rule.onNodeWithText("Opening Moby Dick").assertIsDisplayed()
     }
 
     // TC-66
@@ -448,25 +438,6 @@ class ReaderScreenTest {
         assertEquals(listOf("dismissed", "closed", "close"), events)
     }
 
-    // TC-76
-    @Test
-    fun tc76_notFoundShowsItsError() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)) })
-
-        rule.onNodeWithText("Couldn't open this book").assertIsDisplayed()
-        rule.onNodeWithText("This book isn't in your library.").assertIsDisplayed()
-        rule.onNodeWithText("Back").assertIsDisplayed()
-    }
-
-    // TC-77
-    @Test
-    fun tc77_noEpubShowsItsError() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub)) })
-
-        rule.onNodeWithText("This book has no EPUB to read.").assertIsDisplayed()
-        rule.onNodeWithText("Back").assertIsDisplayed()
-    }
-
     // TC-78
     @Test
     fun tc78_theBackActionLeavesFromNotFound() {
@@ -499,14 +470,13 @@ class ReaderScreenTest {
 
     // TC-79
     @Test
-    fun tc79_failedUnreachableShowsTheMappedMessageAndRetries() {
+    fun tc79_tryAgainRetriesAFailedBook() {
         val retries = mutableListOf<String>()
         show(
             uiState = { ReaderUIState(book = ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))) },
             onRetryBookRequested = { retries += "retry" },
         )
 
-        rule.onNodeWithText("Could not connect to the server.").assertIsDisplayed()
         rule.onNodeWithText("Try again").performClick()
         rule.waitForIdle()
 
@@ -519,15 +489,6 @@ class ReaderScreenTest {
         show(uiState = { ReaderUIState(book = ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Http(500, null)))) })
 
         rule.onNodeWithText("Server error (500).").assertIsDisplayed()
-        rule.onNodeWithText("Try again").assertIsDisplayed()
-    }
-
-    // TC-79
-    @Test
-    fun tc79_failedNoServerShowsTheMappedMessage() {
-        show(uiState = { ReaderUIState(book = ReaderBookState.Failed(LibraryUIError.NoServer)) })
-
-        rule.onNodeWithText("No server configured.").assertIsDisplayed()
         rule.onNodeWithText("Try again").assertIsDisplayed()
     }
 
