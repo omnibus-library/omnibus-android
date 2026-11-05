@@ -43,10 +43,9 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
-import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
-import com.omnibus.omnibus.feature.shell.SeriesRoot
 import com.omnibus.omnibus.feature.shell.ShellNavigator
+import com.omnibus.omnibus.feature.shell.SearchRoot
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
@@ -170,8 +169,7 @@ private fun SignedInShellContent(
                         entry<BookDetailPlaceholderRoute> { key ->
                             StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
                         }
-                        entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
-                        entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
+                        entry<SearchRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Search) } }
                         entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
                         entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
                     },
