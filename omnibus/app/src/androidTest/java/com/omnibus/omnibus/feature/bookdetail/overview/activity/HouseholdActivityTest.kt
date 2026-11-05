@@ -3,16 +3,10 @@ package com.omnibus.omnibus.feature.bookdetail.overview.activity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.household.HouseholdReader
-import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -20,7 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
-/** The Activity list: rows, wording, the initial fallback and the one-item-per-reader semantics. */
+/** The Activity list: the one-item-per-reader semantics and when it renders. HouseholdActivityScreenshotTest covers its look. */
 class HouseholdActivityTest {
 
     @get:Rule
@@ -33,19 +27,6 @@ class HouseholdActivityTest {
         OmnibusTheme(darkTheme = true) { HouseholdActivity(readers, Modifier) }
     }
 
-    // TC-30 (AC1)
-    @Test
-    fun tc30_listsEachReaderWithTheirLine() {
-        show(listOf(maren, theo))
-
-        rule.onNodeWithTag(HouseholdActivityTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_activity_title))
-        rule.onNodeWithText("Maren").assertIsDisplayed()
-        rule.onNodeWithText("Theo").assertIsDisplayed()
-        rule.onNodeWithTag(HouseholdActivityTestTags.row(3)).assertTextContains("6 h 12 m · 4 sessions", substring = true)
-        rule.onNodeWithTag(HouseholdActivityTestTags.row(3)).assertTextContains("Last read", substring = true)
-        rule.onNodeWithTag(HouseholdActivityTestTags.row(4)).assertTextContains("2 h 01 m · 1 session", substring = true)
-    }
-
     // TC-31 (AC2)
     @Test
     fun tc31_noReadersShowsNoSection() {
@@ -53,16 +34,6 @@ class HouseholdActivityTest {
 
         rule.onAllNodesWithTag(HouseholdActivityTestTags.SECTION).assertCountEquals(0)
         rule.onAllNodesWithTag(HouseholdActivityTestTags.TITLE).assertCountEquals(0)
-    }
-
-    // TC-32 (AC3)
-    @Test
-    fun tc32_readerWithoutPictureShowsTheirInitial() {
-        show(listOf(maren, theo.copy(name = "theo")))
-
-        rule.onNodeWithTag(HouseholdActivityTestTags.row(3), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("M", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("T", useUnmergedTree = true).assertIsDisplayed()
     }
 
     // TC-33 (AC4)

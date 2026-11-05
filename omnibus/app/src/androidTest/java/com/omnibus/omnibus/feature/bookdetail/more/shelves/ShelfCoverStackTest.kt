@@ -3,21 +3,16 @@ package com.omnibus.omnibus.feature.bookdetail.more.shelves
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** The book cover leaving its stack. ShelfCoverStackScreenshotTest covers how each stack looks. */
 class ShelfCoverStackTest {
 
     @get:Rule
@@ -43,53 +38,6 @@ class ShelfCoverStackTest {
 
     /** Covers and this book's cover are decorative, so they sit under a cleared semantics node. */
     private fun ComposeContentTestRule.tagged(tag: String) = onAllNodesWithTag(tag, useUnmergedTree = true)
-
-    // TC-56
-    @Test
-    fun issue116_tc56_stackShowsThreeCoversAndThisBookOnTopWhenOn() {
-        val on = mutableStateOf(false)
-        setStack(on, covers, reducedMotion = true)
-
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 0)).assertCountEquals(1)
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 2)).assertCountEquals(1)
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 3)).assertCountEquals(0)
-        rule.tagged(ShelfSheetTestTags.bookCover(rowId)).assertCountEquals(0)
-
-        rule.runOnIdle { on.value = true }
-        rule.waitForIdle()
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 1)).assertCountEquals(1)
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 2)).assertCountEquals(0)
-        rule.tagged(ShelfSheetTestTags.bookCover(rowId)).assertCountEquals(1)
-
-        val bookCover = rule.onNodeWithTag(ShelfSheetTestTags.bookCover(rowId), useUnmergedTree = true).bounds()
-        val lastOther = rule.onNodeWithTag(ShelfSheetTestTags.cover(rowId, 1), useUnmergedTree = true).bounds()
-        assertTrue("this book's cover is the rightmost", bookCover.left > lastOther.left)
-
-        val density = rule.density
-        assertEquals(with(density) { 30.dp.toPx() }, bookCover.width, 1f)
-        assertEquals(with(density) { 45.dp.toPx() }, bookCover.height, 1f)
-        val stack = rule.onNodeWithTag(ShelfSheetTestTags.stack(rowId), useUnmergedTree = true).bounds()
-        assertTrue("stack no wider than 66 dp", stack.width <= with(density) { 66.dp.toPx() } + 1f)
-    }
-
-    // TC-56
-    @Test
-    fun issue116_tc56_emptyStackHasNoCovers() {
-        setStack(mutableStateOf(false), emptyList(), reducedMotion = true)
-
-        rule.onNodeWithTag(ShelfSheetTestTags.stack(rowId), useUnmergedTree = true).assertIsDisplayed()
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 0)).assertCountEquals(0)
-    }
-
-    // TC-56
-    @Test
-    fun issue116_tc56_singleCoverShowsOneOtherAndThisBookWhenOn() {
-        setStack(mutableStateOf(true), listOf("c1"), reducedMotion = true)
-
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 0)).assertCountEquals(1)
-        rule.tagged(ShelfSheetTestTags.cover(rowId, 1)).assertCountEquals(0)
-        rule.tagged(ShelfSheetTestTags.bookCover(rowId)).assertCountEquals(1)
-    }
 
     // TC-57
     @Test
