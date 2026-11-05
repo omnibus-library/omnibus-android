@@ -11,11 +11,14 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.status.rememberStatusRim
 import com.omnibus.omnibus.feature.bookdetail.wishlist.rememberWishlistActionModel
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.library.ui.isLightGround
+import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /**
  * The bottom action bar of the Book Detail page. It is self-gating: a book with no readable copy renders before any
  * ViewModel is created, so such a book needs no Hilt. That is [ActionBarModel.NoCopy], or the wishlist variant when the
- * book is on the wishlist.
+ * book is on the wishlist. A book with both an ebook and an audiobook also gets its round buttons, from [roundActions].
  */
 internal object BookActionBarSection : BookDetailSection {
 
@@ -36,6 +39,24 @@ internal object BookActionBarSection : BookDetailSection {
         LaunchedEffect(context.reloadKey) { viewModel.reload(context.reloadKey) }
         val state by viewModel.uiState.collectAsState()
         val model = remember(book, state) { actionBarModel(book, state.status, state.progress) }
-        BookActionBar(model, colors, context.onNavigate, modifier)
+        val savedFileId = state.progress?.audioFileId
+        val actions = remember(book, model, savedFileId, state.listenAvailable) {
+            (model as? ActionBarModel.Primary)?.let { roundActions(book, it, savedFileId, state.listenAvailable) }.orEmpty()
+        }
+        val light = isLightGround(OmnibusTheme.palette.bg0)
+        val listenColors = remember(book.accent, book.displayTitle, light) {
+            listenButtonColors(book.coverIdentity().tone, light)
+        }
+        BookActionBarContent(
+            bookUuid = book.uuid,
+            model = model,
+            roundActions = actions,
+            colors = colors,
+            listenColors = listenColors,
+            chooserAccent = context.accent.tint,
+            onNavigate = context.onNavigate,
+            onLoadAudio = viewModel::onImmersiveRead,
+            modifier = modifier,
+        )
     }
 }

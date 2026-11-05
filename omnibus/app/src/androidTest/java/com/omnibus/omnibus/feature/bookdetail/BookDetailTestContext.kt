@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.data.library.BookFile
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
@@ -30,6 +31,7 @@ fun testDetailBook(
     seriesIndex: String? = null,
     publishedDate: String? = null,
     accent: String? = null,
+    bookFiles: List<BookFile> = emptyList(),
 ): Book = Book(
     id = id,
     uniqueIdentifier = uniqueIdentifier,
@@ -44,7 +46,7 @@ fun testDetailBook(
     hasPhysical = false,
     addedAt = null,
     lastInteractedAt = null,
-    bookFiles = emptyList(),
+    bookFiles = bookFiles,
     publishedDate = publishedDate,
 )
 
