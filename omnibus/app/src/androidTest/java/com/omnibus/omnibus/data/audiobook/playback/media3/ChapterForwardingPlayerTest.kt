@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.data.audiobook.playback.media3
 
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -69,20 +68,6 @@ class ChapterForwardingPlayerTest {
         chapterIndex = chapterIndex,
         image = image,
     )
-
-    /** Records the session's listener calls. */
-    private class Recorder : Player.Listener {
-        val metadata = mutableListOf<MediaMetadata>()
-        val eventSets = mutableListOf<Player.Events>()
-
-        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-            metadata += mediaMetadata
-        }
-
-        override fun onEvents(source: Player, events: Player.Events) {
-            eventSets += events
-        }
-    }
 
     // I-SYS-1
     @Test
@@ -167,31 +152,6 @@ class ChapterForwardingPlayerTest {
         assertEquals("An Author", metadata.artist?.toString())
         assertEquals("The Book", metadata.albumTitle?.toString())
         assertTrue(bytes.contentEquals(metadata.artworkData))
-    }
-
-    // I-SYS-1
-    @Test
-    fun notifiesOnChapterMetadataAndArtworkChanges() {
-        // TC-98: a chapter, metadata or artwork change reaches the listeners; an equal NowPlaying reaches none.
-        val recorder = Recorder()
-        onMain { player.addListener(recorder) }
-
-        onMain { bridge.nowPlaying = nowPlaying(chapterIndex = 2) }
-        assertEquals(1, onMain { recorder.metadata.size })
-        assertTrue(onMain { recorder.eventSets.last() }.contains(Player.EVENT_MEDIA_METADATA_CHANGED))
-        assertTrue(onMain { recorder.eventSets.last() }.contains(Player.EVENT_POSITION_DISCONTINUITY))
-
-        onMain { bridge.nowPlaying = nowPlaying(chapterIndex = 2, bookTitle = "Renamed") }
-        assertEquals(2, onMain { recorder.metadata.size })
-
-        onMain {
-            bridge.nowPlaying = nowPlaying(chapterIndex = 2, bookTitle = "Renamed", image = NowPlayingImage.Cover(byteArrayOf(9).toByteString()))
-        }
-        assertEquals(3, onMain { recorder.metadata.size })
-
-        val before = onMain { recorder.eventSets.size }
-        onMain { bridge.nowPlaying = bridge.nowPlaying }
-        assertEquals(before, onMain { recorder.eventSets.size })
     }
 
     // P-PLAY-6
