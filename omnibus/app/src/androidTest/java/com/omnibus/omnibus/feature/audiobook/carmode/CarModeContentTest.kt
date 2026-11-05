@@ -58,12 +58,11 @@ private fun ComposeContentTestRule.setCarMode(inputs: CarInputs) {
     }
 }
 
+/** Text, callbacks, semantics and keep-screen-on. CarModeScreenshotTest covers how the screen looks. */
 class CarModeContentTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    private fun boundsOf(tag: String) = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
 
     // P-CAR-AC1, P-CAR-2: the chapter and the time left
     @Test
@@ -72,10 +71,6 @@ class CarModeContentTest {
 
         assertEquals("004", rule.onNodeWithTag(CarModeTestTags.TITLE).textOf())
         assertEquals("20h 25m left", rule.onNodeWithTag(CarModeTestTags.TIME_LEFT).textOf())
-        assertTrue(
-            "the time left should sit under the title",
-            boundsOf(CarModeTestTags.TIME_LEFT).top >= boundsOf(CarModeTestTags.TITLE).bottom - 1f,
-        )
     }
 
     // P-CAR-AC2, AC5: each tile is labelled, and a press runs its action

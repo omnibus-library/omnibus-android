@@ -6,7 +6,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -18,6 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
+/** Callbacks and semantics. ResumeOfferBannerScreenshotTest covers how the banner looks. */
 class ResumeOfferBannerTest {
 
     @get:Rule
@@ -25,22 +25,6 @@ class ResumeOfferBannerTest {
 
     private val deviceTitle = "Listened further elsewhere"
     private val deviceDetail = "Another device left off at 1:42:10."
-
-    // #166 TC-71: P-SYNC-6, R1, R6, R10: the banner shows its title, detail, Go and Dismiss
-    @Test
-    fun bannerShowsTitleDetailGoAndDismiss() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                ResumeOfferBanner(title = deviceTitle, detail = deviceDetail, onGo = {}, onDismiss = {})
-            }
-        }
-
-        rule.onNodeWithTag(ResumeOfferTags.BANNER).assertIsDisplayed()
-        rule.onNodeWithTag(ResumeOfferTags.TITLE, useUnmergedTree = true).assertTextEquals(deviceTitle)
-        rule.onNodeWithTag(ResumeOfferTags.DETAIL, useUnmergedTree = true).assertTextEquals(deviceDetail)
-        rule.onNodeWithTag(ResumeOfferTags.GO).assertIsDisplayed().assertTextEquals("Go")
-        rule.onNodeWithTag(ResumeOfferTags.DISMISS).assertIsDisplayed()
-    }
 
     // #166 TC-72: R2, R7, R11: Go and Dismiss are buttons, and each calls only its own callback
     @Test

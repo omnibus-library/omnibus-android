@@ -35,24 +35,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
+/** Paging, selection, taps, semantics and label wording. ContinueCarouselScreenshotTest covers how the cards and dots look. */
 class ContinueCarouselTest {
 
     @get:Rule
     val rule = createComposeRule()
 
     @Test
-    fun issue22_tc27_dotsOnlyWithTwoOrMoreCardsAndOneSelectedAndHiddenFromAccessibility() {
+    fun issue22_tc27_dotsAreHiddenFromAccessibility() {
         setCarousel(listOf(card(1L), card(2L), card(3L)), selected = "b1:epub")
 
         rule.onNodeWithTag(ContinueTestTags.DOTS, useUnmergedTree = true)
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
-        val first = dotWidth(0)
-        val second = dotWidth(1)
-        val third = dotWidth(2)
-        assertTrue("the selected dot is wider than the others", first > second + HALF_DP)
-        assertTrue("the resting dots are the same width", abs((second - third).value) <= HALF_DP.value)
         rule.onNodeWithTag(ContinueTestTags.dot(0), useUnmergedTree = true)
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
     }
@@ -129,45 +124,6 @@ class ContinueCarouselTest {
     }
 
     @Test
-    fun issue22_tc30_listeningCardShowsChapterAndPlay() {
-        setCarousel(
-            listOf(
-                card(1L, medium = ProgressFormat.Listening, fraction = 0.4, position = PositionLabel.Chapter(3, 12)),
-            ),
-            selected = "b1:audio",
-        )
-
-        rule.onNodeWithText("CONTINUE LISTENING", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Chapter 3 of 12", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Play", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithTag(ContinueTestTags.barTrack("b1:audio"), useUnmergedTree = true).assertExists()
-    }
-
-    @Test
-    fun issue22_tc30_readingCardShowsPercentAndRead() {
-        setCarousel(
-            listOf(card(1L, fraction = 0.42, position = PositionLabel.PercentRead(42))),
-            selected = "b1:epub",
-        )
-
-        rule.onNodeWithText("CONTINUE READING", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("42% read", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("Read", useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue22_tc30_cardWithoutFractionShowsLastOpenedAndNoBar() {
-        setCarousel(
-            listOf(card(1L, fraction = null, position = PositionLabel.InProgress, lastOpened = RelativeAge.Minutes(5))),
-            selected = "b1:epub",
-        )
-
-        rule.onNodeWithText("Last opened 5 min. ago", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithText("In progress", useUnmergedTree = true).assertIsDisplayed()
-        rule.onNodeWithTag(ContinueTestTags.barTrack("b1:epub"), useUnmergedTree = true).assertDoesNotExist()
-    }
-
-    @Test
     fun issue22_tc30_justNowShowsInLastOpened() {
         setCarousel(
             listOf(card(1L, fraction = null, lastOpened = RelativeAge.JustNow)),
@@ -185,16 +141,6 @@ class ContinueCarouselTest {
         )
 
         rule.onNodeWithText("33m left", useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue22_tc30_partShowsPartOfTotal() {
-        setCarousel(
-            listOf(card(3L, medium = ProgressFormat.Listening, fraction = 0.3, position = PositionLabel.Part(2, 4))),
-            selected = "b3:audio",
-        )
-
-        rule.onNodeWithText("Part 2 of 4", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

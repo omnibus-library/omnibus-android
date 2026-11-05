@@ -6,20 +6,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assert
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import kotlin.math.abs
 
+/** Callbacks, which cells show and semantics. PlayerToolRowScreenshotTest covers how the row looks. */
 class PlayerToolRowTest {
 
     @get:Rule
@@ -32,32 +29,6 @@ class PlayerToolRowTest {
                     PlayerToolRow(rate = rate, hasEbook = hasEbook, actions = actions)
                 }
             }
-        }
-    }
-
-    // R14, P-SCR-11: five cells in order, the rate as the speed glyph, equal widths
-    @Test
-    fun toolRowShowsFiveCellsInOrderWithRateGlyph() {
-        val actions = RecordedActions().actions()
-        setToolRow(rate = 1.25, hasEbook = true, actions = actions)
-
-        val tags = listOf(
-            PlayerTestTags.TOOL_SPEED,
-            PlayerTestTags.TOOL_CAR_MODE,
-            PlayerTestTags.TOOL_SLEEP,
-            PlayerTestTags.TOOL_BOOKMARK,
-            PlayerTestTags.TOOL_SYNC,
-        )
-        val bounds = tags.map { rule.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot }
-        bounds.zipWithNext().forEach { (left, right) ->
-            assertTrue("the cells should run left to right", left.left < right.left)
-            assertTrue("the cells should share a row", abs(left.center.y - right.center.y) < left.height)
-        }
-        bounds.forEach { assertTrue("the cells should have equal widths", abs(it.width - bounds[0].width) < 1f) }
-
-        rule.onNodeWithTag(PlayerTestTags.TOOL_SPEED).assert(hasText("1.25x"))
-        listOf("Speed", "Car Mode", "Sleep", "Bookmark", "Sync here").forEach {
-            rule.onNodeWithText(it).assertExists()
         }
     }
 
@@ -91,12 +62,11 @@ class PlayerToolRowTest {
             actions = PlayerActions(onOpenSpeed = { recorded.speed++ }, onAddBookmark = { recorded.bookmark++ }),
         )
 
-        val speed = rule.onNodeWithTag(PlayerTestTags.TOOL_SPEED).fetchSemanticsNode().boundsInRoot
-        val bookmark = rule.onNodeWithTag(PlayerTestTags.TOOL_BOOKMARK).fetchSemanticsNode().boundsInRoot
+        rule.onNodeWithTag(PlayerTestTags.TOOL_SPEED).assertExists()
+        rule.onNodeWithTag(PlayerTestTags.TOOL_BOOKMARK).assertExists()
         rule.onAllNodesWithTag(PlayerTestTags.TOOL_CAR_MODE).assertCountEquals(0)
         rule.onAllNodesWithTag(PlayerTestTags.TOOL_SLEEP).assertCountEquals(0)
         rule.onAllNodesWithTag(PlayerTestTags.TOOL_SYNC).assertCountEquals(0)
-        assertTrue("the two cells should share the width", abs(speed.width - bookmark.width) < 1f)
     }
 
     // R14, P-SCR edge case: Sync here needs an ebook
