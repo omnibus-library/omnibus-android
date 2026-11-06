@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.omnibus.omnibus.data.quotecard.CoverPair
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -80,7 +81,7 @@ class QuoteBackgroundSectionTest {
 
         rule.onNodeWithContentDescription("Book").assertIsSelected()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
-        rule.onNodeWithContentDescription("Moss").assert(isNotSelected()).performClick()
+        rule.onNodeWithContentDescription("Moss").assert(isNotSelected()).performScrollTo().performClick()
 
         assertEquals(listOf<QuoteBackground>(QuoteBackground.Wash(QuoteWash.Moss)), chosen)
         rule.onNodeWithContentDescription("Moss").assertIsSelected()
@@ -108,7 +109,7 @@ class QuoteBackgroundSectionTest {
     fun customSwatch_isNamedForItsRowAndReportsATap() {
         setContent()
 
-        rule.onNodeWithContentDescription("Custom color").performClick()
+        rule.onNodeWithContentDescription("Custom color").performScrollTo().performClick()
 
         assertEquals(1, customTaps)
         rule.onNodeWithContentDescription("Custom gradient").assertDoesNotExist()
