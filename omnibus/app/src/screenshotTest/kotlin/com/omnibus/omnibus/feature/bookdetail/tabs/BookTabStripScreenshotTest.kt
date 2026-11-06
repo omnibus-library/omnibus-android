@@ -21,21 +21,21 @@ import com.omnibus.omnibus.screenshot.Shot
 @PreviewLightDark
 @Composable
 fun BookTabStripResting() {
-    StripShot(stripTopPx = 2_000)
+    StripShot(stripTopPx = 2_000, scroll = 0)
 }
 
-/** The strip at the pin point: the ribbon is retracted and Overview glows in the ribbon's colour. */
+/** The strip scrolled one pixel past the pin: the ribbon is retracted and Overview glows over the bar-coloured ground. */
 @PreviewTest
 @PreviewLightDark
 @Composable
 fun BookTabStripPinned() {
-    StripShot(stripTopPx = 0)
+    StripShot(stripTopPx = 0, scroll = 1)
 }
 
 @Composable
-private fun StripShot(stripTopPx: Int) {
+private fun StripShot(stripTopPx: Int, scroll: Int) {
     Shot {
-        val scrollState = rememberScrollState()
+        val scrollState = rememberScrollState(scroll)
         val scope = rememberCoroutineScope()
         val state = remember {
             BookDetailTabState(

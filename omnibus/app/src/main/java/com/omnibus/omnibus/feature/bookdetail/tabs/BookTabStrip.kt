@@ -49,7 +49,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 /**
  * The tab strip under the stage. It scrolls with the page until it reaches [pinTop] (the bar's bottom), then stays
  * there, drawn over the panel on a bar-coloured ground. The pin is a layer translation read at draw time, so scrolling
- * never recomposes the strip.
+ * recomposes the strip only when it pins or unpins.
  *
  * @param ribbonColor The fill of the bookmark that hangs from the selected tab.
  */

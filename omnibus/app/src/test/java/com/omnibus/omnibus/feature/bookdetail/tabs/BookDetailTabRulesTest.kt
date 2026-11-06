@@ -41,7 +41,7 @@ class BookDetailTabRulesTest : DescribeSpec({
             stripPinOffsetPx(0, 50, 100) shouldBe 50
         }
 
-        it("tabs are pinned once the strip is at the pin point, with a pixel of slack") {
+        it("reports pinned within one slack pixel of the pin point") {
             // stripTop 700, pinTop 100, slack 1: the strip is on screen at 700 - scroll.
             tabsPinned(598, 700, 100, 1) shouldBe false
             tabsPinned(599, 700, 100, 1) shouldBe true
@@ -49,7 +49,7 @@ class BookDetailTabRulesTest : DescribeSpec({
             tabsPinned(2000, 700, 100, 1) shouldBe true
         }
 
-        it("tabs are not pinned while the host is unplaced, whatever the scroll") {
+        it("reports unpinned while the host is unplaced") {
             tabsPinned(0, -1, 0, 1) shouldBe false
             tabsPinned(500, -1, 0, 1) shouldBe false
         }
