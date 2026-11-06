@@ -36,7 +36,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
  * The Highlights list: the heading with its count, then the content for the state. Rows compose a page at a time as the
- * reader scrolls, because the host is a plain scrolling column. [rowActions] fills each row's footer and is empty until #111.
+ * reader scrolls, because the host is a plain scrolling column. [rowActions] fills each row's footer; the default draws nothing.
  */
 @Composable
 internal fun HighlightsContent(

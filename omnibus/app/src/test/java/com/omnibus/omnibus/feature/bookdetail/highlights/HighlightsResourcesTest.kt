@@ -36,6 +36,9 @@ class HighlightsResourcesTest : DescribeSpec({
                 "book_detail_highlights_color_blue" to "Blue highlight",
                 "book_detail_highlights_color_rose" to "Rose highlight",
                 "book_detail_highlights_color_violet" to "Violet highlight",
+                "book_detail_highlights_actions" to "Highlight actions",
+                "book_detail_highlights_quote_card" to "Make a quote card",
+                "book_detail_highlights_share" to "Share",
             )
             strings.keys.all { it.startsWith("book_detail_highlights_") } shouldBe true
             String.format(Locale.US, strings.getValue("book_detail_highlights_chapter"), 7) shouldBe "Chapter 7"
