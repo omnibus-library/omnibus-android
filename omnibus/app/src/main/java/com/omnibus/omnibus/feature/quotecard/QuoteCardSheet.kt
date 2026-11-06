@@ -97,6 +97,11 @@ fun QuoteCardSheet(passage: String, book: CoverIdentity, onDismiss: () -> Unit) 
             onKindChosen = viewModel::onKindChosen,
             onBackgroundChosen = viewModel::onBackgroundChosen,
             onCustomChosen = {},
+            onTypefaceChosen = viewModel::onTypefaceChosen,
+            onSizeChosen = viewModel::onSizeChosen,
+            onBoldToggled = viewModel::onBoldToggled,
+            onItalicToggled = viewModel::onItalicToggled,
+            onShapeChosen = viewModel::onShapeChosen,
             onShare = { scope.launch { viewModel.onShareRequested(exporter.capture()) } },
             onCopy = { scope.launch { viewModel.onCopyRequested(exporter.capture()) } },
             onDone = {
@@ -132,6 +137,11 @@ internal fun QuoteCardSheetContent(
     onKindChosen: (QuoteBackgroundKind) -> Unit,
     onBackgroundChosen: (QuoteBackground) -> Unit,
     onCustomChosen: () -> Unit,
+    onTypefaceChosen: (QuoteTypeface) -> Unit,
+    onSizeChosen: (QuoteSize) -> Unit,
+    onBoldToggled: () -> Unit,
+    onItalicToggled: () -> Unit,
+    onShapeChosen: (QuoteShape) -> Unit,
     onShare: () -> Unit,
     onCopy: () -> Unit,
     onDone: () -> Unit,
@@ -165,6 +175,8 @@ internal fun QuoteCardSheetContent(
             onBackgroundChosen = onBackgroundChosen,
             onCustomChosen = onCustomChosen,
         )
+        QuoteTypeSection(state, onTypefaceChosen, onSizeChosen, onBoldToggled, onItalicToggled)
+        QuoteShapeSection(state.shape, onShapeChosen)
         Actions(state.exporting, onShare, onCopy)
     }
 }

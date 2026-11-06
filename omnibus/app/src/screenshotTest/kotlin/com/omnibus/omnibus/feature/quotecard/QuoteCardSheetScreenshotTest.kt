@@ -40,6 +40,11 @@ private fun SheetShot(state: QuoteCardUIState) {
             onKindChosen = {},
             onBackgroundChosen = {},
             onCustomChosen = {},
+            onTypefaceChosen = {},
+            onSizeChosen = {},
+            onBoldToggled = {},
+            onItalicToggled = {},
+            onShapeChosen = {},
             onShare = {},
             onCopy = {},
             onDone = {},
@@ -55,7 +60,7 @@ fun QuoteCardSheetSolid() {
     SheetShot(QuoteCardUIState(passage = PASSAGE))
 }
 
-/** The gradient row with two cover pairs ahead of the presets, Dusk chosen, on the Post shape. */
+/** The gradient row with two cover pairs ahead of the presets, Dusk chosen, Post, and Sans, Italic and L selected. */
 @PreviewTest
 @SheetLightDark
 @Composable
@@ -64,6 +69,9 @@ fun QuoteCardSheetGradient() {
         QuoteCardUIState(
             passage = PASSAGE,
             background = QuoteBackground.Preset(QuoteGradientPreset.Dusk),
+            typeface = QuoteTypeface.Sans,
+            size = QuoteSize.L,
+            italic = true,
             shape = QuoteShape.Post,
             coverPairs = CoverPairs,
         ),

@@ -9,8 +9,11 @@ internal object QuoteCardTestTags {
     const val COPY = "quote-card-copy"
     const val KIND_PILL = "quote-card-kind-pill"
     const val KIND_MENU = "quote-card-kind-menu"
+    const val BOLD = "quote-card-bold"
+    const val ITALIC = "quote-card-italic"
     const val SWATCH_ROW = "quote-card-swatch-row"
     const val DIVIDER = "quote-card-swatch-divider"
 
+    fun shape(shape: QuoteShape) = "quote-card-shape-${shape.name.lowercase()}"
     fun kindItem(kind: QuoteBackgroundKind) = "quote-card-kind-${kind.name.lowercase()}"
 }

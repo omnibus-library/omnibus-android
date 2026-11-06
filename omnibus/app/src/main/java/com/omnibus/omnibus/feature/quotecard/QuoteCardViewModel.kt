@@ -90,6 +90,21 @@ class QuoteCardViewModel @AssistedInject constructor(
         _uiState.update { it.copy(background = background) }
     }
 
+    /** The reader chose a typeface. */
+    fun onTypefaceChosen(typeface: QuoteTypeface) = _uiState.update { it.copy(typeface = typeface) }
+
+    /** The reader chose a size. */
+    fun onSizeChosen(size: QuoteSize) = _uiState.update { it.copy(size = size) }
+
+    /** The reader toggled Bold. */
+    fun onBoldToggled() = _uiState.update { it.copy(bold = !it.bold) }
+
+    /** The reader toggled Italic. */
+    fun onItalicToggled() = _uiState.update { it.copy(italic = !it.italic) }
+
+    /** The reader chose a shape. */
+    fun onShapeChosen(shape: QuoteShape) = _uiState.update { it.copy(shape = shape) }
+
     /** The reader chose Share with the rendered card's PNG [png]. Ignored while a save is running. */
     fun onShareRequested(png: ByteArray) = export(png, QuoteCardEffect::Share)
 
