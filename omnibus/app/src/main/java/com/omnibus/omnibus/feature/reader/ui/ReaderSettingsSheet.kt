@@ -57,6 +57,8 @@ import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
+import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
+import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Radius
@@ -97,12 +99,14 @@ internal object ReaderSettingsSheetDefaults {
  * [onSettingsChanged], and the caller owns the value. The sheet takes the app theme, never the
  * reading theme, so it is composed inside `OmnibusTheme()`.
  *
+ * @param accent the open book's accent, for the selected states and the justify switch.
  * @param onDismiss called when the sheet is closed with Done, a swipe, or a tap outside it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReaderSettingsSheet(
     settings: ReaderSettings,
+    accent: BookAccent,
     onSettingsChanged: (ReaderSettings) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -127,6 +131,7 @@ internal fun ReaderSettingsSheet(
     ) {
         ReaderSettingsSheetContent(
             settings = settings,
+            accent = accent,
             onSettingsChanged = onSettingsChanged,
             onDone = {
                 scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -139,8 +144,9 @@ internal fun ReaderSettingsSheet(
 
 /** The sheet's body, without the sheet, so it can be previewed. */
 @Composable
-private fun ReaderSettingsSheetContent(
+internal fun ReaderSettingsSheetContent(
     settings: ReaderSettings,
+    accent: BookAccent,
     onSettingsChanged: (ReaderSettings) -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
@@ -157,9 +163,9 @@ private fun ReaderSettingsSheetContent(
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
         SheetHeader(onDone = onDone)
-        PageGroup(settings = settings, onSettingsChanged = onSettingsChanged)
-        TypeGroup(settings = settings, onSettingsChanged = onSettingsChanged)
-        LayoutGroup(settings = settings, onSettingsChanged = onSettingsChanged)
+        PageGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+        TypeGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+        LayoutGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
     }
 }
 
@@ -198,7 +204,7 @@ private fun GroupLabel(text: String) {
 }
 
 @Composable
-private fun PageGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettings) -> Unit) {
+private fun PageGroup(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         GroupLabel(stringResource(R.string.reader_settings_group_page))
         Row(
@@ -209,6 +215,7 @@ private fun PageGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettin
                 ThemeSwatch(
                     theme = theme,
                     selected = settings.theme == theme,
+                    accent = accent,
                     onClick = { if (settings.theme != theme) onSettingsChanged(settings.copy(theme = theme)) },
                     modifier = Modifier.weight(1f),
                 )
@@ -222,6 +229,7 @@ private fun PageGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettin
 private fun ThemeSwatch(
     theme: ReaderTheme,
     selected: Boolean,
+    accent: BookAccent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -243,7 +251,7 @@ private fun ThemeSwatch(
                 .background(Color(theme.groundArgb))
                 .border(
                     width = if (selected) 2.dp else 0.75.dp,
-                    color = if (selected) palette.accent else palette.line,
+                    color = if (selected) accent.tint else palette.line,
                     shape = pageShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -272,7 +280,7 @@ private fun ThemeSwatch(
 }
 
 @Composable
-private fun TypeGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettings) -> Unit) {
+private fun TypeGroup(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
     val palette = OmnibusTheme.palette
     val faces = ReaderTypeface.entries
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -284,6 +292,7 @@ private fun TypeGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettin
                         TypefaceCapsule(
                             face = face,
                             selected = settings.typeface == face,
+                            accent = accent,
                             onClick = {
                                 if (settings.typeface != face) onSettingsChanged(settings.copy(typeface = face))
                             },
@@ -300,9 +309,9 @@ private fun TypeGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettin
                 .background(palette.bg1)
                 .border(0.5.dp, palette.line, RoundedCornerShape(Radius.lg)),
         ) {
-            SizeRow(settings = settings, onSettingsChanged = onSettingsChanged)
+            SizeRow(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
             Box(Modifier.fillMaxWidth().height(0.5.dp).background(palette.line2))
-            LineHeightRow(settings = settings, onSettingsChanged = onSettingsChanged)
+            LineHeightRow(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
         }
     }
 }
@@ -312,6 +321,7 @@ private fun TypeGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettin
 private fun TypefaceCapsule(
     face: ReaderTypeface,
     selected: Boolean,
+    accent: BookAccent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -321,7 +331,7 @@ private fun TypefaceCapsule(
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .testTag(ReaderSettingsSheetTags.typeface(face))
             .clip(CircleShape)
-            .background(if (selected) palette.accent else palette.bg2.copy(alpha = 0.7f))
+            .background(if (selected) accent.tint else palette.bg2.copy(alpha = 0.7f))
             .padding(vertical = 7.dp, horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -330,7 +340,7 @@ private fun TypefaceCapsule(
             style = uiTextStyle(
                 13,
                 if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                if (selected) palette.accentInk else palette.ink2,
+                if (selected) accent.onTint else palette.ink2,
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -339,7 +349,7 @@ private fun TypefaceCapsule(
 }
 
 @Composable
-private fun SizeRow(settings: ReaderSettings, onSettingsChanged: (ReaderSettings) -> Unit) {
+private fun SizeRow(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
     val palette = OmnibusTheme.palette
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
@@ -375,6 +385,7 @@ private fun SizeRow(settings: ReaderSettings, onSettingsChanged: (ReaderSettings
         )
         Stepper(
             iconRes = R.drawable.ic_reader_minus,
+            accent = accent,
             description = stringResource(R.string.reader_settings_size_decrease),
             enabled = settings.canDecreaseFontSize,
             onClick = { onSettingsChanged(settings.withFontSizeStep(-1)) },
@@ -382,6 +393,7 @@ private fun SizeRow(settings: ReaderSettings, onSettingsChanged: (ReaderSettings
         )
         Stepper(
             iconRes = R.drawable.ic_reader_plus,
+            accent = accent,
             description = stringResource(R.string.reader_settings_size_increase),
             enabled = settings.canIncreaseFontSize,
             onClick = { onSettingsChanged(settings.withFontSizeStep(+1)) },
@@ -391,7 +403,7 @@ private fun SizeRow(settings: ReaderSettings, onSettingsChanged: (ReaderSettings
 }
 
 @Composable
-private fun LineHeightRow(settings: ReaderSettings, onSettingsChanged: (ReaderSettings) -> Unit) {
+private fun LineHeightRow(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
     val palette = OmnibusTheme.palette
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
@@ -411,6 +423,7 @@ private fun LineHeightRow(settings: ReaderSettings, onSettingsChanged: (ReaderSe
         )
         Stepper(
             iconRes = R.drawable.ic_reader_minus,
+            accent = accent,
             description = stringResource(R.string.reader_settings_line_height_decrease),
             enabled = settings.canDecreaseLineHeight,
             onClick = { onSettingsChanged(settings.withLineHeightStep(-1)) },
@@ -418,6 +431,7 @@ private fun LineHeightRow(settings: ReaderSettings, onSettingsChanged: (ReaderSe
         )
         Stepper(
             iconRes = R.drawable.ic_reader_plus,
+            accent = accent,
             description = stringResource(R.string.reader_settings_line_height_increase),
             enabled = settings.canIncreaseLineHeight,
             onClick = { onSettingsChanged(settings.withLineHeightStep(+1)) },
@@ -427,12 +441,13 @@ private fun LineHeightRow(settings: ReaderSettings, onSettingsChanged: (ReaderSe
 }
 
 /**
- * A round minus or plus. The touch target is 48dp around a 32dp circle. The glyph is the accent on
- * the dark app theme and the ink on the light one, and muted when disabled.
+ * A round minus or plus. The touch target is 48dp around a 32dp circle. The glyph is the book's accent
+ * on the dark app theme and the ink on the light one, and muted when disabled.
  */
 @Composable
 private fun Stepper(
     iconRes: Int,
+    accent: BookAccent,
     description: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -441,7 +456,7 @@ private fun Stepper(
     val palette = OmnibusTheme.palette
     val tint = when {
         !enabled -> palette.ink3
-        palette == OmnibusPalette.Atrium -> palette.accent
+        palette == OmnibusPalette.Atrium -> accent.tint
         else -> palette.ink0
     }
     Box(
@@ -471,7 +486,7 @@ private fun Stepper(
 }
 
 @Composable
-private fun LayoutGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSettings) -> Unit) {
+private fun LayoutGroup(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
     val palette = OmnibusTheme.palette
     val shape = RoundedCornerShape(Radius.lg)
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -499,7 +514,7 @@ private fun LayoutGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSett
                         )
                         .testTag(ReaderSettingsSheetTags.margins(margins))
                         .clip(CircleShape)
-                        .background(if (selected) palette.accent else Color.Transparent),
+                        .background(if (selected) accent.tint else Color.Transparent),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -507,7 +522,7 @@ private fun LayoutGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSett
                         style = uiTextStyle(
                             14,
                             if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            if (selected) palette.accentInk else palette.ink2,
+                            if (selected) accent.onTint else palette.ink2,
                         ),
                     )
                 }
@@ -537,8 +552,8 @@ private fun LayoutGroup(settings: ReaderSettings, onSettingsChanged: (ReaderSett
                 checked = settings.justify,
                 onCheckedChange = null,
                 colors = SwitchDefaults.colors(
-                    checkedTrackColor = palette.accent,
-                    checkedThumbColor = palette.accentInk,
+                    checkedTrackColor = accent.tint,
+                    checkedThumbColor = accent.onTint,
                 ),
             )
         }
@@ -573,6 +588,7 @@ private fun ReaderSettingsSheetPreview() {
     OmnibusTheme {
         ReaderSettingsSheetContent(
             settings = ReaderSettings(),
+            accent = readerSheetAccent(ReaderBookState.Ready(title = "The Long Road Home"), OmnibusTheme.palette),
             onSettingsChanged = {},
             onDone = {},
         )

@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
@@ -87,6 +88,7 @@ private fun ContentsPreview(
         ReaderContentsSheetContent(
             title = "The Long Road Home",
             cover = ReaderContentsPreviewCover,
+            accent = readerSheetAccent(ReaderBookState.Ready("The Long Road Home", ReaderContentsPreviewCover), OmnibusTheme.palette),
             toc = toc,
             location = location,
             onEntryChosen = {},

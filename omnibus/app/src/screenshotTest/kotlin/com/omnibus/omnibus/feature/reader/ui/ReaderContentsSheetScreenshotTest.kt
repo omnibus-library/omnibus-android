@@ -4,8 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.screenshot.Shot
+import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /** Three levels with pages, "Page 38 of 112" in the header beside the cover, and the marker on "The Customs House". */
 @PreviewTest
@@ -106,6 +108,7 @@ private fun ContentsShot(
         ReaderContentsSheetContent(
             title = "The Long Road Home",
             cover = ReaderContentsPreviewCover,
+            accent = readerSheetAccent(ReaderBookState.Ready("The Long Road Home", ReaderContentsPreviewCover), OmnibusTheme.palette),
             toc = toc,
             location = location,
             onEntryChosen = {},

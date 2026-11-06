@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
 import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -50,6 +51,7 @@ class ReaderContentsSheetTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     private val cover = CoverIdentity(uuid = "book-1", title = "The Long Road Home", creator = "A. N. Author", hasCover = false)
+    private val accent = bookAccent(cover.tone, lightGround = true)
 
     /** Three levels, no pages, no current chapter. */
     private val fiveEntries = listOf(
@@ -81,6 +83,7 @@ class ReaderContentsSheetTest {
                 ReaderContentsSheetContent(
                     title = title,
                     cover = cover,
+                    accent = accent,
                     toc = toc.value,
                     location = location.value,
                     onEntryChosen = onEntryChosen,
@@ -109,6 +112,7 @@ class ReaderContentsSheetTest {
                         ReaderContentsSheet(
                             title = "The Long Road Home",
                             cover = cover,
+                            accent = accent,
                             toc = toc,
                             location = null,
                             onEntryChosen = {},
