@@ -3,7 +3,7 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.compose.ui.graphics.Color
 import com.omnibus.omnibus.feature.bookdetail.stage.NearBlackInk
 import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
-import com.omnibus.omnibus.feature.bookdetail.stage.contrastRatio
+import com.omnibus.omnibus.ui.theme.contrastRatio
 import com.omnibus.omnibus.ui.theme.Oklch
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContain
