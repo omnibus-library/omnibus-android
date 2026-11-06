@@ -137,6 +137,13 @@ fun gradientEndpoints(angle: Int, size: Size): Pair<Offset, Offset> {
     return at(-1) to at(1)
 }
 
+/** The swatches of [kind]'s row, in order and before Custom: the book's colour and the washes, or the cover's pairs and the presets. */
+fun swatchesOf(kind: QuoteBackgroundKind, coverPairs: List<CoverPair>): List<QuoteBackground> = when (kind) {
+    QuoteBackgroundKind.Solid -> listOf(QuoteBackground.Book) + QuoteWash.entries.map(QuoteBackground::Wash)
+    QuoteBackgroundKind.Gradient ->
+        coverPairs.map(QuoteBackground::Cover) + QuoteGradientPreset.entries.map(QuoteBackground::Preset)
+}
+
 /** [this] painted for a book whose own colour is [tone]. */
 fun QuoteBackground.fill(tone: Oklch): QuoteFill = when (this) {
     QuoteBackground.Book ->

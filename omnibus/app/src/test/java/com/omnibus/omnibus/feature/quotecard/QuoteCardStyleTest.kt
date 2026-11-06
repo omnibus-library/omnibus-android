@@ -166,6 +166,43 @@ class QuoteCardStyleTest : DescribeSpec({
         }
     }
 
+    describe("swatchesOf") {
+        val pairs = listOf(
+            CoverPair(0xFF5D1F1C.toInt(), 0xFFC01A1A.toInt(), lightInk = true),
+            CoverPair(0xFFEFE4E6.toInt(), 0xFFD5C2C9.toInt(), lightInk = false),
+        )
+
+        it("lists the solid row as the book's colour, then ink, paper, moss, rose, dusk and sea") {
+            swatchesOf(QuoteBackgroundKind.Solid, pairs) shouldBe listOf(
+                QuoteBackground.Book,
+                QuoteBackground.Wash(QuoteWash.Ink),
+                QuoteBackground.Wash(QuoteWash.Paper),
+                QuoteBackground.Wash(QuoteWash.Moss),
+                QuoteBackground.Wash(QuoteWash.Rose),
+                QuoteBackground.Wash(QuoteWash.Dusk),
+                QuoteBackground.Wash(QuoteWash.Sea),
+            )
+        }
+
+        it("lists the gradient row as the cover's pairs in order, then Ember, Dusk, Lagoon, Grove and Dawn") {
+            swatchesOf(QuoteBackgroundKind.Gradient, pairs) shouldBe listOf(
+                QuoteBackground.Cover(pairs[0]),
+                QuoteBackground.Cover(pairs[1]),
+                QuoteBackground.Preset(QuoteGradientPreset.Ember),
+                QuoteBackground.Preset(QuoteGradientPreset.Dusk),
+                QuoteBackground.Preset(QuoteGradientPreset.Lagoon),
+                QuoteBackground.Preset(QuoteGradientPreset.Grove),
+                QuoteBackground.Preset(QuoteGradientPreset.Dawn),
+            )
+        }
+
+        it("lists only the presets when the cover offers no pairs") {
+            swatchesOf(QuoteBackgroundKind.Gradient, emptyList()).first() shouldBe
+                QuoteBackground.Preset(QuoteGradientPreset.Ember)
+            swatchesOf(QuoteBackgroundKind.Gradient, emptyList()).size shouldBe 5
+        }
+    }
+
     describe("contrastRatio") {
         it("is 21 for black on white and 1 for a colour on itself") {
             contrastRatio(Color.Black, Color.White) shouldBe (21.0 plusOrMinus 0.001)

@@ -9,4 +9,25 @@
     <string name="quote_card_copy">Copy image</string>
     <!-- The label of the clipboard entry the copied card makes. -->
     <string name="quote_card_clip_label">Quote card</string>
+    <!-- Heading of the sheet's background section. -->
+    <string name="quote_card_background">Background</string>
+    <!-- The two kinds of background, on the pill beside the heading and in its menu. -->
+    <string name="quote_card_kind_solid">Solid</string>
+    <string name="quote_card_kind_gradient">Gradient</string>
+    <!-- Spoken names of the background swatches. -->
+    <string name="quote_card_swatch_book">Book</string>
+    <string name="quote_card_swatch_ink">Ink</string>
+    <string name="quote_card_swatch_paper">Paper</string>
+    <string name="quote_card_swatch_moss">Moss</string>
+    <string name="quote_card_swatch_rose">Rose</string>
+    <string name="quote_card_swatch_dusk">Dusk</string>
+    <string name="quote_card_swatch_sea">Sea</string>
+    <string name="quote_card_swatch_ember">Ember</string>
+    <string name="quote_card_swatch_lagoon">Lagoon</string>
+    <string name="quote_card_swatch_grove">Grove</string>
+    <string name="quote_card_swatch_dawn">Dawn</string>
+    <!-- A gradient drawn from the book's cover. %1$d is its place in the row, from 1. -->
+    <string name="quote_card_swatch_cover">Cover gradient %1$d</string>
+    <string name="quote_card_swatch_custom_color">Custom color</string>
+    <string name="quote_card_swatch_custom_gradient">Custom gradient</string>
 </resources>
