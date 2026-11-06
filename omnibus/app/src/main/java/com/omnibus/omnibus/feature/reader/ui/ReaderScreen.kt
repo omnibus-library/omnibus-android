@@ -341,7 +341,7 @@ internal fun ReaderScreenContent(
                                     chromeVisible = uiState.chromeVisible,
                                     menuOpen = uiState.menuOpen,
                                     menuRows = uiState.menuRows,
-                                    percent = uiState.location?.pct ?: 0,
+                                    percent = uiState.menuPercent,
                                     bookmarkCount = uiState.bookmarkCount,
                                     pageBookmarked = uiState.isPageBookmarked,
                                     canBookmark = uiState.location?.cfi?.isNotBlank() == true,

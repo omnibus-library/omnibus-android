@@ -45,11 +45,12 @@ sealed interface ContentsPosition {
 
         /**
          * Page of total once the book has page numbers (`totalPages > 0` and `page >= 1`, as
-         * [ReaderIndicators] does), otherwise the percent. Null without a location.
+         * [ReaderIndicators] does), otherwise the percent. Null without a location, or before the book has
+         * locations, when the percent is a wrong 0 (the menu's Contents row hides it too).
          */
         fun from(location: RelocateData?): ContentsPosition? = when {
-            location == null -> null
-            location.totalPages > 0 && location.page >= 1 -> PageOf(location.page, location.totalPages)
+            location == null || location.totalPages <= 0 -> null
+            location.page >= 1 -> PageOf(location.page, location.totalPages)
             else -> Percent(location.pct)
         }
     }

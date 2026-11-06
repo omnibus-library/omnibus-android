@@ -64,7 +64,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * @param chromeVisible Whether the buttons are shown. The labels stay on screen either way.
  * @param menuOpen Whether the menu rows are shown above the menu button.
  * @param menuRows The rows to show, in order. Empty hides the menu button.
- * @param percent The progress shown on the Contents row.
+ * @param percent The progress shown on the Contents row. Null shows none.
  * @param bookmarkCount The count shown on the Bookmarks row, when it is above zero.
  * @param pageBookmarked Whether the current page has a bookmark, which fills the quick action's icon.
  * @param canBookmark False when there is no current position, which disables the quick action.
@@ -83,7 +83,7 @@ internal fun ReaderChrome(
     chromeVisible: Boolean,
     menuOpen: Boolean,
     menuRows: List<ReaderMenuRow>,
-    percent: Int,
+    percent: Int?,
     colors: ReaderChromeColors,
     reduceMotion: Boolean,
     insets: WindowInsets,
@@ -346,7 +346,7 @@ internal fun ReaderChromeButton(
 @Composable
 internal fun ReaderMenuRowItem(
     row: ReaderMenuRow,
-    percent: Int,
+    percent: Int?,
     bookmarkCount: Int,
     colors: ReaderChromeColors,
     onClick: () -> Unit,
@@ -383,7 +383,7 @@ internal fun ReaderMenuRowItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (row == ReaderMenuRow.Contents) {
+        if (row == ReaderMenuRow.Contents && percent != null) {
             Text(
                 text = stringResource(R.string.reader_percent, percent),
                 style = uiTextStyle(13.5.sp, FontWeight.Normal, colors.labelInk),

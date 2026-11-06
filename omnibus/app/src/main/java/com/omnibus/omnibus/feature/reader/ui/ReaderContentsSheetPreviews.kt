@@ -54,7 +54,7 @@ internal val ReaderContentsPreviewLocation = RelocateData(
     totalChapters = 12,
 )
 
-/** The same chapter before page numbers exist, so the header falls back to the percent. */
+/** The same chapter before page numbers exist, so the header shows no position line. */
 internal val ReaderContentsPreviewBareLocation = RelocateData(
     page = 0,
     totalPages = 0,
