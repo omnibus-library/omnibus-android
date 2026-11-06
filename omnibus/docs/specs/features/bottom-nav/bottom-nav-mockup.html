@@ -1,0 +1,179 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bottom nav mockup</title>
+<style>
+  /* Page chrome for viewing the mockup on its own. The device frame below uses the Atrium palette. */
+  :root{--background:#111;--foreground:#eee;--muted-foreground:#999;--secondary:#2a2a2a;--border:#333;--primary:#F0A556;--radius:8px;--font-mono:ui-monospace,monospace}
+  body{margin:0;padding:16px;background:var(--background);color:var(--foreground);font-family:system-ui,sans-serif}
+  .ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin-bottom:12px;font-size:12px}
+  .ctl label{display:flex;flex-direction:column;gap:4px;color:var(--muted-foreground)}
+  .ctl label span b{color:var(--foreground);font-weight:600;font-family:var(--font-mono)}
+  .ctl input[type=range]{width:100%;accent-color:var(--primary)}
+  .row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;font-size:12px}
+  .row .lbl{color:var(--muted-foreground);margin-right:2px}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:calc(var(--radius) - 2px);overflow:hidden}
+  .seg button{all:unset;cursor:pointer;padding:5px 10px;font-size:12px;color:var(--muted-foreground)}
+  .seg button+button{border-left:1px solid var(--border)}
+  .seg button.on{background:var(--secondary);color:var(--foreground);font-weight:600}
+  .stage{position:relative;overflow:hidden}
+  .info{font-size:11px;color:var(--muted-foreground);font-family:var(--font-mono);margin:6px 0 0}
+
+  /* ---------- device (1 css px = 1 dp) ---------- */
+  .dev{--bg0:#0A0806;--bg1:#13100D;--bg2:oklch(0.215 0.010 70);--line:#312D28A6;--ink0:#F7F5F1;--ink1:oklch(0.82 0.010 75);--ink2:#8B857F;--ink3:#625D56;--accent:#F0A556;
+       position:absolute;top:0;left:0;transform-origin:0 0;background:var(--bg0);color:var(--ink0);border-radius:28px;overflow:hidden;
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 0 0 6px #222,0 0 0 7px #444}
+  .dev.light{--bg0:#FBFAF8;--bg1:#F5F3F0;--bg2:oklch(0.940 0.006 75);--line:#4B474233;--ink0:#110F0D;--ink1:oklch(0.36 0.008 70);--ink2:#6D6863;--ink3:#67625D}
+  .status{height:28px;display:flex;justify-content:space-between;align-items:center;padding:0 20px;font-size:12px;font-weight:600;color:var(--ink1)}
+  .scroll{position:absolute;top:28px;left:0;right:0;bottom:0;overflow-y:auto;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+  .mast{padding:14px 20px 6px;display:flex;justify-content:space-between;align-items:end}
+  .mast h1{margin:0;font-size:30px;font-weight:700;letter-spacing:-.5px;font-family:Georgia,"Times New Roman",serif}
+  .fab{position:absolute;width:56px;height:56px;border-radius:var(--r);background:var(--accent);color:#130B05;display:grid;place-items:center;z-index:4;cursor:pointer;
+       box-shadow:0 3px 6px #0000002e,0 8px 20px #00000038}
+  .dev:not(.light) .fab{box-shadow:0 3px 8px #00000080,0 10px 24px #000000a6}
+  .fab svg{width:24px;height:24px}
+  .sub{padding:0 20px 14px;font-size:13px;color:var(--ink2)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:18px 14px;padding:0 20px}
+  .book .cv{aspect-ratio:2/3;border-radius:6px;position:relative;overflow:hidden;box-shadow:0 1px 2px #0003}
+  .book .cv::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#0003 0,#fff1 4%,transparent 9%)}
+  .book .cv i{position:absolute;left:8px;right:8px;bottom:10px;font-style:normal;font-family:Georgia,serif;font-size:12px;line-height:1.15;color:#fffd;font-weight:600}
+  .book .t{font-size:12px;font-weight:600;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .book .a{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gesture{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:108px;height:4px;border-radius:2px;background:var(--ink1);opacity:.7;z-index:5}
+
+  /* ---------- current bar ---------- */
+  .bar-old{position:absolute;left:0;right:0;bottom:0;background:var(--bg0);border-top:.5px solid var(--line);padding:9px 0 calc(6px + var(--nav));display:flex}
+  /* ---------- floating bar ---------- */
+  .bar-new{position:absolute;left:var(--side);bottom:calc(var(--nav) + var(--bottom));width:var(--bw);
+           height:var(--h);border-radius:var(--r);display:flex;align-items:center;padding:0 6px;box-sizing:border-box;
+           background:var(--bg2);border:.5px solid var(--line);
+           box-shadow:0 4px 10px #0000002e,0 14px 34px #00000047}
+  .dev:not(.light) .bar-new{box-shadow:0 4px 12px #00000080,0 16px 40px #000000b3}
+  /* Breakpoint choreography, M3 emphasized easing. Going wide the bar shrinks out from under the FAB, then the FAB drops
+     into the corner; going narrow the FAB lifts first, then the bar grows back under it. Durations/delays set from JS. */
+  .dev.anim .bar-new{transition:width var(--bd) cubic-bezier(.2,0,0,1) var(--bdl)}
+  .dev.anim .fab{transition:left var(--fd) cubic-bezier(.2,0,0,1) var(--fdl),bottom var(--fd) cubic-bezier(.2,0,0,1) var(--fdl)}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink3);cursor:pointer;position:relative;padding:4px 0;user-select:none}
+  .tab svg{width:24px;height:24px}
+  .tab span{font-size:11px;font-weight:500;white-space:nowrap}
+  .tab.on{color:var(--accent)}
+  .tab.on span{font-weight:600}
+  .bar-new .tab.on::before{content:"";position:absolute;top:1px;width:56px;height:30px;border-radius:15px;background:color-mix(in oklab,var(--accent) 16%,transparent);z-index:-1}
+  .bar-new .tab{z-index:0}
+  .guide{position:absolute;bottom:0;top:28px;border-left:1px dashed #e5484d;pointer-events:none;z-index:6;display:none}
+  .guide.show{display:block}
+  .guide b{position:absolute;top:4px;left:4px;font:600 10px var(--font-mono,monospace);color:#e5484d;white-space:nowrap}
+</style></head><body>
+
+<div class="row"><span class="lbl">Design</span><div class="seg" id="mode"><button data-v="old">Current</button><button data-v="new" class="on">Floating</button></div>
+  <span class="lbl" style="margin-left:10px">Device</span><div class="seg" id="preset">
+    <button data-w="360" data-h="780">Small phone</button><button data-w="412" data-h="892" class="on">Phone</button><button data-w="673" data-h="841">Fold inner</button><button data-w="841" data-h="701">Fold landscape</button><button data-w="1280" data-h="800">Tablet</button></div>
+  <span class="lbl" style="margin-left:10px">Theme</span><div class="seg" id="theme"><button data-v="dark" class="on">Dark</button><button data-v="light">Light</button></div>
+  <span class="lbl" style="margin-left:10px">Motion</span><div class="seg" id="speed"><button data-v="1" class="on">Normal</button><button data-v="5">Slow 5×</button></div>
+  <span class="lbl" style="margin-left:10px">Guides</span><div class="seg" id="guides"><button data-v="1">On</button><button data-v="0" class="on">Off</button></div>
+</div>
+<div class="ctl">
+  <label><span>Screen width <b id="vw"></b></span><input id="w" type="range" min="320" max="1280" value="412"></label>
+  <label><span>Max bar width <b id="vmax"></b></span><input id="max" type="range" min="280" max="720" step="4" value="360"></label>
+  <label><span>Side margin <b id="vside"></b></span><input id="side" type="range" min="0" max="32" value="12"></label>
+  <label><span>Bottom margin <b id="vbottom"></b></span><input id="bottom" type="range" min="0" max="32" value="8"></label>
+  <label><span>Bar height <b id="vh"></b></span><input id="h" type="range" min="52" max="80" value="64"></label>
+</div>
+
+<div class="stage" id="stage"><div class="dev" id="dev">
+  <div class="status"><span>9:41</span><span>▴ ◆ ▮</span></div>
+  <div class="scroll" id="scroll">
+    <div class="mast"><h1>Library</h1></div>
+    <div class="sub">48 books · 3 in progress</div>
+    <div class="grid" id="grid"></div>
+    <div id="pad"></div>
+  </div>
+  <div id="bar"></div>
+  <div class="fab" id="fab" title="Add book"></div>
+  <div class="guide" id="g1"><b></b></div>
+  <div class="gesture"></div>
+</div></div>
+<p class="info" id="info"></p>
+
+<script>
+const ICONS={
+ Library:['M7,4.9h10a2.1,2.1 0 0 1 2.1,2.1v10a2.1,2.1 0 0 1 -2.1,2.1H7a2.1,2.1 0 0 1 -2.1,-2.1V7A2.1,2.1 0 0 1 7,4.9zM9.5,4.9v14.2',
+  'M7,4h1.6a0.9,0.9 0 0 1 0.9,0.9v14.2a0.9,0.9 0 0 1 -0.9,0.9H7a3,3 0 0 1 -3,-3V7A3,3 0 0 1 7,4zM11.4,4H17a3,3 0 0 1 3,3v10a3,3 0 0 1 -3,3h-5.6a0.9,0.9 0 0 1 -0.9,-0.9V4.9A0.9,0.9 0 0 1 11.4,4z'],
+ Search:['M16.6,10.5a6.1,6.1 0 1 1 -12.2,0a6.1,6.1 0 1 1 12.2,0zM15,15l4.6,4.6',null],
+ Stats:['M5,12.9h2.2a0.9,0.9 0 0 1 0.9,0.9v4.3a0.9,0.9 0 0 1 -0.9,0.9H5a0.9,0.9 0 0 1 -0.9,-0.9v-4.3a0.9,0.9 0 0 1 0.9,-0.9zM10.9,4.9h2.2a0.9,0.9 0 0 1 0.9,0.9v12.3a0.9,0.9 0 0 1 -0.9,0.9h-2.2a0.9,0.9 0 0 1 -0.9,-0.9V5.8a0.9,0.9 0 0 1 0.9,-0.9zM16.8,8.9h2.2a0.9,0.9 0 0 1 0.9,0.9v8.3a0.9,0.9 0 0 1 -0.9,0.9h-2.2a0.9,0.9 0 0 1 -0.9,-0.9V9.8a0.9,0.9 0 0 1 0.9,-0.9z',
+  'M5,12h2.2a1.8,1.8 0 0 1 1.8,1.8v4.4a1.8,1.8 0 0 1 -1.8,1.8H5a1.8,1.8 0 0 1 -1.8,-1.8v-4.4A1.8,1.8 0 0 1 5,12zM10.9,4h2.2a1.8,1.8 0 0 1 1.8,1.8v12.4a1.8,1.8 0 0 1 -1.8,1.8h-2.2a1.8,1.8 0 0 1 -1.8,-1.8V5.8A1.8,1.8 0 0 1 10.9,4zM16.8,8h2.2a1.8,1.8 0 0 1 1.8,1.8v8.4a1.8,1.8 0 0 1 -1.8,1.8h-2.2a1.8,1.8 0 0 1 -1.8,-1.8V9.8A1.8,1.8 0 0 1 16.8,8z'],
+ You:['M21,12a9,9 0 1 1 -18,0a9,9 0 1 1 18,0zM14.8,10a2.8,2.8 0 1 1 -5.6,0a2.8,2.8 0 1 1 5.6,0zM6.4,18.6a6,6 0 0 1 11.2,0',
+  'M21,12a9,9 0 1 1 -18,0a9,9 0 1 1 18,0zM14.8,10a2.8,2.8 0 1 1 -5.6,0a2.8,2.8 0 1 1 5.6,0zM6.4,18.6a6,6 0 0 1 11.2,0z']};
+function icon(name,sel){
+  // Search has no filled form: the selected glyph is the outline at a heavier stroke.
+  if(name==='Search') return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sel?2.6:1.8}" stroke-linecap="round"><path d="${ICONS.Search[0]}"/></svg>`;
+  const p=ICONS[name][sel?1:0];
+  if(!sel) return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
+  if(Array.isArray(p)) return `<svg viewBox="0 0 24 24"><path fill="currentColor" d="${p[0]}"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="${p[1]}"/></svg>`;
+  return `<svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="${p}"/></svg>`;
+}
+const S={speed:'1',mode:'new',w:412,h:892,theme:'dark',guides:'0',sel:0,max:360,side:12,bottom:8,bh:64};
+const NAV=24, R=16; // gesture-nav inset; corner radius shared by the bar and the FAB
+const books=[["The Left Hand of Darkness","Ursula K. Le Guin","#3d5a6c"],["Piranesi","Susanna Clarke","#7a6a4f"],["Middlemarch","George Eliot","#5b3b4a"],["Station Eleven","Emily St. John Mandel","#2f4a3a"],["Dune","Frank Herbert","#a0662f"],["Klara and the Sun","Kazuo Ishiguro","#6b7f99"],["The Overstory","Richard Powers","#3f5f2f"],["Babel","R. F. Kuang","#7d2f2f"],["Gideon the Ninth","Tamsyn Muir","#2a2a33"],["A Memory Called Empire","Arkady Martine","#4c3f7a"],["Circe","Madeline Miller","#8a5a2b"],["The Dispossessed","Ursula K. Le Guin","#56606b"],["Hyperion","Dan Simmons","#3a3550"],["Pachinko","Min Jin Lee","#6d4a3a"],["Recursion","Blake Crouch","#2c5560"],["Anathem","Neal Stephenson","#5e5640"],["Lonesome Dove","Larry McMurtry","#8b6d47"],["Never Let Me Go","Kazuo Ishiguro","#4a5a6a"]];
+document.getElementById('grid').innerHTML=books.map(([t,a,c])=>`<div class="book"><div class="cv" style="background:linear-gradient(160deg,${c},color-mix(in oklab,${c} 55%,#000))"><i>${t}</i></div><div class="t">${t}</div><div class="a">${a}</div></div>`).join('');
+
+const $=id=>document.getElementById(id);
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)');
+let prevWide=null, animTimer=0, animating=false;
+// Add-book glyph on the 24dp grid, drawn like the tab icons. The + is knocked out of the badge in the FAB's fill.
+const ADD_BOOK=`<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12.5,19.1H7a2.1,2.1 0 0 1 -2.1,-2.1V5.5a2.1,2.1 0 0 1 2.1,-2.1h8a2.1,2.1 0 0 1 2.1,2.1v6M8.5,3.4v15.7"/><circle cx="17.5" cy="17.5" r="5" fill="currentColor"/><path fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" d="M17.5,15.1v4.8M15.1,17.5h4.8"/></svg>`;
+function render(){
+  const dev=$('dev');
+  dev.style.width=S.w+'px';dev.style.height=S.h+'px';
+  dev.style.setProperty('--nav',NAV+'px');dev.style.setProperty('--side',S.side+'px');dev.style.setProperty('--bottom',S.bottom+'px');
+  dev.style.setProperty('--max',S.max+'px');dev.style.setProperty('--r',R+'px');dev.style.setProperty('--h',S.bh+'px');
+  const tabs=Object.keys(ICONS).map((n,i)=>`<div class="tab${i===S.sel?' on':''}" data-i="${i}">${icon(n,i===S.sel)}<span>${n}</span></div>`).join('');
+  const bar=$('bar');
+  if(S.mode==='old'){bar.className='bar-old';}
+  else bar.className='bar-new';
+  bar.innerHTML=tabs;
+  bar.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{S.sel=+t.dataset.i;render()});
+  // The bar caps at the same breakpoint the FAB moves beside it, so the margins stay even:
+  // narrow = bar fills the width and the FAB stacks above its end edge;
+  // wide = bar capped and anchored bottom-start, FAB parked at the bottom-end, centred on the bar's line.
+  const FAB=56,GAP=12;
+  const breakpoint=S.side+S.max+GAP+FAB+S.side;
+  const wide=S.mode==='new'&&S.w>=breakpoint;
+  const barW=wide?S.max:S.w-2*S.side;
+  if(prevWide!==null&&wide!==prevWide&&!reduceMotion.matches){
+    const k=+S.speed, BAR=400*k, DROP=350*k;
+    // Wide: bar first, FAB follows once the bar's end has cleared it. Narrow: FAB first, bar follows.
+    dev.style.setProperty('--bd',BAR+'ms');dev.style.setProperty('--fd',DROP+'ms');
+    dev.style.setProperty('--bdl',(wide?0:120*k)+'ms');dev.style.setProperty('--fdl',(wide?160*k:0)+'ms');
+    animating=true;clearTimeout(animTimer);
+    animTimer=setTimeout(()=>{animating=false;$('dev').classList.remove('anim')},(wide?160*k+DROP:120*k+BAR)+50);
+    $('fab').animate([{transform:'scale(1)'},{transform:'scale(.9)',offset:.45},{transform:'scale(1)'}],
+      {duration:(wide?160*k+DROP:DROP+80*k),easing:'cubic-bezier(.2,0,0,1)'});
+  }
+  prevWide=wide;
+  dev.className='dev'+(S.theme==='light'?' light':'')+(animating?' anim':'');
+  dev.style.setProperty('--bw',barW+'px');
+  const barBottom=S.mode==='old'?0:NAV+S.bottom, barH=S.mode==='old'?NAV+56:S.bh;
+  const barRight=S.mode==='old'?S.w:S.side+barW;
+  const fab=$('fab');
+  if(wide){fab.style.left=(S.w-S.side-FAB)+'px';fab.style.bottom=(barBottom+(barH-FAB)/2)+'px';}
+  else{fab.style.left=(barRight-(S.mode==='old'?16:0)-FAB)+'px';fab.style.bottom=(barBottom+barH+GAP)+'px';}
+  const reserve=(S.mode==='old'?NAV+56:NAV+S.bottom+S.bh+16)+(wide?0:FAB+GAP);
+  $('pad').style.height=reserve+'px';
+  const g=$('g1');g.className='guide'+(S.guides==='1'&&S.mode==='new'?' show':'');g.style.left=(S.side+S.max)+'px';g.querySelector('b').textContent='max '+S.max;
+  // scale to fit
+  const avail=$('stage').clientWidth-14, sc=Math.min(1,avail/S.w, 620/S.h);
+  dev.style.transform=`translate(7px,7px) scale(${sc})`;
+  $('stage').style.height=(S.h*sc+14)+'px';
+  $('vw').textContent=S.w+'dp';$('vmax').textContent=S.max+'dp';$('vside').textContent=S.side+'dp';$('vbottom').textContent=S.bottom+'dp';$('vh').textContent=S.bh+'dp';
+  $('w').value=S.w;
+  $('info').textContent=S.mode==='old'?`current · full-bleed ${S.w}dp`:
+    `bar ${barW}dp wide · ${wide?'capped, anchored bottom-start · FAB at bottom-end':'filling width · FAB above bar end'} (breakpoint ${breakpoint}dp) · inset ${S.side}/${S.bottom}dp above ${NAV}dp gesture inset · preview ${Math.round(sc*100)}%`;
+}
+function seg(id,key,cb){$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{$(id).querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');cb?cb(b):S[key]=b.dataset.v;render()})}
+seg('mode','mode');seg('speed','speed');seg('theme','theme');seg('guides','guides');
+seg('preset',null,b=>{S.w=+b.dataset.w;S.h=+b.dataset.h});
+[['w','w'],['max','max'],['side','side'],['bottom','bottom'],['h','bh']].forEach(([id,k])=>$(id).oninput=e=>{S[k]=+e.target.value;if(id==='w')$('preset').querySelectorAll('button').forEach(x=>x.classList.remove('on'));render()});
+$('fab').innerHTML=ADD_BOOK;
+addEventListener('resize',render);render();
+</script></body></html>
