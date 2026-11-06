@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -22,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -32,6 +35,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import com.omnibus.omnibus.ui.theme.DisplayFontFamily
 import com.omnibus.omnibus.ui.theme.MonoFontFamily
 import com.omnibus.omnibus.ui.theme.UiFontFamily
@@ -79,34 +83,42 @@ fun QuoteCard(
     shape: QuoteShape,
     modifier: Modifier = Modifier,
 ) {
-    BoxWithConstraints(
-        modifier
-            .aspectRatio(shape.ratio)
-            .clipToBounds()
-            .drawBehind {
-                val (start, end) = gradientEndpoints(fill.angle, this.size)
-                drawRect(Brush.linearGradient(listOf(fill.from, fill.to), start = start, end = end))
-            },
-    ) {
-        val metrics = CardMetrics(constraints.maxWidth.toFloat(), LocalDensity.current)
-        val passageStyle = metrics.passageStyle(passage, fill, typeface, size, bold, italic)
-        Column(Modifier.fillMaxSize().padding(metrics.dp(PADDING))) {
-            PassageArea(passage.collapsingWhitespace(), passageStyle, metrics, Modifier.weight(1f).fillMaxWidth())
-            Footer(title, author, fill, metrics)
+    // The card ignores the system font scale. Under non-linear scaling sp and px no longer convert one to one.
+    val density = LocalDensity.current
+    val unscaled = remember(density.density) { Density(density.density, fontScale = 1f) }
+    CompositionLocalProvider(LocalDensity provides unscaled) {
+        BoxWithConstraints(
+            modifier
+                .aspectRatio(shape.ratio)
+                .clipToBounds()
+                .drawBehind {
+                    val (start, end) = gradientEndpoints(fill.angle, this.size)
+                    drawRect(Brush.linearGradient(listOf(fill.from, fill.to), start = start, end = end))
+                },
+        ) {
+            val metrics = CardMetrics(constraints.maxWidth.toFloat(), unscaled)
+            val text = remember(passage) { passage.collapsingWhitespace() }
+            val fontPx = metrics.width * passageSizeFraction(text) * size.scale
+            val passageStyle = metrics.passageStyle(fontPx, fill, typeface, bold, italic)
+            Column(Modifier.fillMaxSize().padding(metrics.dp(PADDING))) {
+                PassageArea(text, passageStyle, fontPx, metrics, Modifier.weight(1f).fillMaxWidth())
+                Footer(title, author, fill, metrics)
+            }
         }
     }
 }
 
-/** The passage face for [typeface], with the toggles applied. Bold is the heaviest cut bundled. */
+/**
+ * The passage face for [typeface] at [fontPx], with the toggles applied. Bold is the heaviest cut bundled. The line height
+ * is in em, not sp: an sp height is converted on its own curve under non-linear font scaling and would drift from the budget.
+ */
 private fun CardMetrics.passageStyle(
-    passage: String,
+    fontPx: Float,
     fill: QuoteFill,
     typeface: QuoteTypeface,
-    size: QuoteSize,
     bold: Boolean,
     italic: Boolean,
 ): TextStyle {
-    val fontSize = width * passageSizeFraction(passage) * size.scale
     return TextStyle(
         color = fill.ink,
         fontFamily = when (typeface) {
@@ -116,17 +128,17 @@ private fun CardMetrics.passageStyle(
         },
         fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
-        fontSize = fontSize.toSp(),
-        lineHeight = (fontSize * LINE_HEIGHT_EM).toSp(),
+        fontSize = fontPx.toSp(),
+        lineHeight = LINE_HEIGHT_EM.em,
         lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
     )
 }
 
 /** The passage and the quote mark above it, centred as one group, with as many lines as the area holds. */
 @Composable
-private fun PassageArea(text: String, style: TextStyle, metrics: CardMetrics, modifier: Modifier) {
+private fun PassageArea(text: String, style: TextStyle, fontPx: Float, metrics: CardMetrics, modifier: Modifier) {
     BoxWithConstraints(modifier, contentAlignment = Alignment.CenterStart) {
-        val lineHeightPx = with(metrics) { style.lineHeight.toPx() }
+        val lineHeightPx = fontPx * LINE_HEIGHT_EM
         val markHeight = metrics.px(MARK_HEIGHT)
         val lines = floor((constraints.maxHeight - markHeight) / lineHeightPx).toInt().coerceAtLeast(1)
         Column(Modifier.fillMaxWidth()) {
@@ -153,7 +165,7 @@ private fun QuoteMark(passageStyle: TextStyle, metrics: CardMetrics) {
         ),
         maxLines = 1,
         softWrap = false,
-        modifier = Modifier.layout { measurable, _ ->
+        modifier = Modifier.clearAndSetSemantics {}.layout { measurable, _ ->
             val placeable = measurable.measure(Constraints())
             val boxHeight = metrics.px(MARK_HEIGHT).roundToInt()
             val top = boxHeight - (placeable[FirstBaseline] - QUOTE_RISE_EM * fontSize).roundToInt()

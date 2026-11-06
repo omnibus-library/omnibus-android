@@ -304,12 +304,12 @@ class QuoteCardViewModelTest : DescribeSpec({
         }
 
         describe("onShareRequested") {
-            it("saves the bytes, emits Share with the file, and is not exporting afterwards") {
+            it("captures the card, saves the bytes, emits Share with the file, and is not exporting afterwards") {
                 withHarness {
                     val file = File("saved/omnibus-quote.png")
                     repository.saveResult = file
 
-                    vm.onShareRequested(byteArrayOf(1, 2, 3))
+                    vm.onShareRequested { byteArrayOf(1, 2, 3) }
 
                     repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1, 2, 3))
                     effects shouldBe listOf(QuoteCardEffect.Share(file))
@@ -317,19 +317,34 @@ class QuoteCardViewModelTest : DescribeSpec({
                 }
             }
 
-            it("is exporting while the save is in flight, and ignores a second request") {
+            it("is exporting from the request, and ignores a second request without capturing again") {
+                withHarness {
+                    val gate = CompletableDeferred<Unit>()
+                    var captures = 0
+
+                    vm.onShareRequested { captures++; gate.await(); byteArrayOf(1) }
+                    vm.uiState.value.exporting shouldBe true
+                    vm.onShareRequested { captures++; byteArrayOf(2) }
+                    vm.onCopyRequested { captures++; byteArrayOf(3) }
+                    gate.complete(Unit)
+
+                    captures shouldBe 1
+                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1))
+                    effects.size shouldBe 1
+                    vm.uiState.value.exporting shouldBe false
+                }
+            }
+
+            it("ignores a second request while the save is in flight") {
                 withHarness {
                     val gate = CompletableDeferred<Unit>().also { repository.saveGate = it }
 
-                    vm.onShareRequested(byteArrayOf(1))
-                    vm.uiState.value.exporting shouldBe true
-                    vm.onShareRequested(byteArrayOf(2))
-                    vm.onCopyRequested(byteArrayOf(3))
+                    vm.onShareRequested { byteArrayOf(1) }
+                    vm.onCopyRequested { byteArrayOf(3) }
                     gate.complete(Unit)
 
                     repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1))
                     effects.size shouldBe 1
-                    vm.uiState.value.exporting shouldBe false
                 }
             }
 
@@ -337,22 +352,33 @@ class QuoteCardViewModelTest : DescribeSpec({
                 withHarness {
                     repository.saveResult = null
 
-                    vm.onShareRequested(byteArrayOf(1))
+                    vm.onShareRequested { byteArrayOf(1) }
 
                     effects shouldBe emptyList()
+                    vm.uiState.value.exporting shouldBe false
+                }
+            }
+
+            it("emits nothing, saves nothing and stops exporting when the capture fails") {
+                withHarness {
+                    vm.onShareRequested { error("the layer was released") }
+
+                    effects shouldBe emptyList()
+                    repository.saved shouldBe emptyList()
                     vm.uiState.value.exporting shouldBe false
                 }
             }
         }
 
         describe("onCopyRequested") {
-            it("saves the bytes and emits Copy with the file") {
+            it("captures the card, saves the bytes and emits Copy with the file") {
                 withHarness {
                     val file = File("saved/omnibus-quote.png")
                     repository.saveResult = file
 
-                    vm.onCopyRequested(byteArrayOf(9))
+                    vm.onCopyRequested { byteArrayOf(9) }
 
+                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(9))
                     effects shouldBe listOf(QuoteCardEffect.Copy(file))
                     vm.uiState.value.exporting shouldBe false
                 }

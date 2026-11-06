@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail.highlights
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -28,28 +26,21 @@ import com.omnibus.omnibus.feature.bookdetail.more.BookMoreMenuRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /**
- * A row's footer actions: the actions button for a highlight that has a passage, nothing for one that has none. Each
- * callback gets that row's passage.
+ * A row's footer actions: the ⋯ button and its menu (Make a quote card, and Share the passage as text) for a highlight
+ * that has a passage, nothing for one that has none. Each callback gets that row's passage.
  */
 @Composable
-@Suppress("UnusedReceiverParameter")
-internal fun RowScope.HighlightRowActions(
+internal fun HighlightRowActions(
     row: HighlightRowModel,
     onQuoteCard: (String) -> Unit,
     onShare: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val text = row.text ?: return
-    HighlightActions(onQuoteCard = { onQuoteCard(text) }, onShare = { onShare(text) })
-}
-
-/** The ⋯ button on a highlight and its menu: Make a quote card, and Share the passage as text. */
-@Composable
-internal fun HighlightActions(onQuoteCard: () -> Unit, onShare: () -> Unit, modifier: Modifier = Modifier) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
         Box(
             Modifier
-                .testTag(HighlightsTestTags.ACTIONS)
                 .size(48.dp)
                 .clickable(role = Role.Button) { expanded = true },
             contentAlignment = Alignment.Center,
@@ -64,7 +55,7 @@ internal fun HighlightActions(onQuoteCard: () -> Unit, onShare: () -> Unit, modi
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(276.dp).testTag(HighlightsTestTags.ACTIONS_MENU),
+            modifier = Modifier.width(276.dp),
             offset = DpOffset(0.dp, 6.dp),
             shape = RoundedCornerShape(16.dp),
             containerColor = Color(0xEB282420),
@@ -77,14 +68,14 @@ internal fun HighlightActions(onQuoteCard: () -> Unit, onShare: () -> Unit, modi
                 icon = R.drawable.ic_book_detail_more_quote,
                 enabled = true,
                 subLabel = null,
-                onClick = { expanded = false; onQuoteCard() },
+                onClick = { expanded = false; onQuoteCard(text) },
             )
             BookMoreMenuRow(
                 label = stringResource(R.string.book_detail_highlights_share),
                 icon = R.drawable.ic_book_detail_more_export,
                 enabled = true,
                 subLabel = null,
-                onClick = { expanded = false; onShare() },
+                onClick = { expanded = false; onShare(text) },
             )
         }
     }

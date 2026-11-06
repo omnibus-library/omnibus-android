@@ -8,8 +8,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import com.omnibus.omnibus.data.quotecard.CoverPair
 import com.omnibus.omnibus.ui.theme.Oklch
+import com.omnibus.omnibus.ui.theme.contrastRatio
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** The face the passage is set in. */
@@ -60,10 +60,12 @@ sealed interface QuoteBackground {
         override val kind = QuoteBackgroundKind.Solid
     }
 
+    /** One of the six iOS washes. */
     data class Wash(val wash: QuoteWash) : QuoteBackground {
         override val kind = QuoteBackgroundKind.Solid
     }
 
+    /** A colour the reader mixed, as opaque ARGB. */
     data class CustomSolid(val argb: Int) : QuoteBackground {
         override val kind = QuoteBackgroundKind.Solid
     }
@@ -73,10 +75,12 @@ sealed interface QuoteBackground {
         override val kind = QuoteBackgroundKind.Gradient
     }
 
+    /** One of the five gradients every book offers. */
     data class Preset(val preset: QuoteGradientPreset) : QuoteBackground {
         override val kind = QuoteBackgroundKind.Gradient
     }
 
+    /** Two colours and an [angle] the reader chose; the angle is in degrees, CSS convention. */
     data class CustomGradient(val fromArgb: Int, val toArgb: Int, val angle: Int = DEFAULT_ANGLE) : QuoteBackground {
         override val kind = QuoteBackgroundKind.Gradient
     }
@@ -112,13 +116,6 @@ fun passageSizeFraction(passage: String): Float {
 
 /** The card's exported size: [EXPORT_WIDTH_PX] wide, as tall as [shape] makes it. */
 fun exportSize(shape: QuoteShape): IntSize = IntSize(EXPORT_WIDTH_PX, (EXPORT_WIDTH_PX / shape.ratio).roundToInt())
-
-/** The WCAG contrast ratio between two opaque colours, 1 to 21. */
-fun contrastRatio(a: Color, b: Color): Double {
-    val la = a.luminance().toDouble()
-    val lb = b.luminance().toDouble()
-    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
-}
 
 /** [LightInk] or [DarkInk], whichever keeps the higher contrast on the worse of the two stops. */
 fun inkFor(fromArgb: Int, toArgb: Int): Color {

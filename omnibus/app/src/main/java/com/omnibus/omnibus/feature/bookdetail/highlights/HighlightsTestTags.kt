@@ -9,8 +9,6 @@ internal object HighlightsTestTags {
     const val FAILED = "book-detail-highlights-failed"
     const val RETRY = "book-detail-highlights-retry"
     const val MORE = "book-detail-highlights-more"
-    const val ACTIONS = "book-detail-highlights-actions"
-    const val ACTIONS_MENU = "book-detail-highlights-actions-menu"
     const val ROW_PREFIX = "book-detail-highlights-row-"
 
     fun row(id: Long) = "$ROW_PREFIX$id"

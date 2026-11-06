@@ -73,7 +73,7 @@ internal fun QuoteColorEditor(
         is QuoteBackground.CustomGradient -> if (activeStop == GradientStop.From) background.fromArgb else background.toArgb
         else -> return
     }
-    Column(modifier.fillMaxWidth().testTag(QuoteCardTestTags.EDITOR), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (background is QuoteBackground.CustomGradient) {
             StopRow(background, activeStop, onStopFocused, onDirectionRotated)
         }

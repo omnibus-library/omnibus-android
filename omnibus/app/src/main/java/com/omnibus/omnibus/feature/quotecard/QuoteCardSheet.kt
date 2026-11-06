@@ -32,7 +32,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -105,8 +104,8 @@ fun QuoteCardSheet(passage: String, book: CoverIdentity, onDismiss: () -> Unit) 
             onBoldToggled = viewModel::onBoldToggled,
             onItalicToggled = viewModel::onItalicToggled,
             onShapeChosen = viewModel::onShapeChosen,
-            onShare = { scope.launch { viewModel.onShareRequested(exporter.capture()) } },
-            onCopy = { scope.launch { viewModel.onCopyRequested(exporter.capture()) } },
+            onShare = { viewModel.onShareRequested(exporter::capture) },
+            onCopy = { viewModel.onCopyRequested(exporter::capture) },
             onDone = {
                 scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
             },
@@ -157,7 +156,6 @@ internal fun QuoteCardSheetContent(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .testTag(QuoteCardTestTags.SHEET)
             .background(palette.bg0)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.screen)
@@ -170,8 +168,7 @@ internal fun QuoteCardSheetContent(
             state, book,
             Modifier
                 .fillMaxWidth()
-                .shadow(12.dp, cardShape, clip = true, ambientColor = Color.Black.copy(alpha = 0.28f), spotColor = Color.Black.copy(alpha = 0.28f))
-                .testTag(QuoteCardTestTags.PREVIEW),
+                .shadow(12.dp, cardShape, clip = true, ambientColor = Color.Black.copy(alpha = 0.28f), spotColor = Color.Black.copy(alpha = 0.28f)),
         )
         QuoteBackgroundSection(
             background = state.background,
@@ -202,7 +199,6 @@ private fun Header(onDone: () -> Unit) {
         )
         Box(
             Modifier
-                .testTag(QuoteCardTestTags.DONE)
                 .heightIn(min = 48.dp)
                 .widthIn(min = 48.dp)
                 .clickable(role = Role.Button, onClick = onDone),
@@ -222,13 +218,11 @@ private fun Actions(exporting: Boolean, onShare: () -> Unit, onCopy: () -> Unit)
         FilledButton(
             text = stringResource(R.string.quote_card_share),
             onClick = onShare,
-            modifier = Modifier.testTag(QuoteCardTestTags.SHARE),
             enabled = !exporting,
         )
         FilledButton(
             text = stringResource(R.string.quote_card_copy),
             onClick = onCopy,
-            modifier = Modifier.testTag(QuoteCardTestTags.COPY),
             enabled = !exporting,
             prominent = false,
         )
