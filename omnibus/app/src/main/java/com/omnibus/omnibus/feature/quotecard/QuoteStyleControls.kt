@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -73,12 +74,17 @@ internal fun QuoteTypeSection(
                 onSelected = onSizeChosen,
                 modifier = Modifier.weight(1f),
             ) { size, ink ->
-                val label = when (size) {
-                    QuoteSize.S -> R.string.quote_card_size_small
-                    QuoteSize.M -> R.string.quote_card_size_medium
-                    QuoteSize.L -> R.string.quote_card_size_large
+                val (label, description) = when (size) {
+                    QuoteSize.S -> R.string.quote_card_size_small to R.string.quote_card_size_small_description
+                    QuoteSize.M -> R.string.quote_card_size_medium to R.string.quote_card_size_medium_description
+                    QuoteSize.L -> R.string.quote_card_size_large to R.string.quote_card_size_large_description
                 }
-                Text(stringResource(label), style = uiTextStyle(15, FontWeight.SemiBold, ink))
+                val spoken = stringResource(description)
+                Text(
+                    stringResource(label),
+                    modifier = Modifier.semantics { contentDescription = spoken },
+                    style = uiTextStyle(15, FontWeight.SemiBold, ink),
+                )
             }
             TogglePill(stringResource(R.string.quote_card_bold), state.bold, onBoldToggled, QuoteCardTestTags.BOLD) { ink ->
                 uiTextStyle(15, FontWeight.SemiBold, ink)
