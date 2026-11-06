@@ -20,3 +20,7 @@ Instrumented tests run on whatever device is attached: a 320dp emulator in CI, a
 * Choose content that behaves the same at every width. For example, a title meant to wrap and ellipsize should be long enough to do so even in the widest cell.
 * When a test changes a size, assert that it changed before waiting for a reaction to it, so a no-op fails with a clear message.
 * Run new instrumented tests on a small default AVD as well as a phone-sized one. CI creates its AVD with no hardware profile, which is 320x640 at 160dpi.
+
+## Reopening a DataStore in a test
+
+To test that a value survives a restart, close the first DataStore and open a second on the same file. Join the first scope (`dataStoreScope.coroutineContext.job.cancelAndJoin()`) before reopening. `cancel()` alone returns before the file is released, so the reopen sometimes fails with "multiple DataStores active for the same file", mostly on loaded CI runners.
