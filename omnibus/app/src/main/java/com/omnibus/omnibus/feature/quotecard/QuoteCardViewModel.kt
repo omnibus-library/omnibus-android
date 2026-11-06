@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.quotecard
 
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.quotecard.CoverPair
@@ -88,6 +89,53 @@ class QuoteCardViewModel @AssistedInject constructor(
     /** The reader chose a swatch. */
     fun onBackgroundChosen(background: QuoteBackground) {
         _uiState.update { it.copy(background = background) }
+    }
+
+    /**
+     * The reader chose Custom on the current row. A custom colour is seeded from what the card shows now, [current],
+     * so the card doesn't change until the reader edits it. Choosing Custom again keeps the colour being edited.
+     */
+    fun onCustomChosen(current: QuoteFill) {
+        _uiState.update { state ->
+            val seeded = when (state.background) {
+                is QuoteBackground.CustomSolid, is QuoteBackground.CustomGradient -> state.background
+                else -> when (state.background.kind) {
+                    QuoteBackgroundKind.Solid -> QuoteBackground.CustomSolid(current.from.toArgb())
+                    QuoteBackgroundKind.Gradient ->
+                        QuoteBackground.CustomGradient(current.from.toArgb(), current.to.toArgb(), current.angle)
+                }
+            }
+            state.copy(background = seeded, activeStop = GradientStop.From)
+        }
+    }
+
+    /** The reader moved a colour slider. Sets the custom solid, or the active stop of the custom gradient. */
+    fun onCustomColorChanged(argb: Int) {
+        _uiState.update { state ->
+            val background = state.background
+            when {
+                background is QuoteBackground.CustomSolid -> state.copy(background = background.copy(argb = argb))
+                background is QuoteBackground.CustomGradient && state.activeStop == GradientStop.From ->
+                    state.copy(background = background.copy(fromArgb = argb))
+                background is QuoteBackground.CustomGradient -> state.copy(background = background.copy(toArgb = argb))
+                else -> state
+            }
+        }
+    }
+
+    /** The reader chose which end of the custom gradient the sliders edit. */
+    fun onStopFocused(stop: GradientStop) = _uiState.update { it.copy(activeStop = stop) }
+
+    /** The reader turned the custom gradient's direction a step: 45 degrees clockwise. */
+    fun onDirectionRotated() {
+        _uiState.update { state ->
+            val background = state.background
+            if (background is QuoteBackground.CustomGradient) {
+                state.copy(background = background.copy(angle = (background.angle + 45) % 360))
+            } else {
+                state
+            }
+        }
     }
 
     /** The reader chose a typeface. */

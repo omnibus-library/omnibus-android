@@ -203,6 +203,33 @@ class QuoteCardStyleTest : DescribeSpec({
         }
     }
 
+    describe("pickerArgb and pickerOf") {
+        fun channels(argb: Int) = listOf(argb shr 16 and 0xFF, argb shr 8 and 0xFF, argb and 0xFF)
+
+        it("turns hue 65, chroma 0.13 and lightness 0.78 into the Atrium accent, #F0A556") {
+            channels(pickerArgb(65.0, 0.13, 0.78)).zip(listOf(0xF0, 0xA5, 0x56)).forEach { (actual, expected) ->
+                actual.toDouble() shouldBe (expected.toDouble() plusOrMinus 1.0)
+            }
+        }
+
+        it("gives an opaque grey for a colour with no chroma") {
+            val (r, g, b) = channels(pickerArgb(200.0, 0.0, 0.5))
+
+            (pickerArgb(200.0, 0.0, 0.5) ushr 24) shouldBe 0xFF
+            r shouldBe g
+            g shouldBe b
+        }
+
+        it("reads a colour back so that picking it again lands within a step of every channel") {
+            listOf(0xFF7A1F16, 0xFFF0A556, 0xFF336699, 0xFF14110F, 0xFFFAF8F4, 0xFF2A9D8F).forEach { argb ->
+                val picked = pickerOf(argb.toInt())
+
+                channels(pickerArgb(picked.hue, picked.chroma, picked.lightness)).zip(channels(argb.toInt()))
+                    .forEach { (again, original) -> again.toDouble() shouldBe (original.toDouble() plusOrMinus 1.0) }
+            }
+        }
+    }
+
     describe("contrastRatio") {
         it("is 21 for black on white and 1 for a colour on itself") {
             contrastRatio(Color.Black, Color.White) shouldBe (21.0 plusOrMinus 0.001)

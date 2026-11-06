@@ -74,8 +74,8 @@ private val TealStop = Color(0xFF2A9D8F)
 private val FadeWidth = 24.dp
 
 /**
- * The Background section: its heading with the pill that switches between the Solid and Gradient rows, and the row of
- * swatches that scrolls sideways, starting with the book's cover.
+ * The Background section: its heading with the pill that switches between the Solid and Gradient rows, the row of
+ * swatches that scrolls sideways, starting with the book's cover, and the colour editor while a custom colour is chosen.
  */
 @Composable
 internal fun QuoteBackgroundSection(
@@ -84,7 +84,11 @@ internal fun QuoteBackgroundSection(
     book: CoverIdentity,
     onKindChosen: (QuoteBackgroundKind) -> Unit,
     onBackgroundChosen: (QuoteBackground) -> Unit,
+    activeStop: GradientStop,
     onCustomChosen: () -> Unit,
+    onColorChanged: (Int) -> Unit,
+    onStopFocused: (GradientStop) -> Unit,
+    onDirectionRotated: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -98,6 +102,7 @@ internal fun QuoteBackgroundSection(
             KindPill(background.kind, onKindChosen)
         }
         SwatchRow(background, coverPairs, book, onBackgroundChosen, onCustomChosen)
+        QuoteColorEditor(background, activeStop, onColorChanged, onStopFocused, onDirectionRotated)
     }
 }
 

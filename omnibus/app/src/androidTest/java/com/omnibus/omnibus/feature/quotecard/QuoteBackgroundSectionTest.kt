@@ -41,7 +41,11 @@ class QuoteBackgroundSectionTest {
                     book = book,
                     onKindChosen = { kinds += it },
                     onBackgroundChosen = { chosen += it; background = it },
+                    activeStop = GradientStop.From,
                     onCustomChosen = { customTaps++ },
+                    onColorChanged = {},
+                    onStopFocused = {},
+                    onDirectionRotated = {},
                 )
             }
         }

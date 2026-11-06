@@ -57,4 +57,13 @@
     <string name="quote_card_ratio_post">4:5</string>
     <string name="quote_card_ratio_portrait">3:4</string>
     <string name="quote_card_ratio_story">9:16</string>
+    <!-- The custom colour picker's sliders. -->
+    <string name="quote_card_picker_hue">Hue</string>
+    <string name="quote_card_picker_saturation">Saturation</string>
+    <string name="quote_card_picker_lightness">Lightness</string>
+    <!-- The two ends of a custom gradient. -->
+    <string name="quote_card_stop_from">From</string>
+    <string name="quote_card_stop_to">To</string>
+    <!-- Spoken name of the button that turns a gradient's direction. %1$d is its angle in degrees. -->
+    <string name="quote_card_direction">Direction, %1$d degrees</string>
 </resources>

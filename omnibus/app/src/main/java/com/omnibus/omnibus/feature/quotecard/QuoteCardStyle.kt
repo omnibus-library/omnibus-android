@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import com.omnibus.omnibus.data.quotecard.CoverPair
 import com.omnibus.omnibus.ui.theme.Oklch
@@ -136,6 +137,22 @@ fun gradientEndpoints(angle: Int, size: Size): Pair<Offset, Offset> {
     fun at(sign: Int) = Offset(size.width * (0.5f + 0.5f * sign * dx), size.height * (0.5f + 0.5f * sign * dy))
     return at(-1) to at(1)
 }
+
+/** A colour as the picker's three sliders hold it, in OKLCH. */
+data class PickerValue(val hue: Double, val chroma: Double, val lightness: Double)
+
+/** The top of the picker's chroma slider. */
+const val PICKER_MAX_CHROMA = 0.2
+
+/** The ends of the picker's lightness slider, which keep the colour off pure black and white. */
+const val PICKER_MIN_LIGHTNESS = 0.1
+const val PICKER_MAX_LIGHTNESS = 0.95
+
+/** The opaque ARGB at the picker's [hue] in degrees, [chroma] and [lightness]. */
+fun pickerArgb(hue: Double, chroma: Double, lightness: Double): Int = Oklch(lightness, chroma, hue).toColor().toArgb()
+
+/** Where the picker's sliders sit for [argb]. */
+fun pickerOf(argb: Int): PickerValue = Oklch.fromSrgb(Color(argb)).let { PickerValue(it.h, it.c, it.l) }
 
 /** The swatches of [kind]'s row, in order and before Custom: the book's colour and the washes, or the cover's pairs and the presets. */
 fun swatchesOf(kind: QuoteBackgroundKind, coverPairs: List<CoverPair>): List<QuoteBackground> = when (kind) {
