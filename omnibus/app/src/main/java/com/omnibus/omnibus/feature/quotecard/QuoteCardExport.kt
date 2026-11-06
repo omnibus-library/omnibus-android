@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.export.ExportedFile
@@ -36,6 +37,7 @@ class QuoteCardExporter internal constructor(private val layer: GraphicsLayer) {
     fun Offscreen(shape: QuoteShape, card: @Composable (Modifier) -> Unit) {
         val size = exportSize(shape)
         Layout(
+            modifier = Modifier.clearAndSetSemantics {},
             content = {
                 card(Modifier.drawWithContent { layer.record(size = size) { this@drawWithContent.drawContent() } })
             },

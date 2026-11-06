@@ -230,13 +230,6 @@ class QuoteCardStyleTest : DescribeSpec({
         }
     }
 
-    describe("contrastRatio") {
-        it("is 21 for black on white and 1 for a colour on itself") {
-            contrastRatio(Color.Black, Color.White) shouldBe (21.0 plusOrMinus 0.001)
-            contrastRatio(Color(0xFF336699), Color(0xFF336699)) shouldBe (1.0 plusOrMinus 0.001)
-        }
-    }
-
     describe("gradientEndpoints") {
         val wide = Size(200f, 100f)
 

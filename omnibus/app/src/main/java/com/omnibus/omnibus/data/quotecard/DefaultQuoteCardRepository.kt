@@ -4,7 +4,6 @@ import android.util.Log
 import com.omnibus.omnibus.data.export.local.ExportFileStore
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.quotecard.remote.CoverPaletteResponseDto
-import com.omnibus.omnibus.data.quotecard.remote.QuoteCardJson
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.File
 import javax.inject.Inject
@@ -36,7 +35,7 @@ class DefaultQuoteCardRepository @Inject constructor(
                 if (!response.isSuccessful) {
                     emptyList()
                 } else {
-                    QuoteCardJson.decodeFromString<CoverPaletteResponseDto>(response.body.string()).toDomain()
+                    CoverPaletteResponseDto.fromJsonString(response.body.string()).toDomain()
                 }
             }
         } catch (ex: CancellationException) {

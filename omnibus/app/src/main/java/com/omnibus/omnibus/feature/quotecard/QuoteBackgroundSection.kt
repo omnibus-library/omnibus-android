@@ -217,13 +217,11 @@ private fun SwatchRow(
     val isCustom = background is QuoteBackground.CustomSolid || background is QuoteBackground.CustomGradient
     Row(
         Modifier
-            .testTag(QuoteCardTestTags.SWATCH_ROW)
             .fillMaxWidth()
             .edgeFade(scroll.canScrollBackward, scroll.canScrollForward)
             .horizontalScroll(scroll)
             .selectableGroup(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         BookCover(book, Modifier.padding(end = 8.dp).size(24.dp, 36.dp), size = CoverSize.Sm, cornerRadius = 3.dp)
         swatchesOf(kind, coverPairs).forEachIndexed { index, swatch ->

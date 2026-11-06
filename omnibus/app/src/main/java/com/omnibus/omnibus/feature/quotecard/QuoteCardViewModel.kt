@@ -10,6 +10,7 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +41,9 @@ data class QuoteCardUIState(
 
 /** A one-shot request for the screen: open the share chooser or fill the clipboard with the saved card. */
 sealed interface QuoteCardEffect {
+    /** Open the share chooser for the saved card [file]. */
     data class Share(val file: File) : QuoteCardEffect
+    /** Put the saved card [file] on the clipboard. */
     data class Copy(val file: File) : QuoteCardEffect
 }
 
@@ -61,6 +64,7 @@ class QuoteCardViewModel @AssistedInject constructor(
     /** Creates a [QuoteCardViewModel] for a passage of the book with [bookUuid]. */
     @AssistedFactory
     interface Factory {
+        /** A ViewModel for one open of the sheet. */
         fun create(@Assisted("bookUuid") bookUuid: String, @Assisted("passage") passage: String): QuoteCardViewModel
     }
 
@@ -153,13 +157,16 @@ class QuoteCardViewModel @AssistedInject constructor(
     /** The reader chose a shape. */
     fun onShapeChosen(shape: QuoteShape) = _uiState.update { it.copy(shape = shape) }
 
-    /** The reader chose Share with the rendered card's PNG [png]. Ignored while a save is running. */
-    fun onShareRequested(png: ByteArray) = export(png, QuoteCardEffect::Share)
+    /**
+     * The reader chose Share. [capture] renders the card as PNG bytes. The guard is set before it runs, so a second
+     * request is ignored from the first tap on, and a capture that throws reads as a failed save.
+     */
+    fun onShareRequested(capture: suspend () -> ByteArray) = export(capture, QuoteCardEffect::Share)
 
-    /** The reader chose Copy image with the rendered card's PNG [png]. Ignored while a save is running. */
-    fun onCopyRequested(png: ByteArray) = export(png, QuoteCardEffect::Copy)
+    /** The reader chose Copy image. Guarded and failing as [onShareRequested] does. */
+    fun onCopyRequested(capture: suspend () -> ByteArray) = export(capture, QuoteCardEffect::Copy)
 
-    private fun export(png: ByteArray, effect: (File) -> QuoteCardEffect) {
+    private fun export(capture: suspend () -> ByteArray, effect: (File) -> QuoteCardEffect) {
         var accepted = false
         _uiState.update { state ->
             accepted = !state.exporting
@@ -167,7 +174,14 @@ class QuoteCardViewModel @AssistedInject constructor(
         }
         if (!accepted) return
         viewModelScope.launch {
-            repository.saveCard(png)?.let { _effects.send(effect(it)) }
+            val saved = try {
+                repository.saveCard(capture())
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                null
+            }
+            saved?.let { _effects.send(effect(it)) }
             _uiState.update { it.copy(exporting = false) }
         }
     }

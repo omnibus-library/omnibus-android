@@ -46,8 +46,9 @@ internal fun QuoteTypeSection(
     onSizeChosen: (QuoteSize) -> Unit,
     onBoldToggled: () -> Unit,
     onItalicToggled: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeading(stringResource(R.string.quote_card_type))
         SegmentedControl(
             options = QuoteTypeface.entries,
@@ -98,9 +99,9 @@ internal fun QuoteTypeSection(
 
 /** The Shape section: four pills, each with its name over its ratio. */
 @Composable
-internal fun QuoteShapeSection(shape: QuoteShape, onShapeChosen: (QuoteShape) -> Unit) {
+internal fun QuoteShapeSection(shape: QuoteShape, onShapeChosen: (QuoteShape) -> Unit, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeading(stringResource(R.string.quote_card_shape))
         Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             QuoteShape.entries.forEach { option ->

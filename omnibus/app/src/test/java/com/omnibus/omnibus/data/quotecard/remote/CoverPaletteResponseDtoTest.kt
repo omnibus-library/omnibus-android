@@ -6,7 +6,7 @@ import io.kotest.matchers.shouldBe
 
 /** The pairs [json] decodes to. */
 private fun pairsOf(json: String): List<CoverPair> =
-    QuoteCardJson.decodeFromString<CoverPaletteResponseDto>(json).toDomain()
+    CoverPaletteResponseDto.fromJsonString(json).toDomain()
 
 private fun pair(from: String, to: String, ink: String) = """{"from":"$from","to":"$to","ink":"$ink"}"""
 
@@ -48,6 +48,16 @@ class CoverPaletteResponseDtoTest : DescribeSpec({
                 pairsOf("""{"pairs":[$malformed,$kept]}""") shouldBe
                     listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true))
             }
+        }
+
+        it("keeps a valid pair beside one whose field has the wrong JSON type") {
+            pairsOf("""{"pairs":[{"from":5,"to":"#445566","ink":"light"},${pair("#112233", "#445566", "dark")}]}""") shouldBe
+                listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = false))
+        }
+
+        it("keeps a valid pair beside a null entry and a non-object entry") {
+            pairsOf("""{"pairs":[null,"nope",${pair("#112233", "#445566", "dark")}]}""") shouldBe
+                listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = false))
         }
 
         it("drops a pair with a field missing") {
