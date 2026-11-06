@@ -484,6 +484,9 @@ data class ReaderUIState(
 
     /** Whether a bookmark sits at the current page. */
     val isPageBookmarked: Boolean get() = pageBookmarks.isNotEmpty()
+
+    /** The menu's Contents percent. Null until the book has locations, when the page's percent is a wrong 0. */
+    val menuPercent: Int? get() = location?.takeIf { it.totalPages > 0 }?.pct
 }
 
 /** Whether the book for the reader could be read. */

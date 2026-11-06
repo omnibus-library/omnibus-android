@@ -356,6 +356,10 @@
     var totalPages = 0;
     var pagesLeft = 0;
     if (locationsReady && book && book.locations) {
+      // The location's own percentage was computed when it was reported, so
+      // the echo after locations load still carries the pre-locations 0.
+      var fresh = book.locations.percentageFromCfi(cfi);
+      if (fresh !== null && fresh !== undefined) pct = Math.round(fresh * 100);
       page = book.locations.locationFromCfi(cfi) || 0;
       totalPages = book.locations.total || 0;
       pagesLeft = pagesLeftInSection(cfi, page);

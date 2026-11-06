@@ -20,9 +20,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.job
 
 class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
 
@@ -72,7 +74,7 @@ class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
 
             store.preference.first() shouldBe LibrarySortPreference(LibrarySort.Author, SortDirection.Asc)
 
-            dataStoreScope.cancel()
+            dataStoreScope.coroutineContext.job.cancelAndJoin()
             val reopenedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             try {
                 val reopened = DefaultLibrarySortPreferenceStore(openDataStore(reopenedScope))

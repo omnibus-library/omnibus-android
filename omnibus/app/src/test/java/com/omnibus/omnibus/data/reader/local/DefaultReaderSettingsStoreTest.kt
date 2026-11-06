@@ -23,9 +23,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.job
 
 class DefaultReaderSettingsStoreTest : DescribeSpec({
 
@@ -86,8 +88,9 @@ class DefaultReaderSettingsStoreTest : DescribeSpec({
             val settings = ReaderSettings(theme = ReaderTheme.Light)
             store.save(settings)
 
-            // Only one DataStore may be open on the file at a time, so the first is closed before reopening.
-            dataStoreScope.cancel()
+            // Only one DataStore may be open on the file at a time. Cancelling does not wait for the first to
+            // release the file, so join it before reopening.
+            dataStoreScope.coroutineContext.job.cancelAndJoin()
             val reopenedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             try {
                 val reopened = openDataStore(reopenedScope)
