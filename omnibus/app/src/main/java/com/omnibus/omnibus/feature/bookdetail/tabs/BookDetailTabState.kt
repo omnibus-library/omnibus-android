@@ -42,6 +42,9 @@ internal val AnchorClearance = 16.dp
 /** Extra height the tab host keeps so the page can always scroll the strip to its pin point (iOS uses 4 pt). */
 internal val TabHostSlack = 4.dp
 
+/** Slack below the pin point that still reads as pinned, where a tab jump settles (iOS `tabsPinned`, 1 pt). */
+internal val TabPinSlack = 1.dp
+
 /** How long a scroll to an anchor waits for the anchor to lay out before it falls back to the tab. */
 internal const val ANCHOR_WAIT_MILLIS = 1_000L
 
@@ -66,6 +69,10 @@ internal val BookDetailAnchor.tab: BookDetailTab
  * the strip reaches the pin point, then it tracks the scroll one to one.
  */
 internal fun stripPinOffsetPx(scroll: Int, stripTop: Int, pinTop: Int): Int = max(0, scroll + pinTop - stripTop)
+
+/** Whether the strip has reached [pinTop] and rides under the bar. False until the host is placed (stripTop < 0). */
+internal fun tabsPinned(scroll: Int, stripTop: Int, pinTop: Int, slackPx: Int): Boolean =
+    stripTop >= 0 && stripTop - scroll <= pinTop + slackPx
 
 /** The scroll value that puts the strip at [pinTop], clamped to the scroll range. */
 internal fun jumpScrollTarget(stripTop: Int, pinTop: Int, maxScroll: Int): Int =

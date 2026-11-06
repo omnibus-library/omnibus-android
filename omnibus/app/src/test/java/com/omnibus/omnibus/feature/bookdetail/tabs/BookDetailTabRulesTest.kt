@@ -41,6 +41,19 @@ class BookDetailTabRulesTest : DescribeSpec({
             stripPinOffsetPx(0, 50, 100) shouldBe 50
         }
 
+        it("tabs are pinned once the strip is at the pin point, with a pixel of slack") {
+            // stripTop 700, pinTop 100, slack 1: the strip is on screen at 700 - scroll.
+            tabsPinned(598, 700, 100, 1) shouldBe false
+            tabsPinned(599, 700, 100, 1) shouldBe true
+            tabsPinned(600, 700, 100, 1) shouldBe true
+            tabsPinned(2000, 700, 100, 1) shouldBe true
+        }
+
+        it("tabs are not pinned while the host is unplaced, whatever the scroll") {
+            tabsPinned(0, -1, 0, 1) shouldBe false
+            tabsPinned(500, -1, 0, 1) shouldBe false
+        }
+
         it("#94 TC-13: jump target is clamped to the scroll range") {
             jumpScrollTarget(700, 100, 5000) shouldBe 600
             jumpScrollTarget(700, 100, 400) shouldBe 400

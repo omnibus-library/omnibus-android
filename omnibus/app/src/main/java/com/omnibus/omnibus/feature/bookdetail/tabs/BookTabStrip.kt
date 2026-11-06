@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.feature.bookdetail.tabs
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -21,6 +26,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -33,6 +39,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.ui.TOP_BAR_FILL_ALPHA
+import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
@@ -58,6 +65,19 @@ internal fun BookTabStrip(
         val top = state.stripTopPx
         if (top < 0) 0 else stripPinOffsetPx(scrollState.value, top, state.pinTopPx)
     }
+
+    // Recomposes only when the boolean flips, not on every scroll pixel.
+    val density = LocalDensity.current
+    val pinned by remember(scrollState, state, density) {
+        derivedStateOf {
+            tabsPinned(scrollState.value, state.stripTopPx, state.pinTopPx, with(density) { TabPinSlack.roundToPx() })
+        }
+    }
+    val pinProgress by animateFloatAsState(
+        targetValue = if (pinned) 1f else 0f,
+        animationSpec = if (reducedMotion) snap<Float>() else Motion.snap<Float>(),
+        label = "tab-pin",
+    )
 
     Box(
         modifier
@@ -105,7 +125,7 @@ internal fun BookTabStrip(
                 }
             }
         }
-        BookTabRibbon(state, ribbonColor, reducedMotion)
+        BookTabRibbon(state, ribbonColor, reducedMotion, pinProgress = { pinProgress })
     }
 }
 
