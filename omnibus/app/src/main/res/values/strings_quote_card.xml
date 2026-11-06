@@ -1,0 +1,12 @@
+<resources>
+    <!-- Title of the quote card sheet. -->
+    <string name="quote_card_title">Quote card</string>
+    <!-- Closes the quote card sheet. -->
+    <string name="quote_card_done">Done</string>
+    <!-- Sends the card as an image through the share chooser. -->
+    <string name="quote_card_share">Share</string>
+    <!-- Puts the card on the clipboard as an image. -->
+    <string name="quote_card_copy">Copy image</string>
+    <!-- The label of the clipboard entry the copied card makes. -->
+    <string name="quote_card_clip_label">Quote card</string>
+</resources>

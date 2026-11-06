@@ -17,4 +17,10 @@
     <string name="book_detail_highlights_color_blue">Blue highlight</string>
     <string name="book_detail_highlights_color_rose">Rose highlight</string>
     <string name="book_detail_highlights_color_violet">Violet highlight</string>
+    <!-- Spoken description of the button on a highlight that opens its menu. -->
+    <string name="book_detail_highlights_actions">Highlight actions</string>
+    <!-- Menu item that opens the quote card sheet for a highlight. -->
+    <string name="book_detail_highlights_quote_card">Make a quote card</string>
+    <!-- Menu item that shares a highlight's passage as text. -->
+    <string name="book_detail_highlights_share">Share</string>
 </resources>
