@@ -96,7 +96,10 @@ fun QuoteCardSheet(passage: String, book: CoverIdentity, onDismiss: () -> Unit) 
             book = book,
             onKindChosen = viewModel::onKindChosen,
             onBackgroundChosen = viewModel::onBackgroundChosen,
-            onCustomChosen = {},
+            onCustomChosen = { viewModel.onCustomChosen(state.background.fill(book.tone)) },
+            onColorChanged = viewModel::onCustomColorChanged,
+            onStopFocused = viewModel::onStopFocused,
+            onDirectionRotated = viewModel::onDirectionRotated,
             onTypefaceChosen = viewModel::onTypefaceChosen,
             onSizeChosen = viewModel::onSizeChosen,
             onBoldToggled = viewModel::onBoldToggled,
@@ -137,6 +140,9 @@ internal fun QuoteCardSheetContent(
     onKindChosen: (QuoteBackgroundKind) -> Unit,
     onBackgroundChosen: (QuoteBackground) -> Unit,
     onCustomChosen: () -> Unit,
+    onColorChanged: (Int) -> Unit,
+    onStopFocused: (GradientStop) -> Unit,
+    onDirectionRotated: () -> Unit,
     onTypefaceChosen: (QuoteTypeface) -> Unit,
     onSizeChosen: (QuoteSize) -> Unit,
     onBoldToggled: () -> Unit,
@@ -173,7 +179,11 @@ internal fun QuoteCardSheetContent(
             book = book,
             onKindChosen = onKindChosen,
             onBackgroundChosen = onBackgroundChosen,
+            activeStop = state.activeStop,
             onCustomChosen = onCustomChosen,
+            onColorChanged = onColorChanged,
+            onStopFocused = onStopFocused,
+            onDirectionRotated = onDirectionRotated,
         )
         QuoteTypeSection(state, onTypefaceChosen, onSizeChosen, onBoldToggled, onItalicToggled)
         QuoteShapeSection(state.shape, onShapeChosen)

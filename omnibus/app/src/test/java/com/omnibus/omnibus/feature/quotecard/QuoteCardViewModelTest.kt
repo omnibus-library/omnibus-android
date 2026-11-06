@@ -2,7 +2,12 @@ package com.omnibus.omnibus.feature.quotecard
 
 import com.omnibus.omnibus.data.quotecard.CoverPair
 import com.omnibus.omnibus.data.quotecard.FakeQuoteCardRepository
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import com.omnibus.omnibus.ui.theme.Oklch
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.floats.shouldBeGreaterThan
+import io.kotest.matchers.floats.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
@@ -179,6 +184,121 @@ class QuoteCardViewModelTest : DescribeSpec({
                     vm.onShapeChosen(QuoteShape.Story)
 
                     vm.uiState.value shouldBe defaults.copy(shape = QuoteShape.Story)
+                }
+            }
+        }
+
+        describe("custom colours") {
+            val book = Oklch(0.5, 0.1, 30.0)
+            val ember = QuoteBackground.Preset(QuoteGradientPreset.Ember)
+
+            it("onCustomChosen seeds a custom solid from the current solid's base colour") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Moss))
+                    val fill = vm.uiState.value.background.fill(book)
+
+                    vm.onCustomChosen(fill)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(fill.from.toArgb())
+                }
+            }
+
+            it("onCustomChosen seeds a custom gradient from the current gradient's stops and angle") {
+                withHarness {
+                    vm.onBackgroundChosen(ember)
+
+                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
+
+                    vm.uiState.value.background shouldBe
+                        QuoteBackground.CustomGradient(0xFF7A1F16.toInt(), 0xFFA24C16.toInt(), 135)
+                }
+            }
+
+            it("onCustomChosen keeps a custom colour already being edited") {
+                withHarness {
+                    val custom = QuoteBackground.CustomGradient(0xFF102030.toInt(), 0xFF304050.toInt(), 270)
+                    vm.onBackgroundChosen(custom)
+
+                    vm.onCustomChosen(custom.fill(book))
+
+                    vm.uiState.value.background shouldBe custom
+                }
+            }
+
+            it("onCustomColorChanged sets a custom solid's colour") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.CustomSolid(0xFF112233.toInt()))
+
+                    vm.onCustomColorChanged(0xFF445566.toInt())
+
+                    vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(0xFF445566.toInt())
+                }
+            }
+
+            it("onCustomColorChanged sets only the active stop of a custom gradient") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.CustomGradient(0xFF112233.toInt(), 0xFF445566.toInt(), 90))
+
+                    vm.onCustomColorChanged(0xFFAAAAAA.toInt())
+                    vm.onStopFocused(GradientStop.To)
+                    vm.onCustomColorChanged(0xFFBBBBBB.toInt())
+
+                    vm.uiState.value.activeStop shouldBe GradientStop.To
+                    vm.uiState.value.background shouldBe
+                        QuoteBackground.CustomGradient(0xFFAAAAAA.toInt(), 0xFFBBBBBB.toInt(), 90)
+                }
+            }
+
+            it("onCustomColorChanged does nothing when the background isn't custom") {
+                withHarness {
+                    vm.onBackgroundChosen(ember)
+
+                    vm.onCustomColorChanged(0xFFFFFFFF.toInt())
+
+                    vm.uiState.value.background shouldBe ember
+                }
+            }
+
+            it("onDirectionRotated turns a custom gradient 45 degrees at a time and wraps at 360") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.CustomGradient(0xFF112233.toInt(), 0xFF445566.toInt(), 315))
+
+                    vm.onDirectionRotated()
+                    (vm.uiState.value.background as QuoteBackground.CustomGradient).angle shouldBe 0
+
+                    vm.onDirectionRotated()
+                    (vm.uiState.value.background as QuoteBackground.CustomGradient).angle shouldBe 45
+                }
+            }
+
+            it("onDirectionRotated does nothing for a background without a direction of its own") {
+                withHarness {
+                    vm.onDirectionRotated()
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Book
+                }
+            }
+
+            it("flips a custom gradient's ink to dark when a stop is dragged to near-white") {
+                withHarness {
+                    vm.onBackgroundChosen(ember)
+                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
+                    vm.uiState.value.background.fill(book).ink shouldBe LightInk
+
+                    vm.onCustomColorChanged(0xFFFAF8F4.toInt())
+
+                    vm.uiState.value.background.fill(book).ink shouldBe DarkInk
+                }
+            }
+
+            it("flips a custom solid's ink to dark when it is dragged to near-white") {
+                withHarness {
+                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
+                    vm.uiState.value.background.fill(book).ink.luminance() shouldBeGreaterThan 0.5f
+
+                    vm.onCustomColorChanged(0xFFFAF8F4.toInt())
+
+                    vm.uiState.value.background.fill(book).ink.luminance() shouldBeLessThan 0.1f
                 }
             }
         }

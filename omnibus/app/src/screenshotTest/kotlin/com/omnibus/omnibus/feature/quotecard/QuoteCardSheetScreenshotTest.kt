@@ -40,6 +40,9 @@ private fun SheetShot(state: QuoteCardUIState) {
             onKindChosen = {},
             onBackgroundChosen = {},
             onCustomChosen = {},
+            onColorChanged = {},
+            onStopFocused = {},
+            onDirectionRotated = {},
             onTypefaceChosen = {},
             onSizeChosen = {},
             onBoldToggled = {},
@@ -73,6 +76,20 @@ fun QuoteCardSheetGradient() {
             size = QuoteSize.L,
             italic = true,
             shape = QuoteShape.Post,
+            coverPairs = CoverPairs,
+        ),
+    )
+}
+
+/** The two-stop editor open on a custom gradient: From active, 135 degrees. */
+@PreviewTest
+@SheetLightDark
+@Composable
+fun QuoteCardSheetCustomGradient() {
+    SheetShot(
+        QuoteCardUIState(
+            passage = PASSAGE,
+            background = QuoteBackground.CustomGradient(0xFF7A1F16.toInt(), 0xFFA24C16.toInt(), 135),
             coverPairs = CoverPairs,
         ),
     )
