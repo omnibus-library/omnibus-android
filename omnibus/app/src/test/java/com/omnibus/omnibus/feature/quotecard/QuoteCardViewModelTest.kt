@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.quotecard
 
+import com.omnibus.omnibus.data.quotecard.CoverPair
 import com.omnibus.omnibus.data.quotecard.FakeQuoteCardRepository
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -19,8 +20,8 @@ import kotlinx.coroutines.test.setMain
 private const val PASSAGE = "It was the best of times."
 
 /** A ViewModel with its fake, and the effects it has emitted so far collected into [effects]. */
-private class Harness {
-    val repository = FakeQuoteCardRepository()
+private class Harness(coverPairs: List<CoverPair>) {
+    val repository = FakeQuoteCardRepository().also { it.coverPairs = coverPairs }
     val vm = QuoteCardViewModel("book-1", PASSAGE, repository)
     val effects = mutableListOf<QuoteCardEffect>()
     private val scope = CoroutineScope(Job() + Dispatchers.Main).also { scope ->
@@ -30,8 +31,8 @@ private class Harness {
     fun close() = scope.cancel()
 }
 
-private inline fun withHarness(block: Harness.() -> Unit) {
-    val harness = Harness()
+private inline fun withHarness(coverPairs: List<CoverPair> = emptyList(), block: Harness.() -> Unit) {
+    val harness = Harness(coverPairs)
     try {
         harness.block()
     } finally {
@@ -60,6 +61,24 @@ class QuoteCardViewModelTest : DescribeSpec({
                         shape = QuoteShape.Square,
                         exporting = false,
                     )
+                }
+            }
+        }
+
+        describe("cover pairs") {
+            it("fetches the book's pairs once on creation and shows them") {
+                val pairs = listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true))
+
+                withHarness(coverPairs = pairs) {
+                    vm.uiState.value.coverPairs shouldBe pairs
+                    repository.coverPairCalls shouldBe listOf("book-1")
+                }
+            }
+
+            it("leaves the state at its default when the server offers none") {
+                withHarness {
+                    vm.uiState.value.coverPairs shouldBe emptyList()
+                    vm.uiState.value shouldBe QuoteCardUIState(passage = PASSAGE)
                 }
             }
         }
