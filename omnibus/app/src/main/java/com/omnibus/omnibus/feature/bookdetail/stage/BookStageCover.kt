@@ -101,6 +101,9 @@ internal fun BookStageCover(
     }
 }
 
+/** The halo's warm core, which the pinned tab's glow shares. */
+internal val HaloWarmCore = Color(1f, 190 / 255f, 122 / 255f, 0.24f)
+
 /** The warm halo behind the cover, the top fall of light and the elliptical floor shadow under it. */
 private fun DrawScope.drawHaloAndFloor(haloTone: Oklch) {
     val w = size.width
@@ -111,7 +114,7 @@ private fun DrawScope.drawHaloAndFloor(haloTone: Oklch) {
     scale(scaleX = (1.35f * w) / (0.85f * h), scaleY = 1f, pivot = haloCenter) {
         drawCircle(
             brush = Brush.radialGradient(
-                0f to Color(1f, 190 / 255f, 122 / 255f, 0.24f),
+                0f to HaloWarmCore,
                 0.42f to haloTone.copy(alpha = 0.36).toColor(),
                 0.72f to haloTone.copy(alpha = 0.08).toColor(),
                 1f to Color.Transparent,
