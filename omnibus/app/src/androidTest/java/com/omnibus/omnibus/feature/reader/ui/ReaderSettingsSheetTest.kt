@@ -63,6 +63,7 @@ class ReaderSettingsSheetTest {
             OmnibusTheme {
                 ReaderSettingsSheet(
                     settings = settings.value,
+                    accent = readerSheetAccent(ReaderBookState.Ready(title = "Test Book"), OmnibusTheme.palette),
                     onSettingsChanged = {
                         settings.value = it
                         changes += it

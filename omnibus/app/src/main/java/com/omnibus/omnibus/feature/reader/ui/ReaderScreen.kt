@@ -361,6 +361,7 @@ internal fun ReaderScreenContent(
                                     ReaderContentsSheet(
                                         title = book.title,
                                         cover = book.cover,
+                                        accent = readerSheetAccent(book, OmnibusTheme.palette),
                                         toc = uiState.toc,
                                         location = uiState.location,
                                         onEntryChosen = onTocEntryChosen,
@@ -380,6 +381,7 @@ internal fun ReaderScreenContent(
                         OmnibusTheme {
                             ReaderSettingsSheet(
                                 settings = uiState.settings,
+                                accent = readerSheetAccent(uiState.book, OmnibusTheme.palette),
                                 onSettingsChanged = onSettingsChanged,
                                 onDismiss = onSheetDismissed,
                             )

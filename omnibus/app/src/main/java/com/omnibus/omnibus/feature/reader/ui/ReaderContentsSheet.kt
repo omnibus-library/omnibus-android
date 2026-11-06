@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.first
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.cover.CoverSize
+import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
 import com.omnibus.omnibus.feature.reader.ReaderBookmarksStatus
 import com.omnibus.omnibus.feature.reader.ui.ContentsPosition.PageOf
 import com.omnibus.omnibus.ui.components.BookCover
@@ -110,6 +111,7 @@ internal fun ReaderContentsTab.titleRes(): Int = when (this) {
  * It is not themed here. The host wraps it in the app theme, so tests and previews choose their own.
  * Swipe down, a tap on the scrim, the close button and system back all arrive as [onDismiss].
  *
+ * @param accent The open book's accent, for the active segment and the current chapter.
  * @param onEntryChosen Called with the entry whose row was tapped.
  * @param onDismiss Called when the sheet is dismissed by any means.
  * @param initialTab The segment to open on.
@@ -123,6 +125,7 @@ internal fun ReaderContentsTab.titleRes(): Int = when (this) {
 internal fun ReaderContentsSheet(
     title: String,
     cover: CoverIdentity,
+    accent: BookAccent,
     toc: List<TocEntry>,
     location: RelocateData?,
     onEntryChosen: (TocEntry) -> Unit,
@@ -145,6 +148,7 @@ internal fun ReaderContentsSheet(
         ReaderContentsSheetContent(
             title = title,
             cover = cover,
+            accent = accent,
             toc = toc,
             location = location,
             onEntryChosen = onEntryChosen,
@@ -167,6 +171,7 @@ internal fun ReaderContentsSheet(
  * The selected tab survives recomposition and rotation. The list's state is hoisted here, so a
  * new [toc] (for example the one that adds page numbers) keeps the scroll position.
  *
+ * @param accent The open book's accent, for the active segment and the current chapter.
  * @param onEntryChosen Called with the entry whose row was tapped.
  * @param onDismiss Called when the close button is tapped.
  * @param bookmarks The book's bookmarks, listed on the Bookmarks segment.
@@ -178,6 +183,7 @@ internal fun ReaderContentsSheet(
 internal fun ReaderContentsSheetContent(
     title: String,
     cover: CoverIdentity,
+    accent: BookAccent,
     toc: List<TocEntry>,
     location: RelocateData?,
     onEntryChosen: (TocEntry) -> Unit,
@@ -259,7 +265,7 @@ internal fun ReaderContentsSheetContent(
                     onClick = { tab = segment },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = ReaderContentsTab.entries.size),
                     colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = palette.accent.copy(alpha = 0.22f),
+                        activeContainerColor = accent.tintSoft,
                         activeContentColor = palette.ink0,
                         activeBorderColor = palette.ink3,
                         inactiveContainerColor = palette.bg0,
@@ -287,7 +293,7 @@ internal fun ReaderContentsSheetContent(
                             glyph = R.drawable.ic_reader_contents,
                         )
                     } else {
-                        ContentsList(toc, location, listState, onEntryChosen)
+                        ContentsList(toc, location, accent, listState, onEntryChosen)
                     }
                 ReaderContentsTab.Bookmarks -> when (bookmarksStatus) {
                     ReaderBookmarksStatus.Loading -> LoadingStateView(
@@ -326,6 +332,7 @@ internal fun ReaderContentsSheetContent(
 private fun ContentsList(
     toc: List<TocEntry>,
     location: RelocateData?,
+    accent: BookAccent,
     listState: LazyListState,
     onEntryChosen: (TocEntry) -> Unit,
 ) {
@@ -354,6 +361,7 @@ private fun ContentsList(
                 index = index,
                 entry = toc[index],
                 isCurrent = index == current,
+                accent = accent,
                 onClick = { onEntryChosen(toc[index]) },
             )
         }
@@ -436,6 +444,7 @@ private fun ContentsRow(
     index: Int,
     entry: TocEntry,
     isCurrent: Boolean,
+    accent: BookAccent,
     onClick: () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
@@ -445,8 +454,8 @@ private fun ContentsRow(
         entry.level == 0 -> FontWeight.Medium
         else -> FontWeight.Normal
     }
-    val labelColor = if (isCurrent) palette.accent else palette.ink1
-    val pageColor = if (isCurrent) palette.accent else palette.ink3
+    val labelColor = if (isCurrent) accent.tint else palette.ink1
+    val pageColor = if (isCurrent) accent.tint else palette.ink3
 
     Column {
         if (index > 0) {
@@ -476,7 +485,7 @@ private fun ContentsRow(
                     .size(width = 2.5.dp, height = 15.dp)
                     .then(
                         if (isCurrent) {
-                            Modifier.clip(CircleShape).background(palette.accent).testTag(ReaderContentsTags.CURRENT_MARKER)
+                            Modifier.clip(CircleShape).background(accent.tint).testTag(ReaderContentsTags.CURRENT_MARKER)
                         } else {
                             Modifier
                         },
