@@ -71,6 +71,13 @@ class QuoteCardViewModel @AssistedInject constructor(
     /** Each save's outcome, once: [QuoteCardEffect.Share] or [QuoteCardEffect.Copy]. A failed save emits nothing. */
     val effects: Flow<QuoteCardEffect> = _effects.receiveAsFlow()
 
+    init {
+        viewModelScope.launch {
+            val pairs = repository.getCoverPairs(bookUuid)
+            _uiState.update { it.copy(coverPairs = pairs) }
+        }
+    }
+
     /** The reader chose Share with the rendered card's PNG [png]. Ignored while a save is running. */
     fun onShareRequested(png: ByteArray) = export(png, QuoteCardEffect::Share)
 
