@@ -38,15 +38,13 @@ class ReaderContentsModelTest : DescribeSpec({
             currentTocIndex(emptyList(), RelocateData(chapter = 1)) shouldBe null
         }
 
-        it("CS-32: the position line falls back from pages to percent") {
+        it("CS-32: the position line falls back from pages to percent, and shows nothing before locations") {
             ContentsPosition.from(RelocateData(page = 5, totalPages = 20, pct = 25)) shouldBe
                 ContentsPosition.PageOf(5, 20)
             ContentsPosition.from(RelocateData(page = 0, totalPages = 20, pct = 3)) shouldBe
                 ContentsPosition.Percent(3)
-            ContentsPosition.from(RelocateData(page = 5, totalPages = 0, pct = 42)) shouldBe
-                ContentsPosition.Percent(42)
-            ContentsPosition.from(RelocateData(page = 0, totalPages = 0, pct = 0)) shouldBe
-                ContentsPosition.Percent(0)
+            ContentsPosition.from(RelocateData(page = 5, totalPages = 0, pct = 42)) shouldBe null
+            ContentsPosition.from(RelocateData(page = 0, totalPages = 0, pct = 0)) shouldBe null
             ContentsPosition.from(null) shouldBe null
         }
 

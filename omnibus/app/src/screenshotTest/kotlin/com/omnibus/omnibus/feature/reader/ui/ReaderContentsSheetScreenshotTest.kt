@@ -15,7 +15,7 @@ fun ReaderContentsWithPages() {
     ContentsShot(ReaderContentsPreviewToc, ReaderContentsPreviewLocation)
 }
 
-/** Before page numbers exist: no pages on the rows, and the header falls back to "34% through". */
+/** Before page numbers exist: no pages on the rows, and no position line in the header. */
 @PreviewTest
 @PreviewLightDark
 @Composable

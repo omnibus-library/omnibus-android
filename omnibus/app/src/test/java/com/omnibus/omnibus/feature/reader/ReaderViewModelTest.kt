@@ -102,6 +102,17 @@ class ReaderViewModelTest : DescribeSpec({
             location.page shouldBe 2
         }
 
+        // #199: before locations the page reports pct 0; the echo once they load carries the real one.
+        it("TC-199: the menu percent is hidden before locations and updates from the echo") {
+            val vm = viewModel()
+
+            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 1, totalPages = 0, pct = 0)))
+            vm.uiState.value.menuPercent shouldBe null
+
+            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 133, pct = 43, echo = true))
+            vm.uiState.value.menuPercent shouldBe 43
+        }
+
         it("TC-32: a movement after an echo clears the flag") {
             val vm = viewModel()
             vm.onPageEvent(relocate("epubcfi(/6/8)", page = 3, pct = 2))
