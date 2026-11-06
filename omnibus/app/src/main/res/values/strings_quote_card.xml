@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Title of the quote card sheet. -->
     <string name="quote_card_title">Quote card</string>
     <!-- Closes the quote card sheet. -->
@@ -65,5 +65,5 @@
     <string name="quote_card_stop_from">From</string>
     <string name="quote_card_stop_to">To</string>
     <!-- Spoken name of the button that turns a gradient's direction. %1$d is its angle in degrees. -->
-    <string name="quote_card_direction">Direction, %1$d degrees</string>
+    <string name="quote_card_direction" tools:ignore="PluralsCandidate">Direction, %1$d degrees</string>
 </resources>
