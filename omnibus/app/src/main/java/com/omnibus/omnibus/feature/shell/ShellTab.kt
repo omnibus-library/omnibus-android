@@ -7,14 +7,13 @@ import com.omnibus.omnibus.R
 import kotlinx.serialization.Serializable
 
 /**
- * The tabs of the signed-in shell, in bar order.
- *
- * These are the web client's tabs rather than iOS's, which swaps Authors and Series for Search.
+ * The tabs of the signed-in shell, in bar order. They match iOS (#124, I-NAV-1): Search takes the place
+ * the Authors and Series tabs had on the web client.
  *
  * @property root The destination at the bottom of the tab's back stack.
  * @property label The tab's name in the bar and to screen readers.
  * @property icon Outline glyph for the resting state.
- * @property selectedIcon Filled glyph for the selected state.
+ * @property selectedIcon The filled glyph, or for Search the same glyph at a heavier stroke (P-TAB-3).
  */
 enum class ShellTab(
     val root: NavKey,
@@ -23,8 +22,7 @@ enum class ShellTab(
     @param:DrawableRes val selectedIcon: Int,
 ) {
     Library(LibraryRoot, R.string.shell_tab_library, R.drawable.ic_tab_library, R.drawable.ic_tab_library_filled),
-    Authors(AuthorsRoot, R.string.shell_tab_authors, R.drawable.ic_tab_authors, R.drawable.ic_tab_authors_filled),
-    Series(SeriesRoot, R.string.shell_tab_series, R.drawable.ic_tab_series, R.drawable.ic_tab_series_filled),
+    Search(SearchRoot, R.string.shell_tab_search, R.drawable.ic_tab_search, R.drawable.ic_tab_search_selected),
     Stats(StatsRoot, R.string.shell_tab_stats, R.drawable.ic_tab_stats, R.drawable.ic_tab_stats_filled),
     You(YouRoot, R.string.shell_tab_you, R.drawable.ic_tab_you, R.drawable.ic_tab_you_filled);
 
@@ -38,10 +36,7 @@ enum class ShellTab(
 data object LibraryRoot : NavKey
 
 @Serializable
-data object AuthorsRoot : NavKey
-
-@Serializable
-data object SeriesRoot : NavKey
+data object SearchRoot : NavKey
 
 @Serializable
 data object StatsRoot : NavKey

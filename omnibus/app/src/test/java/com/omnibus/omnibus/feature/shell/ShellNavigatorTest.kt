@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.shell
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.shell.chrome.ChromeState
 import androidx.navigation3.runtime.NavKey
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -30,13 +31,13 @@ class ShellNavigatorTest : DescribeSpec({
 
         it("keeps each tab's own history across a switch") {
             navigator.navigateTo(Pushed(1))
-            navigator.select(ShellTab.Authors)
+            navigator.select(ShellTab.Search)
             navigator.navigateTo(Pushed(2))
 
             navigator.select(ShellTab.Library)
 
             stack(ShellTab.Library) shouldBe listOf(LibraryRoot, Pushed(1))
-            stack(ShellTab.Authors) shouldBe listOf(AuthorsRoot, Pushed(2))
+            stack(ShellTab.Search) shouldBe listOf(SearchRoot, Pushed(2))
         }
 
         it("pops the selected tab to its root when it is tapped again") {
@@ -50,14 +51,32 @@ class ShellNavigatorTest : DescribeSpec({
         }
 
         it("leaves other tabs' history alone when popping to root") {
-            navigator.select(ShellTab.Series)
+            navigator.select(ShellTab.Stats)
             navigator.navigateTo(Pushed(1))
             navigator.select(ShellTab.Library)
             navigator.navigateTo(Pushed(2))
 
             navigator.select(ShellTab.Library)
 
-            stack(ShellTab.Series) shouldBe listOf(SeriesRoot, Pushed(1))
+            stack(ShellTab.Stats) shouldBe listOf(StatsRoot, Pushed(1))
+        }
+
+        it("pops Search to its root when reselected") {
+            navigator.select(ShellTab.Search)
+            navigator.navigateTo(Pushed(1))
+
+            navigator.select(ShellTab.Search)
+
+            stack(ShellTab.Search) shouldBe listOf(SearchRoot)
+            navigator.selected shouldBe ShellTab.Search
+        }
+    }
+
+    describe("tabs") {
+        it("TC-28: are Library, Search, Stats and You, with Library as the start tab") {
+            ShellTab.entries shouldBe listOf(ShellTab.Library, ShellTab.Search, ShellTab.Stats, ShellTab.You)
+            ShellTab.Start shouldBe ShellTab.Library
+            ShellTab.Search.root shouldBe SearchRoot
         }
     }
 
@@ -94,6 +113,16 @@ class ShellNavigatorTest : DescribeSpec({
             navigator.selected shouldBe ShellTab.Library
         }
 
+        it("returns to Library from every other root") {
+            listOf(ShellTab.Search, ShellTab.Stats, ShellTab.You).forEach { tab ->
+                navigator.select(tab)
+
+                navigator.back() shouldBe true
+
+                navigator.selected shouldBe ShellTab.Library
+            }
+        }
+
         it("stays on the other tab while it has history") {
             navigator.select(ShellTab.You)
             navigator.navigateTo(Pushed(1))
@@ -120,6 +149,21 @@ class ShellNavigatorTest : DescribeSpec({
             navigator.back() shouldBe true
 
             stack(ShellTab.Library) shouldBe listOf(LibraryRoot)
+        }
+    }
+
+    describe("chromeState") {
+        // P-VIS-1, I-STATE-1
+        it("TC-31: follows the selected tab") {
+            navigator.navigateTo(BookDetailRoute("abc"))
+            navigator.chromeState.visible shouldBe false
+
+            navigator.select(ShellTab.Search)
+            navigator.chromeState shouldBe ChromeState(visible = true, fabVisible = false)
+
+            navigator.select(ShellTab.Library)
+            navigator.chromeState.visible shouldBe false
+            stack(ShellTab.Library) shouldBe listOf(LibraryRoot, BookDetailRoute("abc"))
         }
     }
 

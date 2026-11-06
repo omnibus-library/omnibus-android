@@ -2,8 +2,6 @@ package com.omnibus.omnibus.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,20 +13,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -119,51 +110,11 @@ fun Masthead(
     }
 }
 
-/**
- * The circular add control on the masthead. Its neutral fill keeps it quiet beside the title, and
- * the accent glyph marks it as the one action.
- *
- * @param onAddBooks Called once per tap, after a light haptic tick.
- */
-@Composable
-fun MastheadAddButton(
-    onAddBooks: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val palette = OmnibusTheme.palette
-    val haptics = LocalHapticFeedback.current
-    val label = stringResource(R.string.masthead_add_books)
-
-    Box(
-        modifier = modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(palette.bg2)
-            .border(0.5.dp, palette.line2, CircleShape)
-            .clickable(role = Role.Button, onClickLabel = null) {
-                // VirtualKey is the light key-tap tick, matching iOS's light impact.
-                haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                onAddBooks()
-            }
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_add_scan),
-            contentDescription = null,
-            tint = palette.accent,
-            modifier = Modifier.size(17.dp),
-        )
-    }
-}
-
 @Composable
 @PreviewLightDark
 private fun MastheadPreview() {
     OmnibusTheme {
-        Masthead(title = "Library") {
-            MastheadAddButton(onAddBooks = {})
-        }
+        Masthead(title = "Library")
     }
 }
 
@@ -173,7 +124,6 @@ private fun MastheadWithTrailingPreview() {
     OmnibusTheme {
         Masthead(title = "Library") {
             OfflinePill(visible = true)
-            MastheadAddButton(onAddBooks = {})
         }
     }
 }

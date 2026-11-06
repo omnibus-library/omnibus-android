@@ -7,11 +7,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
@@ -33,7 +31,6 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
-import com.omnibus.omnibus.feature.audiobook.mini.shellHidesMiniPlayer
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.PlaceholderTitles
 import com.omnibus.omnibus.feature.bookdetail.dispatch
@@ -43,16 +40,17 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
-import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
-import com.omnibus.omnibus.feature.shell.SeriesRoot
 import com.omnibus.omnibus.feature.shell.ShellNavigator
+import com.omnibus.omnibus.feature.shell.SearchRoot
 import com.omnibus.omnibus.feature.shell.ShellTab
+import com.omnibus.omnibus.feature.shell.chrome.FabSpec
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.serialization.Serializable
 
@@ -60,10 +58,11 @@ import kotlinx.serialization.Serializable
 data object SignedInShellRoute : NavKey
 
 /**
- * The signed-in shell: a tab bar over a navigation stack for the selected tab.
+ * The signed-in shell: a navigation stack for the selected tab, drawn full height behind a floating tab bar, mini
+ * player and FAB (I-ARCH-1).
  *
- * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
- * lifting it. Screens that hold a text field handle the keyboard themselves.
+ * The shell doesn't inset itself for the keyboard, so the keyboard covers the chrome rather than lifting it (P-VIS-5).
+ * Screens that hold a text field handle the keyboard themselves.
  *
  * @param onOpenReader opens the reader for a book over the shell, at the given start CFI or the saved position when it
  *   is null. The Book Detail page reaches it through `BookDetailDestination.Reader`; the Continue card calls it too.
@@ -126,19 +125,40 @@ private fun SignedInShellContent(
         )
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.bg0),
+    val chrome = navigator.chromeState
+    val reducedMotion = rememberReducedMotion()
+    // The Add books sheet is a later ticket (#16, H00-107). Until then the FAB calls this stub.
+    val onAddBooks: () -> Unit = { }
+    val libraryFab = remember { FabSpec(R.drawable.ic_add_book, R.string.masthead_add_books, onAddBooks) }
+    // The selected root's FAB (I-STATE-2). Only Library has one.
+    val fabSpec = if (navigator.selected == ShellTab.Library) libraryFab else null
+    val fabShown = chrome.fabVisible && fabSpec != null
+    // Keeps the last FAB so its exit animation still draws it after the selected root stops supplying one.
+    val lastFab = remember { LastFab() }
+    if (fabSpec != null) lastFab.spec = fabSpec
+
+    ChromeScaffold(
+        chromeVisible = chrome.visible,
+        fabVisible = fabShown,
+        reducedMotion = reducedMotion,
+        modifier = modifier.background(palette.bg0),
+        bar = {
+            OmnibusTabBar(
+                items = tabBarItems,
+                selectedIndex = ShellTab.entries.indexOf(navigator.selected),
+                onSelect = { navigator.select(ShellTab.entries[it]) },
+                enabled = chrome.visible,
+                reducedMotion = reducedMotion,
+            )
+        },
+        fab = { lastFab.spec?.let { ShellFab(it, enabled = fabShown) } },
+        // Unchanged inside; placed in the I-MINI-1 slot (I-MINI-3). It hides with the chrome (I-MINI-2).
+        miniPlayer = { MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) }) },
     ) {
-        SharedTransitionLayout(Modifier.weight(1f)) {
+        SharedTransitionLayout(Modifier.fillMaxSize()) {
             ProvideBookCoverTransition(this) {
                 NavDisplay(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        // Book Detail draws under the status bar, so each entry pads it (see StatusBarPadded).
-                        // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
-                        .consumeWindowInsets(WindowInsets.navigationBars),
+                    modifier = Modifier.fillMaxSize(),
                     backStack = navigator.backStack,
                     onBack = onBack,
                     // Switching tabs moves between stacks, which a slide would read as a push or pop.
@@ -154,7 +174,6 @@ private fun SignedInShellContent(
                             StatusBarPadded {
                                 LibraryScreen(
                                     onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
-                                    onAddBooks = { /* Add books sheet: later ticket */ },
                                     onOpenReader = { onOpenReader(it, null) },
                                     onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
                                 )
@@ -170,25 +189,18 @@ private fun SignedInShellContent(
                         entry<BookDetailPlaceholderRoute> { key ->
                             StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
                         }
-                        entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
-                        entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
+                        entry<SearchRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Search) } }
                         entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
                         entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
                     },
                 )
             }
         }
-        // The mini player sits above the tab bar, except on Book Detail (P-MINI-1). It pads no insets: the tab bar does.
-        if (!shellHidesMiniPlayer(navigator.backStack.lastOrNull())) {
-            MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
-        }
-        OmnibusTabBar(
-            items = tabBarItems,
-            selectedIndex = ShellTab.entries.indexOf(navigator.selected),
-            onSelect = { navigator.select(ShellTab.entries[it]) },
-        )
     }
 }
+
+/** Keeps the last FAB so its exit still draws it. A plain class, so writing it during composition is safe. */
+private class LastFab(var spec: FabSpec? = null)
 
 /** Pads the status bar for an entry. Book Detail draws under it, so the shell can't pad the whole NavDisplay. */
 @Composable
@@ -196,11 +208,13 @@ private fun StatusBarPadded(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) { content() }
 }
 
-/** Placeholder root until the tab's own ticket supplies its content. */
+/** Placeholder root until the tab's own ticket supplies its content. It clears the floating chrome (I-ARCH-2). */
 @Composable
 private fun EmptyTabRoot(tab: ShellTab, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(LocalShellContentPadding.current),
         contentAlignment = Alignment.Center,
     ) {
         Text(

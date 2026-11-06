@@ -51,7 +51,7 @@ fun LibraryFilteredEmpty() {
     LibraryShot(LibraryUIState(hasLoaded = true, category = LibraryCategory.Ebooks))
 }
 
-/** The offline pill sits left of the add button, on its centre line. */
+/** The offline pill at the end of the wordmark row. */
 @PreviewTest
 @PreviewLightDark
 @Composable
@@ -123,7 +123,6 @@ private fun LibraryShot(uiState: LibraryUIState) {
             onRefresh = {},
             onLoadMore = {},
             onOpenBook = {},
-            onAddBooks = {},
             onTransientErrorShown = {},
             bottomInset = 0.dp,
             continueState = continueState,

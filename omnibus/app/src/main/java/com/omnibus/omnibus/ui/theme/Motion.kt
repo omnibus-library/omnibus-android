@@ -2,6 +2,7 @@ package com.omnibus.omnibus.ui.theme
 
 import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.spring
@@ -35,6 +36,21 @@ object Motion {
     /** Page turns and large transitions; deliberately not a spring so it never overshoots. */
     fun <T> page(): TweenSpec<T> =
         tween(durationMillis = 400, easing = CubicBezierEasing(0.2f, 0.6f, 0.3f, 1f))
+
+    /** Material 3 emphasized easing. Atrium has no easing tokens yet (tech spec §1.4). */
+    val emphasized: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+    // Bottom-nav chrome timings, in ms (tech spec §1.4, I-MOT-2, I-MOT-4, I-MOT-7).
+    const val barResizeDuration = 400
+    const val fabMoveDuration = 350
+    const val toWideFabDelay = 160
+    const val toNarrowBarDelay = 120
+
+    /** The dip going narrow: the mockup's value, the FAB move plus 80 ms (I-MOT-4). */
+    const val toNarrowDipDuration = 430
+    const val fabDipScale = 0.9f
+    const val fabDipAt = 0.45f
+    const val indicatorDuration = 200
 }
 
 /** True when the system "Remove animations" setting is on (animator duration scale 0). */

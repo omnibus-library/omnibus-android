@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.shell
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.feature.shell.chrome.ChromeState
 
 /**
  * Navigation state for the signed-in shell: one back stack per [ShellTab] and which tab is selected.
@@ -35,6 +36,9 @@ class ShellNavigator(
     val backStack: List<NavKey>
         get() = ShellTab.entries.filter { it != selected }.flatMap { stacks.getValue(it) } +
             stacks.getValue(selected)
+
+    /** Whether the chrome and the FAB show for the selected tab's stack (tech spec §5.3). Derived on every read. */
+    val chromeState: ChromeState get() = ChromeState.of(selected, stacks.getValue(selected))
 
     /** Selects [tab], or pops to its root if it already is selected. */
     fun select(tab: ShellTab) {
