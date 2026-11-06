@@ -94,6 +94,9 @@ fun QuoteCardSheet(passage: String, book: CoverIdentity, onDismiss: () -> Unit) 
         QuoteCardSheetContent(
             state = state,
             book = book,
+            onKindChosen = viewModel::onKindChosen,
+            onBackgroundChosen = viewModel::onBackgroundChosen,
+            onCustomChosen = {},
             onShare = { scope.launch { viewModel.onShareRequested(exporter.capture()) } },
             onCopy = { scope.launch { viewModel.onCopyRequested(exporter.capture()) } },
             onDone = {
@@ -126,6 +129,9 @@ internal fun QuoteCardFor(state: QuoteCardUIState, book: CoverIdentity, modifier
 internal fun QuoteCardSheetContent(
     state: QuoteCardUIState,
     book: CoverIdentity,
+    onKindChosen: (QuoteBackgroundKind) -> Unit,
+    onBackgroundChosen: (QuoteBackground) -> Unit,
+    onCustomChosen: () -> Unit,
     onShare: () -> Unit,
     onCopy: () -> Unit,
     onDone: () -> Unit,
@@ -150,6 +156,14 @@ internal fun QuoteCardSheetContent(
                 .fillMaxWidth()
                 .shadow(12.dp, cardShape, clip = true, ambientColor = Color.Black.copy(alpha = 0.28f), spotColor = Color.Black.copy(alpha = 0.28f))
                 .testTag(QuoteCardTestTags.PREVIEW),
+        )
+        QuoteBackgroundSection(
+            background = state.background,
+            coverPairs = state.coverPairs,
+            book = book,
+            onKindChosen = onKindChosen,
+            onBackgroundChosen = onBackgroundChosen,
+            onCustomChosen = onCustomChosen,
         )
         Actions(state.exporting, onShare, onCopy)
     }

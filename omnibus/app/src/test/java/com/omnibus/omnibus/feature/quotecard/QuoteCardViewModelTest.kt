@@ -83,6 +83,59 @@ class QuoteCardViewModelTest : DescribeSpec({
             }
         }
 
+        describe("onKindChosen") {
+            val pair = CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true)
+
+            it("applies the first cover pair when Gradient is chosen and the cover offers pairs") {
+                withHarness(coverPairs = listOf(pair, pair.copy(lightInk = false))) {
+                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Cover(pair)
+                }
+            }
+
+            it("applies Ember when Gradient is chosen and the cover offers no pairs") {
+                withHarness {
+                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Preset(QuoteGradientPreset.Ember)
+                }
+            }
+
+            it("applies the book's colour when Solid is chosen from a gradient") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.Preset(QuoteGradientPreset.Dawn))
+
+                    vm.onKindChosen(QuoteBackgroundKind.Solid)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Book
+                }
+            }
+
+            it("keeps the background when the current kind is chosen again") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Moss))
+
+                    vm.onKindChosen(QuoteBackgroundKind.Solid)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Wash(QuoteWash.Moss)
+                }
+            }
+        }
+
+        describe("onBackgroundChosen") {
+            it("sets the background and leaves the other choices alone") {
+                withHarness {
+                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Rose))
+
+                    vm.uiState.value shouldBe QuoteCardUIState(
+                        passage = PASSAGE,
+                        background = QuoteBackground.Wash(QuoteWash.Rose),
+                    )
+                }
+            }
+        }
+
         describe("onShareRequested") {
             it("saves the bytes, emits Share with the file, and is not exporting afterwards") {
                 withHarness {

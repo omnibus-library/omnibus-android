@@ -78,6 +78,18 @@ class QuoteCardViewModel @AssistedInject constructor(
         }
     }
 
+    /** The reader chose a row of swatches. Applies that row's first swatch, so the card is always of the kind shown. */
+    fun onKindChosen(kind: QuoteBackgroundKind) {
+        _uiState.update { state ->
+            if (state.background.kind == kind) state else state.copy(background = swatchesOf(kind, state.coverPairs).first())
+        }
+    }
+
+    /** The reader chose a swatch. */
+    fun onBackgroundChosen(background: QuoteBackground) {
+        _uiState.update { it.copy(background = background) }
+    }
+
     /** The reader chose Share with the rendered card's PNG [png]. Ignored while a save is running. */
     fun onShareRequested(png: ByteArray) = export(png, QuoteCardEffect::Share)
 
