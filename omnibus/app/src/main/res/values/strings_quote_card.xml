@@ -30,4 +30,31 @@
     <string name="quote_card_swatch_cover">Cover gradient %1$d</string>
     <string name="quote_card_swatch_custom_color">Custom color</string>
     <string name="quote_card_swatch_custom_gradient">Custom gradient</string>
+    <!-- Headings of the type and shape sections. -->
+    <string name="quote_card_type">Type</string>
+    <string name="quote_card_shape">Shape</string>
+    <!-- Typeface names, each drawn in its own face. -->
+    <string name="quote_card_typeface_serif">Serif</string>
+    <string name="quote_card_typeface_sans">Sans</string>
+    <string name="quote_card_typeface_mono">Mono</string>
+    <!-- Size steps. -->
+    <string name="quote_card_size_small">S</string>
+    <string name="quote_card_size_medium">M</string>
+    <string name="quote_card_size_large">L</string>
+    <!-- Spoken names of the size steps. -->
+    <string name="quote_card_size_small_description">Small</string>
+    <string name="quote_card_size_medium_description">Medium</string>
+    <string name="quote_card_size_large_description">Large</string>
+    <!-- Toggles for the passage's weight and slant. -->
+    <string name="quote_card_bold">Bold</string>
+    <string name="quote_card_italic">Italic</string>
+    <!-- Shape names, over their ratios. -->
+    <string name="quote_card_shape_square">Square</string>
+    <string name="quote_card_shape_post">Post</string>
+    <string name="quote_card_shape_portrait">Portrait</string>
+    <string name="quote_card_shape_story">Story</string>
+    <string name="quote_card_ratio_square">1:1</string>
+    <string name="quote_card_ratio_post">4:5</string>
+    <string name="quote_card_ratio_portrait">3:4</string>
+    <string name="quote_card_ratio_story">9:16</string>
 </resources>

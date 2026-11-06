@@ -136,6 +136,53 @@ class QuoteCardViewModelTest : DescribeSpec({
             }
         }
 
+        describe("type and shape intents") {
+            val defaults = QuoteCardUIState(passage = PASSAGE)
+
+            it("onTypefaceChosen sets only the typeface") {
+                withHarness {
+                    vm.onTypefaceChosen(QuoteTypeface.Mono)
+
+                    vm.uiState.value shouldBe defaults.copy(typeface = QuoteTypeface.Mono)
+                }
+            }
+
+            it("onSizeChosen sets only the size") {
+                withHarness {
+                    vm.onSizeChosen(QuoteSize.L)
+
+                    vm.uiState.value shouldBe defaults.copy(size = QuoteSize.L)
+                }
+            }
+
+            it("onBoldToggled flips only bold, and back") {
+                withHarness {
+                    vm.onBoldToggled()
+                    vm.uiState.value shouldBe defaults.copy(bold = true)
+
+                    vm.onBoldToggled()
+                    vm.uiState.value shouldBe defaults
+                }
+            }
+
+            it("onItalicToggled flips only italic, independent of bold") {
+                withHarness {
+                    vm.onBoldToggled()
+                    vm.onItalicToggled()
+
+                    vm.uiState.value shouldBe defaults.copy(bold = true, italic = true)
+                }
+            }
+
+            it("onShapeChosen sets only the shape") {
+                withHarness {
+                    vm.onShapeChosen(QuoteShape.Story)
+
+                    vm.uiState.value shouldBe defaults.copy(shape = QuoteShape.Story)
+                }
+            }
+        }
+
         describe("onShareRequested") {
             it("saves the bytes, emits Share with the file, and is not exporting afterwards") {
                 withHarness {
