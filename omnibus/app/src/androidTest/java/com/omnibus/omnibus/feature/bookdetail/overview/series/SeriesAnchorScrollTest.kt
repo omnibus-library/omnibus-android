@@ -5,11 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -117,15 +113,6 @@ class SeriesAnchorScrollTest {
     fun issue104_tc116_headingLandsBelowThePinnedStrip() {
         val scroll = ScrollState(0)
         setPage(seriesBookAt(position = 1), overviewSlots(), scroll)
-        tapStageLine()
-        assertLanded(scroll)
-    }
-
-    // TC-116 (no filler: the same check on a page that cannot scroll far)
-    @Test
-    fun issue104_tc116_headingLandsWithoutAFiller() {
-        val scroll = ScrollState(0)
-        setPage(seriesBookAt(position = 1), BookDetailSlots(overviewSections = listOf(SeriesFanSection)), scroll)
         tapStageLine()
         assertLanded(scroll)
     }

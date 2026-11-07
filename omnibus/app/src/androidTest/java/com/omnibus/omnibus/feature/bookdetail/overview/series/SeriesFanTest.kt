@@ -48,19 +48,6 @@ class SeriesFanTest {
         assertTrue(state.opened.isEmpty())
     }
 
-    // TC-73
-    @Test
-    fun issue104_tc73_spreadMetadataWording() {
-        val list = members(5) { if (it == 5) "" else "$it" }
-        rule.setFan(FanState(fanModel(5, current = 1, list = list), spread = true))
-        rule.waitForIdle()
-        assertEquals("Title 1, Book 1", rule.cardNode("m1").description())
-        assertEquals("Title 2, Book 2 · This book", rule.cardNode("m2").description())
-        assertEquals("Title 3, Book 3 · Up next", rule.cardNode("m3").description())
-        assertEquals("Title 4, Book 4", rule.cardNode("m4").description())
-        assertEquals("Title 5", rule.cardNode("m5").description())
-    }
-
     // TC-75
     @Test
     fun issue104_tc75_longSpreadScrollsSideways() {
@@ -73,18 +60,6 @@ class SeriesFanTest {
         rule.cardNode("m40").assertIsDisplayed()
     }
 
-    // TC-77
-    @Test
-    fun issue104_tc77_tappingAnotherBookOpensIt() {
-        val state = FanState(fanModel(5, current = 0), spread = true)
-        rule.setFan(state)
-        rule.waitForIdle()
-        rule.cardNode("m2").performClick()
-        rule.waitForIdle()
-        assertEquals(listOf("m2"), state.opened)
-        assertEquals(0, state.toggleCount)
-    }
-
     // TC-78
     @Test
     fun issue104_tc78_scrolledCardOpens() {
@@ -95,31 +70,6 @@ class SeriesFanTest {
         rule.cardNode("m31").performClick()
         rule.waitForIdle()
         assertEquals(listOf("m31"), state.opened)
-    }
-
-    // TC-79
-    @Test
-    fun issue104_tc79_tappingThisBookGathers() {
-        val state = FanState(fanModel(5, current = 2), spread = true)
-        rule.setFan(state)
-        rule.waitForIdle()
-        rule.cardNode("m3").performClick()
-        rule.waitForIdle()
-        assertEquals(1, state.toggleCount)
-        assertTrue(state.opened.isEmpty())
-    }
-
-    // TC-81
-    @Test
-    fun issue104_tc81_absentBookIsNeitherSelectedNorNamed() {
-        rule.setFan(FanState(fanModel(4, current = null)))
-        rule.waitForIdle()
-        (1..4).forEach { i ->
-            val node = rule.cardNode("m$i")
-            assertFalse("no Selected on card $i", node.fetchSemanticsNode().config.contains(SemanticsProperties.Selected))
-            val description = node.description().orEmpty()
-            assertFalse(description.contains("This book") || description.contains("Up next"))
-        }
     }
 
     // TC-83

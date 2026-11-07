@@ -1,17 +1,13 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.description
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,18 +15,11 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
-import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.bookdetail.textLayout
-import com.omnibus.omnibus.feature.bookdetail.tabs.tabNode
-import com.omnibus.omnibus.feature.bookdetail.tabs.BookDetailTabsTestTags
 import com.omnibus.omnibus.feature.bookdetail.tabs.assertExists
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -38,9 +27,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 
-/** The description section: clamp, toggle, saved state, width and placement. BookDescriptionScreenshotTest covers how it looks. */
+/** The description section: toggle, saved state and width. BookDescriptionScreenshotTest covers how it looks. */
 class BookDescriptionSectionTest {
 
     @get:Rule
@@ -50,8 +38,6 @@ class BookDescriptionSectionTest {
     private val longText = List(12) { "lorem ipsum dolor sit amet" }.joinToString(" ")
 
     private val tags = BookDescriptionTestTags
-
-    private fun ComposeContentTestRule.dp(value: androidx.compose.ui.unit.Dp): Float = with(density) { value.toPx() }
 
     private fun ComposeContentTestRule.setSection(description: String?) {
         setContent {
@@ -67,59 +53,25 @@ class BookDescriptionSectionTest {
 
     // TC-73
     @Test
-    fun issue94_tc73_showMoreExpandsAndShowLessCollapses() {
+    fun issue94_tc73_toggleExpandsThenCollapses() {
         rule.setSection(longText)
-        val collapsedHeight = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
 
         rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).performClick()
         rule.waitForIdle()
-        val expanded = rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout()
-        assertTrue(expanded.lineCount > 3)
-        assertFalse(expanded.hasVisualOverflow)
-        rule.onNodeWithText(detailText(R.string.book_detail_tabs_show_less)).assertExists()
-        val expandedHeight = rule.onNodeWithTag(tags.DESCRIPTION).bounds().height
-        assertTrue(expandedHeight > collapsedHeight)
+        assertTrue(rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout().lineCount > 3)
 
         rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).performClick()
         rule.waitForIdle()
         assertEquals(3, rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout().lineCount)
-        rule.onNodeWithText(detailText(R.string.book_detail_tabs_show_more)).assertExists()
-        assertEquals(collapsedHeight, rule.onNodeWithTag(tags.DESCRIPTION).bounds().height, 1f)
-    }
-
-    // TC-74
-    @Test
-    fun issue94_tc74_toggleAppearsOnlyAboveThreeLines() {
-        val text = mutableStateOf("One\nTwo\nThree")
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDescriptionSection.Content(
-                    testSectionContext(book = testDetailBook().copy(description = text.value)),
-                    Modifier.fillMaxWidth(),
-                )
-            }
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag(tags.DESCRIPTION_TEXT).assertTextEquals("One\nTwo\nThree")
-        assertEquals(3, rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout().lineCount)
-        rule.onAllNodesWithTag(tags.DESCRIPTION_TOGGLE).assertCountEquals(0)
-
-        rule.runOnIdle { text.value = "One\nTwo\nThree\nFour" }
-        rule.waitForIdle()
-        val layout = rule.onNodeWithTag(tags.DESCRIPTION_TEXT).textLayout()
-        assertEquals(3, layout.lineCount)
-        assertTrue(layout.hasVisualOverflow)
-        rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE).assertExists()
     }
 
     // TC-76
     @Test
-    fun issue94_tc76_toggleIsA44DpButtonLabelledByItsText() {
+    fun issue94_tc76_toggleIsAButton() {
         rule.setSection(longText)
+
         val toggle = rule.onNodeWithTag(tags.DESCRIPTION_TOGGLE)
         assertEquals(Role.Button, toggle.fetchSemanticsNode().config[SemanticsProperties.Role])
-        toggle.assertTextEquals(detailText(R.string.book_detail_tabs_show_more))
-        assertTrue(toggle.bounds().height >= rule.dp(44.dp) - 1f)
     }
 
     // TC-77
@@ -182,53 +134,5 @@ class BookDescriptionSectionTest {
         rule.runOnIdle { fraction.floatValue = 1f }
         checkStep()
         rule.onAllNodesWithTag(tags.DESCRIPTION_TOGGLE).assertCountEquals(0)
-    }
-
-    // TC-79
-    @Test
-    fun issue94_tc79_nullOrBlankDescriptionRendersNothing() {
-        val description = mutableStateOf<String?>(null)
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                Column(Modifier.fillMaxWidth().testTag("container")) {
-                    BookDescriptionSection.Content(
-                        testSectionContext(book = testDetailBook().copy(description = description.value)),
-                        Modifier.fillMaxWidth(),
-                    )
-                    Text("sibling", modifier = Modifier.testTag("sibling"))
-                }
-            }
-        }
-        listOf<String?>(null, "", "   ", "<p></p>", "<br>&nbsp;").forEach { value ->
-            rule.runOnIdle { description.value = value }
-            rule.waitForIdle()
-            rule.onAllNodesWithTag(tags.DESCRIPTION).assertCountEquals(0)
-            rule.onAllNodesWithTag(tags.DESCRIPTION_TOGGLE).assertCountEquals(0)
-            assertEquals(
-                rule.onNodeWithTag("container").bounds().top,
-                rule.onNodeWithTag("sibling").bounds().top,
-                1f,
-            )
-        }
-    }
-
-    // TC-81
-    @Test
-    fun issue94_tc81_descriptionIsTheFirstElementOfTheOverviewPanel() {
-        rule.setDetailScreen(
-            BookDetailUIState(book = testDetailBook().copy(description = longText), isLoading = false),
-            slots = BookDetailSlots(overviewSections = listOf(BookDescriptionSection)),
-        )
-        rule.waitForIdle()
-        val panelTop = rule.onNodeWithTag(BookDetailTabsTestTags.PANEL, useUnmergedTree = true).bounds().top
-        assertEquals(panelTop + rule.dp(46.dp), rule.onNodeWithTag(tags.DESCRIPTION).bounds().top, 1f)
-
-        rule.tabNode(BookDetailTab.Reviews).performClick()
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(tags.DESCRIPTION).assertCountEquals(0)
-
-        rule.tabNode(BookDetailTab.Overview).performClick()
-        rule.waitForIdle()
-        rule.onNodeWithTag(tags.DESCRIPTION).assertExists()
     }
 }

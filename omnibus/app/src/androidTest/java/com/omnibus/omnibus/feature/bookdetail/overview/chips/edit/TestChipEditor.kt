@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.metadata.MetadataListKind
-import com.omnibus.omnibus.data.metadata.VocabularyEntry
 
 /** A [ChipEditUIState] that is bound, signed in, and with the given lists and sheet state. */
 internal fun editorState(
@@ -29,10 +28,6 @@ internal fun editorState(
     failure = failure,
     bookUpdate = bookUpdate,
 )
-
-/** A pool that is loaded with [names], each with a book count of one. */
-internal fun loadedPool(vararg names: String): PoolState.Loaded =
-    PoolState.Loaded(names.map { VocabularyEntry(it, 1) })
 
 /**
  * A [ChipEditor] for instrumented tests. It records each call as text, such as `open:Genres` or `add:Genres:Noir`.
