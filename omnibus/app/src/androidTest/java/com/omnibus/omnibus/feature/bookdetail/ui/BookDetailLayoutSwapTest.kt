@@ -61,9 +61,13 @@ class BookDetailLayoutSwapTest {
     @get:Rule
     val rule = createComposeRule()
 
-    /** Tall sections in the panels and the stage, so each scroll has range, and small ones for the rest. */
-    private fun swapSlots(): BookDetailSlots = BookDetailSlots(
-        stageProgress = listOf(tallFakeSection("fake-stage")),
+    /**
+     * Tall sections in the panels, so each scroll has range, and small ones for the rest. The stage is short unless
+     * [tallStage]: in the column a stage taller than the window pushes the strip off screen, where its bounds read as
+     * empty and a tap on it misses.
+     */
+    private fun swapSlots(tallStage: Boolean = false): BookDetailSlots = BookDetailSlots(
+        stageProgress = listOf(if (tallStage) tallFakeSection("fake-stage") else fakeSection("fake-stage")),
         overviewSections = listOf(tallFakeSection("fake-overview")),
         reviewsSections = listOf(fakeSection("fake-reviews")),
         highlightsSections = listOf(fakeSection("fake-highlights")),
@@ -194,10 +198,10 @@ class BookDetailLayoutSwapTest {
         val panel = ScrollState(0)
         rule.swapPage(twoPane, scroll = page, panel = panel)
         val pinTop = rule.barBottom().roundToInt()
+        // Read before scrolling: once the page scrolls the host's pinned, and its screen top is no longer its place.
+        val stripTop = rule.columnStripTop()
         rule.scrollTo(page)
         assertTrue("page needs range", page.maxValue > 0)
-        // The host is not pinned: its screen top is its content top minus the scroll.
-        val stripTop = rule.columnStripTop() + page.value
         val expected = columnContentOffsetPx(page.value, stripTop, pinTop)
         assertTrue("column offset must be positive", expected > 0)
 
@@ -269,7 +273,7 @@ class BookDetailLayoutSwapTest {
     fun issue211_tc57_sameLayoutRecreationRestoresEachScrollNatively() {
         val twoPane = mutableStateOf(true)
         val tester = StateRestorationTester(rule)
-        tester.recreatablePage(twoPane, swapSlots())
+        tester.recreatablePage(twoPane, swapSlots(tallStage = true))
         rule.waitForIdle()
         rule.onNodeWithTag(BookDetailTestTags.STAGE_PANE).performTouchInput { swipeUp(startY = height * 0.6f, endY = height * 0.1f) }
         rule.onNodeWithTag(BookDetailTabsTestTags.PANEL_VIEWPORT).performTouchInput { swipeUp(startY = height * 0.6f, endY = height * 0.1f) }

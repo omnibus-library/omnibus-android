@@ -139,7 +139,8 @@ internal fun BookDetailScreenContent(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val content = uiState.screen as? BookDetailScreenState.Content
-    var actionAreaHeightPx by remember { mutableIntStateOf(0) }
+    // Saved, so a restored scroll is not clamped to the range the stage has before the action area is measured.
+    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(0) }
 
     // Section messages and the refresh error share one host. Launched in a scope that outlives the caller.
     val showMessage: (BookDetailMessage) -> Unit = remember(scope, snackbarHostState) {

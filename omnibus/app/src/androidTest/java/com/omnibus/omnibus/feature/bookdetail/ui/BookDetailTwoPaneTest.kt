@@ -2,7 +2,9 @@ package com.omnibus.omnibus.feature.bookdetail.ui
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -59,8 +61,12 @@ class BookDetailTwoPaneTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private fun allFakes(): BookDetailSlots = BookDetailSlots(
-        stageProgress = listOf(tallFakeSection("fake-stage")),
+    /**
+     * Tall stage and panels, so every scroll has range. A column test passes `tallStage = false`: a stage taller than
+     * the window pushes the strip off screen, where its bounds read as empty.
+     */
+    private fun allFakes(tallStage: Boolean = true): BookDetailSlots = BookDetailSlots(
+        stageProgress = listOf(if (tallStage) tallFakeSection("fake-stage") else fakeSection("fake-stage")),
         overviewSections = listOf(tallFakeSection("fake-overview")),
         reviewsSections = listOf(fakeSection("fake-reviews")),
         highlightsSections = listOf(fakeSection("fake-highlights")),
@@ -76,6 +82,7 @@ class BookDetailTwoPaneTest {
         split: (Dp, Dp) -> com.omnibus.omnibus.feature.bookdetail.ui.PaneSplit? = forcedTwoPanes,
         direction: LayoutDirection = LayoutDirection.Ltr,
         uiState: BookDetailUIState = BookDetailUIState(book = testDetailBook(), isLoading = false),
+        screen: Modifier = Modifier.fillMaxSize(),
     ) {
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides direction) {
@@ -89,7 +96,7 @@ class BookDetailTwoPaneTest {
                         onReloadBook = {},
                         onBookChanged = {},
                         onTransientErrorShown = {},
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = screen,
                         slots = slots,
                         scrollState = scroll,
                         stageScrollState = stage,
@@ -182,7 +189,7 @@ class BookDetailTwoPaneTest {
     @Test
     fun issue211_tc28_columnStacksTheStageAboveTheStripAndScrollsThePage() {
         val scroll = ScrollState(0)
-        rule.page(scroll = scroll, split = forcedColumn)
+        rule.page(slots = allFakes(tallStage = false), scroll = scroll, split = forcedColumn)
 
         val stage = rule.stage()
         val strip = rule.strip()
@@ -197,7 +204,7 @@ class BookDetailTwoPaneTest {
     @Test
     fun issue211_tc30_columnBarTitleShowsAndRibbonRetractsWhenPinned() {
         val scroll = ScrollState(0)
-        rule.page(scroll = scroll, split = forcedColumn)
+        rule.page(slots = allFakes(tallStage = false), scroll = scroll, split = forcedColumn)
 
         val restingHeight = rule.ribbonNode().bounds().height
         rule.scrollTo(scroll)
@@ -352,15 +359,17 @@ class BookDetailTwoPaneTest {
     // TC-42
     @Test
     fun issue211_tc42_coverScalesWithThePaneHeight() {
-        rule.page()
+        // Half the window's height, so the scale is set by the pane's height: a narrow window would cap the cover by
+        // width, and a tall one would leave it whole.
+        rule.page(screen = Modifier.fillMaxWidth().fillMaxHeight(0.5f))
 
         val density = rule.density.density
-        val root = rule.onRoot().bounds()
-        val rootWidthDp = root.width / density
-        val rootHeightDp = root.height / density
+        val screen = rule.onNodeWithTag(BookDetailTestTags.SCROLL).bounds()
+        val screenWidthDp = screen.width / density
+        val screenHeightDp = screen.height / density
         val statusTopDp = rule.barBottom() / density - TopBarRowHeight.value
-        val underBar = stageUnderBar(splitAtShare(rootWidthDp.dp).leading)
-        val expected = stageCoverScale((rootHeightDp - statusTopDp).dp, underBar)
+        val underBar = stageUnderBar(splitAtShare(screenWidthDp.dp).leading)
+        val expected = stageCoverScale((screenHeightDp - statusTopDp).dp, underBar)
 
         val coverWidthPx = rule.onNodeWithTag(BookDetailTestTags.COVER).bounds().width
         val actual = coverWidthPx / with(rule.density) { StageCoverWidth.toPx() }
@@ -380,7 +389,9 @@ class BookDetailTwoPaneTest {
 
         val snackbar = rule.onNodeWithText(detailText(R.string.book_detail_error_not_found)).bounds()
         val scroll = rule.onNodeWithTag(BookDetailTestTags.SCROLL).bounds()
-        assertEquals((scroll.left + scroll.right) / 2f, (snackbar.left + snackbar.right) / 2f, 1f)
+        // The text sits off the snackbar's centre by its own padding; the leading pane's centre is far further off.
+        val padding = with(rule.density) { 8.dp.toPx() }
+        assertEquals((scroll.left + scroll.right) / 2f, (snackbar.left + snackbar.right) / 2f, padding)
         assertTrue(snackbar.bottom <= rule.actionArea().top + 1f)
     }
 
@@ -412,7 +423,7 @@ class BookDetailTwoPaneTest {
     // TC-67
     @Test
     fun issue211_tc67_nullResolverGivesAColumnAtTheDeviceSize() {
-        rule.page(split = forcedColumn)
+        rule.page(slots = allFakes(tallStage = false), split = forcedColumn)
 
         assertTrue(rule.stage().bottom <= rule.strip().top + 1f)
     }
