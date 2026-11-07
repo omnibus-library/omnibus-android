@@ -103,17 +103,22 @@ internal fun BookDetailTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BackDisc(onBack)
-            Text(
-                text = title.orEmpty(),
-                style = displayTextStyle(21.sp, palette.ink0, FontWeight.SemiBold).copy(textAlign = TextAlign.Center),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp)
-                    .alpha(fill)
-                    .clearAndSetSemantics { this[SemanticsProperties.TestTag] = BookDetailTestTags.BAR_TITLE },
-            )
+            // Without a title the bar has no title node at all, as in two-pane mode, where the panes carry the book.
+            if (title != null) {
+                Text(
+                    text = title,
+                    style = displayTextStyle(21.sp, palette.ink0, FontWeight.SemiBold).copy(textAlign = TextAlign.Center),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp)
+                        .alpha(fill)
+                        .clearAndSetSemantics { this[SemanticsProperties.TestTag] = BookDetailTestTags.BAR_TITLE },
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
             actions()
         }
     }
