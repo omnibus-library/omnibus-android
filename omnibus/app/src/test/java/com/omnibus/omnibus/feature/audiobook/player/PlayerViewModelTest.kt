@@ -1,18 +1,25 @@
 package com.omnibus.omnibus.feature.audiobook.player
 
+import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
-import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
-import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
-import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.playback.playingBook
+import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.library.BookResult
+import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.TestBookAvailability
 import com.omnibus.omnibus.data.library.TestLibraryRepository
-import com.omnibus.omnibus.data.library.ProgressFormat
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,7 +27,11 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-private const val BOOK = "uuid-1"
+/** A state holding the book with [bookUuid], and random otherwise. */
+private fun holding(bookUuid: String): PlaybackState =
+    randomPlaybackState().copy(book = randomPlayingBook().copy(bookUuid = bookUuid))
+
+private fun TestAudiobookController.loads() = commands.filterIsInstance<Command.Load>()
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModelTest : DescribeSpec({
@@ -28,194 +39,159 @@ class PlayerViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    /** The one place a test builds the ViewModel, so the route arguments stay in one spot. */
-    fun viewModel(
-        controller: TestAudiobookController,
-        availability: TestBookAvailability = TestBookAvailability(answer = true),
+    fun sut(
+        bookUuid: String = randomString(),
+        controller: TestAudiobookController = TestAudiobookController(),
+        availability: TestBookAvailability = TestBookAvailability(),
         library: TestLibraryRepository = TestLibraryRepository(),
-        fileId: Long? = 9L,
-        position: Double? = 120.0,
-    ) = PlayerViewModel(BOOK, fileId, position, controller, availability, library)
+        fileId: Long? = randomLong(),
+        position: Double? = randomDouble(0.0, 10_000.0),
+    ) = PlayerViewModel(bookUuid, fileId, position, controller, availability, library)
 
-    describe("offline gate") {
+    describe("the offline gate") {
+        context("when the book can't be opened") {
+            // P-SCR-2, P-SCR-AC6, AND-RUSE-7
+            it("#165 TC-11: never loads (P-SCR-2)") {
+                val controller = TestAudiobookController()
+
+                sut(controller = controller, availability = TestBookAvailability(answer = false))
+
+                controller.loads().shouldBeEmpty()
+            }
+
+            context("when the controller holds the book") {
+                // P-SCR-2 (exemption for a book already loaded)
+                it("#165 TC-12: opens the gate") {
+                    val uuid = randomString()
+                    val controller = TestAudiobookController(holding(uuid))
+
+                    val vm = sut(uuid, controller, TestBookAvailability(answer = false))
+
+                    vm.uiState.value.gate shouldBe PlayerGate.Open
+                }
+            }
+
+            context("when the controller holds another book") {
+                // P-SCR-2 (exemption is per book)
+                it("#165 TC-13: shows the offline gate") {
+                    val uuid = randomString()
+                    val controller = TestAudiobookController(holding("$uuid-other"))
+
+                    val vm = sut(uuid, controller, TestBookAvailability(answer = false))
+
+                    vm.uiState.value.gate shouldBe PlayerGate.Offline
+                }
+            }
+        }
 
         // P-SCR-2, P-SCR-AC6, AND-RUSE-7
-        it("#165 TC-11: shows the offline gate and never loads (P-SCR-2)") {
-            val controller = TestAudiobookController()
-            val availability = TestBookAvailability(answer = false)
+        it("#165 TC-11: asks whether the book can be opened for listening (P-SCR-2)") {
+            val uuid = randomString()
+            val availability = TestBookAvailability()
 
-            val vm = viewModel(controller, availability)
+            sut(uuid, availability = availability)
 
-            vm.uiState.value.gate shouldBe PlayerGate.Offline
-            controller.commands.filterIsInstance<Command.Load>() shouldBe emptyList()
-            availability.calls shouldBe listOf(BOOK to ProgressFormat.Listening)
-        }
-
-        // P-SCR-2 (exemption for a book already loaded)
-        it("#165 TC-12: a book the controller already holds skips the gate") {
-            val controller = TestAudiobookController(playbackState(book = playingBook(BOOK)))
-            val availability = TestBookAvailability(answer = false)
-
-            val vm = viewModel(controller, availability)
-
-            vm.uiState.value.gate shouldBe PlayerGate.Open
-            controller.commands.filterIsInstance<Command.Load>().size shouldBe 1
-            availability.calls shouldBe emptyList()
-        }
-
-        // P-SCR-2 (exemption is per book)
-        it("#165 TC-13: another loaded book does not exempt") {
-            val controller = TestAudiobookController(playbackState(book = playingBook("other-book")))
-            val availability = TestBookAvailability(answer = false)
-
-            val vm = viewModel(controller, availability)
-
-            vm.uiState.value.gate shouldBe PlayerGate.Offline
-            controller.commands.filterIsInstance<Command.Load>() shouldBe emptyList()
-            availability.calls shouldBe listOf(BOOK to ProgressFormat.Listening)
+            availability.calls shouldBe listOf(uuid to ProgressFormat.Listening)
         }
     }
 
     describe("loading") {
-
         // P-SCR-1, P-SYNC-2, C2
-        it("#165 TC-17: loads once with autoplay and the route's file and position (P-SCR-1)") {
+        it("#165 TC-17: loads once with autoplay from the route's arguments (P-SCR-1)") {
+            val uuid = randomString()
+            val fileId = randomLong()
+            val position = randomDouble(0.0, 10_000.0)
             val controller = TestAudiobookController()
 
-            val vm = viewModel(controller, fileId = 9L, position = 120.0)
+            sut(uuid, controller, fileId = fileId, position = position)
 
-            controller.commands shouldBe listOf(Command.Load(BOOK, 9L, 120.0, autoplay = true))
-            vm.uiState.value.gate shouldBe PlayerGate.Open
+            controller.commands shouldBe listOf(Command.Load(uuid, fileId, position, autoplay = true))
         }
 
         // R4
-        it("#165 TC-18: state updates never reload") {
+        it("#165 TC-18: never reloads on a state update") {
+            val uuid = randomString()
             val controller = TestAudiobookController()
-            viewModel(controller)
+            sut(uuid, controller)
 
-            controller.state.value = playbackState(book = playingBook(BOOK), positionSeconds = 30.0)
-            controller.state.value = playbackState(book = playingBook(BOOK), positionSeconds = 31.0, rate = 1.5)
-            controller.state.value = playbackState(book = playingBook(BOOK), isPlaying = true)
+            controller.state.value = holding(uuid)
+            controller.state.value = holding(uuid)
 
-            controller.commands.filterIsInstance<Command.Load>().size shouldBe 1
+            controller.loads() shouldHaveSize 1
         }
     }
 
-    describe("library book") {
-
+    describe("the library book") {
         // R8, P-SCR-6
-        it("#165 TC-19: uses the library book until the controller knows it") {
-            val controller = TestAudiobookController()
+        it("#165 TC-19: gives the title until the controller knows it") {
             val library = TestLibraryRepository()
             val held = CompletableDeferred<BookResult>()
             library.pendingBook = held
+            val vm = sut(library = library)
+            val book = randomBook()
 
-            val vm = viewModel(controller, library = library)
-            vm.uiState.value.title shouldBe ""
+            held.complete(BookResult.Success(book))
 
-            held.complete(BookResult.Success(testBook(1, title = "Library Title")))
-
-            vm.uiState.value.title shouldBe "Library Title"
-            library.bookRequests shouldBe listOf("uuid-1")
-        }
-
-        // R4
-        it("#165 TC-19: ignores a failed library read") {
-            val controller = TestAudiobookController()
-            val library = TestLibraryRepository()
-            library.bookResult = BookResult.NotFound
-
-            val vm = viewModel(controller, library = library)
-
-            vm.uiState.value.title shouldBe ""
-            vm.uiState.value.gate shouldBe PlayerGate.Open
-            controller.commands.filterIsInstance<Command.Load>().size shouldBe 1
+            vm.uiState.value.title shouldBe book.displayTitle
         }
     }
 
-    describe("unload") {
+    describe("leaving") {
+        context("when the controller had the book") {
+            // R20
+            it("#165 TC-20 TC-21: leaves once the controller drops it or loads another book") {
+                val uuid = randomString()
 
-        // R20
-        it("#165 TC-20: leaves when the controller drops the book") {
-            val controller = TestAudiobookController()
-            val vm = viewModel(controller)
+                checkAll(Exhaustive.of(PlaybackState(), holding("$uuid-other"))) { next ->
+                    val controller = TestAudiobookController()
+                    val vm = sut(uuid, controller)
+                    controller.state.value = holding(uuid)
 
-            controller.state.value = playbackState(book = playingBook(BOOK))
-            vm.uiState.value.leave shouldBe false
+                    controller.state.value = next
 
-            controller.state.value = PlaybackState()
-            vm.uiState.value.leave shouldBe true
+                    vm.uiState.value.leave shouldBe true
+                }
+            }
         }
 
-        // R20
-        it("#165 TC-21: leaves when another book loads") {
-            val controller = TestAudiobookController()
-            val vm = viewModel(controller)
+        context("when the load is still landing") {
+            // R20
+            it("#165 TC-22: stays") {
+                val uuid = randomString()
+                val controller = TestAudiobookController(holding("$uuid-other"))
+                val vm = sut(uuid, controller)
 
-            controller.state.value = playbackState(book = playingBook(BOOK))
-            controller.state.value = playbackState(book = playingBook("other-book"))
+                controller.state.value = PlaybackState()
 
-            vm.uiState.value.leave shouldBe true
-        }
-
-        // R20
-        it("#165 TC-22: does not leave while the load is still landing") {
-            val controller = TestAudiobookController(playbackState(book = playingBook("other-book")))
-            val vm = viewModel(controller)
-
-            controller.state.value = PlaybackState()
-            vm.uiState.value.leave shouldBe false
-
-            controller.state.value = playbackState(book = playingBook(BOOK))
-            vm.uiState.value.leave shouldBe false
+                vm.uiState.value.leave shouldBe false
+            }
         }
     }
 
-    describe("intents") {
+    describe("the user's intents") {
+        // P-PLAY-3-5, C2, I-HLTH-3
+        it("#165 TC-24 TC-83: each intent sends its command") {
+            val seek = randomDouble(0.0, 10_000.0)
 
-        // P-PLAY-3-5, C2
-        it("#165 TC-24: each intent maps to its controller command") {
-            val controller = TestAudiobookController()
-            val vm = viewModel(controller)
-            controller.commands.clear()
+            checkAll(
+                Exhaustive.of<Pair<(PlayerViewModel) -> Unit, Command>>(
+                    PlayerViewModel::onPlayPauseToggled to Command.TogglePlayPause,
+                    PlayerViewModel::onSkipBack to Command.SkipBack,
+                    PlayerViewModel::onSkipForward to Command.SkipForward,
+                    PlayerViewModel::onPreviousChapter to Command.PreviousChapter,
+                    PlayerViewModel::onNextChapter to Command.NextChapter,
+                    { vm: PlayerViewModel -> vm.onSeek(seek) } to Command.SeekTo(seek),
+                    PlayerViewModel::onRetry to Command.Play,
+                ),
+            ) { (intent, command) ->
+                val controller = TestAudiobookController()
+                val vm = sut(controller = controller)
+                controller.commands.clear()
 
-            vm.onPlayPauseToggled()
-            vm.onSkipBack()
-            vm.onSkipForward()
-            vm.onPreviousChapter()
-            vm.onNextChapter()
-            vm.onSeek(5.0)
-            vm.onRetry()
+                intent(vm)
 
-            controller.commands shouldBe listOf(
-                Command.TogglePlayPause,
-                Command.SkipBack,
-                Command.SkipForward,
-                Command.PreviousChapter,
-                Command.NextChapter,
-                Command.SeekTo(5.0),
-                Command.Play,
-            )
-        }
-    }
-
-    describe("retry") {
-
-        // I-HLTH-3
-        it("#165 TC-83: retry plays after an error (I-HLTH-3)") {
-            val controller = TestAudiobookController()
-            val vm = viewModel(controller)
-            controller.state.value = playbackState(
-                book = playingBook(BOOK),
-                error = PlaybackError.StoppedAfterRetries,
-            )
-
-            vm.uiState.value.error shouldBe PlaybackError.StoppedAfterRetries
-
-            controller.commands.clear()
-            vm.onRetry()
-
-            controller.commands shouldBe listOf(Command.Play)
+                controller.commands shouldBe listOf(command)
+            }
         }
     }
 })

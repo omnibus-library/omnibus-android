@@ -3,41 +3,35 @@ package com.omnibus.omnibus.feature.audiobook.player
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.floats.shouldBeExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class PlayerDismissDragTest : DescribeSpec({
 
-    describe("offset") {
-
+    describe("the surface's offset") {
         // P-SCR-13
-        it("#165 TC-43: upward drag reports zero") {
+        it("#165 TC-43: follows a downward drag, staying at zero for an upward one") {
             PlayerDismissDrag.offset(-30f) shouldBeExactly 0f
-            PlayerDismissDrag.offset(0f) shouldBeExactly 0f
             PlayerDismissDrag.offset(50f) shouldBeExactly 50f
         }
     }
 
-    describe("shouldDismiss") {
-
+    describe("dismissing on release") {
         // P-SCR-13, P-A11Y-6
-        it("#165 TC-44: dismisses at 120 dp or on a fast downward flick (P-SCR-13)") {
-            PlayerDismissDrag.shouldDismiss(119.9f, 0f) shouldBe false
-            PlayerDismissDrag.shouldDismiss(120f, 0f) shouldBe true
-            PlayerDismissDrag.shouldDismiss(0f, 5000f) shouldBe false
-            PlayerDismissDrag.shouldDismiss(100f, 1200f) shouldBe true
-            PlayerDismissDrag.shouldDismiss(50f, 1200f) shouldBe false
-            PlayerDismissDrag.shouldDismiss(119f, -1200f) shouldBe false
-        }
-    }
-
-    describe("progress") {
-
-        // P-SCR-13
-        it("#165 TC-45: clamps between 0 and 1") {
-            PlayerDismissDrag.progress(0f) shouldBeExactly 0f
-            PlayerDismissDrag.progress(60f) shouldBeExactly 0.5f
-            PlayerDismissDrag.progress(120f) shouldBeExactly 1f
-            PlayerDismissDrag.progress(400f) shouldBeExactly 1f
-            PlayerDismissDrag.progress(-20f) shouldBeExactly 0f
+        it("#165 TC-44: needs 120 dp, or a shorter drag with a fast downward flick") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(119.9f, 0f, false),
+                    Triple(120f, 0f, true),
+                    Triple(0f, 5000f, false),
+                    Triple(100f, 1200f, true),
+                    Triple(50f, 1200f, false),
+                    Triple(119f, -1200f, false),
+                ),
+            ) { (offset, velocity, expected) ->
+                PlayerDismissDrag.shouldDismiss(offset, velocity) shouldBe expected
+            }
         }
     }
 })

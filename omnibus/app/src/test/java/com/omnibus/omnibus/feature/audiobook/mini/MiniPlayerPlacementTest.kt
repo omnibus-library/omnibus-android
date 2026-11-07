@@ -1,33 +1,31 @@
 package com.omnibus.omnibus.feature.audiobook.mini
 
+import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
-import com.omnibus.omnibus.feature.shell.AuthorsRoot
-import com.omnibus.omnibus.feature.shell.LibraryRoot
-import com.omnibus.omnibus.feature.shell.SeriesRoot
-import com.omnibus.omnibus.feature.shell.StatsRoot
-import com.omnibus.omnibus.feature.shell.YouRoot
+import com.omnibus.omnibus.feature.shell.ShellTab
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 
 class MiniPlayerPlacementTest : DescribeSpec({
 
-    describe("shellHidesMiniPlayer") {
-
+    describe("hiding the bar in the shell") {
         // P-MINI-1
-        it("#172 TC-13: Book Detail on top hides the bar") {
-            shellHidesMiniPlayer(BookDetailRoute("u")) shouldBe true
+        it("#172 TC-13: hides it under Book Detail") {
+            shellHidesMiniPlayer(BookDetailRoute(randomString())) shouldBe true
         }
 
         // P-MINI-1
-        it("#172 TC-14: the tab roots, the Book Detail placeholder and an empty stack show the bar") {
-            shellHidesMiniPlayer(LibraryRoot) shouldBe false
-            shellHidesMiniPlayer(AuthorsRoot) shouldBe false
-            shellHidesMiniPlayer(SeriesRoot) shouldBe false
-            shellHidesMiniPlayer(StatsRoot) shouldBe false
-            shellHidesMiniPlayer(YouRoot) shouldBe false
-            shellHidesMiniPlayer(BookDetailPlaceholderRoute("Settings")) shouldBe false
-            shellHidesMiniPlayer(null) shouldBe false
+        it("#172 TC-14: shows it over every tab root, the Book Detail placeholder or an empty stack") {
+            val tops: List<NavKey?> = ShellTab.entries.map { it.root } + BookDetailPlaceholderRoute(randomString()) + null
+
+            checkAll(Exhaustive.collection(tops)) { top ->
+                shellHidesMiniPlayer(top) shouldBe false
+            }
         }
     }
 })

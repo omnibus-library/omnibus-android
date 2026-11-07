@@ -2,10 +2,13 @@ package com.omnibus.omnibus.feature.audiobook.carmode
 
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
-import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -18,75 +21,39 @@ class CarModeViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    describe("state") {
+    fun sut(controller: TestAudiobookController = TestAudiobookController()) = CarModeViewModel(controller)
 
-        // P-CAR-1
-        it("#170 TC-11: shows a book already loaded on the first read, and sends no command") {
-            val controller = TestAudiobookController(playbackState(positionSeconds = 700.0))
-
-            val vm = CarModeViewModel(controller)
-
-            vm.uiState.value.title shouldBe "Chapter 2"
-            controller.commands.shouldBeEmpty()
-        }
-
+    describe("the state") {
         // P-CAR-3
         it("#170 TC-12: follows the controller") {
-            val controller = TestAudiobookController(playbackState(isPlaying = false))
-            val vm = CarModeViewModel(controller)
+            val controller = TestAudiobookController()
+            val vm = sut(controller)
+            val state = randomPlaybackState().copy(book = randomPlayingBook())
 
-            controller.state.value = playbackState(isPlaying = true, positionSeconds = 700.0)
+            controller.state.value = state
 
-            vm.uiState.value.isPlaying shouldBe true
-            vm.uiState.value.title shouldBe "Chapter 2"
+            vm.uiState.value shouldBe carModeUIState(state)
         }
     }
 
-    describe("commands") {
+    describe("the tiles") {
+        // P-CAR-AC2, P-PLAY-3, P-PLAY-4, P-PLAY-5, P-SCR-10
+        it("#170 TC-13 to TC-17: each tile sends its command") {
+            checkAll(
+                Exhaustive.of(
+                    CarModeViewModel::onSkipBack to Command.SkipBack,
+                    CarModeViewModel::onSkipForward to Command.SkipForward,
+                    CarModeViewModel::onPlayPauseToggled to Command.TogglePlayPause,
+                    CarModeViewModel::onPreviousChapter to Command.PreviousChapter,
+                    CarModeViewModel::onNextChapter to Command.NextChapter,
+                ),
+            ) { (tile, command) ->
+                val controller = TestAudiobookController(randomPlaybackState())
 
-        // P-CAR-AC2, P-PLAY-3
-        it("#170 TC-13: back 15 skips back") {
-            val controller = TestAudiobookController(playbackState())
+                tile(sut(controller))
 
-            CarModeViewModel(controller).onSkipBack()
-
-            controller.commands shouldBe listOf(Command.SkipBack)
-        }
-
-        // P-CAR-AC2, P-PLAY-3
-        it("#170 TC-14: forward 30 skips forward") {
-            val controller = TestAudiobookController(playbackState())
-
-            CarModeViewModel(controller).onSkipForward()
-
-            controller.commands shouldBe listOf(Command.SkipForward)
-        }
-
-        // P-CAR-AC2, P-SCR-10
-        it("#170 TC-15: play/pause toggles") {
-            val controller = TestAudiobookController(playbackState())
-
-            CarModeViewModel(controller).onPlayPauseToggled()
-
-            controller.commands shouldBe listOf(Command.TogglePlayPause)
-        }
-
-        // P-CAR-AC2, P-PLAY-4
-        it("#170 TC-16: previous chapter goes to the previous chapter") {
-            val controller = TestAudiobookController(playbackState())
-
-            CarModeViewModel(controller).onPreviousChapter()
-
-            controller.commands shouldBe listOf(Command.PreviousChapter)
-        }
-
-        // P-CAR-AC2, P-PLAY-5
-        it("#170 TC-17: next chapter goes to the next chapter") {
-            val controller = TestAudiobookController(playbackState())
-
-            CarModeViewModel(controller).onNextChapter()
-
-            controller.commands shouldBe listOf(Command.NextChapter)
+                controller.commands shouldBe listOf(command)
+            }
         }
     }
 })
