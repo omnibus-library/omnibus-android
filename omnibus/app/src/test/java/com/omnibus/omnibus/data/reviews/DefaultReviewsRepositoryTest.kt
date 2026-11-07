@@ -734,6 +734,8 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                         load(repository, uuid, reviewsBody(mine))
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateA)
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateB)
+                        // Each saved write refetches. The second joins the first's GET if it is still open, so one or two arrive.
+                        script.answer("GET", reply(500))
                         script.answer("GET", reply(500))
 
                         val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
@@ -789,6 +791,8 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                     load(repository, uuid, reviewsBody(mine))
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()), gate)
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()))
+                    // Each saved write refetches. The second joins the first's GET if it is still open, so one or two arrive.
+                    script.answer("GET", reply(500))
                     script.answer("GET", reply(500))
 
                     val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
