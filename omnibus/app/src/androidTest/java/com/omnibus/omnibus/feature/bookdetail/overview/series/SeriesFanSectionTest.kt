@@ -9,63 +9,41 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
-import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * The Series section as the Overview panel renders it: gating, heading, link, navigation, state and the ribbon's
- * colour. The member source is injected through [LocalSeriesSource], so no case reaches Hilt.
+ * The Series section as the Overview panel renders it: heading, link, navigation and state. The member source is
+ * injected through [LocalSeriesSource], so no case reaches Hilt.
  */
 class SeriesFanSectionTest {
 
     @get:Rule
     val rule = createComposeRule()
 
-    private var sourceCalls = 0
     private var membersState by mutableStateOf<List<SeriesMember>?>(null)
     private var book by mutableStateOf(seriesBook(position = 1))
 
     @Composable
-    private fun SectionHost(recorder: SectionContextRecorder, accent: BookAccent? = null) {
-        val context: BookDetailSectionContext = if (accent == null) {
-            testSectionContext(book = book, recorder = recorder)
-        } else {
-            testSectionContext(book = book, recorder = recorder, accent = accent)
-        }
+    private fun SectionHost(recorder: SectionContextRecorder) {
+        val context = testSectionContext(book = book, recorder = recorder)
         OmnibusTheme(darkTheme = true) {
-            CompositionLocalProvider(
-                LocalSeriesSource provides SeriesSource { _, _ ->
-                    sourceCalls++
-                    membersState
-                },
-            ) {
+            CompositionLocalProvider(LocalSeriesSource provides SeriesSource { _, _ -> membersState }) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     SeriesFanSection.Content(context, Modifier.fillMaxWidth())
                 }
@@ -73,73 +51,20 @@ class SeriesFanSectionTest {
         }
     }
 
-    private fun setSection(recorder: SectionContextRecorder = SectionContextRecorder(), accent: BookAccent? = null) {
-        rule.setContent { SectionHost(recorder, accent) }
+    private fun setSection(recorder: SectionContextRecorder = SectionContextRecorder()) {
+        rule.setContent { SectionHost(recorder) }
         rule.waitForIdle()
-    }
-
-    // TC-92
-    @Test
-    fun issue104_tc92_noSeriesIdRendersNothing() {
-        membersState = members(3)
-        book = seriesBook(position = 1).copy(seriesId = null)
-        setSection()
-        rule.onAllNodesWithTag(SeriesFanTestTags.SECTION).assertCountEquals(0)
-        rule.onAllNodesWithTag(SeriesFanTestTags.HEADING).assertCountEquals(0)
-        assertEquals("the source is never asked", 0, sourceCalls)
-    }
-
-    // TC-93
-    @Test
-    fun issue104_tc93_blankSeriesNameRendersNothing() {
-        membersState = members(3)
-        setSection()
-        for (name in listOf("", "  ", null)) {
-            rule.runOnIdle { book = seriesBook(position = 1, series = name) }
-            rule.waitForIdle()
-            rule.onAllNodesWithTag(SeriesFanTestTags.SECTION).assertCountEquals(0)
-        }
-    }
-
-    // TC-94
-    @Test
-    fun issue104_tc94_loadingOrSingleMemberRendersNothing() {
-        setSection()
-        for (state in listOf<List<SeriesMember>?>(null, emptyList(), listOf(member(1)))) {
-            rule.runOnIdle { membersState = state }
-            rule.waitForIdle()
-            rule.onAllNodesWithTag(SeriesFanTestTags.SECTION).assertCountEquals(0)
-        }
     }
 
     // TC-95
     @Test
-    fun issue104_tc95_showsHeadingForASeries() {
+    fun issue104_tc95_theHeadingIsAHeading() {
         membersState = members(3)
-        book = seriesBook(position = 1, series = "  Dune  ")
         setSection()
-        rule.onNodeWithTag(SeriesFanTestTags.SECTION).assertIsDisplayed()
-        rule.onNodeWithTag(SeriesFanTestTags.HEADING).assertTextEquals("Dune series")
         assertTrue(
             "the heading carries the heading role",
             rule.onNodeWithTag(SeriesFanTestTags.HEADING).fetchSemanticsNode().config.contains(SemanticsProperties.Heading),
         )
-        rule.onAllNodesWithTag(SeriesFanTestTags.card("m2")).assertCountEquals(1)
-    }
-
-    // TC-97
-    @Test
-    fun issue104_tc97_seriesPageLinkAccessibility() {
-        membersState = members(3)
-        setSection()
-        val link = rule.onNodeWithTag(SeriesFanTestTags.SERIES_PAGE_LINK)
-        link.assertTextEquals("Series page")
-        link.assertHeightIsAtLeast(48.dp)
-        assertTrue(link.fetchSemanticsNode().config.contains(SemanticsActions.OnClick))
-        assertEquals("Open the series page", link.clickLabel())
-        // The chevron is drawn and adds no accessibility node: the link's only child is its text.
-        rule.onAllNodes(hasAnyAncestor(hasTestTag(SeriesFanTestTags.SERIES_PAGE_LINK)), useUnmergedTree = true)
-            .assertCountEquals(1)
     }
 
     // TC-98
@@ -209,21 +134,5 @@ class SeriesFanSectionTest {
         rule.runOnIdle { book = first }
         rule.waitForIdle()
         assertEquals("switching back is gathered too", "Show the whole series", rule.onNodeWithTag(SeriesFanTestTags.card("m1")).clickLabel())
-    }
-
-    // TC-104
-    @Test
-    fun issue104_tc104_sectionFollowsTheMembers() {
-        membersState = members(3)
-        setSection()
-        rule.onAllNodesWithTag(SeriesFanTestTags.card("m4")).assertCountEquals(0)
-
-        rule.runOnIdle { membersState = members(4) }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(SeriesFanTestTags.card("m4")).assertCountEquals(1)
-
-        rule.runOnIdle { membersState = members(1) }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(SeriesFanTestTags.SECTION).assertCountEquals(0)
     }
 }

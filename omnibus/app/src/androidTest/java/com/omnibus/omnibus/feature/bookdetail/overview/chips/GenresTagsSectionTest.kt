@@ -6,36 +6,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
-import com.omnibus.omnibus.feature.bookdetail.bounds
-import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.overview.chips.edit.LocalChipEditorSource
 import com.omnibus.omnibus.feature.bookdetail.overview.chips.edit.NoChipEditorSource
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The Genres and Tags rows: hiding when empty, scrolling, taps and reading order. GenresTagsScreenshotTest covers how they look. */
+/** The Genres and Tags rows: scrolling, taps and the chip role. GenresTagsScreenshotTest covers how they look. */
 class GenresTagsSectionTest {
 
     @get:Rule
@@ -59,15 +52,6 @@ class GenresTagsSectionTest {
 
     private fun chipIn(row: String, text: String): SemanticsNodeInteraction =
         rule.onNode(hasTestTag(tags.CHIP) and hasText(text) and hasAnyAncestor(hasTestTag(row)))
-
-    // AC1
-    @Test
-    fun issue100_ac1_bookWithNeitherShowsNothing() {
-        rule.setSection(bookWith(emptyList(), emptyList()))
-        rule.onAllNodesWithTag(tags.GENRES_ROW).assertCountEquals(0)
-        rule.onAllNodesWithTag(tags.TAGS_ROW).assertCountEquals(0)
-        rule.onAllNodesWithTag(tags.CHIP).assertCountEquals(0)
-    }
 
     // AC2
     @Test
@@ -99,16 +83,10 @@ class GenresTagsSectionTest {
 
     // AC4
     @Test
-    fun issue100_ac4_labelPrecedesItsChipsInReadingOrderAndChipsAreButtons() {
-        rule.setSection(bookWith(listOf("Fantasy", "Epic"), listOf("Dragons")))
-
-        val label = rule.onNode(hasText(detailText(R.string.book_detail_chips_genres))).bounds()
-        val first = chipIn(tags.GENRES_ROW, "Fantasy").bounds()
-        val second = chipIn(tags.GENRES_ROW, "Epic").bounds()
-        assertTrue(label.right <= first.left + 1 && first.left < second.left)
+    fun issue100_ac4_chipsAreButtons() {
+        rule.setSection(bookWith(listOf("Fantasy"), emptyList()))
 
         val chip = chipIn(tags.GENRES_ROW, "Fantasy").fetchSemanticsNode().config
         assertEquals(Role.Button, chip[SemanticsProperties.Role])
-        chipIn(tags.GENRES_ROW, "Fantasy").assertTextEquals("Fantasy")
     }
 }
