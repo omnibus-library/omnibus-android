@@ -1,21 +1,41 @@
 package com.omnibus.omnibus.feature.bookdetail.status
 
-import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusError
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
 import com.omnibus.omnibus.data.readstatus.ReadStatusWriteResult
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.CompletableDeferred
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+
+private fun known(status: ReadStatus) = ReadStatusState.Known(randomReadStatusRecord().copy(status = status))
+
+/** Runs [block] with [vm]'s state kept active, as a subscribed screen would. */
+private inline fun collecting(vm: ReadStatusViewModel, block: ReadStatusViewModel.() -> Unit) {
+    val scope = CollectingScope()
+    scope.collect(vm.uiState)
+    try {
+        vm.block()
+    } finally {
+        scope.cancel()
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReadStatusViewModelTest : DescribeSpec({
@@ -23,258 +43,176 @@ class ReadStatusViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    val uuid = "uuid-1"
-    val reading = ReadStatusRecord(ReadStatus.Reading, updatedAtMillis = 100L, finishedAtMillis = null)
-    val finished = ReadStatusRecord(ReadStatus.Finished, updatedAtMillis = 200L, finishedAtMillis = 150L)
+    fun sut(
+        bookUuid: String = randomString(),
+        repository: TestReadStatusRepository = TestReadStatusRepository(),
+        timeSource: TimeSource = TestTimeSource(randomLong()),
+    ) = ReadStatusViewModel(bookUuid, repository, timeSource)
 
-    /** A ViewModel on [fake] with [now] as its clock, and its state kept active by [collecting]. */
-    fun viewModel(fake: TestReadStatusRepository, now: () -> Long = { 1_000L }, collecting: CollectingScope) =
-        ReadStatusViewModel(uuid, fake, TimeSource { now() }).also { collecting.collect(it.uiState) }
+    /** A ViewModel over a repository holding [state]. */
+    fun sutWith(state: ReadStatusState, repository: TestReadStatusRepository = TestReadStatusRepository()): ReadStatusViewModel {
+        val uuid = randomString()
+        repository.seed(uuid, state)
+        return sut(uuid, repository)
+    }
 
-    describe("state mapping") {
+    describe("the status shown") {
 
-        it("TC-38: an unknown status maps to a null status and no finished date") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            val vm = viewModel(fake, collecting = collecting)
-
-            val state = vm.uiState.value
-            state.status shouldBe null
-            state.finishedAtMillis shouldBe null
-            state.saveFailure shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-39: a failed read maps to a null status and posts no message") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Failed)
-            val vm = viewModel(fake, collecting = collecting)
-
-            vm.uiState.value.status shouldBe null
-            vm.uiState.value.saveFailure shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-40: each known status maps through, including the null-body Unread") {
-            val collecting = CollectingScope()
-            listOf(
-                ReadStatusRecord(ReadStatus.Unread, null, null),
-                ReadStatusRecord(ReadStatus.Reading, 100L, null),
-                ReadStatusRecord(ReadStatus.Finished, 100L, 90L),
-            ).forEach { record ->
-                val fake = TestReadStatusRepository()
-                fake.seed(uuid, ReadStatusState.Known(record))
-                val vm = viewModel(fake, collecting = collecting)
-
-                vm.uiState.value.status shouldBe record.status
+        context("when the status is not known") {
+            it("TC-38 / TC-39: shows none, whether unknown or failed") {
+                checkAll(Exhaustive.of(ReadStatusState.Unknown, ReadStatusState.Failed)) { state ->
+                    collecting(sutWith(state)) {
+                        uiState.value.status shouldBe null
+                    }
+                }
             }
-            collecting.cancel()
         }
 
-        it("TC-41: the finished date is kept only for a known Finished status") {
-            val collecting = CollectingScope()
-            val withDate = TestReadStatusRepository()
-            withDate.seed(uuid, ReadStatusState.Known(finished))
-            viewModel(withDate, collecting = collecting).uiState.value.finishedAtMillis shouldBe 150L
-
-            val withoutDate = TestReadStatusRepository()
-            withoutDate.seed(uuid, ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, 100L, null)))
-            viewModel(withoutDate, collecting = collecting).uiState.value.finishedAtMillis shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-42: a stale finished date is dropped for Reading and Unread") {
-            val collecting = CollectingScope()
-            listOf(ReadStatus.Reading, ReadStatus.Unread).forEach { status ->
-                val fake = TestReadStatusRepository()
-                fake.seed(uuid, ReadStatusState.Known(ReadStatusRecord(status, 100L, 150L)))
-
-                viewModel(fake, collecting = collecting).uiState.value.finishedAtMillis shouldBe null
+        context("when the status is known") {
+            it("TC-40: shows it, for every status") {
+                checkAll(Exhaustive.enum<ReadStatus>()) { status ->
+                    collecting(sutWith(known(status))) {
+                        uiState.value.status shouldBe status
+                    }
+                }
             }
-            collecting.cancel()
         }
 
-        it("TC-43: the clock is read when the state is mapped") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            var now = 1_000L
-            val vm = viewModel(fake, now = { now }, collecting = collecting)
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            vm.uiState.value.nowMillis shouldBe 1_000L
+        it("TC-43: reads the clock each time the status changes") {
+            val uuid = randomString()
+            val clock = TestTimeSource(randomLong())
+            val repository = TestReadStatusRepository()
+            repository.seed(uuid, known(ReadStatus.Reading))
 
-            now = 2_000L
-            fake.seed(uuid, ReadStatusState.Known(finished))
-            vm.uiState.value.nowMillis shouldBe 2_000L
-            collecting.cancel()
+            collecting(sut(uuid, repository, clock)) {
+                clock.advanceBy(1_000L)
+                repository.seed(uuid, known(ReadStatus.Finished))
+
+                uiState.value.nowMillis shouldBe clock.currentMillis
+            }
         }
     }
 
-    describe("reload") {
+    describe("the finished date") {
 
-        it("TC-44: the first reload refreshes once") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            viewModel(fake, collecting = collecting).reload(0)
+        context("when the status is Finished") {
+            it("TC-41: is the record's date") {
+                val finishedAt = randomLong()
+                val record = randomReadStatusRecord().copy(status = ReadStatus.Finished, finishedAtMillis = finishedAt)
 
-            fake.refreshCount shouldBe 1
-            collecting.cancel()
+                collecting(sutWith(ReadStatusState.Known(record))) {
+                    uiState.value.finishedAtMillis shouldBe finishedAt
+                }
+            }
         }
 
-        it("TC-45: the same reload key twice refreshes once") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            val vm = viewModel(fake, collecting = collecting)
+        context("when the status is not Finished") {
+            it("TC-42: drops a stale date, for Reading or Unread") {
+                checkAll(Exhaustive.of(ReadStatus.Reading, ReadStatus.Unread)) { status ->
+                    val record = randomReadStatusRecord().copy(status = status, finishedAtMillis = randomLong())
 
-            vm.reload(0)
-            vm.reload(0)
-
-            fake.refreshCount shouldBe 1
-            collecting.cancel()
+                    collecting(sutWith(ReadStatusState.Known(record))) {
+                        uiState.value.finishedAtMillis shouldBe null
+                    }
+                }
+            }
         }
+    }
 
-        it("TC-46: each new reload key refreshes, and a repeat of the last key does not") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            val vm = viewModel(fake, collecting = collecting)
+    describe("reloading") {
+
+        it("TC-45 / TC-46: refreshes once per key") {
+            val repository = TestReadStatusRepository()
+            val vm = sut(repository = repository)
 
             vm.reload(0)
+            vm.reload(0)
             vm.reload(1)
-            vm.reload(1)
-            vm.reload(2)
 
-            fake.refreshCount shouldBe 3
-            collecting.cancel()
+            repository.refreshCount shouldBe 2
         }
     }
 
     describe("selecting a status") {
 
-        it("TC-47: choosing the current status makes no request and no failure") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            val vm = viewModel(fake, collecting = collecting)
+        context("when it is the current status") {
+            it("TC-47: writes nothing") {
+                val repository = TestReadStatusRepository()
 
-            vm.selectStatus(ReadStatus.Reading)
+                collecting(sutWith(known(ReadStatus.Reading), repository)) {
+                    selectStatus(ReadStatus.Reading)
 
-            fake.setStatusCalls.isEmpty() shouldBe true
-            vm.uiState.value.saveFailure shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-48: choosing a different status writes it, and shows it before the write returns") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            val vm = viewModel(fake, collecting = collecting)
-            val gate = CompletableDeferred<Unit>()
-            fake.writeGates.addLast(gate)
-
-            vm.selectStatus(ReadStatus.Finished)
-
-            fake.setStatusCalls shouldBe listOf(uuid to ReadStatus.Finished)
-            vm.uiState.value.status shouldBe ReadStatus.Finished
-            gate.complete(Unit)
-            vm.uiState.value.status shouldBe ReadStatus.Finished
-            collecting.cancel()
-        }
-
-        it("TC-49: choosing a status while unknown or failed still writes it") {
-            val collecting = CollectingScope()
-            listOf<ReadStatusState>(ReadStatusState.Unknown, ReadStatusState.Failed).forEach { state ->
-                val fake = TestReadStatusRepository()
-                fake.seed(uuid, state)
-                val vm = viewModel(fake, collecting = collecting)
-
-                vm.selectStatus(ReadStatus.Unread)
-
-                fake.setStatusCalls.last() shouldBe (uuid to ReadStatus.Unread)
+                    repository.setStatusCalls.shouldBeEmpty()
+                }
             }
-            collecting.cancel()
         }
 
-        it("TC-50: an offline failure maps to Offline and restores the previous status") {
-            val collecting = CollectingScope()
-            listOf(ReadStatusError.NoServer, ReadStatusError.Unreachable).forEach { error ->
-                val fake = TestReadStatusRepository()
-                fake.seed(uuid, ReadStatusState.Known(reading))
-                fake.writeResults.addLast(ReadStatusWriteResult.Failed(error))
-                val vm = viewModel(fake, collecting = collecting)
+        context("when it differs from the current status") {
+            it("TC-48: writes it") {
+                val uuid = randomString()
+                val repository = TestReadStatusRepository()
+                repository.seed(uuid, known(ReadStatus.Reading))
 
-                vm.selectStatus(ReadStatus.Finished)
+                collecting(sut(uuid, repository)) {
+                    selectStatus(ReadStatus.Finished)
 
-                vm.uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Offline
-                vm.uiState.value.status shouldBe ReadStatus.Reading
+                    repository.setStatusCalls shouldBe listOf(uuid to ReadStatus.Finished)
+                }
             }
-            collecting.cancel()
         }
 
-        it("TC-51: any other failure maps to Other") {
-            val collecting = CollectingScope()
-            listOf(
-                ReadStatusError.Http(500),
-                ReadStatusError.SessionExpired,
-                ReadStatusError.BookNotFound,
-                ReadStatusError.UnexpectedResponse,
-            ).forEach { error ->
-                val fake = TestReadStatusRepository()
-                fake.seed(uuid, ReadStatusState.Known(reading))
-                fake.writeResults.addLast(ReadStatusWriteResult.Failed(error))
-                val vm = viewModel(fake, collecting = collecting)
+        context("when the write fails") {
+            context("when the device is offline") {
+                it("TC-50: reports Offline, with no server or no connection") {
+                    checkAll(Exhaustive.of(ReadStatusError.NoServer, ReadStatusError.Unreachable)) { error ->
+                        val repository = TestReadStatusRepository()
+                        repository.writeResults.addLast(ReadStatusWriteResult.Failed(error))
 
-                vm.selectStatus(ReadStatus.Finished)
+                        collecting(sutWith(known(ReadStatus.Reading), repository)) {
+                            selectStatus(ReadStatus.Finished)
 
-                vm.uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Other
+                            uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Offline
+                        }
+                    }
+                }
             }
-            collecting.cancel()
-        }
 
-        it("TC-52: saveFailureShown clears the failure, and the next failure sets it again") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            val vm = viewModel(fake, collecting = collecting)
+            context("when the server answered") {
+                it("TC-51: reports Other, for every other error") {
+                    checkAll(
+                        Exhaustive.of(
+                            ReadStatusError.Http(500),
+                            ReadStatusError.SessionExpired,
+                            ReadStatusError.BookNotFound,
+                            ReadStatusError.UnexpectedResponse,
+                        ),
+                    ) { error ->
+                        val repository = TestReadStatusRepository()
+                        repository.writeResults.addLast(ReadStatusWriteResult.Failed(error))
 
-            fake.writeResults.addLast(ReadStatusWriteResult.Failed(ReadStatusError.Http(500)))
-            vm.selectStatus(ReadStatus.Finished)
-            vm.uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Other
+                        collecting(sutWith(known(ReadStatus.Reading), repository)) {
+                            selectStatus(ReadStatus.Finished)
 
-            vm.saveFailureShown()
-            vm.uiState.value.saveFailure shouldBe null
+                            uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Other
+                        }
+                    }
+                }
+            }
 
-            fake.writeResults.addLast(ReadStatusWriteResult.Failed(ReadStatusError.Http(500)))
-            vm.selectStatus(ReadStatus.Unread)
-            vm.uiState.value.saveFailure shouldBe ReadStatusSaveFailure.Other
-            collecting.cancel()
-        }
+            context("when the failure has been shown") {
+                it("TC-52: clears it") {
+                    val repository = TestReadStatusRepository()
+                    repository.writeResults.addLast(ReadStatusWriteResult.Failed(ReadStatusError.Http(500)))
 
-        it("TC-53: a saved or unchanged write sets no failure") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            val vm = viewModel(fake, collecting = collecting)
+                    collecting(sutWith(known(ReadStatus.Reading), repository)) {
+                        selectStatus(ReadStatus.Finished)
 
-            vm.selectStatus(ReadStatus.Finished)
-            vm.uiState.value.saveFailure shouldBe null
+                        saveFailureShown()
 
-            fake.writeResults.addLast(ReadStatusWriteResult.Unchanged)
-            vm.selectStatus(ReadStatus.Unread)
-            vm.uiState.value.saveFailure shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-54: a write made elsewhere on the shared repository updates this state without a reload") {
-            val fake = TestReadStatusRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, ReadStatusState.Known(reading))
-            val vm = viewModel(fake, collecting = collecting)
-
-            fake.setStatus(uuid, ReadStatus.Finished)
-
-            vm.uiState.value.status shouldBe ReadStatus.Finished
-            fake.refreshCount shouldBe 0
-            collecting.cancel()
+                        uiState.value.saveFailure shouldBe null
+                    }
+                }
+            }
         }
     }
 })

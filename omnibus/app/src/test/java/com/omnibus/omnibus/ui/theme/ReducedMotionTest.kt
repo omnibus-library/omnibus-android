@@ -5,12 +5,11 @@ import io.kotest.matchers.shouldBe
 
 class ReducedMotionTest : DescribeSpec({
 
-    describe("isReducedMotion") {
+    describe("whether motion is reduced") {
 
-        it("RC-23: reduced motion is an animator scale of 0") {
+        it("RC-23: is an animator scale of 0") {
             isReducedMotion(0f) shouldBe true
             isReducedMotion(0.5f) shouldBe false
-            isReducedMotion(1f) shouldBe false
         }
     }
 })

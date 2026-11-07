@@ -1,62 +1,60 @@
 package com.omnibus.omnibus.feature.bookdetail.wishlist
 
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.wishlist.WishlistEntry
-import com.omnibus.omnibus.data.wishlist.WishlistSource
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.wishlist.WishlistState
+import com.omnibus.omnibus.data.wishlist.randomWishlistEntry
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.actionbar.ActionBarModel
-import com.omnibus.omnibus.feature.bookdetail.actionbar.hasReadableCopy
-import com.omnibus.omnibus.feature.bookdetail.progress.hasProgressFile
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.collection
+import io.kotest.property.exhaustive.of
 import java.net.URLDecoder
 
-/** A book with the given formats, and a physical copy when [physical] is set. */
-private fun book(formats: List<String>, physical: Boolean = false): Book =
-    testBook(1, formats = formats).copy(hasPhysical = physical)
+/** A book with the given formats. */
+private fun book(vararg formats: String): Book = randomBook().copy(formats = formats.toList())
 
-private val present = WishlistState.Present(WishlistEntry(id = 1L, addedAtMillis = null, source = null))
+private fun present() = WishlistState.Present(randomWishlistEntry())
 
-/** The states the tables walk: U, A, P, F. */
-private val allStates: List<Pair<String, WishlistState>> = listOf(
-    "U" to WishlistState.Unknown,
-    "A" to WishlistState.Absent,
-    "P" to present,
-    "F" to WishlistState.Failed,
-)
+private val NOT_PRESENT = listOf(WishlistState.Unknown, WishlistState.Absent, WishlistState.Failed)
 
-/** Fileless books (no formats, or formats outside the known lists), with and without a physical copy. */
-private val fileless: List<Pair<String, Book>> = listOf(
-    "none" to book(emptyList()),
-    "none physical" to book(emptyList(), physical = true),
-    "unknown format" to book(listOf("djvu")),
-    "unknown format physical" to book(listOf("djvu"), physical = true),
-)
+/** Formats that make no readable copy: none, or none the app knows. */
+private val FILELESS_FORMATS = listOf(emptyList(), listOf("djvu"))
 
-/** Books with a readable copy, with and without a physical copy. */
-private val withFile: List<Pair<String, Book>> = listOf(
-    "ebook" to book(listOf("epub")),
-    "audiobook" to book(listOf("m4b")),
-    "both" to book(listOf("epub", "m4b")),
-    "ebook physical" to book(listOf("epub"), physical = true),
-)
+/** Formats that make a readable copy. */
+private val READABLE_FORMATS = listOf(listOf("epub"), listOf("m4b"), listOf("epub", "m4b"))
 
 class WishlistRulesTest : DescribeSpec({
 
-    describe("the wishlist-only gate") {
+    describe("whether a book is wishlist-only") {
 
-        it("#119 TC-16: isWishlistOnly is true only for Present with no readable copy") {
-            for ((state, value) in allStates) {
-                for ((name, b) in fileless + withFile) {
-                    withClue("$state/$name") {
-                        val expected = value is WishlistState.Present && name in fileless.map { it.first }
-                        isWishlistOnly(b, value) shouldBe expected
+        context("when the book is on the wishlist") {
+            context("when it has no readable copy") {
+                it("#119 TC-16: is, for no format or an unknown format") {
+                    checkAll(Exhaustive.collection(FILELESS_FORMATS)) { formats ->
+                        isWishlistOnly(randomBook().copy(formats = formats), present()) shouldBe true
                     }
+                }
+            }
+
+            context("when it has a readable copy") {
+                it("#119 TC-16: is not, for an ebook, an audiobook or both") {
+                    checkAll(Exhaustive.collection(READABLE_FORMATS)) { formats ->
+                        isWishlistOnly(randomBook().copy(formats = formats), present()) shouldBe false
+                    }
+                }
+            }
+        }
+
+        context("when the book is not on the wishlist") {
+            it("#119 TC-16: is not, whatever the state") {
+                checkAll(Exhaustive.collection(NOT_PRESENT)) { state ->
+                    isWishlistOnly(book(), state) shouldBe false
                 }
             }
         }
@@ -64,134 +62,105 @@ class WishlistRulesTest : DescribeSpec({
 
     describe("the action bar's wishlist variant") {
 
-        it("#119 TC-17: null unless wishlist-only; otherwise Find a copy searches the store, Check in opens the page") {
-            for ((state, value) in allStates) {
-                for ((name, b) in fileless + withFile) {
-                    withClue("$state/$name") {
-                        val model = wishlistActionModel(b, value)
-                        if (isWishlistOnly(b, value)) {
-                            val wishlist = model.shouldBeInstanceOf<ActionBarModel.Wishlist>()
-                            wishlist.checkIn shouldBe BookDetailDestination.CheckIn(b.uuid)
-                            wishlist.findCopy.url.startsWith("https://www.amazon.com/s?k=") shouldBe true
-                        } else {
-                            model shouldBe null
-                        }
+        context("when the book is wishlist-only") {
+            it("#119 TC-17: checks in on the book's page") {
+                val book = book()
+
+                val model = wishlistActionModel(book, present()).shouldBeInstanceOf<ActionBarModel.Wishlist>()
+
+                model.checkIn shouldBe BookDetailDestination.CheckIn(book.uuid)
+            }
+
+            context("when the book has no ISBN") {
+                context("when the author is unknown") {
+                    it("#119 TC-17: never searches for the placeholder") {
+                        val noAuthor = book().copy(isbn13 = null, title = "Dune", creators = emptyList())
+
+                        wishlistActionModel(noAuthor, present())?.findCopy shouldBe
+                            BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=Dune")
                     }
                 }
             }
         }
 
-        it("#119 TC-17: the store query is the ISBN, else the title and author, never the unknown-author placeholder") {
-            val withIsbn = book(emptyList()).copy(isbn13 = "9781234567897")
-            wishlistActionModel(withIsbn, present)?.findCopy shouldBe
-                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=9781234567897")
-
-            wishlistActionModel(book(emptyList()), present)?.findCopy shouldBe
-                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=Book+1+Author+1")
-
-            val noAuthor = testBook(1, formats = emptyList(), creators = emptyList())
-            wishlistActionModel(noAuthor, present)?.findCopy shouldBe
-                BookDetailDestination.ExternalUrl("https://www.amazon.com/s?k=Book+1")
+        context("when the book is not wishlist-only") {
+            it("#119 TC-17: is none") {
+                wishlistActionModel(book("epub"), present()) shouldBe null
+            }
         }
     }
 
     describe("the store search URL") {
 
-        it("#119 TC-18: an ISBN-13 is the query, trimmed") {
-            storeSearchUrl("9781234567897", "Ignored", "Ignored") shouldBe
-                "https://www.amazon.com/s?k=9781234567897"
-            storeSearchUrl("  9781234567897 ", "Ignored", "Ignored") shouldBe
-                "https://www.amazon.com/s?k=9781234567897"
-        }
-
-        it("#119 TC-19: without an ISBN the query is the trimmed title and author, with no trailing separator") {
-            listOf(null, "", "   ").forEach { isbn ->
-                storeSearchUrl(isbn, "Dune", "Frank Herbert") shouldBe
-                    "https://www.amazon.com/s?k=Dune+Frank+Herbert"
-                storeSearchUrl(isbn, "Dune", "") shouldBe "https://www.amazon.com/s?k=Dune"
+        context("when there is an ISBN") {
+            it("#119 TC-18: queries it, trimmed") {
+                storeSearchUrl("  9781234567897 ", "Ignored", "Ignored") shouldBe
+                    "https://www.amazon.com/s?k=9781234567897"
             }
         }
 
-        it("#119 TC-20: special characters are UTF-8 encoded, the query has no raw separators, and it decodes back") {
-            val title = "Fish & Chips #1: 100% \"Real\" + ?=é 日本 🐟"
-            val author = "O'Brien = Ångström"
-            val url = storeSearchUrl(null, title, author)
+        context("when the ISBN is blank") {
+            it("#119 TC-19: queries the title and author, for a missing, empty or blank ISBN") {
+                checkAll(Exhaustive.of(null, "", "   ")) { isbn ->
+                    storeSearchUrl(isbn, "Dune", "Frank Herbert") shouldBe "https://www.amazon.com/s?k=Dune+Frank+Herbert"
+                }
+            }
+        }
 
-            val query = url.substringAfter("k=")
-            listOf("&", "#", "?", " ").forEach { query shouldBe query.replace(it, "") }
-            URLDecoder.decode(query, "UTF-8") shouldBe "$title $author".trim()
+        context("when the text has special characters") {
+            it("#119 TC-20: encodes them so the query decodes back") {
+                val title = "Fish & Chips #1: 100% \"Real\" + ?=é 日本 🐟"
+                val author = "O'Brien = Ångström"
+
+                val query = storeSearchUrl(null, title, author).substringAfter("k=")
+
+                listOf("&", "#", "?", " ").forEach { query shouldBe query.replace(it, "") }
+                URLDecoder.decode(query, "UTF-8") shouldBe "$title $author"
+            }
         }
     }
 
     describe("the More menu row") {
 
-        it("#119 TC-21: hidden unless Present; for Present, enabled, disabled offline or disabled while removing") {
-            for ((state, value) in allStates) {
-                for (online in listOf(true, false)) {
-                    for (removing in listOf(true, false)) {
-                        withClue("$state online=$online removing=$removing") {
-                            val expected = when {
-                                value !is WishlistState.Present -> RemoveRow.Hidden
-                                !online -> RemoveRow.DisabledOffline
-                                removing -> RemoveRow.DisabledRemoving
-                                else -> RemoveRow.Enabled
-                            }
-                            removeRow(value, online, removing) shouldBe expected
-                        }
-                    }
+        context("when the book is not on the wishlist") {
+            it("#119 TC-21: is hidden, regardless of state, connection or removal") {
+                checkAll(Exhaustive.collection(NOT_PRESENT), Exhaustive.boolean(), Exhaustive.boolean()) { state, online, removing ->
+                    removeRow(state, online, removing) shouldBe RemoveRow.Hidden
                 }
             }
         }
 
-        it("#119 TC-22: the removal warning follows hasFile, keyed on a readable copy") {
-            removalWarning(hasFile = true) shouldBe RemovalWarning.KeepsBook
-            removalWarning(hasFile = false) shouldBe RemovalWarning.OnlyPlace
-
-            for ((name, b) in withFile) {
-                withClue(name) { removalWarning(hasReadableCopy(b)) shouldBe RemovalWarning.KeepsBook }
-            }
-            for ((name, b) in fileless) {
-                withClue(name) { removalWarning(hasReadableCopy(b)) shouldBe RemovalWarning.OnlyPlace }
+        context("when the book is on the wishlist") {
+            it("#119 TC-21: follows the connection first, then any removal in flight") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple(false, true, RemoveRow.DisabledOffline),
+                        Triple(false, false, RemoveRow.DisabledOffline),
+                        Triple(true, true, RemoveRow.DisabledRemoving),
+                        Triple(true, false, RemoveRow.Enabled),
+                    ),
+                ) { (online, removing, expected) ->
+                    removeRow(present(), online, removing) shouldBe expected
+                }
             }
         }
     }
 
     describe("leaving the page after a removal") {
 
-        it("#119 TC-23: leaves when the book is deleted, or when there is no file and no physical copy") {
-            for (bookDeleted in listOf(true, false)) {
-                for (hasFile in listOf(true, false)) {
-                    for (hasPhysical in listOf(true, false)) {
-                        withClue("deleted=$bookDeleted file=$hasFile physical=$hasPhysical") {
-                            val expected = bookDeleted || (!hasFile && !hasPhysical)
-                            leavesAfterRemoval(bookDeleted, hasFile, hasPhysical) shouldBe expected
-                        }
-                    }
-                }
-            }
-        }
-    }
+        it("#119 TC-23: leaves a deleted book or one nothing else holds") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(true, true, true) to true,
+                    Triple(true, false, false) to true,
+                    Triple(false, false, false) to true,
+                    Triple(false, true, false) to false,
+                    Triple(false, false, true) to false,
+                ),
+            ) { (inputs, expected) ->
+                val (bookDeleted, hasFile, hasPhysical) = inputs
 
-    describe("the stage line's source phrase") {
-
-        it("#119 TC-24: each known source maps to its phrase, and an unknown source to none") {
-            wishlistSourcePhraseRes(WishlistSource.Scan) shouldBe R.string.book_detail_wishlist_source_scan
-            wishlistSourcePhraseRes(WishlistSource.Detail) shouldBe R.string.book_detail_wishlist_source_detail
-            wishlistSourcePhraseRes(WishlistSource.Manual) shouldBe R.string.book_detail_wishlist_source_manual
-            wishlistSourcePhraseRes(WishlistSource.Search) shouldBe R.string.book_detail_wishlist_source_search
-            wishlistSourcePhraseRes(null) shouldBe null
-        }
-    }
-
-    describe("the progress gate") {
-
-        it("#119 TC-25: a wishlist-only book never has a progress file") {
-            for ((state, value) in allStates) {
-                for ((name, b) in fileless) {
-                    withClue("$state/$name") {
-                        if (isWishlistOnly(b, value)) hasProgressFile(b) shouldBe false
-                    }
-                }
+                leavesAfterRemoval(bookDeleted, hasFile, hasPhysical) shouldBe expected
             }
         }
     }

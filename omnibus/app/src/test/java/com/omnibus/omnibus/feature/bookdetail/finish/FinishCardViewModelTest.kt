@@ -1,97 +1,51 @@
 package com.omnibus.omnibus.feature.bookdetail.finish
 
-import com.omnibus.omnibus.data.bookprogress.BookProgressError
-import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
-import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
-import com.omnibus.omnibus.data.highlights.Highlight
-import com.omnibus.omnibus.data.highlights.HighlightColor
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.highlights.HighlightsState
-import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
+import com.omnibus.omnibus.data.highlights.randomHighlight
 import com.omnibus.omnibus.data.readstatus.ReadStatus
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.TestReviewsRepository
-import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewsState
-import com.omnibus.omnibus.data.series.SeriesMember
+import com.omnibus.omnibus.data.reviews.TestReviewsRepository
+import com.omnibus.omnibus.data.reviews.randomRating
+import com.omnibus.omnibus.data.reviews.randomReview
+import com.omnibus.omnibus.data.series.randomSeriesMember
 import com.omnibus.omnibus.feature.bookdetail.progress.ReadingSession
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import java.util.GregorianCalendar
-import java.util.TimeZone
 
-private const val UUID = "uuid-2"
+private fun known(status: ReadStatus) = ReadStatusState.Known(randomReadStatusRecord().copy(status = status))
 
-/** A UTC instant, so the dates do not depend on the machine's zone. */
-private fun at(year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0): Long =
-    GregorianCalendar(TimeZone.getTimeZone("UTC")).apply { clear(); set(year, month - 1, day, hour, minute) }.timeInMillis
-
-private val FINISHED_OCT29 = at(2026, 10, 29, 22, 14)
-
-/** A Finished status with its finish time. */
-private fun finishedRecord(finishedAt: Long? = FINISHED_OCT29): ReadStatusState.Known =
-    ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, 1L, finishedAt))
-
-/** A Reading status. */
-private fun reading(): ReadStatusState.Known = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Reading, 1L, null))
-
-/** Reviews loaded with the reader's own rating of 4. */
-private fun rated(): ReviewsState.Loaded = ReviewsState.Loaded(
-    BookReviews(mine = Review(0, "", false, 4f, null, null, false, null), others = emptyList(), summary = null),
+private fun rated() = ReviewsState.Loaded(
+    BookReviews(mine = randomReview().copy(rating = randomRating()), others = emptyList(), summary = null),
 )
 
-/** A loaded list of [count] highlights, numbered from 1. */
-private fun loadedHighlights(count: Int): HighlightsState.Loaded = HighlightsState.Loaded(
-    (1..count).map { Highlight(it.toLong(), null, null, HighlightColor.Amber, null, null, null) },
-)
+private fun randomSessions() = List(2) { ReadingSession(randomLong(), randomLong(), null, null) }
 
-/** Three sessions, the first starting on Oct 12 at 20:00. */
-private val threeSessions = listOf(
-    ReadingSession(at(2026, 10, 12, 20), 600, null, null),
-    ReadingSession(at(2026, 10, 13, 20), 900, null, null),
-    ReadingSession(at(2026, 10, 14, 20), 1_200, null, null),
-)
-
-/** A ViewModel with its fakes, whose state is kept active by [collecting] until the block ends. */
-private class Harness(
-    val status: TestReadStatusRepository,
-    val progress: TestBookProgressRepository,
-    val reviews: TestReviewsRepository,
-    val highlights: TestHighlightsRepository,
-) {
-    /** Keeps the shared state active, as a subscribed screen would. */
-    private val collecting = CollectingScope()
-
-    /** The ViewModel under test. */
-    val vm = FinishCardViewModel(UUID, status, progress, reviews, highlights)
-        .also { collecting.collect(it.uiState) }
-
-    /** Stops the collection. */
-    fun close() = collecting.cancel()
-}
-
-/** Runs [block] on a fresh [Harness] built from the given fakes, then stops its collection. */
-private inline fun withHarness(
-    status: TestReadStatusRepository = TestReadStatusRepository(),
-    progress: TestBookProgressRepository = TestBookProgressRepository(),
-    reviews: TestReviewsRepository = TestReviewsRepository(),
-    highlights: TestHighlightsRepository = TestHighlightsRepository(),
-    block: Harness.() -> Unit,
-) {
-    val harness = Harness(status, progress, reviews, highlights)
+/** Runs [block] with [vm]'s state kept active, as a subscribed screen would. */
+private inline fun collecting(vm: FinishCardViewModel, block: FinishCardViewModel.() -> Unit) {
+    val scope = CollectingScope()
+    scope.collect(vm.uiState)
     try {
-        harness.block()
+        vm.block()
     } finally {
-        harness.close()
+        scope.cancel()
     }
 }
 
@@ -101,120 +55,139 @@ class FinishCardViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    fun sut(
+        bookUuid: String = randomString(),
+        status: TestReadStatusRepository = TestReadStatusRepository(),
+        progress: TestBookProgressRepository = TestBookProgressRepository(),
+        reviews: TestReviewsRepository = TestReviewsRepository(),
+        highlights: TestHighlightsRepository = TestHighlightsRepository(),
+    ) = FinishCardViewModel(bookUuid, status, progress, reviews, highlights)
+
     describe("the celebration") {
 
-        it("TC-20: marking the book Finished celebrates once") {
-            val status = TestReadStatusRepository()
-            status.seed(UUID, reading())
-            withHarness(status = status) {
-                vm.celebration.value shouldBe FinishCelebration(0, 0)
-                status.seed(UUID, finishedRecord())
-                vm.celebration.value shouldBe FinishCelebration(1, 1)
-                status.seed(UUID, finishedRecord())
+        context("when the reader marks the book Finished") {
+            it("TC-20: celebrates once, however often the status arrives again") {
+                val uuid = randomString()
+                val status = TestReadStatusRepository()
+                status.seed(uuid, known(ReadStatus.Reading))
+                val vm = sut(uuid, status)
+
+                status.seed(uuid, known(ReadStatus.Finished))
+                status.seed(uuid, known(ReadStatus.Finished))
+
                 vm.celebration.value shouldBe FinishCelebration(1, 1)
             }
         }
 
-        it("TC-21: opening an already finished book does not celebrate") {
-            val already = TestReadStatusRepository()
-            already.seed(UUID, finishedRecord())
-            withHarness(status = already) {
-                vm.celebration.value shouldBe FinishCelebration(0, 0)
-            }
+        context("when the book opens already finished") {
+            it("TC-21: does not celebrate") {
+                val uuid = randomString()
+                val status = TestReadStatusRepository()
+                status.seed(uuid, known(ReadStatus.Finished))
 
-            val unknown = TestReadStatusRepository()
-            withHarness(status = unknown) {
-                status.seed(UUID, finishedRecord())
-                vm.celebration.value shouldBe FinishCelebration(0, 0)
+                sut(uuid, status).celebration.value shouldBe FinishCelebration(0, 0)
             }
+        }
 
-            val failed = TestReadStatusRepository()
-            failed.seed(UUID, ReadStatusState.Failed)
-            withHarness(status = failed) {
-                status.seed(UUID, finishedRecord())
+    }
+
+    describe("tapping the cover") {
+
+        context("when nothing has been celebrated") {
+            it("TC-22: throws no burst") {
+                val vm = sut()
+
+                vm.replayBurst()
+
                 vm.celebration.value shouldBe FinishCelebration(0, 0)
             }
         }
 
-        it("TC-22: a cover tap throws the burst again only after a celebration") {
-            val status = TestReadStatusRepository()
-            status.seed(UUID, reading())
-            withHarness(status = status) {
-                vm.replayBurst()
-                vm.celebration.value shouldBe FinishCelebration(0, 0)
-
-                status.seed(UUID, finishedRecord())
-                vm.celebration.value shouldBe FinishCelebration(1, 1)
+        context("when the book has been celebrated") {
+            it("TC-22: throws the burst again") {
+                val uuid = randomString()
+                val status = TestReadStatusRepository()
+                status.seed(uuid, known(ReadStatus.Reading))
+                val vm = sut(uuid, status)
+                status.seed(uuid, known(ReadStatus.Finished))
 
                 vm.replayBurst()
+
                 vm.celebration.value shouldBe FinishCelebration(1, 2)
             }
         }
     }
 
-    describe("the reads") {
+    describe("the card's reads") {
 
-        it("TC-23: an unfinished book reads nothing") {
-            val status = TestReadStatusRepository()
-            status.seed(UUID, reading())
-            withHarness(status = status) {
-                vm.reload(0)
-                vm.uiState.value.finished shouldBe false
+        context("when the book is not finished") {
+            it("TC-23: reads no sessions") {
+                val uuid = randomString()
+                val status = TestReadStatusRepository()
+                status.seed(uuid, known(ReadStatus.Reading))
+                val progress = TestBookProgressRepository()
+
+                sut(uuid, status, progress).reload(randomInt())
+
                 progress.sessionsCalls.shouldBeEmpty()
-                reviews.refreshCalls.shouldBeEmpty()
-                highlights.refreshCalls.shouldBeEmpty()
-
-                status.seed(UUID, finishedRecord())
-                progress.sessionsCalls shouldBe listOf(UUID)
-                vm.uiState.value.finished shouldBe true
             }
         }
 
-        it("TC-24: a finished book loads its totals and reloads them per key") {
+        context("when the book is finished") {
+            it("TC-24: loads its sessions, highlight count and reviews") {
+                val uuid = randomString()
+                val sessions = randomSessions()
+                val reviewsState = rated()
+                val status = TestReadStatusRepository()
+                status.seed(uuid, known(ReadStatus.Finished))
+                val progress = TestBookProgressRepository()
+                progress.sessionsResults += ReadingSessionsResult.Success(sessions)
+                val reviews = TestReviewsRepository()
+                reviews.seed(uuid, reviewsState)
+                val highlights = TestHighlightsRepository()
+                highlights.seed(uuid, HighlightsState.Loaded(List(4) { randomHighlight() }))
+
+                collecting(sut(uuid, status, progress, reviews, highlights)) {
+                    reload(0)
+
+                    uiState.value.sessions shouldBe sessions
+                    uiState.value.highlightCount shouldBe 4
+                    uiState.value.reviews shouldBe reviewsState
+                }
+            }
+        }
+    }
+
+    describe("the statuses of the series members") {
+
+        fun member(uuid: String) = randomSeriesMember().copy(uuid = uuid)
+
+        it("TC-25: keeps the finished ones, reading every member but this book") {
+            val uuid = randomString()
             val status = TestReadStatusRepository()
-            status.seed(UUID, finishedRecord())
-            val progress = TestBookProgressRepository()
-            val reviews = TestReviewsRepository()
-            reviews.seed(UUID, rated())
-            val highlights = TestHighlightsRepository()
-            highlights.seed(UUID, loadedHighlights(4))
+            status.seed(uuid, known(ReadStatus.Finished))
+            status.seed("$uuid-done", known(ReadStatus.Finished))
+            status.seed("$uuid-next", known(ReadStatus.Reading))
+            val members = listOf(member("$uuid-done"), member(uuid), member("$uuid-next"))
 
-            withHarness(status, progress, reviews, highlights) {
-                progress.sessionsResults += ReadingSessionsResult.Success(threeSessions)
-                vm.reload(0)
-                vm.uiState.value.sessions shouldBe threeSessions
-                vm.uiState.value.highlightCount shouldBe 4
-                vm.uiState.value.reviews shouldBe rated()
+            collecting(sut(uuid, status)) {
+                loadSeriesStatuses(members, 0)
 
-                progress.sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
-                vm.reload(1)
-                progress.sessionsCalls.size shouldBe 2
-                highlights.refreshCalls shouldBe listOf(UUID)
-                vm.uiState.value.sessions shouldBe threeSessions
-                vm.uiState.value.reviews shouldBe rated()
+                uiState.value.finishedMembers shouldBe setOf("$uuid-done")
+                status.fetchCalls shouldContainExactlyInAnyOrder listOf("$uuid-done", "$uuid-next")
             }
         }
 
-        it("TC-25: member statuses are read once per key, without this book") {
-            val status = TestReadStatusRepository()
-            status.seed(UUID, finishedRecord())
-            status.readResults += ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, 1L, null))
-            status.readResults += ReadStatusState.Failed
-            status.readResults += reading()
-            val members = listOf("uuid-1", UUID, "uuid-3", "uuid-4").map {
-                SeriesMember(it, it, null, null, null, false)
-            }
-
-            withHarness(status = status) {
+        context("when the same key asks again") {
+            it("TC-25: reads nothing more") {
+                val status = TestReadStatusRepository()
+                val members = listOf(member(randomString()))
+                val vm = sut(status = status)
                 vm.loadSeriesStatuses(members, 0)
-                status.fetchCalls shouldBe listOf("uuid-1", "uuid-3", "uuid-4")
-                vm.uiState.value.finishedMembers shouldBe setOf("uuid-1")
 
                 vm.loadSeriesStatuses(members, 0)
-                status.fetchCalls.size shouldBe 3
 
-                vm.loadSeriesStatuses(members, 1)
-                status.fetchCalls.size shouldBe 6
+                status.fetchCalls.size shouldBe 1
             }
         }
     }

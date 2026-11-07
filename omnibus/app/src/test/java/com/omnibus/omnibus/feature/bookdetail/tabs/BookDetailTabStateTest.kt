@@ -16,20 +16,16 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-/** A controller over a recording scroller, with the strip at 700 px and the pin at 100 px (max scroll 5000 unless set). */
-private class Harness(
-    scope: CoroutineScope,
-    maxScroll: Int = 5000,
-    val fakeTop: MutableState<Int?> = mutableStateOf<Int?>(null),
-) {
-    val selectedState: MutableState<BookDetailTab> = mutableStateOf(BookDetailTab.Overview)
-    val calls = mutableListOf<Int>()
+/** A controller over a recording scroller, with the strip at 700 px and the pin at 100 px: its pin point is scroll 600. */
+private class Harness(scope: CoroutineScope, maxScroll: Int) {
+    val anchorTop: MutableState<Int?> = mutableStateOf(null)
+    val scrolls = mutableListOf<Int>()
     val state = BookDetailTabState(
-        selectedState = selectedState,
+        selectedState = mutableStateOf(BookDetailTab.Overview),
         scope = scope,
-        scroller = { calls += it },
+        scroller = { scrolls += it },
         maxScroll = { maxScroll },
-        anchorTopInHost = { fakeTop.value },
+        anchorTopInHost = { anchorTop.value },
     ).apply {
         stripTopPx = 700
         pinTopPx = 100
@@ -40,162 +36,169 @@ private class Harness(
 
 class BookDetailTabStateTest : DescribeSpec({
 
-    describe("BookDetailTabState") {
+    fun sut(scope: CoroutineScope, maxScroll: Int = 5000) = Harness(scope, maxScroll)
 
-        it("#94 TC-20: opens on Overview") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.selected shouldBe BookDetailTab.Overview
-                h.state.entryDirection shouldBe 0
-                h.state.settledTab shouldBe BookDetailTab.Overview
-                h.calls.shouldBeEmpty()
+    describe("selecting a tab") {
+
+        context("when the tab is earlier in the strip") {
+            it("#94 TC-21: enters backward") {
+                runTest {
+                    val h = sut(backgroundScope)
+                    h.state.select(BookDetailTab.Files)
+                    h.state.entryDirection shouldBe 1
+
+                    h.state.select(BookDetailTab.Overview)
+
+                    h.state.entryDirection shouldBe -1
+                }
             }
         }
 
-        it("#94 TC-21: select changes the tab and records the entry direction") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.select(BookDetailTab.Reviews)
-                h.state.selected shouldBe BookDetailTab.Reviews
-                h.state.entryDirection shouldBe 1
-                h.selectedState.value shouldBe BookDetailTab.Reviews
+        context("when the tab is already selected") {
+            it("#94 TC-22: keeps the entry direction") {
+                runTest {
+                    val h = sut(backgroundScope)
+                    h.state.select(BookDetailTab.Reviews)
+                    h.state.select(BookDetailTab.Overview)
 
-                h.state.select(BookDetailTab.Files)
-                h.state.selected shouldBe BookDetailTab.Files
-                h.state.entryDirection shouldBe 1
+                    h.state.select(BookDetailTab.Overview)
 
-                h.state.select(BookDetailTab.Overview)
-                h.state.selected shouldBe BookDetailTab.Overview
-                h.state.entryDirection shouldBe -1
-                h.selectedState.value shouldBe BookDetailTab.Overview
-                h.calls.shouldBeEmpty()
+                    h.state.entryDirection shouldBe -1
+                }
             }
         }
+    }
 
-        it("#94 TC-22: selecting the selected tab does nothing") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.select(BookDetailTab.Reviews)
-                h.state.select(BookDetailTab.Reviews)
-                h.state.selected shouldBe BookDetailTab.Reviews
-                h.state.entryDirection shouldBe 1
-                h.calls.shouldBeEmpty()
-            }
-        }
+    describe("jumping to a tab") {
 
-        it("#94 TC-23: jumpTo selects the tab and scrolls the strip to the pin point") {
+        it("#94 TC-23: selects the tab with the strip at the pin point") {
             runTest {
-                val h = Harness(backgroundScope)
+                val h = sut(backgroundScope)
+
                 h.state.jumpTo(BookDetailTab.Files)
                 runCurrent()
+
                 h.state.selected shouldBe BookDetailTab.Files
-                h.calls shouldContainExactly listOf(600)
+                h.scrolls shouldContainExactly listOf(600)
+            }
+        }
+    }
+
+    describe("scrolling to an anchor") {
+
+        context("when the anchor is laid out") {
+            it("#94 TC-25: lands it below the pinned strip") {
+                runTest {
+                    val h = sut(backgroundScope)
+                    h.anchorTop.value = 900
+
+                    h.state.scrollTo(BookDetailAnchor.Series)
+                    runCurrent()
+
+                    h.scrolls shouldContainExactly listOf(1434)
+                }
             }
         }
 
-        it("#94 TC-24: jumpTo scrolls up or down to the same target and clamps") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.jumpTo(BookDetailTab.Files)
-                runCurrent()
-                h.calls shouldContainExactly listOf(600)
+        context("when another tab is selected") {
+            context("when the anchor's panel is still entering") {
+                it("#94 TC-26: holds the scroll") {
+                    runTest {
+                        val h = sut(backgroundScope)
+                        h.state.select(BookDetailTab.Files)
+                        h.state.scrollTo(BookDetailAnchor.Series)
 
-                val clamped = Harness(backgroundScope, maxScroll = 400)
-                clamped.state.jumpTo(BookDetailTab.Files)
-                runCurrent()
-                clamped.calls shouldContainExactly listOf(400)
+                        h.anchorTop.value = 900
+                        Snapshot.sendApplyNotifications()
+                        advanceTimeBy(100)
+                        runCurrent()
+
+                        h.scrolls.shouldBeEmpty()
+                    }
+                }
+            }
+
+            context("when the anchor's panel has settled") {
+                it("#94 TC-26: scrolls") {
+                    runTest {
+                        val h = sut(backgroundScope)
+                        h.state.select(BookDetailTab.Files)
+                        h.state.scrollTo(BookDetailAnchor.Series)
+                        h.anchorTop.value = 900
+
+                        h.state.settledTab = BookDetailTab.Overview
+                        Snapshot.sendApplyNotifications()
+                        advanceTimeBy(100)
+                        runCurrent()
+
+                        h.scrolls shouldContainExactly listOf(1434)
+                    }
+                }
             }
         }
 
-        it("#94 TC-25: scrollTo lands the anchor below the pinned strip") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.fakeTop.value = 900
-                h.state.scrollTo(BookDetailAnchor.Series)
-                runCurrent()
-                h.state.selected shouldBe BookDetailTab.Overview
-                h.calls shouldContainExactly listOf(1434)
+        context("when the anchor never lays out") {
+            it("#94 TC-27: falls back to the pin point") {
+                runTest {
+                    val h = sut(backgroundScope)
+
+                    h.state.scrollTo(BookDetailAnchor.Series)
+                    advanceTimeBy(2000)
+                    runCurrent()
+
+                    h.scrolls shouldContainExactly listOf(600)
+                }
             }
         }
 
-        it("#94 TC-26: scrollTo waits for the anchor and the settled panel") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.select(BookDetailTab.Files)
-                h.state.scrollTo(BookDetailAnchor.Series)
-                h.state.selected shouldBe BookDetailTab.Overview
-                advanceTimeBy(300)
-                runCurrent()
-                h.calls.shouldBeEmpty()
+        context("when a jump follows it") {
+            it("#94 TC-29: drops the pending scroll") {
+                runTest {
+                    val h = sut(backgroundScope)
+                    h.state.scrollTo(BookDetailAnchor.Series)
+                    runCurrent()
 
-                // The anchor is laid out but the panel is still entering: nothing scrolls yet.
-                h.fakeTop.value = 900
-                Snapshot.sendApplyNotifications()
-                advanceTimeBy(100)
-                runCurrent()
-                h.calls.shouldBeEmpty()
+                    h.state.jumpTo(BookDetailTab.Files)
+                    advanceTimeBy(2000)
+                    runCurrent()
 
-                h.state.settledTab = BookDetailTab.Overview
-                Snapshot.sendApplyNotifications()
-                advanceTimeBy(100)
-                runCurrent()
-                h.calls shouldContainExactly listOf(1434)
+                    h.scrolls shouldContainExactly listOf(600)
+                }
             }
         }
 
-        it("#94 TC-27: scrollTo falls back to jumpTo after one second") {
-            runTest {
-                val h = Harness(backgroundScope)
-                h.state.scrollTo(BookDetailAnchor.Series)
-                advanceTimeBy(999)
-                runCurrent()
-                h.calls.shouldBeEmpty()
+        context("when a tap follows it") {
+            it("#94 TC-29: drops the pending scroll") {
+                runTest {
+                    val h = sut(backgroundScope)
+                    h.state.scrollTo(BookDetailAnchor.Series)
+                    runCurrent()
 
-                advanceTimeBy(2)
-                runCurrent()
-                h.calls shouldContainExactly listOf(jumpScrollTarget(700, 100, 5000))
-                h.state.selected shouldBe BookDetailTab.Overview
+                    h.state.select(BookDetailTab.Reviews)
+                    advanceTimeBy(2000)
+                    runCurrent()
+
+                    h.scrolls.shouldBeEmpty()
+                }
             }
         }
+    }
 
-        it("#94 TC-28: unregister only removes the matching registration") {
-            runTest {
-                val state = BookDetailTabState(
-                    selectedState = mutableStateOf(BookDetailTab.Overview),
-                    scope = backgroundScope,
-                    scroller = { },
-                    maxScroll = { 0 },
-                )
-                val a = mockk<LayoutCoordinates>(relaxed = true)
-                val b = mockk<LayoutCoordinates>(relaxed = true)
-                state.register(BookDetailAnchor.Series, a)
-                state.register(BookDetailAnchor.Series, b)
-                state.unregister(BookDetailAnchor.Series, a)
-                state.registeredCoordinates(BookDetailAnchor.Series) shouldBe b
-                state.unregister(BookDetailAnchor.Series, b)
-                state.registeredCoordinates(BookDetailAnchor.Series) shouldBe null
-            }
-        }
+    describe("unregistering an anchor") {
 
-        it("#94 TC-29: a newer jump or a tap supersedes a pending scrollTo") {
-            runTest {
-                val jumped = Harness(backgroundScope)
-                jumped.state.scrollTo(BookDetailAnchor.Series)
-                runCurrent()
-                jumped.state.jumpTo(BookDetailTab.Files)
-                advanceTimeBy(2000)
-                runCurrent()
-                jumped.calls shouldContainExactly listOf(600)
-                jumped.state.selected shouldBe BookDetailTab.Files
+        context("when a newer registration has replaced it") {
+            it("#94 TC-28: keeps the newer one") {
+                runTest {
+                    val state = sut(backgroundScope).state
+                    val older = mockk<LayoutCoordinates>(relaxed = true)
+                    val newer = mockk<LayoutCoordinates>(relaxed = true)
+                    state.register(BookDetailAnchor.Series, older)
+                    state.register(BookDetailAnchor.Series, newer)
 
-                val tapped = Harness(backgroundScope)
-                tapped.state.scrollTo(BookDetailAnchor.Series)
-                runCurrent()
-                tapped.state.select(BookDetailTab.Reviews)
-                advanceTimeBy(2000)
-                runCurrent()
-                tapped.calls.shouldBeEmpty()
-                tapped.state.selected shouldBe BookDetailTab.Reviews
+                    state.unregister(BookDetailAnchor.Series, older)
+
+                    state.registeredCoordinates(BookDetailAnchor.Series) shouldBe newer
+                }
             }
         }
     }

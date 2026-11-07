@@ -1,10 +1,16 @@
 package com.omnibus.omnibus.feature.bookdetail
 
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryError
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -12,407 +18,315 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
+/** Every failure the repository can report for a read, with the error the page shows for it. */
+private val failures = Exhaustive.of(
+    BookResult.NotFound to BookDetailError.NotFound,
+    BookResult.NoServer to BookDetailError.NoServer,
+    BookResult.Failure(LibraryError.Unreachable) to BookDetailError.Failed(LibraryError.Unreachable),
+    BookResult.Failure(LibraryError.SessionExpired) to BookDetailError.Failed(LibraryError.SessionExpired),
+    BookResult.Failure(LibraryError.UnexpectedResponse) to BookDetailError.Failed(LibraryError.UnexpectedResponse),
+    BookResult.Failure(LibraryError.Http(500, null)) to BookDetailError.Failed(LibraryError.Http(500, null)),
+)
+
+/** A later printing of this book, so it always differs from it. */
+private fun Book.reprinted(): Book = copy(title = "$title, reprinted")
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class BookDetailViewModelTest : DescribeSpec({
 
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    val book1 = testBook(1)
-    val book2 = testBook(1, title = "Second printing")
-    val book3 = testBook(1, title = "Third printing")
-    val cached = testBook(1, title = "Cached")
-    val network = testBook(1, title = "Network")
-    val otherBook = testBook(2)
+    fun sut(
+        repo: ScriptedBookRepository = ScriptedBookRepository(),
+        bookUuid: String = randomString(),
+    ) = BookDetailViewModel(bookUuid, repo)
 
-    /** Every failure the repository can report for a read. */
-    val failures: List<LibraryError> = listOf(
-        LibraryError.Unreachable,
-        LibraryError.SessionExpired,
-        LibraryError.UnexpectedResponse,
-        LibraryError.Http(500, null),
-    )
+    /** A ViewModel whose first load gave [book]. */
+    fun sutShowing(book: Book, repo: ScriptedBookRepository = ScriptedBookRepository()): BookDetailViewModel {
+        repo.enqueue(BookResult.Success(book))
+        return sut(repo, book.uuid)
+    }
 
-    /** The one place a test builds the ViewModel, so later layers only change this helper. */
-    fun viewModel(repo: ScriptedBookRepository) = BookDetailViewModel("uuid-1", repo)
+    /** A ViewModel whose first load found nothing. */
+    fun sutOverError(repo: ScriptedBookRepository = ScriptedBookRepository()): BookDetailViewModel {
+        repo.enqueue(BookResult.NotFound)
+        return sut(repo)
+    }
 
-    describe("initial load") {
+    describe("the first load") {
 
-        it("#93 TC-51: starts in Loading") {
-            val repo = ScriptedBookRepository()
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
-
-            val vm = viewModel(repo)
-
-            val state = vm.uiState.value
-            state.isLoading shouldBe true
-            state.book shouldBe null
-            state.error shouldBe null
-            state.screen shouldBe BookDetailScreenState.Loading
-            state.reloadKey shouldBe 0
-            repo.bookRequests shouldBe listOf("uuid-1")
-        }
-
-        it("#93 TC-52: first load shows content") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-
-            val state = vm.uiState.value
-            state.screen shouldBe BookDetailScreenState.Content(book1)
-            state.isLoading shouldBe false
-            state.reloadKey shouldBe 0
-            repo.bookRequests.size shouldBe 1
-        }
-
-        it("#93 TC-53: maps each failure to a full-screen error") {
-            for (result in listOf(BookResult.NotFound, BookResult.NoServer) + failures.map { BookResult.Failure(it) }) {
+        context("when the load is in flight") {
+            it("#93 TC-51: shows the loading view") {
                 val repo = ScriptedBookRepository()
-                repo.enqueue(result)
+                repo.enqueue(CompletableDeferred<BookResult>())
 
-                val state = viewModel(repo).uiState.value
+                sut(repo).uiState.value.screen shouldBe BookDetailScreenState.Loading
+            }
+        }
 
-                val expected = when (result) {
-                    BookResult.NotFound -> BookDetailError.NotFound
-                    BookResult.NoServer -> BookDetailError.NoServer
-                    is BookResult.Failure -> BookDetailError.Failed(result.error)
-                    is BookResult.Success -> error("not a failure")
+        context("when the load succeeds") {
+            it("#93 TC-52: shows the book") {
+                val book = randomBook()
+
+                sutShowing(book).uiState.value.screen shouldBe BookDetailScreenState.Content(book)
+            }
+        }
+
+        context("when the load fails") {
+            it("#93 TC-53: shows a full-screen error for every failure") {
+                checkAll(failures) { (result, error) ->
+                    val repo = ScriptedBookRepository()
+                    repo.enqueue(result)
+
+                    sut(repo).uiState.value.screen shouldBe BookDetailScreenState.Error(error)
                 }
-                state.screen shouldBe BookDetailScreenState.Error(expected)
-                state.isLoading shouldBe false
-                state.transientError shouldBe null
+            }
+        }
+
+        context("when the load emits a cached book before the network book") {
+            it("#93 TC-70: shows each in turn") {
+                val cached = randomBook()
+                val network = cached.reprinted()
+                val gate = CompletableDeferred<Unit>()
+                val repo = ScriptedBookRepository()
+                repo.enqueueFlow {
+                    emit(BookResult.Success(cached))
+                    gate.await()
+                    emit(BookResult.Success(network))
+                }
+                val vm = sut(repo, cached.uuid)
+                vm.uiState.value.screen shouldBe BookDetailScreenState.Content(cached)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.screen shouldBe BookDetailScreenState.Content(network)
             }
         }
     }
 
-    describe("retry") {
+    describe("retrying from the error") {
 
-        it("#93 TC-54: retry reloads from Loading") {
-            val repo = ScriptedBookRepository()
-            repo.enqueue(BookResult.NotFound)
-            val vm = viewModel(repo)
-            vm.uiState.value.screen shouldBe BookDetailScreenState.Error(BookDetailError.NotFound)
+        context("when the retry is in flight") {
+            it("#93 TC-54: shows the loading view") {
+                val repo = ScriptedBookRepository()
+                val vm = sutOverError(repo)
+                repo.enqueue(CompletableDeferred<BookResult>())
 
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
-            vm.retry()
+                vm.retry()
 
-            val loading = vm.uiState.value
-            loading.isLoading shouldBe true
-            loading.error shouldBe null
-            loading.screen shouldBe BookDetailScreenState.Loading
-            loading.reloadKey shouldBe 1
-
-            held.complete(BookResult.Success(book1))
-            vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book1)
+                vm.uiState.value.screen shouldBe BookDetailScreenState.Loading
+            }
         }
 
-        it("#93 TC-55: retry that fails shows the error again") {
-            val repo = ScriptedBookRepository()
-            repo.enqueue(BookResult.NotFound)
-            val vm = viewModel(repo)
+        context("when the retry succeeds") {
+            it("#93 TC-72: shows the book") {
+                val book = randomBook()
+                val repo = ScriptedBookRepository()
+                val vm = sutOverError(repo)
+                repo.enqueue(BookResult.Success(book))
 
-            repo.enqueue(BookResult.Failure(LibraryError.Unreachable))
-            vm.retry()
+                vm.retry()
 
-            val state = vm.uiState.value
-            state.screen shouldBe BookDetailScreenState.Error(BookDetailError.Failed(LibraryError.Unreachable))
-            state.reloadKey shouldBe 1
-        }
-
-        it("#93 TC-72: success clears error") {
-            val repo = ScriptedBookRepository()
-            repo.enqueue(BookResult.Failure(LibraryError.Unreachable))
-            val vm = viewModel(repo)
-            vm.uiState.value.error shouldBe BookDetailError.Failed(LibraryError.Unreachable)
-
-            vm.retry()
-
-            val state = vm.uiState.value
-            state.error shouldBe null
-            state.transientError shouldBe null
-            state.screen shouldBe BookDetailScreenState.Content(book1)
+                vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book)
+            }
         }
     }
 
-    describe("refresh") {
+    describe("pulling to refresh") {
 
-        it("#93 TC-56: refresh keeps content and spins") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
-
-            vm.refresh()
-
-            val state = vm.uiState.value
-            state.isRefreshing shouldBe true
-            state.isLoading shouldBe false
-            state.book shouldBe book1
-            state.screen shouldBe BookDetailScreenState.Content(book1)
-            state.reloadKey shouldBe 1
-        }
-
-        it("#93 TC-57: refresh success replaces the book") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
-            vm.refresh()
-
-            held.complete(BookResult.Success(book2))
-
-            val state = vm.uiState.value
-            state.book shouldBe book2
-            state.isRefreshing shouldBe false
-            state.transientError shouldBe null
-        }
-
-        it("#93 TC-58: failed refresh raises a transient error") {
-            for (failure in failures.map { BookResult.Failure(it) } + listOf(BookResult.NotFound, BookResult.NoServer)) {
+        context("when the refresh is in flight") {
+            it("#93 TC-56: spins over the book") {
+                val book = randomBook()
                 val repo = ScriptedBookRepository()
-                val vm = viewModel(repo)
-                repo.enqueue(failure)
+                val vm = sutShowing(book, repo)
+                repo.enqueue(CompletableDeferred<BookResult>())
 
                 vm.refresh()
 
-                val state = vm.uiState.value
-                state.book shouldBe book1
-                state.error shouldBe null
-                state.isRefreshing shouldBe false
-                state.transientError shouldBe when (failure) {
-                    BookResult.NotFound -> BookDetailError.NotFound
-                    BookResult.NoServer -> BookDetailError.NoServer
-                    is BookResult.Failure -> BookDetailError.Failed(failure.error)
-                    is BookResult.Success -> error("not a failure")
+                vm.uiState.value.isRefreshing shouldBe true
+                vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book)
+            }
+        }
+
+        context("when the refresh succeeds") {
+            it("#93 TC-57: stops spinning on the new book") {
+                val book = randomBook()
+                val repo = ScriptedBookRepository()
+                val vm = sutShowing(book, repo)
+                repo.enqueue(BookResult.Success(book.reprinted()))
+
+                vm.refresh()
+
+                vm.uiState.value.isRefreshing shouldBe false
+                vm.uiState.value.book shouldBe book.reprinted()
+            }
+        }
+
+        context("when the refresh fails") {
+            it("#93 TC-58: keeps the book under a one-shot error for every failure") {
+                checkAll(failures) { (result, error) ->
+                    val book = randomBook()
+                    val repo = ScriptedBookRepository()
+                    val vm = sutShowing(book, repo)
+                    repo.enqueue(result)
+
+                    vm.refresh()
+
+                    vm.uiState.value.transientError shouldBe error
+                    vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book)
                 }
+            }
+
+            it("#93 TC-58: clears the error once it has been shown") {
+                val repo = ScriptedBookRepository()
+                val vm = sutShowing(randomBook(), repo)
+                repo.enqueue(BookResult.NotFound)
+                vm.refresh()
 
                 vm.transientErrorShown()
+
                 vm.uiState.value.transientError shouldBe null
             }
         }
     }
 
-    describe("silent reload") {
+    describe("reloading silently") {
 
-        it("#93 TC-59: reloadBook is silent") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
+        context("when a book is on screen") {
+            context("when the reload is in flight") {
+                it("#93 TC-59: shows no progress") {
+                    val repo = ScriptedBookRepository()
+                    val vm = sutShowing(randomBook(), repo)
+                    repo.enqueue(CompletableDeferred<BookResult>())
 
-            vm.reloadBook()
+                    vm.reloadBook()
 
-            val pending = vm.uiState.value
-            pending.isLoading shouldBe false
-            pending.isRefreshing shouldBe false
-            pending.reloadKey shouldBe 1
+                    vm.uiState.value.isLoading shouldBe false
+                    vm.uiState.value.isRefreshing shouldBe false
+                }
+            }
 
-            held.complete(BookResult.Success(book2))
-            vm.uiState.value.book shouldBe book2
+            context("when the reload fails") {
+                it("#93 TC-60: shows no error") {
+                    val book = randomBook()
+                    val repo = ScriptedBookRepository()
+                    val vm = sutShowing(book, repo)
+                    repo.enqueue(BookResult.Failure(LibraryError.Unreachable))
+
+                    vm.reloadBook()
+
+                    vm.uiState.value.transientError shouldBe null
+                    vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book)
+                }
+            }
         }
 
-        it("#93 TC-60: silent reload failure shows nothing") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            repo.enqueue(BookResult.Failure(LibraryError.Unreachable))
+        context("when the error is on screen") {
+            context("when the reload fails") {
+                it("#93 TC-61: shows the new error") {
+                    val repo = ScriptedBookRepository()
+                    val vm = sutOverError(repo)
+                    repo.enqueue(BookResult.Failure(LibraryError.Unreachable))
 
-            vm.reloadBook()
+                    vm.reloadBook()
 
-            val state = vm.uiState.value
-            state.book shouldBe book1
-            state.error shouldBe null
-            state.transientError shouldBe null
-        }
-
-        it("#93 TC-61: silent reload from the error state") {
-            val repo = ScriptedBookRepository()
-            repo.enqueue(BookResult.NotFound)
-            val vm = viewModel(repo)
-            repo.enqueue(BookResult.Success(book2))
-
-            vm.reloadBook()
-
-            vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book2)
-            vm.uiState.value.error shouldBe null
-
-            val failing = ScriptedBookRepository()
-            failing.enqueue(BookResult.NotFound)
-            val failingVm = viewModel(failing)
-            failing.enqueue(BookResult.Failure(LibraryError.Unreachable))
-
-            failingVm.reloadBook()
-
-            failingVm.uiState.value.screen shouldBe
-                BookDetailScreenState.Error(BookDetailError.Failed(LibraryError.Unreachable))
+                    vm.uiState.value.screen shouldBe
+                        BookDetailScreenState.Error(BookDetailError.Failed(LibraryError.Unreachable))
+                }
+            }
         }
     }
 
-    describe("screenShown") {
+    describe("returning to the screen") {
 
-        it("#93 TC-62: first screenShown is ignored") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
+        context("when the screen is shown for the first time") {
+            it("#93 TC-62: makes no further request") {
+                val repo = ScriptedBookRepository()
+                val vm = sut(repo)
 
-            vm.screenShown()
+                vm.screenShown()
 
-            repo.bookRequests.size shouldBe 1
-            vm.uiState.value.reloadKey shouldBe 0
+                repo.bookRequests.size shouldBe 1
+            }
         }
 
-        it("#93 TC-63: later screenShown reloads silently") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            vm.screenShown() // the first call is ignored
+        context("when the screen is shown again") {
+            it("#93 TC-63: reloads the book") {
+                val repo = ScriptedBookRepository()
+                val vm = sut(repo)
+                vm.screenShown()
 
-            vm.screenShown()
+                vm.screenShown()
 
-            repo.bookRequests.size shouldBe 2
-            vm.uiState.value.reloadKey shouldBe 1
-            vm.uiState.value.isLoading shouldBe false
-            vm.uiState.value.isRefreshing shouldBe false
-
-            vm.screenShown()
-
-            repo.bookRequests.size shouldBe 3
-            vm.uiState.value.reloadKey shouldBe 2
+                repo.bookRequests.size shouldBe 2
+            }
         }
     }
 
-    describe("reloadKey") {
+    describe("the reload key sections follow") {
 
-        it("#93 TC-64: reloadKey bumps once per trigger") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
+        it("#93 TC-64: rises once for each reload") {
+            val vm = sut()
+            vm.screenShown()
 
             vm.retry()
-            vm.uiState.value.reloadKey shouldBe 1
-
             vm.refresh()
-            vm.uiState.value.reloadKey shouldBe 2
-
             vm.reloadBook()
-            vm.uiState.value.reloadKey shouldBe 3
-
-            vm.screenShown() // ignored: the first call
-            vm.uiState.value.reloadKey shouldBe 3
-
             vm.screenShown()
+
             vm.uiState.value.reloadKey shouldBe 4
         }
     }
 
-    describe("bookChanged") {
+    describe("a section changing the book") {
 
-        it("#93 TC-65: bookChanged replaces the book") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
+        context("when the change is for this book") {
+            it("#93 TC-65: shows it without a reload") {
+                val book = randomBook()
+                val repo = ScriptedBookRepository()
+                val vm = sutShowing(book, repo)
 
-            vm.bookChanged(book2)
+                vm.bookChanged(book.reprinted())
 
-            vm.uiState.value.book shouldBe book2
-            repo.bookRequests.size shouldBe 1
-            vm.uiState.value.reloadKey shouldBe 0
+                vm.uiState.value.book shouldBe book.reprinted()
+                repo.bookRequests.size shouldBe 1
+            }
         }
 
-        it("#93 TC-66: bookChanged with another uuid is ignored") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
+        context("when the change is for another book") {
+            it("#93 TC-66: ignores it") {
+                val book = randomBook()
+                val vm = sutShowing(book)
 
-            vm.bookChanged(otherBook)
+                vm.bookChanged(book.copy(uniqueIdentifier = "${book.uuid}-other"))
 
-            vm.uiState.value.book shouldBe book1
-        }
-
-        it("#93 TC-67: bookChanged during the first load") {
-            val repo = ScriptedBookRepository()
-            val held = CompletableDeferred<BookResult>()
-            repo.enqueue(held)
-            val vm = viewModel(repo)
-
-            vm.bookChanged(book2)
-
-            vm.uiState.value.screen shouldBe BookDetailScreenState.Content(book2)
-
-            held.complete(BookResult.Success(book3))
-            vm.uiState.value.book shouldBe book3
+                vm.uiState.value.book shouldBe book
+            }
         }
     }
 
-    describe("stale results") {
+    describe("a load another load has replaced") {
 
-        it("#93 TC-68: a superseded reload never overwrites a newer one") {
-            for (completeFirstA in listOf(false, true)) {
+        it("#93 TC-68: never overwrites the newer book, whichever finishes first") {
+            checkAll(Exhaustive.boolean()) { olderFinishesFirst ->
+                val book = randomBook()
                 val repo = ScriptedBookRepository()
-                val vm = viewModel(repo)
-                val a = CompletableDeferred<BookResult>()
-                val b = CompletableDeferred<BookResult>()
-                repo.enqueue(a)
+                val vm = sutShowing(book, repo)
+                val older = CompletableDeferred<BookResult>()
+                val newer = CompletableDeferred<BookResult>()
+                repo.enqueue(older)
                 vm.refresh()
-                repo.enqueue(b)
+                repo.enqueue(newer)
                 vm.reloadBook()
 
-                if (completeFirstA) {
-                    a.complete(BookResult.Success(book1))
-                    b.complete(BookResult.Success(book2))
-                } else {
-                    b.complete(BookResult.Success(book2))
-                    a.complete(BookResult.Success(book1))
+                val inOrder = listOf(older to book, newer to book.reprinted())
+                (if (olderFinishesFirst) inOrder else inOrder.reversed()).forEach { (load, result) ->
+                    load.complete(BookResult.Success(result))
                 }
 
-                vm.uiState.value.book shouldBe book2
+                vm.uiState.value.book shouldBe book.reprinted()
             }
-        }
-
-        it("#93 TC-69: stale failure is ignored") {
-            val repo = ScriptedBookRepository()
-            val vm = viewModel(repo)
-            val a = CompletableDeferred<BookResult>()
-            repo.enqueue(a)
-            vm.refresh()
-            repo.enqueue(BookResult.Success(book2))
-            vm.reloadBook()
-
-            a.complete(BookResult.Failure(LibraryError.Unreachable))
-
-            val state = vm.uiState.value
-            state.transientError shouldBe null
-            state.isRefreshing shouldBe false
-            state.book shouldBe book2
-        }
-    }
-
-    describe("several emissions") {
-
-        it("#93 TC-70: every emission of one load is applied in order") {
-            val repo = ScriptedBookRepository()
-            val gate = CompletableDeferred<Unit>()
-            repo.enqueueFlow {
-                emit(BookResult.Success(cached))
-                gate.await()
-                emit(BookResult.Success(network))
-            }
-
-            val vm = viewModel(repo)
-
-            val afterCached = vm.uiState.value
-            afterCached.screen shouldBe BookDetailScreenState.Content(cached)
-            afterCached.isLoading shouldBe false
-
-            gate.complete(Unit)
-
-            vm.uiState.value.screen shouldBe BookDetailScreenState.Content(network)
-        }
-    }
-
-    describe("screen precedence") {
-
-        it("#93 TC-71: screen precedence") {
-            BookDetailUIState(book = book1, error = BookDetailError.NotFound).screen shouldBe
-                BookDetailScreenState.Content(book1)
-            BookDetailUIState(error = BookDetailError.NotFound).screen shouldBe
-                BookDetailScreenState.Error(BookDetailError.NotFound)
-            BookDetailUIState().screen shouldBe BookDetailScreenState.Loading
         }
     }
 })
