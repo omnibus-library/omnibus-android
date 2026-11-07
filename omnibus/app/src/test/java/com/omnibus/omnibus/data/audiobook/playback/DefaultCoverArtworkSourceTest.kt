@@ -2,7 +2,7 @@ package com.omnibus.omnibus.data.audiobook.playback
 
 import com.omnibus.omnibus.data.cover.CoverImageResult
 import com.omnibus.omnibus.data.cover.CoverSize
-import com.omnibus.omnibus.data.cover.FakeCoverRepository
+import com.omnibus.omnibus.data.cover.TestCoverRepository
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import okio.ByteString.Companion.encodeUtf8
@@ -13,7 +13,7 @@ class DefaultCoverArtworkSourceTest : DescribeSpec({
 
         // TC-46
         it("maps cover results (AND-STK-8)") {
-            val repository = FakeCoverRepository()
+            val repository = TestCoverRepository()
             val source = DefaultCoverArtworkSource(repository)
             val bytes = "cover".encodeUtf8()
 

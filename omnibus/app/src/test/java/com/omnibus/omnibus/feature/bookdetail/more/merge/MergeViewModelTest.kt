@@ -4,13 +4,13 @@ package com.omnibus.omnibus.feature.bookdetail.more.merge
 
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.merge.MergeBooksResult
 import com.omnibus.omnibus.data.merge.MergeCandidatesResult
 import com.omnibus.omnibus.data.merge.MergeError
 import com.omnibus.omnibus.data.merge.MergeReceipt
 import com.omnibus.omnibus.data.merge.UndoMergeResult
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
@@ -32,8 +32,8 @@ import kotlinx.coroutines.test.setMain
 /** The state of one case: the ViewModel under test and its fakes. */
 private class Subject(
     val repo: ScriptedMergeRepository,
-    val auth: FakeAuthRepository,
-    val monitor: FakeConnectivityMonitor,
+    val auth: TestAuthRepository,
+    val monitor: TestConnectivityMonitor,
     val vm: MergeViewModel,
 )
 
@@ -55,8 +55,8 @@ private fun runMergeCase(
     block: suspend TestScope.(Subject) -> Unit,
 ) = runTest {
     Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-    val auth = FakeAuthRepository().also { it.currentUserState.value = user }
-    val monitor = FakeConnectivityMonitor(online)
+    val auth = TestAuthRepository().also { it.currentUserState.value = user }
+    val monitor = TestConnectivityMonitor(online)
     val vm = MergeViewModel(BOOK_UUID, repo, auth, monitor)
     try {
         runCurrent()

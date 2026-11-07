@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.bookmarks
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.di.ClientIdSource
@@ -127,16 +127,16 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
      */
     fun repositoryFor(
         held: Boolean = false,
-        urls: FakeServerBaseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/")),
+        urls: TestServerBaseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/")),
     ): DefaultBookmarksRepository {
         val scope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined)
         return DefaultBookmarksRepository(
             ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
             omnibusHttpClient = OmnibusHttpClient(
                 baseUrlProvider = urls,
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+                authTokenProvider = TestAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             applicationScope = scope,
             timeSource = TimeSource { NOW_MS },
@@ -237,7 +237,7 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
             }
 
             // No server: the list never loaded, so the state stays Failed and the add is refused without a request.
-            val offline = FakeServerBaseUrlProvider(baseUrl = null)
+            val offline = TestServerBaseUrlProvider(baseUrl = null)
             val repository = repositoryFor(urls = offline)
             val observed = Observed(repository, UUID, newScope(Dispatchers.Unconfined))
             observed.awaitLast(BookmarksState.Failed)
@@ -359,7 +359,7 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
                 repository.refresh(UUID)
             }
 
-            val repository = repositoryFor(urls = FakeServerBaseUrlProvider(baseUrl = null))
+            val repository = repositoryFor(urls = TestServerBaseUrlProvider(baseUrl = null))
             repository.getBookmarksFlow(UUID).first() shouldBe BookmarksState.Failed
             repository.refresh(UUID)
         }
@@ -476,7 +476,7 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
             }
 
             // No server: the row was loaded before the server went away, so it comes back where it was.
-            val urls = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+            val urls = TestServerBaseUrlProvider(baseUrl = server.url("/"))
             val repository = repositoryFor(urls = urls)
             script.answer("GET", reply(200, "[${row(1, "client-1")},${row(2, "client-2")},${row(3, "client-3")}]"))
             val observed = Observed(repository, UUID, newScope(Dispatchers.Unconfined))

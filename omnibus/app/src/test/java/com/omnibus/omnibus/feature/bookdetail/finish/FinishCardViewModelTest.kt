@@ -1,18 +1,18 @@
 package com.omnibus.omnibus.feature.bookdetail.finish
 
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
-import com.omnibus.omnibus.data.highlights.FakeHighlightsRepository
+import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
 import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.highlights.HighlightsState
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.FakeReviewsRepository
+import com.omnibus.omnibus.data.reviews.TestReviewsRepository
 import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewsState
 import com.omnibus.omnibus.data.series.SeriesMember
@@ -63,10 +63,10 @@ private val threeSessions = listOf(
 
 /** A ViewModel with its fakes, whose state is kept active by [collecting] until the block ends. */
 private class Harness(
-    val status: FakeReadStatusRepository,
-    val progress: FakeBookProgressRepository,
-    val reviews: FakeReviewsRepository,
-    val highlights: FakeHighlightsRepository,
+    val status: TestReadStatusRepository,
+    val progress: TestBookProgressRepository,
+    val reviews: TestReviewsRepository,
+    val highlights: TestHighlightsRepository,
 ) {
     /** Keeps the shared state active, as a subscribed screen would. */
     private val collecting = CollectingScope()
@@ -81,10 +81,10 @@ private class Harness(
 
 /** Runs [block] on a fresh [Harness] built from the given fakes, then stops its collection. */
 private inline fun withHarness(
-    status: FakeReadStatusRepository = FakeReadStatusRepository(),
-    progress: FakeBookProgressRepository = FakeBookProgressRepository(),
-    reviews: FakeReviewsRepository = FakeReviewsRepository(),
-    highlights: FakeHighlightsRepository = FakeHighlightsRepository(),
+    status: TestReadStatusRepository = TestReadStatusRepository(),
+    progress: TestBookProgressRepository = TestBookProgressRepository(),
+    reviews: TestReviewsRepository = TestReviewsRepository(),
+    highlights: TestHighlightsRepository = TestHighlightsRepository(),
     block: Harness.() -> Unit,
 ) {
     val harness = Harness(status, progress, reviews, highlights)
@@ -104,7 +104,7 @@ class FinishCardViewModelTest : DescribeSpec({
     describe("the celebration") {
 
         it("TC-20: marking the book Finished celebrates once") {
-            val status = FakeReadStatusRepository()
+            val status = TestReadStatusRepository()
             status.seed(UUID, reading())
             withHarness(status = status) {
                 vm.celebration.value shouldBe FinishCelebration(0, 0)
@@ -116,19 +116,19 @@ class FinishCardViewModelTest : DescribeSpec({
         }
 
         it("TC-21: opening an already finished book does not celebrate") {
-            val already = FakeReadStatusRepository()
+            val already = TestReadStatusRepository()
             already.seed(UUID, finishedRecord())
             withHarness(status = already) {
                 vm.celebration.value shouldBe FinishCelebration(0, 0)
             }
 
-            val unknown = FakeReadStatusRepository()
+            val unknown = TestReadStatusRepository()
             withHarness(status = unknown) {
                 status.seed(UUID, finishedRecord())
                 vm.celebration.value shouldBe FinishCelebration(0, 0)
             }
 
-            val failed = FakeReadStatusRepository()
+            val failed = TestReadStatusRepository()
             failed.seed(UUID, ReadStatusState.Failed)
             withHarness(status = failed) {
                 status.seed(UUID, finishedRecord())
@@ -137,7 +137,7 @@ class FinishCardViewModelTest : DescribeSpec({
         }
 
         it("TC-22: a cover tap throws the burst again only after a celebration") {
-            val status = FakeReadStatusRepository()
+            val status = TestReadStatusRepository()
             status.seed(UUID, reading())
             withHarness(status = status) {
                 vm.replayBurst()
@@ -155,7 +155,7 @@ class FinishCardViewModelTest : DescribeSpec({
     describe("the reads") {
 
         it("TC-23: an unfinished book reads nothing") {
-            val status = FakeReadStatusRepository()
+            val status = TestReadStatusRepository()
             status.seed(UUID, reading())
             withHarness(status = status) {
                 vm.reload(0)
@@ -171,12 +171,12 @@ class FinishCardViewModelTest : DescribeSpec({
         }
 
         it("TC-24: a finished book loads its totals and reloads them per key") {
-            val status = FakeReadStatusRepository()
+            val status = TestReadStatusRepository()
             status.seed(UUID, finishedRecord())
-            val progress = FakeBookProgressRepository()
-            val reviews = FakeReviewsRepository()
+            val progress = TestBookProgressRepository()
+            val reviews = TestReviewsRepository()
             reviews.seed(UUID, rated())
-            val highlights = FakeHighlightsRepository()
+            val highlights = TestHighlightsRepository()
             highlights.seed(UUID, loadedHighlights(4))
 
             withHarness(status, progress, reviews, highlights) {
@@ -196,7 +196,7 @@ class FinishCardViewModelTest : DescribeSpec({
         }
 
         it("TC-25: member statuses are read once per key, without this book") {
-            val status = FakeReadStatusRepository()
+            val status = TestReadStatusRepository()
             status.seed(UUID, finishedRecord())
             status.readResults += ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, 1L, null))
             status.readResults += ReadStatusState.Failed

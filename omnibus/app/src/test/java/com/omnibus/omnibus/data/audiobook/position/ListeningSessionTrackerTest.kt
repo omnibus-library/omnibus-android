@@ -5,7 +5,7 @@ import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
 import com.omnibus.omnibus.di.ClientIdSource
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.withClue
@@ -61,9 +61,9 @@ class ListeningSessionTrackerTest : DescribeSpec({
     /** A tracker with its fakes. Ids are "c-1", "c-2", and so on. */
     class Harness(scheduler: TestCoroutineScheduler) {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-        val repo = FakeListeningProgressRepository()
-        val time = FakeTimeSource()
-        val zone = FakeDeviceTimeZone()
+        val repo = TestListeningProgressRepository()
+        val time = TestTimeSource()
+        val zone = TestDeviceTimeZone()
         private var minted = 0
         val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, zone, scope)
     }

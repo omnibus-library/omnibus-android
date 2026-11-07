@@ -4,7 +4,7 @@ import com.omnibus.omnibus.data.audiobook.di.PLAYBACK_RATE_DATASTORE_FILE
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.ControllerRig
 import com.omnibus.omnibus.data.audiobook.rate.remote.RateFetch
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.core.spec.style.DescribeSpec
@@ -118,10 +118,10 @@ class PlaybackRateWiringTest : DescribeSpec({
 
 /** A rate store over a fake API and cache, built into a [ControllerRig] on the spec's clock. [close] ends both scopes. */
 private class RateWiring(scheduler: TestCoroutineScheduler) {
-    val api = FakePlaybackRateApi()
-    val cache = FakePlaybackRateCache()
+    val api = TestPlaybackRateApi()
+    val cache = TestPlaybackRateCache()
     private val storeScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), storeScope)
+    val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), storeScope)
     val rig = ControllerRig(scheduler, rateStore = store)
 
     fun close() {

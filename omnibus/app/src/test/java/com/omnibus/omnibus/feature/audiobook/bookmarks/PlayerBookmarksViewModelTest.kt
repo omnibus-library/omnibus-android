@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.audiobook.bookmarks
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.chapters
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
@@ -10,10 +10,10 @@ import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.bookmarks.BookmarkError
 import com.omnibus.omnibus.data.bookmarks.BookmarkWriteResult
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksContent
 import com.omnibus.omnibus.testing.CollectingScope
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
@@ -39,9 +39,9 @@ private fun bookmark(id: Long?, position: String = "3725", clientId: String? = n
 
 /** The player's controller, repository, clock and ViewModel, with the cell's flow kept hot. */
 private class PlayerHarness(initial: PlaybackState = PlaybackState()) {
-    val controller = FakeAudiobookController(initial)
-    val repository = FakeBookmarksRepository()
-    val time = FakeTimeSource(NOW)
+    val controller = TestAudiobookController(initial)
+    val repository = TestBookmarksRepository()
+    val time = TestTimeSource(NOW)
     val collecting = CollectingScope()
     val vm = PlayerBookmarksViewModel(UUID, controller, repository, time)
         .also { collecting.collect(it.canAddBookmark) }

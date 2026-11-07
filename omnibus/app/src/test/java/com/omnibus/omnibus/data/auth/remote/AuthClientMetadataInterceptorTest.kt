@@ -33,7 +33,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
     beforeEach {
         server = MockWebServer().apply { start() }
         client = OkHttpClient.Builder()
-            .addInterceptor(AuthClientMetadataInterceptor(FakeClientInfo(DEVICE, VERSION)))
+            .addInterceptor(AuthClientMetadataInterceptor(TestClientInfo(DEVICE, VERSION)))
             .build()
     }
 

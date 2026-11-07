@@ -36,7 +36,7 @@ class CoverFetcherTest : DescribeSpec({
             .create(thumbnail, options, mockk(relaxed = true))
 
         it("TC-187: asks the repository for the thumbnail's uuid and size") {
-            val repository = FakeCoverRepository(CoverImageResult.NotFound)
+            val repository = TestCoverRepository(CoverImageResult.NotFound)
 
             runCatching { fetcher(repository).fetch() }
 
@@ -44,7 +44,7 @@ class CoverFetcherTest : DescribeSpec({
         }
 
         it("TC-188: serves bytes from the server as a NETWORK source") {
-            val repository = FakeCoverRepository(
+            val repository = TestCoverRepository(
                 CoverImageResult.Found("art".encodeUtf8(), CoverSize.Md, fromCache = false),
             )
 
@@ -56,7 +56,7 @@ class CoverFetcherTest : DescribeSpec({
         }
 
         it("TC-189: serves cached bytes as a DISK source") {
-            val repository = FakeCoverRepository(
+            val repository = TestCoverRepository(
                 CoverImageResult.Found("art".encodeUtf8(), CoverSize.Lg, fromCache = true),
             )
 
@@ -67,11 +67,11 @@ class CoverFetcherTest : DescribeSpec({
         }
 
         it("TC-190: fails with an IOException when the repository has no cover") {
-            shouldThrow<IOException> { fetcher(FakeCoverRepository(CoverImageResult.NotFound)).fetch() }
+            shouldThrow<IOException> { fetcher(TestCoverRepository(CoverImageResult.NotFound)).fetch() }
         }
 
         it("TC-190: fails with an IOException when the repository errors") {
-            shouldThrow<IOException> { fetcher(FakeCoverRepository(CoverImageResult.Error)).fetch() }
+            shouldThrow<IOException> { fetcher(TestCoverRepository(CoverImageResult.Error)).fetch() }
         }
     }
 })

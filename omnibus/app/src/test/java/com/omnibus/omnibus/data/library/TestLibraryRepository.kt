@@ -1,0 +1,89 @@
+package com.omnibus.omnibus.data.library
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+
+/**
+ * In-memory [LibraryRepository] for tests. Each [getBooksPageFlow] call takes the next queued script, or
+ * emits [defaultResult] when none is queued, and every call is recorded in [pageRequests].
+ */
+class TestLibraryRepository : LibraryRepository {
+
+    /** The arguments of one [getBooksPageFlow] call, in call order. */
+    data class PageRequest(val query: BooksPageQuery, val cursor: String?)
+
+    val pageRequests = mutableListOf<PageRequest>()
+
+    private val scripts = ArrayDeque<suspend FlowCollector<LibraryPageResult>.() -> Unit>()
+
+    /** Emitted by [getBooksPageFlow] when no script is queued. */
+    var defaultResult: LibraryPageResult = LibraryPageResult.Success(BooksPage(emptyList(), null, null, null))
+
+    /** Queues a call that emits [result] once. */
+    fun enqueue(result: LibraryPageResult) {
+        scripts.addLast { emit(result) }
+    }
+
+    /** Queues a call that holds until [deferred] completes, to observe requests in flight. */
+    fun enqueue(deferred: CompletableDeferred<LibraryPageResult>) {
+        scripts.addLast { emit(deferred.await()) }
+    }
+
+    /** Queues a call with several emissions, such as a cached page followed by a network page. */
+    fun enqueueFlow(script: suspend FlowCollector<LibraryPageResult>.() -> Unit) {
+        scripts.addLast(script)
+    }
+
+    override fun getBooksPageFlow(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
+        pageRequests += PageRequest(query, cursor)
+        val script = scripts.removeFirstOrNull()
+        if (script != null) script(this) else emit(defaultResult)
+    }
+
+    /** The number of [getRecentProgressFlow] calls, in call order. */
+    var recentProgressRequests = 0
+
+    private val recentScripts = ArrayDeque<suspend FlowCollector<RecentProgressResult>.() -> Unit>()
+
+    /** Emitted by [getRecentProgressFlow] when no script is queued. */
+    var defaultRecentProgress: RecentProgressResult = RecentProgressResult.Success(emptyList())
+
+    /** Queues a [getRecentProgressFlow] call that emits [result] once. */
+    fun enqueueRecent(result: RecentProgressResult) {
+        recentScripts.addLast { emit(result) }
+    }
+
+    /** Queues a [getRecentProgressFlow] call that holds until [deferred] completes. */
+    fun enqueueRecent(deferred: CompletableDeferred<RecentProgressResult>) {
+        recentScripts.addLast { emit(deferred.await()) }
+    }
+
+    override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flow {
+        recentProgressRequests++
+        val script = recentScripts.removeFirstOrNull()
+        if (script != null) script(this) else emit(defaultRecentProgress)
+    }
+
+    override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.Success(emptyList()))
+
+    /** The uuid of every [getBookFlow] call, in call order. */
+    val bookRequests = mutableListOf<String>()
+
+    /** Emitted by [getBookFlow] unless [pendingBook] is set. */
+    var bookResult: BookResult = BookResult.Success(testBook(1))
+
+    /** When set, [getBookFlow] holds until this completes, to observe the loading state. */
+    var pendingBook: CompletableDeferred<BookResult>? = null
+
+    override fun getBookFlow(uuid: String): Flow<BookResult> = flow {
+        bookRequests += uuid
+        emit(pendingBook?.await() ?: bookResult)
+    }
+}
+
+/** A successful page of books with the given ids, built with [testBook]. */
+fun page(vararg ids: Long, cursor: String? = null): LibraryPageResult.Success =
+    LibraryPageResult.Success(BooksPage(ids.map { testBook(it) }, cursor, null, null))

@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.more.delete
 
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.deletion.DeleteItemsResult
 import com.omnibus.omnibus.data.deletion.DeletableCopy
 import com.omnibus.omnibus.data.deletion.DeletableFile
@@ -9,8 +9,8 @@ import com.omnibus.omnibus.data.deletion.DeletionError
 import com.omnibus.omnibus.data.deletion.DeletionImpact
 import com.omnibus.omnibus.data.deletion.DeletionManifest
 import com.omnibus.omnibus.data.deletion.DeletionManifestResult
-import com.omnibus.omnibus.data.deletion.FakeDeletionRepository
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.deletion.TestDeletionRepository
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -42,9 +42,9 @@ private val itemsManifest = manifestOf(files = listOf(file(1), file(2)), copies 
 /** The ViewModel with its fakes, so a test can drive the repository and the signed-in user. */
 private class Harness(
     val vm: DeleteBookViewModel,
-    val repo: FakeDeletionRepository,
-    val auth: FakeAuthRepository,
-    val monitor: FakeConnectivityMonitor,
+    val repo: TestDeletionRepository,
+    val auth: TestAuthRepository,
+    val monitor: TestConnectivityMonitor,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,9 +55,9 @@ class DeleteBookViewModelTest : DescribeSpec({
 
     /** The one place a test builds the ViewModel, so later changes only touch this helper. */
     fun harness(admin: Boolean = true, online: Boolean = true): Harness {
-        val repo = FakeDeletionRepository()
-        val auth = FakeAuthRepository().apply { currentUserState.value = user(admin) }
-        val monitor = FakeConnectivityMonitor(online)
+        val repo = TestDeletionRepository()
+        val auth = TestAuthRepository().apply { currentUserState.value = user(admin) }
+        val monitor = TestConnectivityMonitor(online)
         return Harness(DeleteBookViewModel(BOOK_UUID, repo, auth, monitor), repo, auth, monitor)
     }
 

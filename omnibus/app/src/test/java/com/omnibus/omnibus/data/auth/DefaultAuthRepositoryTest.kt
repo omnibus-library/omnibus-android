@@ -1,11 +1,11 @@
 package com.omnibus.omnibus.data.auth
 
-import com.omnibus.omnibus.data.auth.local.FakeAuthTokenStore
+import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.local.StoredAuthTokenProvider
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.auth.remote.UserInfoDto
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -33,8 +33,8 @@ import mockwebserver3.SocketEffect
 class DefaultAuthRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
-    lateinit var tokenStore: FakeAuthTokenStore
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var tokenStore: TestAuthTokenStore
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     lateinit var repository: DefaultAuthRepository
 
     fun enqueue(code: Int, body: String = "") {
@@ -48,8 +48,8 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     beforeEach {
         server = MockWebServer().apply { start() }
 
-        tokenStore = FakeAuthTokenStore()
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        tokenStore = TestAuthTokenStore()
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
 
         repository = DefaultAuthRepository(
             ioDispatcher = Dispatchers.Unconfined,
@@ -58,7 +58,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 // The real provider, so a 401 handled by the client really clears the store.
                 authTokenProvider = StoredAuthTokenProvider(tokenStore),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             authTokenStore = tokenStore,
         )

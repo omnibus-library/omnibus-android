@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.data.audiobook.playback
 
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 
@@ -10,7 +10,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("coalesces different same-direction commands within 1 s (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true
@@ -20,7 +20,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("a repeat of the same command moves again (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true
@@ -32,7 +32,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("opposite directions both move (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.SkipForward) shouldBe true
@@ -42,7 +42,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("a back-direction pair coalesces (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.PreviousTrack) shouldBe true
@@ -52,7 +52,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("moves again after 1 s (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true
@@ -62,7 +62,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("999 ms still coalesces (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true
@@ -72,7 +72,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("a third command after a coalesced pair moves (I-SYS-3)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true
@@ -84,7 +84,7 @@ class RemotePressFilterTest : DescribeSpec({
 
         // TC-34
         it("a negative elapsed time counts as the same press (I-SYS-3)") {
-            val clock = FakeTimeSource(1_000L)
+            val clock = TestTimeSource(1_000L)
             val filter = RemotePressFilter(clock)
 
             filter.shouldMove(RemoteTransport.NextTrack) shouldBe true

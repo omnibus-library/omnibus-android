@@ -1,16 +1,16 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.chips.edit
 
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.metadata.FakeMetadataRepository
+import com.omnibus.omnibus.data.metadata.TestMetadataRepository
 import com.omnibus.omnibus.data.metadata.MetadataError
 import com.omnibus.omnibus.data.metadata.MetadataListKind
 import com.omnibus.omnibus.data.metadata.MetadataWriteResult
 import com.omnibus.omnibus.data.metadata.VocabularyEntry
 import com.omnibus.omnibus.data.metadata.VocabularyResult
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -26,9 +26,9 @@ private val Tags = MetadataListKind.Tags
 
 /** The editor under test, with the fakes it talks to. */
 private class Harness(
-    val repository: FakeMetadataRepository = FakeMetadataRepository(),
-    val auth: FakeAuthRepository = FakeAuthRepository(),
-    val connectivity: FakeConnectivityMonitor = FakeConnectivityMonitor(online = true),
+    val repository: TestMetadataRepository = TestMetadataRepository(),
+    val auth: TestAuthRepository = TestAuthRepository(),
+    val connectivity: TestConnectivityMonitor = TestConnectivityMonitor(online = true),
 ) {
     val viewModel = ChipEditViewModel(
         bookUuid = "uuid-1",
@@ -109,7 +109,7 @@ class ChipEditViewModelTest : DescribeSpec({
             h.state.genres shouldBe listOf("Noir", "Epic", "Thriller")
             h.state.tags shouldBe listOf("Cozy")
             h.repository.writes shouldBe listOf(
-                FakeMetadataRepository.Write("uuid-1", Genres, listOf("Noir", "Epic", "Thriller")),
+                TestMetadataRepository.Write("uuid-1", Genres, listOf("Noir", "Epic", "Thriller")),
             )
             held.complete(MetadataWriteResult.Superseded)
         }
@@ -151,11 +151,11 @@ class ChipEditViewModelTest : DescribeSpec({
 
             h.viewModel.remove(Genres, "Noir")
             h.state.genres shouldBe listOf("Epic")
-            h.repository.writes.last() shouldBe FakeMetadataRepository.Write("uuid-1", Genres, listOf("Epic"))
+            h.repository.writes.last() shouldBe TestMetadataRepository.Write("uuid-1", Genres, listOf("Epic"))
 
             h.viewModel.remove(Tags, "Cozy")
             h.state.tags shouldBe emptyList()
-            h.repository.writes.last() shouldBe FakeMetadataRepository.Write("uuid-1", Tags, emptyList())
+            h.repository.writes.last() shouldBe TestMetadataRepository.Write("uuid-1", Tags, emptyList())
         }
     }
 
@@ -330,7 +330,7 @@ class ChipEditViewModelTest : DescribeSpec({
     describe("offline") {
 
         it("TC-50: ignores open, add and remove, and makes no repository call") {
-            val h = Harness(connectivity = FakeConnectivityMonitor(online = false)).ready()
+            val h = Harness(connectivity = TestConnectivityMonitor(online = false)).ready()
 
             h.viewModel.open(Genres)
             h.viewModel.add(Genres, "Thriller")

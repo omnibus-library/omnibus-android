@@ -1,12 +1,12 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.sheet
 
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
-import com.omnibus.omnibus.data.highlights.FakeHighlightsRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
+import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
 import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.highlights.HighlightsState
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.FakeReviewsRepository
+import com.omnibus.omnibus.data.reviews.TestReviewsRepository
 import com.omnibus.omnibus.data.reviews.Patch
 import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewError
@@ -59,9 +59,9 @@ class ReviewSheetViewModelTest : DescribeSpec({
 
     /** A ViewModel on fresh fakes. The fakes are public so each test can script them. */
     class Rig(val uuid: String) {
-        val reviews = FakeReviewsRepository()
-        val highlights = FakeHighlightsRepository()
-        val progress = FakeBookProgressRepository()
+        val reviews = TestReviewsRepository()
+        val highlights = TestHighlightsRepository()
+        val progress = TestBookProgressRepository()
         val pulse = ReviewSavePulse()
         val vm = ReviewSheetViewModel(uuid, reviews, highlights, progress, pulse, TimeSource { 1_000L })
 

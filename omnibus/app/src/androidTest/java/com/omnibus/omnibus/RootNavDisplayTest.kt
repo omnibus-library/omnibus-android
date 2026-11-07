@@ -52,7 +52,7 @@ class RootNavDisplayTest {
     private val stack = mutableStateListOf<NavKey>(SignedInShellRoute)
     private val isSignedIn = mutableStateOf<Boolean?>(true)
 
-    private fun setRoot(shell: @Composable () -> Unit = { FakeShell() }) {
+    private fun setRoot(shell: @Composable () -> Unit = { TestShell() }) {
         rule.setContent {
             OmnibusTheme {
                 RootNavDisplay(
@@ -204,7 +204,7 @@ class RootNavDisplayTest {
 
     /** The shell stand-in: a counter that survives leaving the reader, and a tab bar node. */
     @Composable
-    private fun FakeShell() {
+    private fun TestShell() {
         val count = rememberSaveable { mutableIntStateOf(0) }
         Column(Modifier.fillMaxSize()) {
             Text(

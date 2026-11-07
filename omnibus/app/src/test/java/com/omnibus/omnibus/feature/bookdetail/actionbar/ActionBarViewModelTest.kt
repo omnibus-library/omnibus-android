@@ -3,14 +3,14 @@ package com.omnibus.omnibus.feature.bookdetail.actionbar
 import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.bookprogress.chapters
 import com.omnibus.omnibus.data.bookprogress.readingRecord
-import com.omnibus.omnibus.data.library.FakeBookAvailability
+import com.omnibus.omnibus.data.library.TestBookAvailability
 import com.omnibus.omnibus.data.library.ProgressFormat
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
@@ -37,11 +37,11 @@ private fun known(status: ReadStatus) = ReadStatusState.Known(ReadStatusRecord(s
  * first answer, and [availability] answers for a book that is not online.
  */
 private class Harness(online: Boolean = true) {
-    val progress = FakeBookProgressRepository()
-    val status = FakeReadStatusRepository()
-    val connectivity = FakeConnectivityMonitor(online)
-    val availability = FakeBookAvailability(answer = false)
-    val controller = FakeAudiobookController()
+    val progress = TestBookProgressRepository()
+    val status = TestReadStatusRepository()
+    val connectivity = TestConnectivityMonitor(online)
+    val availability = TestBookAvailability(answer = false)
+    val controller = TestAudiobookController()
     val collecting = CollectingScope()
     val vm = ActionBarViewModel(UUID, progress, status, connectivity, availability, controller)
         .also { collecting.collect(it.uiState) }
@@ -251,8 +251,8 @@ class ActionBarViewModelTest : DescribeSpec({
                 vm.onImmersiveRead(5L)
                 vm.onImmersiveRead(null)
                 controller.commands shouldBe listOf(
-                    FakeAudiobookController.Command.Load(UUID, 5L, null, true),
-                    FakeAudiobookController.Command.Load(UUID, null, null, true),
+                    TestAudiobookController.Command.Load(UUID, 5L, null, true),
+                    TestAudiobookController.Command.Load(UUID, null, null, true),
                 )
             }
         }

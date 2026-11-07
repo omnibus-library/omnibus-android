@@ -1,12 +1,12 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.position.local.AudioPositionStore
-import com.omnibus.omnibus.data.audiobook.position.local.FakeAudioPositionStore
+import com.omnibus.omnibus.data.audiobook.position.local.TestAudioPositionStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -62,8 +62,8 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
     lateinit var script: ScriptedDispatcher
-    lateinit var store: FakeAudioPositionStore
-    lateinit var connectivity: FakeConnectivityMonitor
+    lateinit var store: TestAudioPositionStore
+    lateinit var connectivity: TestConnectivityMonitor
     lateinit var applicationScope: CoroutineScope
 
     val position = AudioPosition("book-1", 12.5, 11, 7)
@@ -79,10 +79,10 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
     ) = DefaultListeningProgressRepository(
         ioDispatcher = Dispatchers.Unconfined,
         omnibusHttpClient = OmnibusHttpClient(
-            baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
-            authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(token = "secret"),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         ),
         store = repositoryStore,
         connectivity = connectivity,
@@ -109,8 +109,8 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             dispatcher = script
             start()
         }
-        store = FakeAudioPositionStore()
-        connectivity = FakeConnectivityMonitor(online = true)
+        store = TestAudioPositionStore()
+        connectivity = TestConnectivityMonitor(online = true)
         applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     }
 
@@ -220,7 +220,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             rows.forEach { (row, name) ->
                 withClue(name) {
                     val (cached, pending, expected) = row
-                    val rowStore = FakeAudioPositionStore(
+                    val rowStore = TestAudioPositionStore(
                         cached = mapOf("book-1" to cached),
                         pending = mapOf("book-1" to pending),
                     )
@@ -229,15 +229,15 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             }
 
             withClue("only cached") {
-                val rowStore = FakeAudioPositionStore(cached = mapOf("book-1" to at(10.0, 10)))
+                val rowStore = TestAudioPositionStore(cached = mapOf("book-1" to at(10.0, 10)))
                 repositoryFor(null, rowStore).localCandidate("book-1") shouldBe at(10.0, 10)
             }
             withClue("only pending") {
-                val rowStore = FakeAudioPositionStore(pending = mapOf("book-1" to at(20.0, 20)))
+                val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to at(20.0, 20)))
                 repositoryFor(null, rowStore).localCandidate("book-1") shouldBe at(20.0, 20)
             }
             withClue("neither") {
-                repositoryFor(null, FakeAudioPositionStore()).localCandidate("book-1").shouldBeNull()
+                repositoryFor(null, TestAudioPositionStore()).localCandidate("book-1").shouldBeNull()
             }
         }
     }
@@ -298,7 +298,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
             rows.forEach { (response, name) ->
                 withClue(name) {
-                    val rowStore = FakeAudioPositionStore()
+                    val rowStore = TestAudioPositionStore()
                     script.answer(response)
                     repositoryFor(server.url("/"), rowStore).save(position, push = true)
                     rowStore.pendingPositions shouldBe mapOf("book-1" to position)
@@ -306,13 +306,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             }
 
             withClue("unreachable server") {
-                val rowStore = FakeAudioPositionStore()
+                val rowStore = TestAudioPositionStore()
                 repositoryFor(unreachableUrl(), rowStore).save(position, push = true)
                 rowStore.pendingPositions shouldBe mapOf("book-1" to position)
             }
 
             withClue("no saved server") {
-                val rowStore = FakeAudioPositionStore()
+                val rowStore = TestAudioPositionStore()
                 repositoryFor(null, rowStore).save(position, push = true)
                 rowStore.pendingPositions shouldBe mapOf("book-1" to position)
             }
@@ -321,7 +321,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         it("TC-19: any other 4xx drops the write (I-SAVE-4)") {
             listOf(400, 403, 404, 422).forEach { code ->
                 withClue("$code") {
-                    val rowStore = FakeAudioPositionStore()
+                    val rowStore = TestAudioPositionStore()
                     script.answer(MockResponse.Builder().code(code).build())
                     repositoryFor(server.url("/"), rowStore).save(position, push = true)
                     rowStore.pendingPositions.shouldBeEmpty()
@@ -333,7 +333,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         it("TC-20: a flush sends every pending write once (I-SAVE-4)") {
             val books = listOf("book-a", "book-b", "book-c")
             val pending = books.associateWith { AudioPosition(it, 5.0, 11, 3) }
-            val offlineStore = FakeAudioPositionStore(pending = pending)
+            val offlineStore = TestAudioPositionStore(pending = pending)
             connectivity.isOnline.value = false
             repositoryFor(server.url("/"), offlineStore)
             books.forEach { _ -> script.answer(MockResponse.Builder().code(200).build()) }
@@ -367,7 +367,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             val rows = listOf(true to "built online", false to "built offline")
             rows.forEach { (online, name) ->
                 withClue(name) {
-                    val rowStore = FakeAudioPositionStore(pending = mapOf("book-1" to position))
+                    val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to position))
                     connectivity.isOnline.value = online
                     script.answer(MockResponse.Builder().code(200).build())
                     val requestsBefore = server.requestCount
@@ -440,7 +440,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
             rows.forEach { (response, expected) ->
                 withClue("${response.code} expects ${expected.size} kept") {
-                    val rowStore = FakeAudioPositionStore()
+                    val rowStore = TestAudioPositionStore()
                     script.answer(response)
                     repositoryFor(server.url("/"), rowStore).queueSession(report)
                     rowStore.sessions() shouldBe expected
@@ -448,7 +448,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             }
 
             withClue("unreachable server expects 1 kept") {
-                val rowStore = FakeAudioPositionStore()
+                val rowStore = TestAudioPositionStore()
                 repositoryFor(unreachableUrl(), rowStore).queueSession(report)
                 rowStore.sessions() shouldBe listOf(report)
             }
@@ -512,7 +512,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         it("TC-29: a flush sends positions then sessions (I-SAVE-4, I-SESS-3)") {
             connectivity.isOnline.value = false
-            val rowStore = FakeAudioPositionStore(pending = mapOf("book-1" to position))
+            val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to position))
             rowStore.queueSessions(listOf(report))
             repositoryFor(server.url("/"), rowStore)
             script.answer(MockResponse.Builder().code(200).build())

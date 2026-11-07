@@ -2,9 +2,9 @@ package com.omnibus.omnibus.data.audiobook.crossformat
 
 import com.omnibus.omnibus.data.audiobook.crossformat.local.CrossFormatDismissStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -71,10 +71,10 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
     ) = DefaultCrossFormatRepository(
         ioDispatcher = dispatcher,
         omnibusHttpClient = OmnibusHttpClient(
-            baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
-            authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(token = "secret"),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         ),
         dismissStore = dismissStore,
     )

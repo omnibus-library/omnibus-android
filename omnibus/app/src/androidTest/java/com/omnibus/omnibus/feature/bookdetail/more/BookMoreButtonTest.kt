@@ -40,7 +40,7 @@ class BookMoreButtonTest {
     // TC-1
     @Test
     fun issue116_tc1_moreButtonIsA44dpSquareButton() {
-        rule.setMoreButton(listOf(FakeEntry("Row")))
+        rule.setMoreButton(listOf(TestEntry("Row")))
 
         val button = rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON)
         button.assertIsDisplayed()
@@ -61,7 +61,7 @@ class BookMoreButtonTest {
         val tester = StateRestorationTester(rule)
         tester.setContent {
             OmnibusTheme(darkTheme = true) {
-                BookMoreButtonContent(testSectionContext(), listOf(FakeEntry("Row")))
+                BookMoreButtonContent(testSectionContext(), listOf(TestEntry("Row")))
             }
         }
         rule.onAllNodesWithTag(BookMoreTestTags.MENU).assertCountEquals(0)
@@ -78,7 +78,7 @@ class BookMoreButtonTest {
     fun issue116_tc71_entriesAreActivatedOnceTheMenuHasOpened() {
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = "Row",
                     overlay = { Text("activated=${LocalMoreMenuActivated.current}") },
                 ),

@@ -2,11 +2,11 @@ package com.omnibus.omnibus.data.configuration
 
 import android.util.Log
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import com.omnibus.omnibus.data.auth.local.FakeAuthTokenStore
+import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import io.kotest.core.spec.style.DescribeSpec
@@ -31,8 +31,8 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
     lateinit var server: MockWebServer
     lateinit var dataStoreDir: File
     lateinit var dataStoreScope: CoroutineScope
-    lateinit var tokenStore: FakeAuthTokenStore
-    lateinit var tokenProvider: FakeAuthTokenProvider
+    lateinit var tokenStore: TestAuthTokenStore
+    lateinit var tokenProvider: TestAuthTokenProvider
     lateinit var repository: DefaultServerConfigurationRepository
 
     beforeSpec {
@@ -48,8 +48,8 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
         server = MockWebServer().apply { start() }
         dataStoreDir = createTempDirectory("server-config-test").toFile()
         dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        tokenStore = FakeAuthTokenStore(initialToken = TOKEN)
-        tokenProvider = FakeAuthTokenProvider(token = TOKEN)
+        tokenStore = TestAuthTokenStore(initialToken = TOKEN)
+        tokenProvider = TestAuthTokenProvider(token = TOKEN)
         repository = DefaultServerConfigurationRepository(
             serverConfigPreferences = PreferenceDataStoreFactory.create(
                 scope = dataStoreScope,
@@ -57,10 +57,10 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
             ),
             omnibusHttpClient = OmnibusHttpClient(
                 // Validation targets the candidate address, never the saved one.
-                baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = null),
+                baseUrlProvider = TestServerBaseUrlProvider(baseUrl = null),
                 authTokenProvider = tokenProvider,
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             authTokenStore = tokenStore,
             ioDispatcher = Dispatchers.Unconfined,

@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.feature.configuration
 
-import com.omnibus.omnibus.data.configuration.FakeServerConfigurationRepository
+import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
 import com.omnibus.omnibus.data.configuration.ServerValidationResult
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
@@ -16,7 +16,7 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerConfigurationViewModelTest : DescribeSpec({
 
-    lateinit var repository: FakeServerConfigurationRepository
+    lateinit var repository: TestServerConfigurationRepository
     lateinit var collecting: CollectingScope
 
     fun createViewModel() = ServerConfigurationViewModel(repository).also {
@@ -27,7 +27,7 @@ class ServerConfigurationViewModelTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     beforeEach {
-        repository = FakeServerConfigurationRepository()
+        repository = TestServerConfigurationRepository()
         collecting = CollectingScope()
     }
 

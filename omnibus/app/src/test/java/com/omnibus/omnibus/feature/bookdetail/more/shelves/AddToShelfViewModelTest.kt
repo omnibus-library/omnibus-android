@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.feature.bookdetail.more.shelves
 
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.library.ShelfKind
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.shelves.BookShelves
 import com.omnibus.omnibus.data.shelves.BookShelvesResult
 import com.omnibus.omnibus.data.shelves.ShelfMatchMode
@@ -50,9 +50,9 @@ class AddToShelfViewModelTest : DescribeSpec({
     /** The one place a test builds the ViewModel, so later changes only touch this helper. */
     fun viewModel(
         repo: ScriptedShelvesRepository,
-        auth: FakeAuthRepository = FakeAuthRepository().also { it.currentUserState.value = user },
+        auth: TestAuthRepository = TestAuthRepository().also { it.currentUserState.value = user },
         online: Boolean = true,
-    ) = AddToShelfViewModel(bookUuid, repo, auth, FakeConnectivityMonitor(online))
+    ) = AddToShelfViewModel(bookUuid, repo, auth, TestConnectivityMonitor(online))
 
     fun AddToShelfViewModel.loaded(): ShelfSheetContent.Loaded =
         uiState.value.content as ShelfSheetContent.Loaded
@@ -92,7 +92,7 @@ class AddToShelfViewModelTest : DescribeSpec({
 
         it("#116 TC-34: a missing user, no server or a failed read shows Failed") {
             val noUser = ScriptedShelvesRepository()
-            val auth = FakeAuthRepository()
+            val auth = TestAuthRepository()
             viewModel(noUser, auth = auth).apply { openSheet() }.uiState.value.content shouldBe ShelfSheetContent.Failed
 
             val failures = listOf(
@@ -229,7 +229,7 @@ class AddToShelfViewModelTest : DescribeSpec({
                     ),
                 )
             }
-            val auth = FakeAuthRepository().also { it.currentUserState.value = admin }
+            val auth = TestAuthRepository().also { it.currentUserState.value = admin }
 
             viewModel(repo, auth = auth).apply { openSheet() }.loaded().manual.map { it.id } shouldBe listOf(1L)
         }
@@ -238,8 +238,8 @@ class AddToShelfViewModelTest : DescribeSpec({
     describe("connectivity") {
 
         it("#116 TC-16: isOnline follows the connectivity monitor and defaults to true") {
-            val monitor = FakeConnectivityMonitor(online = true)
-            val vm = AddToShelfViewModel(bookUuid, ScriptedShelvesRepository(), FakeAuthRepository(), monitor)
+            val monitor = TestConnectivityMonitor(online = true)
+            val vm = AddToShelfViewModel(bookUuid, ScriptedShelvesRepository(), TestAuthRepository(), monitor)
             vm.uiState.value.isOnline shouldBe true
 
             monitor.isOnline.value = false

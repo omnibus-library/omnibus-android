@@ -2,8 +2,8 @@ package com.omnibus.omnibus.feature.bookdetail.journal
 
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
-import com.omnibus.omnibus.data.journals.FakeJournalsRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.journals.TestJournalsRepository
 import com.omnibus.omnibus.data.journals.JournalEntry
 import com.omnibus.omnibus.data.journals.JournalsState
 import com.omnibus.omnibus.di.TimeSource
@@ -44,14 +44,14 @@ private fun viewer(id: Long) = CurrentUser(id = id, canEdit = false, canUpload =
 
 /** A ViewModel with its fakes. Its state is kept active by [collecting] until the test ends. */
 private class Harness(authRepository: AuthRepository) {
-    val repository = FakeJournalsRepository()
+    val repository = TestJournalsRepository()
     val collecting = CollectingScope()
     val vm = JournalViewModel(UUID, repository, authRepository, TimeSource { 1_000L })
         .also { collecting.collect(it.uiState) }
 }
 
 /** Runs [block] on a [Harness] built over [auth], and cancels its collection afterwards. */
-private inline fun withHarness(auth: AuthRepository = FakeAuthRepository(), block: Harness.() -> Unit) {
+private inline fun withHarness(auth: AuthRepository = TestAuthRepository(), block: Harness.() -> Unit) {
     val harness = Harness(auth)
     try {
         harness.block()
@@ -73,7 +73,7 @@ class JournalViewModelTest : DescribeSpec({
     describe("the list state") {
 
         it("TC-36: Loaded cards keep the repository's order and carry their fields and runs; nowMillis comes from the clock") {
-            val auth = FakeAuthRepository()
+            val auth = TestAuthRepository()
             withHarness(auth) {
                 auth.currentUserState.value = viewer(7)
                 repository.seed(
@@ -171,7 +171,7 @@ class JournalViewModelTest : DescribeSpec({
         }
 
         it("TC-41: own entries are the viewer's; with no viewer, and when the session read throws, every entry is another reader's") {
-            val auth = FakeAuthRepository()
+            val auth = TestAuthRepository()
             withHarness(auth) {
                 repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7), entry(2, authorId = 8))))
                 auth.currentUserState.value = viewer(7)
@@ -183,7 +183,7 @@ class JournalViewModelTest : DescribeSpec({
                 cards().map { it.isOwn } shouldBe listOf(false, false)
             }
 
-            val throwing = object : AuthRepository by FakeAuthRepository() {
+            val throwing = object : AuthRepository by TestAuthRepository() {
                 override val currentUser: Flow<CurrentUser?> = flow { throw IllegalStateException("boom") }
             }
             withHarness(throwing) {
@@ -193,7 +193,7 @@ class JournalViewModelTest : DescribeSpec({
         }
 
         it("TC-42: a viewer id that arrives after Loaded re-derives ownership without a refetch") {
-            val auth = FakeAuthRepository()
+            val auth = TestAuthRepository()
             withHarness(auth) {
                 repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7))))
                 cards().map { it.isOwn } shouldBe listOf(false)

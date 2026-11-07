@@ -193,7 +193,7 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
     describe("switching books") {
         // TC-56: the old book is unloaded and awaited before the sleep timer is cleared and the new manifest is read.
         it("awaits onUnload(SwitchBook) then clears the sleep timer (I-SLP-3)") {
-            val sleep = FakeSleepTimer()
+            val sleep = TestSleepTimer()
             val gate = CompletableDeferred<Unit>()
             val listener = CallRecorder(unloadGate = gate)
             val rig = ControllerRig(scheduler, sleepTimer = sleep, listeners = setOf(listener)).also { rigs += it }
@@ -290,7 +290,7 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
     describe("stop") {
         // TC-59: stop waits for onUnload(Stop), then stops the engine, clears the timer and resets the state.
         it("awaits onUnload(Stop) then clears everything (C2)") {
-            val sleep = FakeSleepTimer()
+            val sleep = TestSleepTimer()
             val gate = CompletableDeferred<Unit>()
             val listener = CallRecorder(unloadGate = gate)
             val rig = ControllerRig(scheduler, sleepTimer = sleep, listeners = setOf(listener)).also { rigs += it }

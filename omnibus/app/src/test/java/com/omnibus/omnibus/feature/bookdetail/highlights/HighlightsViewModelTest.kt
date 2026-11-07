@@ -4,9 +4,9 @@ import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
-import com.omnibus.omnibus.data.highlights.FakeHighlightsRepository
+import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
 import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.highlights.HighlightsState
@@ -55,8 +55,8 @@ private fun twoChapters() = BookChaptersResult.Success(
 
 /** A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. */
 private class Harness {
-    val repository = FakeHighlightsRepository()
-    val progress = FakeBookProgressRepository()
+    val repository = TestHighlightsRepository()
+    val progress = TestBookProgressRepository()
     val collecting = CollectingScope()
     val vm = HighlightsViewModel(UUID, repository, progress, TimeSource { 1_000L })
         .also { collecting.collect(it.uiState) }
@@ -205,7 +205,7 @@ class HighlightsViewModelTest : DescribeSpec({
 
             val gate = CompletableDeferred<Unit>()
             val gated = GatedBookProgress(gate)
-            val repository = FakeHighlightsRepository()
+            val repository = TestHighlightsRepository()
             repository.seed(UUID, HighlightsState.Loaded(listOf(highlight(1, fraction = 0.6f))))
             val collecting = CollectingScope()
             try {

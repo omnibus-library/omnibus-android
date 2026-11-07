@@ -1,12 +1,12 @@
 package com.omnibus.omnibus.data.progress
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
-import com.omnibus.omnibus.data.progress.local.FakeReadingPositionStore
+import com.omnibus.omnibus.data.progress.local.TestReadingPositionStore
 import com.omnibus.omnibus.data.progress.local.ReadingPositionStore
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
@@ -34,7 +34,7 @@ import okhttp3.HttpUrl
 class DefaultProgressRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
-    lateinit var store: FakeReadingPositionStore
+    lateinit var store: TestReadingPositionStore
 
     val position = ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000)
 
@@ -46,10 +46,10 @@ class DefaultProgressRepositoryTest : DescribeSpec({
     ) = DefaultProgressRepository(
         ioDispatcher = dispatcher,
         omnibusHttpClient = OmnibusHttpClient(
-            baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
-            authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(token = "secret"),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         ),
         store = readingStore,
     )
@@ -60,7 +60,7 @@ class DefaultProgressRepositoryTest : DescribeSpec({
 
     beforeEach {
         server = MockWebServer().apply { start() }
-        store = FakeReadingPositionStore()
+        store = TestReadingPositionStore()
     }
 
     afterEach { server.close() }
@@ -95,21 +95,21 @@ class DefaultProgressRepositoryTest : DescribeSpec({
         it("TC-9: each outcome has its result, and the local write always happens") {
             // Pushed: a 200 with push = true.
             server.enqueue(MockResponse.Builder().code(200).build())
-            val pushedStore = FakeReadingPositionStore()
+            val pushedStore = TestReadingPositionStore()
             repositoryFor(server.url("/"), pushedStore).savePosition(position, push = true) shouldBe
                 PositionSaveResult.Pushed
             server.requestCount shouldBe 1
             pushedStore.getPositionFlow("book-1").first() shouldBe position
 
             // NotPushed: push = false sends nothing.
-            val notPushedStore = FakeReadingPositionStore()
+            val notPushedStore = TestReadingPositionStore()
             repositoryFor(server.url("/"), notPushedStore).savePosition(position, push = false) shouldBe
                 PositionSaveResult.NotPushed
             server.requestCount shouldBe 1
             notPushedStore.getPositionFlow("book-1").first() shouldBe position
 
             // NoServer: push = true with no saved server.
-            val noServerStore = FakeReadingPositionStore()
+            val noServerStore = TestReadingPositionStore()
             repositoryFor(null, noServerStore).savePosition(position, push = true) shouldBe
                 PositionSaveResult.NoServer
             server.requestCount shouldBe 1
@@ -126,7 +126,7 @@ class DefaultProgressRepositoryTest : DescribeSpec({
             )
             rows.forEach { (response, error) ->
                 server.enqueue(response)
-                val rowStore = FakeReadingPositionStore()
+                val rowStore = TestReadingPositionStore()
 
                 repositoryFor(server.url("/"), rowStore).savePosition(position, push = true) shouldBe
                     PositionSaveResult.Failed(error)

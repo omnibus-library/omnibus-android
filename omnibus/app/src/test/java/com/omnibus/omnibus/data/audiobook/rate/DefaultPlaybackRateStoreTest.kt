@@ -2,7 +2,7 @@ package com.omnibus.omnibus.data.audiobook.rate
 
 import com.omnibus.omnibus.data.audiobook.rate.remote.PutOutcome
 import com.omnibus.omnibus.data.audiobook.rate.remote.RateFetch
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.throwables.shouldThrow
@@ -37,9 +37,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-4, R15: an unsent local change wins over the server, and answers at once
         it("#168 TC-31: a pending rate wins over the server and returns without waiting (I-SPD-4)") {
             runTest {
-                val api = FakePlaybackRateApi().apply { defaultFetch = RateFetch.Found(2.0) }
-                val cache = FakePlaybackRateCache().apply { pendingRates[book] = 1.5 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { defaultFetch = RateFetch.Found(2.0) }
+                val cache = TestPlaybackRateCache().apply { pendingRates[book] = 1.5 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate(book) shouldBe 1.5
 
@@ -51,10 +51,10 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3, R17: a pending rate read starts a background flush that clears it once sent
         it("#168 TC-32: a read with a pending rate sends it in the background and clears it (I-SPD-3)") {
             runTest {
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache()
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache()
                 cache.saveLocal(book, 1.5)
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate(book) shouldBe 1.5
                 runCurrent()
@@ -68,10 +68,10 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-1: a pending rate is clamped to the bounds when it is read
         it("#168 TC-33: a pending rate outside the bounds reads clamped (I-SPD-1)") {
             runTest {
-                val cache = FakePlaybackRateCache()
+                val cache = TestPlaybackRateCache()
                 cache.saveLocal("high", 4.0)
                 cache.saveLocal("low", 0.1)
-                val store = DefaultPlaybackRateStore(FakePlaybackRateApi(), cache, FakeConnectivityMonitor(true), backgroundScope)
+                val store = DefaultPlaybackRateStore(TestPlaybackRateApi(), cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate("high") shouldBe 3.0
                 store.rate("low") shouldBe 0.5
@@ -81,9 +81,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // P-SPD-5, I-SPD-4: offline the read is the cache, and the network is not touched
         it("#168 TC-34: offline reads the cache with no network call (P-SPD-5, I-SPD-4)") {
             runTest {
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(false), backgroundScope)
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(false), backgroundScope)
 
                 store.rate(book) shouldBe 1.25
                 store.rate("book-empty").shouldBeNull()
@@ -97,9 +97,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-4: an answer that arrives in time is returned and refreshes the cache
         it("#168 TC-35: an immediate server answer is returned and cached (I-SPD-4)") {
             runTest {
-                val api = FakePlaybackRateApi().apply { defaultFetch = RateFetch.Found(1.75) }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { defaultFetch = RateFetch.Found(1.75) }
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate(book) shouldBe 1.75
 
@@ -110,9 +110,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-1: the server's rate is clamped, and the cache keeps the clamped value
         it("#168 TC-36: a server rate above the bounds is clamped and the clamped value is cached (I-SPD-1)") {
             runTest {
-                val api = FakePlaybackRateApi().apply { defaultFetch = RateFetch.Found(9.0) }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { defaultFetch = RateFetch.Found(9.0) }
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate(book) shouldBe 3.0
 
@@ -123,9 +123,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-4: the listener never set a rate on the server, so the cache forgets it and the book plays at 1.0
         it("#168 TC-37: an unset server answer reads null and clears the cache (I-SPD-4)") {
             runTest {
-                val connectivity = FakeConnectivityMonitor(true)
-                val api = FakePlaybackRateApi().apply { defaultFetch = RateFetch.Unset }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val connectivity = TestConnectivityMonitor(true)
+                val api = TestPlaybackRateApi().apply { defaultFetch = RateFetch.Unset }
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
                 val store = DefaultPlaybackRateStore(api, cache, connectivity, backgroundScope)
 
                 store.rate(book).shouldBeNull()
@@ -139,9 +139,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-4: a failed read falls back to the cache, and to null with no cache
         it("#168 TC-38: a failed read answers the cache, or null with an empty cache (I-SPD-4)") {
             runTest {
-                val api = FakePlaybackRateApi().apply { defaultFetch = RateFetch.Failed }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { defaultFetch = RateFetch.Failed }
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate(book) shouldBe 1.25
                 cache.cached(book) shouldBe 1.25
@@ -155,12 +155,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
             runTest {
                 val held = CompletableDeferred<RateFetch>()
                 val heldEmpty = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     fetchAnswers[book] = held
                     fetchAnswers["book-empty"] = heldEmpty
                 }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 val cached = async { store.rate(book) }
                 val empty = async { store.rate("book-empty") }
                 runCurrent()
@@ -181,9 +181,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-40: an answer inside the deadline is returned, not the cache (I-SPD-4)") {
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply { fetchAnswers[book] = gate }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.0 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { fetchAnswers[book] = gate }
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.0 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 val read = async { store.rate(book) }
                 runCurrent()
 
@@ -200,9 +200,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-41: a late answer only refreshes the cache and sends nothing (I-SPD-4)") {
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
-                val connectivity = FakeConnectivityMonitor(true)
-                val api = FakePlaybackRateApi().apply { fetchAnswers[book] = gate }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val connectivity = TestConnectivityMonitor(true)
+                val api = TestPlaybackRateApi().apply { fetchAnswers[book] = gate }
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
                 val store = DefaultPlaybackRateStore(api, cache, connectivity, backgroundScope)
                 val read = async { store.rate(book) }
                 runCurrent()
@@ -224,9 +224,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-42: a late unset answer clears the cache only (I-SPD-4)") {
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply { fetchAnswers[book] = gate }
-                val cache = FakePlaybackRateCache().apply { cachedRates[book] = 1.25 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { fetchAnswers[book] = gate }
+                val cache = TestPlaybackRateCache().apply { cachedRates[book] = 1.25 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 val read = async { store.rate(book) }
                 runCurrent()
                 advanceTimeBy(1_200)
@@ -244,12 +244,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-43: a stale read does not overwrite a newer save while it is still pending (I-SPD-4)") {
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     fetchAnswers[book] = gate
                     defaultPut = PutOutcome.Keep
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 val read = async { store.rate(book) }
                 runCurrent()
                 advanceTimeBy(1_200)
@@ -272,13 +272,13 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
                 val gateOther = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     fetchAnswers[book] = gate
                     fetchAnswers["book-b"] = gateOther
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 val read = async { store.rate(book) }
                 val readOther = async { store.rate("book-b") }
                 runCurrent()
@@ -303,10 +303,10 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // R15: a blank uuid is answered null and never reaches the API, the cache or the outbox
         it("#168 TC-45: a blank uuid is ignored by rate and save (R15, R16)") {
             runTest {
-                val api = FakePlaybackRateApi()
+                val api = TestPlaybackRateApi()
                 // Only a cached rate is seeded: a pending one under a blank uuid would be flushed by the online collector.
-                val cache = FakePlaybackRateCache().apply { cachedRates[""] = 1.0 }
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache().apply { cachedRates[""] = 1.0 }
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.rate("").shouldBeNull()
                 store.rate("  ").shouldBeNull()
@@ -325,22 +325,22 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
             runTest {
                 val boom = RuntimeException("boom")
                 listOf(true, false).forEach { online ->
-                    val failingApi = FakePlaybackRateApi().apply { failWith = boom }
+                    val failingApi = TestPlaybackRateApi().apply { failWith = boom }
                     val apiStore = DefaultPlaybackRateStore(
                         failingApi,
-                        FakePlaybackRateCache(),
-                        FakeConnectivityMonitor(online),
+                        TestPlaybackRateCache(),
+                        TestConnectivityMonitor(online),
                         backgroundScope,
                     )
                     apiStore.rate(book).shouldBeNull()
                     apiStore.save(book, 1.5)
                     runCurrent()
 
-                    val failingCache = FakePlaybackRateCache().apply { failWith = boom }
+                    val failingCache = TestPlaybackRateCache().apply { failWith = boom }
                     val cacheStore = DefaultPlaybackRateStore(
-                        FakePlaybackRateApi(),
+                        TestPlaybackRateApi(),
                         failingCache,
-                        FakeConnectivityMonitor(online),
+                        TestConnectivityMonitor(online),
                         backgroundScope,
                     )
                     cacheStore.rate(book).shouldBeNull()
@@ -354,9 +354,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-47: cancelling a caller throws CancellationException and the server read still refreshes the cache (R15, R16)") {
             runTest {
                 val gate = CompletableDeferred<RateFetch>()
-                val api = FakePlaybackRateApi().apply { fetchAnswers[book] = gate }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { fetchAnswers[book] = gate }
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 val read = async { store.rate(book) }
                 runCurrent()
@@ -384,9 +384,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-1, R16: the device is written first, and the send goes on in the background
         it("#168 TC-48: save writes the device before the PUT, and the PUT clears the pending rate (I-SPD-1, I-SPD-3)") {
             runTest {
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.save(book, 1.25)
 
@@ -405,9 +405,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-1: non-finite rates are ignored, and out-of-range finite rates are clamped before they are kept
         it("#168 TC-49: save ignores non-finite rates and clamps finite ones (I-SPD-1)") {
             runTest {
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.save("nan", Double.NaN)
                 store.save("inf", Double.POSITIVE_INFINITY)
@@ -425,9 +425,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3: a kept PUT leaves the new speed on the device, offline and after a relaunch
         it("#168 TC-50: a failed PUT keeps the local rate, which is read offline (I-SPD-3)") {
             runTest {
-                val connectivity = FakeConnectivityMonitor(true)
-                val api = FakePlaybackRateApi().apply { defaultPut = PutOutcome.Keep }
-                val cache = FakePlaybackRateCache()
+                val connectivity = TestConnectivityMonitor(true)
+                val api = TestPlaybackRateApi().apply { defaultPut = PutOutcome.Keep }
+                val cache = TestPlaybackRateCache()
                 val store = DefaultPlaybackRateStore(api, cache, connectivity, backgroundScope)
 
                 store.save(book, 1.25)
@@ -443,9 +443,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // R17: a rejected PUT is dropped, so it never loops, and the cached rate stays
         it("#168 TC-51: a dropped PUT clears the pending rate and keeps the cache (R17)") {
             runTest {
-                val api = FakePlaybackRateApi().apply { defaultPut = PutOutcome.Drop }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val api = TestPlaybackRateApi().apply { defaultPut = PutOutcome.Drop }
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.save(book, 1.25)
                 runCurrent()
@@ -458,9 +458,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3: offline a save is only written to the device
         it("#168 TC-52: a save offline writes the device and sends nothing (I-SPD-3)") {
             runTest {
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(false), backgroundScope)
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(false), backgroundScope)
 
                 store.save(book, 1.25)
                 runCurrent()
@@ -475,12 +475,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-53: concurrent saves write the device in call order with no lost update (I-SPD-1)") {
             runTest {
                 val gate = CompletableDeferred<PutOutcome>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(gate)
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 listOf(1.0, 1.1, 1.2, 1.5, 2.0).map { rate -> launch { store.save(book, rate) } }
                 runCurrent()
@@ -502,12 +502,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-54: a burst coalesces to the newest pending rate, with one PUT in flight (I-SPD-3)") {
             runTest {
                 val gate = CompletableDeferred<PutOutcome>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(gate)
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.save(book, 1.5)
                 runCurrent()
@@ -529,12 +529,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         it("#168 TC-55: a newer pending rate survives an older PUT that was sent (I-SPD-3)") {
             runTest {
                 val gate = CompletableDeferred<PutOutcome>()
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(gate)
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
 
                 store.save(book, 2.0)
                 runCurrent()
@@ -552,13 +552,13 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3: on reconnect every pending book is sent once; sent and rejected ones clear, kept ones stay
         it("#168 TC-56: reconnecting sends each pending book once and clears by outcome (I-SPD-3)") {
             runTest {
-                val connectivity = FakeConnectivityMonitor(false)
-                val api = FakePlaybackRateApi().apply {
+                val connectivity = TestConnectivityMonitor(false)
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(CompletableDeferred(PutOutcome.Sent))
                     putAnswers.addLast(CompletableDeferred(PutOutcome.Drop))
                     putAnswers.addLast(CompletableDeferred(PutOutcome.Keep))
                 }
-                val cache = FakePlaybackRateCache()
+                val cache = TestPlaybackRateCache()
                 DefaultPlaybackRateStore(api, cache, connectivity, backgroundScope)
                 cache.saveLocal("a", 1.1)
                 cache.saveLocal("b", 1.2)
@@ -579,9 +579,9 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3: nothing is sent while offline, and an empty outbox makes no calls
         it("#168 TC-57: a flush does nothing offline or with an empty outbox (I-SPD-3)") {
             runTest {
-                val connectivity = FakeConnectivityMonitor(false)
-                val api = FakePlaybackRateApi()
-                val cache = FakePlaybackRateCache()
+                val connectivity = TestConnectivityMonitor(false)
+                val api = TestPlaybackRateApi()
+                val cache = TestPlaybackRateCache()
                 val store = DefaultPlaybackRateStore(api, cache, connectivity, backgroundScope)
 
                 store.save(book, 1.5)
@@ -605,19 +605,19 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3, I-SPD-4: a kept rate is sent at the next load, when a store is built over the same cache
         it("#168 TC-58: a kept rate is retried when the book next loads (I-SPD-3, I-SPD-4)") {
             runTest {
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(CompletableDeferred(PutOutcome.Keep))
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val first = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val first = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 runCurrent()
                 first.save(book, 1.5)
                 runCurrent()
                 api.puts shouldBe listOf(book to 1.5)
                 cache.pending(book) shouldBe 1.5
 
-                val next = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val next = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 next.rate(book) shouldBe 1.5
                 runCurrent()
 
@@ -629,12 +629,12 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
         // I-SPD-3: after a failed send the next change goes out, and it is the newest value that is sent
         it("#168 TC-59: the next change after a failed send retries with the newest value (I-SPD-3)") {
             runTest {
-                val api = FakePlaybackRateApi().apply {
+                val api = TestPlaybackRateApi().apply {
                     putAnswers.addLast(CompletableDeferred(PutOutcome.Keep))
                     defaultPut = PutOutcome.Sent
                 }
-                val cache = FakePlaybackRateCache()
-                val store = DefaultPlaybackRateStore(api, cache, FakeConnectivityMonitor(true), backgroundScope)
+                val cache = TestPlaybackRateCache()
+                val store = DefaultPlaybackRateStore(api, cache, TestConnectivityMonitor(true), backgroundScope)
                 runCurrent()
 
                 store.save(book, 1.5)

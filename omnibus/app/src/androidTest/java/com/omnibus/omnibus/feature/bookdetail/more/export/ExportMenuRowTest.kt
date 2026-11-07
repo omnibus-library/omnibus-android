@@ -16,7 +16,7 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.more.BookMoreMenuEntry
 import com.omnibus.omnibus.feature.bookdetail.more.BookMoreTestTags
-import com.omnibus.omnibus.feature.bookdetail.more.FakeEntry
+import com.omnibus.omnibus.feature.bookdetail.more.TestEntry
 import com.omnibus.omnibus.feature.bookdetail.more.setMoreButton
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
@@ -78,7 +78,7 @@ class ExportMenuRowTest {
     fun issue118_tc76_menuRowIsHiddenWhenTheReaderCannotExportTheBook() {
         // Formats name an audiobook only, and no user is loaded, so the gate is closed.
         rule.setMoreButton(
-            listOf(FakeEntry("Row"), MenuRowEntry(user = null) {}),
+            listOf(TestEntry("Row"), MenuRowEntry(user = null) {}),
             testSectionContext(book = testDetailBook(formats = listOf("m4b"))),
         )
 

@@ -12,14 +12,14 @@ import kotlinx.coroutines.flow.first
 
 class StoredAuthTokenProviderTest : DescribeSpec({
 
-    lateinit var tokenStore: FakeAuthTokenStore
+    lateinit var tokenStore: TestAuthTokenStore
     lateinit var provider: StoredAuthTokenProvider
 
     beforeSpec { mockAndroidLog() }
     afterSpec { unmockAndroidLog() }
 
     beforeEach {
-        tokenStore = FakeAuthTokenStore()
+        tokenStore = TestAuthTokenStore()
         provider = StoredAuthTokenProvider(tokenStore)
     }
 

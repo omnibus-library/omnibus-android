@@ -3,7 +3,7 @@ package com.omnibus.omnibus.feature.bookdetail.overview.author
 import com.omnibus.omnibus.data.authors.Author
 import com.omnibus.omnibus.data.authors.AuthorResult
 import com.omnibus.omnibus.data.authors.AuthorsError
-import com.omnibus.omnibus.data.authors.FakeAuthorsRepository
+import com.omnibus.omnibus.data.authors.TestAuthorsRepository
 import com.omnibus.omnibus.data.library.testBook
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -25,16 +25,16 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         Author(7, "A", (1..count).map { testBook(it.toLong()) }),
     )
 
-    fun viewModel(fake: FakeAuthorsRepository, bookId: Long = 1) = MoreByAuthorViewModel(7, bookId, fake)
+    fun viewModel(fake: TestAuthorsRepository, bookId: Long = 1) = MoreByAuthorViewModel(7, bookId, fake)
 
     describe("reload") {
 
         it("#105 TC-18: starts empty, before anything is read") {
-            viewModel(FakeAuthorsRepository(author(3))).uiState.value.books.shouldBeEmpty()
+            viewModel(TestAuthorsRepository(author(3))).uiState.value.books.shouldBeEmpty()
         }
 
         it("#105 TC-19: reads the author and shows their other books") {
-            val fake = FakeAuthorsRepository(author(3))
+            val fake = TestAuthorsRepository(author(3))
             val vm = viewModel(fake, bookId = 1)
 
             vm.reload(0)
@@ -44,7 +44,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-20: limits the shelf to 12 books") {
-            val vm = viewModel(FakeAuthorsRepository(author(40)), bookId = 1)
+            val vm = viewModel(TestAuthorsRepository(author(40)), bookId = 1)
 
             vm.reload(0)
 
@@ -52,7 +52,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-21: an author with no other books gives an empty shelf") {
-            val vm = viewModel(FakeAuthorsRepository(author(1)), bookId = 1)
+            val vm = viewModel(TestAuthorsRepository(author(1)), bookId = 1)
 
             vm.reload(0)
 
@@ -60,7 +60,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-22: the same reload key reads only once") {
-            val fake = FakeAuthorsRepository(author(3))
+            val fake = TestAuthorsRepository(author(3))
             val vm = viewModel(fake)
 
             vm.reload(0)
@@ -70,7 +70,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-23: a new reload key reads again and replaces the shelf") {
-            val fake = FakeAuthorsRepository(author(3))
+            val fake = TestAuthorsRepository(author(3))
             val vm = viewModel(fake, bookId = 1)
             vm.reload(0)
 
@@ -82,7 +82,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-24: a failed read leaves an empty shelf empty") {
-            val vm = viewModel(FakeAuthorsRepository(AuthorResult.Failure(AuthorsError.Unreachable)))
+            val vm = viewModel(TestAuthorsRepository(AuthorResult.Failure(AuthorsError.Unreachable)))
 
             vm.reload(0)
 
@@ -90,7 +90,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-25: a failed refresh keeps the books already shown") {
-            val fake = FakeAuthorsRepository(author(3))
+            val fake = TestAuthorsRepository(author(3))
             val vm = viewModel(fake, bookId = 1)
             vm.reload(0)
 
@@ -101,7 +101,7 @@ class MoreByAuthorViewModelTest : DescribeSpec({
         }
 
         it("#105 TC-26: no saved server leaves the shelf empty") {
-            val vm = viewModel(FakeAuthorsRepository(AuthorResult.NoServer))
+            val vm = viewModel(TestAuthorsRepository(AuthorResult.NoServer))
 
             vm.reload(0)
 

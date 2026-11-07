@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.readalikes
 
-import com.omnibus.omnibus.data.suggestions.FakeSuggestionsRepository
+import com.omnibus.omnibus.data.suggestions.TestSuggestionsRepository
 import com.omnibus.omnibus.data.suggestions.SuggestionsAnswer
 import com.omnibus.omnibus.data.suggestions.SuggestionsError
 import com.omnibus.omnibus.data.suggestions.SuggestionsResult
@@ -28,7 +28,7 @@ class ReadAlikesViewModelTest : DescribeSpec({
 
     /** A fake whose reads are stamped with the test clock. */
     fun TestScope.timed(vararg answers: SuggestionsResult) =
-        FakeSuggestionsRepository(*answers).also { it.now = { testScheduler.currentTime } }
+        TestSuggestionsRepository(*answers).also { it.now = { testScheduler.currentTime } }
 
     describe("ReadAlikesViewModel") {
 

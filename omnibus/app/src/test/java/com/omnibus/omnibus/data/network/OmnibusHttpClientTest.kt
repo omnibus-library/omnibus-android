@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.data.network
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -15,18 +15,18 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class OmnibusHttpClientTest : DescribeSpec({
 
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
-    lateinit var tokenProvider: FakeAuthTokenProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
+    lateinit var tokenProvider: TestAuthTokenProvider
     lateinit var client: OmnibusHttpClient
 
     beforeEach {
-        baseUrlProvider = FakeServerBaseUrlProvider()
-        tokenProvider = FakeAuthTokenProvider()
+        baseUrlProvider = TestServerBaseUrlProvider()
+        tokenProvider = TestAuthTokenProvider()
         client = OmnibusHttpClient(
             baseUrlProvider = baseUrlProvider,
             authTokenProvider = tokenProvider,
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         )
     }
 

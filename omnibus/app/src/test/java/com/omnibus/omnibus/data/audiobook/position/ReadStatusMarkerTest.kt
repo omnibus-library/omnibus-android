@@ -3,7 +3,7 @@ package com.omnibus.omnibus.data.audiobook.position
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusError
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
@@ -41,14 +41,14 @@ class ReadStatusMarkerTest : DescribeSpec({
 
     lateinit var scheduler: TestCoroutineScheduler
     lateinit var scope: CoroutineScope
-    lateinit var readStatus: FakeReadStatusRepository
+    lateinit var readStatus: TestReadStatusRepository
     lateinit var marker: ReadStatusMarker
 
     beforeEach {
         scheduler = TestCoroutineScheduler()
         Dispatchers.setMain(StandardTestDispatcher(scheduler))
         scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-        readStatus = FakeReadStatusRepository()
+        readStatus = TestReadStatusRepository()
         marker = ReadStatusMarker(readStatus, scope)
     }
 
@@ -68,7 +68,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                 ReadStatusState.Failed to emptyList(),
             )
             rows.forEach { (state, expectedCalls) ->
-                val fresh = FakeReadStatusRepository()
+                val fresh = TestReadStatusRepository()
                 val freshMarker = ReadStatusMarker(fresh, scope)
                 fresh.readResults.addLast(state)
                 val playing = playbackState(isPlaying = true)
@@ -102,14 +102,14 @@ class ReadStatusMarkerTest : DescribeSpec({
             val book1 = playbackState(isPlaying = true)
             val book2 = playbackState(book = playingBook(bookUuid = "book-2"), isPlaying = true)
 
-            val noSettle = FakeReadStatusRepository()
+            val noSettle = TestReadStatusRepository()
             ReadStatusMarker(noSettle, scope).onPlay(book1)
             scheduler.runCurrent()
             withClue("a play with no settle") {
                 noSettle.fetchCalls.shouldBeEmpty()
             }
 
-            val otherBook = FakeReadStatusRepository()
+            val otherBook = TestReadStatusRepository()
             val otherMarker = ReadStatusMarker(otherBook, scope)
             otherMarker.onSettled(book1, 0.0)
             otherMarker.onPlay(book2)
@@ -118,7 +118,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                 otherBook.fetchCalls.shouldBeEmpty()
             }
 
-            val unloaded = FakeReadStatusRepository()
+            val unloaded = TestReadStatusRepository()
             val unloadedMarker = ReadStatusMarker(unloaded, scope)
             unloadedMarker.onSettled(book1, 0.0)
             unloadedMarker.onUnload(book1, UnloadReason.Stop)
@@ -155,7 +155,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                 ReadStatusState.Failed to emptyList(),
             )
             rows.forEach { (state, expectedCalls) ->
-                val fresh = FakeReadStatusRepository()
+                val fresh = TestReadStatusRepository()
                 val freshMarker = ReadStatusMarker(fresh, scope)
                 fresh.readResults.addLast(state)
                 freshMarker.onEnded(playbackState(isPlaying = false, positionSeconds = 2_700.0))

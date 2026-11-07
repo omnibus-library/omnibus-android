@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.export
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -89,10 +89,10 @@ private suspend fun saveVia(kind: String, repository: ExportRepository): ExportS
 class DefaultExportRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     lateinit var client: OmnibusHttpClient
     lateinit var tempDir: File
-    lateinit var store: FakeExportFileStore
+    lateinit var store: TestExportFileStore
 
     /** Every request the server receives, in arrival order. */
     val requests = ConcurrentLinkedQueue<RecordedRequest>()
@@ -106,8 +106,8 @@ class DefaultExportRepositoryTest : DescribeSpec({
         respond = { request -> table["${request.method} ${request.url.encodedPath}"]?.invoke() ?: notFound() }
     }
 
-    fun freshStore(usable: Long = Long.MAX_VALUE): FakeExportFileStore {
-        store = FakeExportFileStore(File(tempDir, "store-${System.nanoTime()}"), usable)
+    fun freshStore(usable: Long = Long.MAX_VALUE): TestExportFileStore {
+        store = TestExportFileStore(File(tempDir, "store-${System.nanoTime()}"), usable)
         return store
     }
 
@@ -138,12 +138,12 @@ class DefaultExportRepositoryTest : DescribeSpec({
                 return respond(request)
             }
         }
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
         client = OmnibusHttpClient(
             baseUrlProvider = baseUrlProvider,
-            authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+            authTokenProvider = TestAuthTokenProvider(token = "secret"),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         )
         freshStore()
     }

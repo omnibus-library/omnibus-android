@@ -2,10 +2,10 @@ package com.omnibus.omnibus.feature.bookdetail.more.bookmarks
 
 import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
 import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.progress.BookChapter
@@ -57,8 +57,8 @@ private fun chapters(total: Long? = 7_200L) = BookChaptersResult.Success(
 
 /** A repository, a progress source and a collected ViewModel, with chapter answers queued in order. */
 private class Harness(chapterAnswers: List<BookChaptersResult> = emptyList()) {
-    val repository = FakeBookmarksRepository()
-    val progress = FakeBookProgressRepository().apply { chaptersResults.addAll(chapterAnswers) }
+    val repository = TestBookmarksRepository()
+    val progress = TestBookProgressRepository().apply { chaptersResults.addAll(chapterAnswers) }
     val collecting = CollectingScope()
     val vm = BookmarksViewModel(UUID, repository, progress, TimeSource { NOW })
         .also { collecting.collect(it.uiState) }

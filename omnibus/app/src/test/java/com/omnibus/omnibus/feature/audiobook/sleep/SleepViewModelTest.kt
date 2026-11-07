@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.audiobook.sleep
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.data.audiobook.playback.noChapterState
@@ -25,7 +25,7 @@ class SleepViewModelTest : DescribeSpec({
     describe("the sheet's state") {
         // R10, R11, R12: the choices, the selected cell and the countdown follow the controller's state
         it("#169 TC-32: choices, selection and countdown follow the controller, with the countdown only while it runs (R10-R12)") {
-            val fake = FakeAudiobookController(playbackState(positionSeconds = 100.0))
+            val fake = TestAudiobookController(playbackState(positionSeconds = 100.0))
             val vm = SleepViewModel(fake)
             vm.uiState.value.choices.size shouldBe 9
             vm.uiState.value.selected shouldBe SleepChoice.Off
@@ -49,7 +49,7 @@ class SleepViewModelTest : DescribeSpec({
     describe("a pick") {
         // R11: each pick sends its option to the controller, and Off sends null
         it("#169 TC-33: each pick sends its option to the controller (P-SLP-5)") {
-            val fake = FakeAudiobookController(playbackState(positionSeconds = 100.0))
+            val fake = TestAudiobookController(playbackState(positionSeconds = 100.0))
             val vm = SleepViewModel(fake)
             vm.onSelect(SleepChoice.Off)
             vm.onSelect(SleepChoice.Timed(30))

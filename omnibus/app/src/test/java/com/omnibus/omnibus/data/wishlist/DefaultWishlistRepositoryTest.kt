@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.wishlist
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -102,7 +102,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
     lateinit var script: ScriptedDispatcher
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     val scopes = mutableListOf<CoroutineScope>()
 
     /** A new scope that is cancelled after the test. */
@@ -119,9 +119,9 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
             omnibusHttpClient = OmnibusHttpClient(
                 baseUrlProvider = baseUrlProvider,
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+                authTokenProvider = TestAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             applicationScope = scope,
         )
@@ -141,7 +141,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             dispatcher = script
             start()
         }
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
     }
 
     afterEach {

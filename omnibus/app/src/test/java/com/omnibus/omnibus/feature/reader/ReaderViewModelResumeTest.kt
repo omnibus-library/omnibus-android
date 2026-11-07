@@ -1,16 +1,16 @@
 package com.omnibus.omnibus.feature.reader
 
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
+import com.omnibus.omnibus.data.library.TestLibraryRepository
+import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.data.progress.PositionSync
 import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.progress.ServerReadingPosition
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
+import com.omnibus.omnibus.data.reader.local.TestReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
@@ -43,8 +43,8 @@ import kotlinx.coroutines.test.setMain
 class ReaderViewModelResumeTest : DescribeSpec({
 
     lateinit var scheduler: TestCoroutineScheduler
-    lateinit var library: FakeLibraryRepository
-    lateinit var fake: FakeProgressRepository
+    lateinit var library: TestLibraryRepository
+    lateinit var fake: TestProgressRepository
     lateinit var persistScope: CoroutineScope
     var now = 5_000_500L
 
@@ -54,8 +54,8 @@ class ReaderViewModelResumeTest : DescribeSpec({
     beforeEach {
         scheduler = TestCoroutineScheduler()
         Dispatchers.setMain(StandardTestDispatcher(scheduler))
-        library = FakeLibraryRepository()
-        fake = FakeProgressRepository()
+        library = TestLibraryRepository()
+        fake = TestProgressRepository()
         now = 5_000_500L
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
@@ -75,8 +75,8 @@ class ReaderViewModelResumeTest : DescribeSpec({
             BookFileSource { BookFileResult.NotFound },
         ),
         progressRepository = fake,
-        settingsStore = FakeReaderSettingsStore(),
-        bookmarksRepository = FakeBookmarksRepository(),
+        settingsStore = TestReaderSettingsStore(),
+        bookmarksRepository = TestBookmarksRepository(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
         startCfi = startCfi,
@@ -126,7 +126,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             }
 
             // Answers at 1201 ms: late, so the page opens locally and the server's position is offered.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 stored["book-1"] = local
                 serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/10)"))
                 serverDelayMillis = 1201
@@ -144,7 +144,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             }
 
             // Never answers: the page opens locally at the deadline, and nothing is offered.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 stored["book-1"] = local
                 serverAnswer = CompletableDeferred()
             }
@@ -179,7 +179,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             )
             rows.forEach { (answer, delayMillis) ->
                 withClue("$answer after $delayMillis ms") {
-                    fake = FakeProgressRepository().apply {
+                    fake = TestProgressRepository().apply {
                         stored["book-1"] = local
                         serverResult = answer
                         serverDelayMillis = delayMillis
@@ -223,7 +223,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             val rows = listOf<ReadingPosition?>(local, null)
             rows.forEach { stored ->
                 withClue("local=$stored") {
-                    fake = FakeProgressRepository().apply {
+                    fake = TestProgressRepository().apply {
                         if (stored != null) this.stored["book-1"] = stored
                         serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/10)", client = 200))
                         serverDelayMillis = 100
@@ -248,7 +248,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             )
             rows.forEach { (label, answer) ->
                 withClue(label) {
-                    fake = FakeProgressRepository().apply {
+                    fake = TestProgressRepository().apply {
                         stored["book-1"] = local
                         serverResult = ServerPositionResult.Found(answer)
                         serverDelayMillis = 100
@@ -273,7 +273,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             advance(100)
 
             fake.saves shouldContainExactly listOf(
-                FakeProgressRepository.Save(ReadingPosition("book-1", "epubcfi(/6/10)", 57, 200), push = false),
+                TestProgressRepository.Save(ReadingPosition("book-1", "epubcfi(/6/10)", 57, 200), push = false),
             )
 
             // A later open with the server failing starts at the adopted position.
@@ -295,7 +295,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             )
             rows.forEach { (answer, target) ->
                 withClue("$answer") {
-                    fake = FakeProgressRepository().apply {
+                    fake = TestProgressRepository().apply {
                         stored["book-1"] = local
                         serverResult = ServerPositionResult.Found(answer)
                         serverDelayMillis = 1300
@@ -325,7 +325,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             )
             rows.forEach { (label, answer) ->
                 withClue(label) {
-                    fake = FakeProgressRepository().apply {
+                    fake = TestProgressRepository().apply {
                         stored["book-1"] = local
                         serverResult = answer
                         serverDelayMillis = 1300
@@ -342,7 +342,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
         // TC-81: accepting moves to the offer exactly once, and the landing of that move is saved.
         it("TC-81: accepting moves to the offer once and the landing is saved") {
             // A CFI offer.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 stored["book-1"] = local
                 serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/10)"))
                 serverDelayMillis = 1300
@@ -360,7 +360,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             fake.saves.map { it.position.cfi } shouldContainExactly listOf("epubcfi(/6/10)")
 
             // A percent-only offer, on its own open.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 stored["book-1"] = local
                 serverResult = ServerPositionResult.Found(record(cfi = null, percent = 57))
                 serverDelayMillis = 1300
@@ -469,7 +469,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             // Derived path: a server percent-only record with a derived CFI. Adopting it at open saves it
             // once (R17, with the server's own value and clock, not pushed). The page's echo landing, the
             // same-CFI relocate and the close add nothing.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 serverResult = ServerPositionResult.Found(
                     ServerReadingPosition(cfi = null, percent = 57, derivedCfi = "epubcfi(/6/9)", updatedAt = 0, clientUpdatedAt = 200),
                 )
@@ -484,7 +484,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             derivedVm.onReaderClosed()
             scheduler.runCurrent()
             fake.saves shouldBe listOf(
-                FakeProgressRepository.Save(ReadingPosition("book-1", null, 57, 200), push = false),
+                TestProgressRepository.Save(ReadingPosition("book-1", null, 57, 200), push = false),
             )
         }
 
@@ -502,13 +502,13 @@ class ReaderViewModelResumeTest : DescribeSpec({
             scheduler.runCurrent()
 
             fake.saves.map { it.position.cfi }.distinct() shouldContainExactly listOf("epubcfi(/6/24)")
-            fake.saves.last() shouldBe FakeProgressRepository.Save(
+            fake.saves.last() shouldBe TestProgressRepository.Save(
                 ReadingPosition("book-1", "epubcfi(/6/24)", 60, 5_000),
                 push = true,
             )
 
             // Accepting a CFI offer during the hold releases it, and the landing is saved.
-            fake = FakeProgressRepository().apply {
+            fake = TestProgressRepository().apply {
                 stored["book-1"] = ReadingPosition("book-1", null, 57, 100)
                 serverResult = ServerPositionResult.Found(record(cfi = "epubcfi(/6/30)", client = 200))
                 serverDelayMillis = 1300

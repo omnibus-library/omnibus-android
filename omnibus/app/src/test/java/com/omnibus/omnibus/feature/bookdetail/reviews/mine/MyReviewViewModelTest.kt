@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.mine
 
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.FakeReviewsRepository
+import com.omnibus.omnibus.data.reviews.TestReviewsRepository
 import com.omnibus.omnibus.data.reviews.Patch
 import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewError
@@ -36,7 +36,7 @@ class MyReviewViewModelTest : DescribeSpec({
 
     /** A ViewModel on [fake] and [pulse], with its state kept active by [collecting]. */
     fun viewModel(
-        fake: FakeReviewsRepository,
+        fake: TestReviewsRepository,
         pulse: ReviewSavePulse,
         collecting: CollectingScope,
     ) = MyReviewViewModel(uuid, fake, pulse).also { collecting.collect(it.uiState) }
@@ -44,7 +44,7 @@ class MyReviewViewModelTest : DescribeSpec({
     describe("rating") {
 
         it("TC-39: a rating on no review and a change of it each make one write, and each save counts once") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(null))
@@ -66,7 +66,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-41: clearing the rating sends only the rating and keeps the text and notes, and counts as a save") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f, text = "Body", notes = "private")))
@@ -81,7 +81,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-42: rating the current rating, or clearing an unrated review, makes no call and no pulse") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f)))
@@ -98,7 +98,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-43: while the review is unknown, rating, clearing and deleting do nothing") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val fresh = MyReviewViewModel(uuid, fake, pulse)
             fresh.uiState.value.card shouldBe MyReviewModel.Unknown(UnknownReason.Loading)
@@ -121,7 +121,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-44: a failed save rolls back, names the failure, and posts nothing for a NotLoaded write") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f)))
@@ -152,7 +152,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-44: a failure stays until it is shown, and a later failure sets it again") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f)))
             val vm = viewModel(fake, ReviewSavePulse(), collecting)
@@ -174,7 +174,7 @@ class MyReviewViewModelTest : DescribeSpec({
     describe("deleting") {
 
         it("TC-46: a delete makes one call and shows no review, and nothing happens without a review") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f, text = "Body")))
@@ -192,7 +192,7 @@ class MyReviewViewModelTest : DescribeSpec({
         }
 
         it("TC-46: a failed delete shows its failure and restores the review") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f)))
             val vm = viewModel(fake, ReviewSavePulse(), collecting)
@@ -209,7 +209,7 @@ class MyReviewViewModelTest : DescribeSpec({
     describe("the save pulse") {
 
         it("TC-47: a refresh, a delete, a failure and an unchanged write do not count as a save") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val pulse = ReviewSavePulse()
             val collecting = CollectingScope()
             fake.seed(uuid, loaded(review(rating = 4f)))
@@ -238,7 +238,7 @@ class MyReviewViewModelTest : DescribeSpec({
     describe("reloading") {
 
         it("TC-48: a reload refreshes once per new key, and the card reads the refreshed rating") {
-            val fake = FakeReviewsRepository()
+            val fake = TestReviewsRepository()
             val collecting = CollectingScope()
             val vm = viewModel(fake, ReviewSavePulse(), collecting)
 

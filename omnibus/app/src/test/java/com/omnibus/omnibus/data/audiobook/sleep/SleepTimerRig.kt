@@ -1,8 +1,8 @@
 package com.omnibus.omnibus.data.audiobook.sleep
 
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
@@ -15,7 +15,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 
 /**
- * A [DefaultSleepTimer] on a virtual clock, over a [FakeAudiobookController] that holds [initial]. The timer's clock and
+ * A [DefaultSleepTimer] on a virtual clock, over a [TestAudiobookController] that holds [initial]. The timer's clock and
  * its scope share one scheduler, so `delay` and the timer's `nowMillis()` move together (AND-TEST-3). Every pause is
  * recorded with the timer's state at that moment, in [seenAtPause].
  */
@@ -26,7 +26,7 @@ internal class SleepTimerRig(
 ) {
     val scheduler = TestCoroutineScheduler()
     val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val fake = FakeAudiobookController(initial)
+    val fake = TestAudiobookController(initial)
 
     /** The timer's state at each pause, in call order. */
     val seenAtPause = mutableListOf<SleepTimerState?>()

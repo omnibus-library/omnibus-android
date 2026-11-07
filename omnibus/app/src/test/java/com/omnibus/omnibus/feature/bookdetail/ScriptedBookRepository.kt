@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.testBook
 import kotlinx.coroutines.CompletableDeferred
@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.flow
  * Everything else is delegated to [delegate].
  */
 class ScriptedBookRepository(
-    private val delegate: FakeLibraryRepository = FakeLibraryRepository(),
+    private val delegate: TestLibraryRepository = TestLibraryRepository(),
 ) : LibraryRepository by delegate {
 
     /** The uuid of every [getBookFlow] call, in call order. */

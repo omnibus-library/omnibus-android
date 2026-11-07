@@ -6,7 +6,7 @@ import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption.After
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -59,7 +59,7 @@ class DefaultSleepTimerTest : DescribeSpec({
 
         // R1: a tick reads the clock, so a late tick catches up, and a backward jump stays clamped to the minutes
         it("#169 TC-3: a tick reads the clock, so a late tick catches up and a clock jump stays within the minutes (P-SLP-2)") {
-            val clock = FakeTimeSource(0L)
+            val clock = TestTimeSource(0L)
             val rig = SleepTimerRig(clock = clock)
             rig.timer.set(After(1))
             rig.settle()

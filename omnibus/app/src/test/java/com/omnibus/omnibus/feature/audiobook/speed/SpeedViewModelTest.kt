@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.audiobook.speed
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -18,8 +18,8 @@ class SpeedViewModelTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     /** A controller at [rate], then a view model over it, so the sheet starts at that rate. */
-    fun viewModelAt(rate: Double): Pair<FakeAudiobookController, SpeedViewModel> {
-        val fake = FakeAudiobookController(PlaybackState(rate = rate))
+    fun viewModelAt(rate: Double): Pair<TestAudiobookController, SpeedViewModel> {
+        val fake = TestAudiobookController(PlaybackState(rate = rate))
         return fake to SpeedViewModel(fake)
     }
 

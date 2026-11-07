@@ -3,19 +3,19 @@ package com.omnibus.omnibus.data.audiobook.playback
 import com.omnibus.omnibus.data.audiobook.AudiobookManifest
 import com.omnibus.omnibus.data.audiobook.AudiobookManifestResult
 import com.omnibus.omnibus.data.audiobook.AudiobookRepository
-import com.omnibus.omnibus.data.audiobook.FakeAudiobookRepository
-import com.omnibus.omnibus.data.audiobook.remote.FakeRecentListeningSource
+import com.omnibus.omnibus.data.audiobook.TestAudiobookRepository
+import com.omnibus.omnibus.data.audiobook.remote.TestRecentListeningSource
 import com.omnibus.omnibus.data.library.BookFile
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.Creator
-import com.omnibus.omnibus.data.library.FakeBookAvailability
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.ProgressRecord
 import com.omnibus.omnibus.data.library.ResumePoint
 import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
 import io.kotest.matchers.shouldBe
 import java.util.Optional
@@ -51,14 +51,14 @@ class ControllerRig(
     order: MutableList<String>? = null,
 ) {
     val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val engine = FakeAudioEngine()
-    val repository = FakeAudiobookRepository()
-    val library = FakeLibraryRepository()
-    val recent = FakeRecentListeningSource()
-    val availability = FakeBookAvailability()
-    val artwork = FakeCoverArtworkSource()
-    val connectivity = FakeConnectivityMonitor(online)
-    val background = FakeAppBackgroundSignal()
+    val engine = TestAudioEngine()
+    val repository = TestAudiobookRepository()
+    val library = TestLibraryRepository()
+    val recent = TestRecentListeningSource()
+    val availability = TestBookAvailability()
+    val artwork = TestCoverArtworkSource()
+    val connectivity = TestConnectivityMonitor(online)
+    val background = TestAppBackgroundSignal()
 
     private val wiredEngine: AudioEngine = order?.let { LoggingEngine(engine, it) } ?: engine
     private val reads: AudiobookRepository = order?.let { repository.logging(it) } ?: repository
@@ -136,12 +136,12 @@ class ScriptedResolver(
     val begins = mutableListOf<Triple<String, Long?, Double?>>()
 
     /** The pending each [begin] returned, in call order. The controller's calls go to it through a logging wrapper. */
-    val pendings = mutableListOf<FakePendingResume>()
+    val pendings = mutableListOf<TestPendingResume>()
 
     override fun begin(bookUuid: String, explicitFileId: Long?, explicitPositionSeconds: Double?): PendingResume {
         begins += Triple(bookUuid, explicitFileId, explicitPositionSeconds)
         order?.add("begin")
-        val fake = FakePendingResume().also {
+        val fake = TestPendingResume().also {
             it.savedFileId = savedFileId
             it.settleAnswer = settleAnswer
         }
@@ -270,7 +270,7 @@ fun hlsManifest(): AudiobookManifest.Hls = AudiobookManifest.Hls(
 )
 
 /** Records every engine command into [order], then forwards it to [inner]. */
-private class LoggingEngine(private val inner: FakeAudioEngine, private val order: MutableList<String>) :
+private class LoggingEngine(private val inner: TestAudioEngine, private val order: MutableList<String>) :
     AudioEngine by inner {
 
     override suspend fun awaitReady() {

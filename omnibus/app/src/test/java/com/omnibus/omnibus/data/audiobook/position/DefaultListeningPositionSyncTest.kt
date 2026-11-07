@@ -1,13 +1,13 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.withClue
@@ -31,7 +31,7 @@ private enum class WritePath { Tick, Pause, Background, Ended, UnloadStop, Force
 private suspend fun DefaultListeningPositionSync.fire(
     path: WritePath,
     state: PlaybackState,
-    controller: FakeAudiobookController,
+    controller: TestAudiobookController,
 ) {
     when (path) {
         WritePath.Tick -> onTick(state)
@@ -62,9 +62,9 @@ class DefaultListeningPositionSyncTest : DescribeSpec({
 
     lateinit var scheduler: TestCoroutineScheduler
     lateinit var scope: CoroutineScope
-    lateinit var repo: FakeListeningProgressRepository
-    lateinit var time: FakeTimeSource
-    lateinit var controller: FakeAudiobookController
+    lateinit var repo: TestListeningProgressRepository
+    lateinit var time: TestTimeSource
+    lateinit var controller: TestAudiobookController
     lateinit var sync: DefaultListeningPositionSync
 
     /** A sync on the current repository, clock and controller. */
@@ -79,9 +79,9 @@ class DefaultListeningPositionSyncTest : DescribeSpec({
         scheduler = TestCoroutineScheduler()
         Dispatchers.setMain(StandardTestDispatcher(scheduler))
         scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-        repo = FakeListeningProgressRepository()
-        time = FakeTimeSource()
-        controller = FakeAudiobookController()
+        repo = TestListeningProgressRepository()
+        time = TestTimeSource()
+        controller = TestAudiobookController()
         sync = newSync()
     }
 

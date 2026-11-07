@@ -3,8 +3,8 @@ package com.omnibus.omnibus.feature.library
 import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
-import com.omnibus.omnibus.data.library.FakeBookAvailability
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
@@ -14,12 +14,12 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
 import com.omnibus.omnibus.data.library.ResumePoint
 import com.omnibus.omnibus.data.library.SortDirection
-import com.omnibus.omnibus.data.library.local.FakeLibrarySortPreferenceStore
+import com.omnibus.omnibus.data.library.local.TestLibrarySortPreferenceStore
 import com.omnibus.omnibus.data.library.page
 import com.omnibus.omnibus.data.library.testBook
 import com.omnibus.omnibus.data.library.testResumePoint
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
@@ -40,16 +40,16 @@ private const val NOW = 1_780_000_000_000L
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryViewModelTest : DescribeSpec({
 
-    lateinit var repository: FakeLibraryRepository
-    lateinit var sortStore: FakeLibrarySortPreferenceStore
+    lateinit var repository: TestLibraryRepository
+    lateinit var sortStore: TestLibrarySortPreferenceStore
     lateinit var collecting: CollectingScope
 
     /** Builds a VM against [repo] and [store] and keeps its state collected, as a screen would. */
     fun viewModelFor(
-        repo: FakeLibraryRepository,
-        store: FakeLibrarySortPreferenceStore = FakeLibrarySortPreferenceStore(),
-        monitor: ConnectivityMonitor = FakeConnectivityMonitor(),
-        availability: BookAvailability = FakeBookAvailability(),
+        repo: TestLibraryRepository,
+        store: TestLibrarySortPreferenceStore = TestLibrarySortPreferenceStore(),
+        monitor: ConnectivityMonitor = TestConnectivityMonitor(),
+        availability: BookAvailability = TestBookAvailability(),
         time: TimeSource = TimeSource { NOW },
     ) = LibraryViewModel(repo, store, monitor, availability, time).also {
         collecting.collect(it.uiState)
@@ -63,8 +63,8 @@ class LibraryViewModelTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     beforeEach {
-        repository = FakeLibraryRepository()
-        sortStore = FakeLibrarySortPreferenceStore()
+        repository = TestLibraryRepository()
+        sortStore = TestLibrarySortPreferenceStore()
         collecting = CollectingScope()
     }
 
@@ -77,7 +77,7 @@ class LibraryViewModelTest : DescribeSpec({
 
             val viewModel = createViewModel()
 
-            repository.pageRequests.single() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
+            repository.pageRequests.single() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), null)
             viewModel.uiState.value.books.map { it.id } shouldBe listOf(1L, 2L)
             viewModel.uiState.value.nextCursor shouldBe "c1"
         }
@@ -122,7 +122,7 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.retry()
 
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Loading
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), null)
 
             second.complete(page(1L, 2L))
 
@@ -180,7 +180,7 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.loadMoreIfNeeded(59)
 
             repository.pageRequests.size shouldBe 2
-            repository.pageRequests[1] shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), "c1")
+            repository.pageRequests[1] shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), "c1")
             viewModel.uiState.value.books.map { it.id } shouldBe (1L..90L).toList()
             viewModel.uiState.value.nextCursor shouldBe "c2"
         }
@@ -195,7 +195,7 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.loadMoreIfNeeded(48)
             repository.pageRequests.size shouldBe 2
 
-            val fresh = FakeLibraryRepository().apply { enqueue(pageOf(1L..60L, cursor = "c1")) }
+            val fresh = TestLibraryRepository().apply { enqueue(pageOf(1L..60L, cursor = "c1")) }
             viewModelFor(fresh).loadMoreIfNeeded(59)
             fresh.pageRequests.size shouldBe 2
         }
@@ -210,12 +210,12 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("TC-80: makes no further request while initial, refresh or load-more is in flight") {
-            val initial = FakeLibraryRepository()
+            val initial = TestLibraryRepository()
             initial.enqueue(CompletableDeferred())
             viewModelFor(initial).loadMoreIfNeeded(100)
             initial.pageRequests.size shouldBe 1
 
-            val refreshing = FakeLibraryRepository()
+            val refreshing = TestLibraryRepository()
             refreshing.enqueue(pageOf(1L..60L, cursor = "c1"))
             val refreshingViewModel = viewModelFor(refreshing)
             refreshing.enqueue(CompletableDeferred())
@@ -223,7 +223,7 @@ class LibraryViewModelTest : DescribeSpec({
             refreshingViewModel.loadMoreIfNeeded(59)
             refreshing.pageRequests.size shouldBe 2
 
-            val loadingMore = FakeLibraryRepository()
+            val loadingMore = TestLibraryRepository()
             loadingMore.enqueue(pageOf(1L..60L, cursor = "c1"))
             val loadingMoreViewModel = viewModelFor(loadingMore)
             loadingMore.enqueue(CompletableDeferred())
@@ -261,7 +261,7 @@ class LibraryViewModelTest : DescribeSpec({
             lastPage.loadMoreIfNeeded(61)
             repository.pageRequests.size shouldBe 2
 
-            val emptyPage = FakeLibraryRepository()
+            val emptyPage = TestLibraryRepository()
             emptyPage.enqueue(pageOf(1L..60L, cursor = "c1"))
             val emptyPageViewModel = viewModelFor(emptyPage)
             emptyPage.enqueue(LibraryPageResult.Success(BooksPage(emptyList(), "c2", null, null)))
@@ -484,17 +484,17 @@ class LibraryViewModelTest : DescribeSpec({
     describe("sort restore") {
 
         it("TC-121: a stored sort and direction are on the first page request") {
-            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
+            sortStore = TestLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
             repository.enqueue(page(1L))
 
             createViewModel()
 
             repository.pageRequests.single() shouldBe
-                FakeLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc), null)
+                TestLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc), null)
         }
 
         it("TC-122: no page request is sent until the stored preference arrives") {
-            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Author, SortDirection.Asc))
+            sortStore = TestLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Author, SortDirection.Asc))
             val release = CompletableDeferred<Unit>()
             sortStore.holdFirstEmission = release
             repository.enqueue(page(1L))
@@ -506,16 +506,16 @@ class LibraryViewModelTest : DescribeSpec({
 
             repository.pageRequests.size shouldBe 1
             repository.pageRequests.single() shouldBe
-                FakeLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Author, dir = SortDirection.Asc), null)
+                TestLibraryRepository.PageRequest(BooksPageQuery(sort = LibrarySort.Author, dir = SortDirection.Asc), null)
         }
 
         it("TC-123: the defaults still load the first page when the preference read gives defaults") {
-            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference())
+            sortStore = TestLibrarySortPreferenceStore(LibrarySortPreference())
             repository.enqueue(pageOf(1L..2L))
 
             val viewModel = createViewModel()
 
-            repository.pageRequests.single() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), null)
+            repository.pageRequests.single() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), null)
             viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
         }
 
@@ -535,7 +535,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("TC-125: a new VM starts on All with an empty formats query, whatever was stored") {
-            sortStore = FakeLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
+            sortStore = TestLibrarySortPreferenceStore(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc))
             repository.enqueue(page(1L))
 
             val viewModel = createViewModel()
@@ -572,7 +572,7 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.selectCategory(LibraryCategory.Ebooks)
 
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(
                 BooksPageQuery(formats = LibraryCategory.Ebooks.formats),
                 null,
             )
@@ -585,7 +585,7 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.selectSort(LibrarySort.Title)
 
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(
                 BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Desc, formats = LibraryCategory.Audiobooks.formats),
                 null,
             )
@@ -595,10 +595,10 @@ class LibraryViewModelTest : DescribeSpec({
             val viewModel = createViewModel()
 
             viewModel.toggleDirection()
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Asc), null)
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Asc), null)
 
             viewModel.toggleDirection()
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Desc), null)
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(dir = SortDirection.Desc), null)
         }
 
         it("TC-131: choosing the value already active does nothing") {
@@ -638,7 +638,7 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.loadMoreIfNeeded(59)
 
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(
                 BooksPageQuery(sort = LibrarySort.Author, dir = SortDirection.Desc, formats = LibraryCategory.Audiobooks.formats),
                 "c3",
             )
@@ -651,7 +651,7 @@ class LibraryViewModelTest : DescribeSpec({
 
             viewModel.loadMoreIfNeeded(59)
 
-            repository.pageRequests.last() shouldBe FakeLibraryRepository.PageRequest(BooksPageQuery(), "c1")
+            repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), "c1")
         }
 
         it("TC-135: a late first result from a superseded reload is dropped") {
@@ -830,7 +830,7 @@ class LibraryViewModelTest : DescribeSpec({
     describe("#21 connectivity") {
 
         it("#21 TC-3: isOffline follows the monitor from the first state") {
-            val monitor = FakeConnectivityMonitor(online = false)
+            val monitor = TestConnectivityMonitor(online = false)
             val viewModel = viewModelFor(repository, sortStore, monitor)
 
             viewModel.uiState.value.isOffline shouldBe true
@@ -1024,7 +1024,7 @@ class LibraryViewModelTest : DescribeSpec({
         )
         resumeRows.forEach { row ->
             it("#22 TC-25: ${row.name} routes to ${row.target ?: row.unavailable}") {
-                val availability = FakeBookAvailability(row.answer)
+                val availability = TestBookAvailability(row.answer)
                 val viewModel = viewModelFor(repository, sortStore, availability = availability)
                 repository.enqueueRecent(success(row.point))
                 viewModel.libraryShown()
@@ -1039,7 +1039,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("#22 TC-25: an unknown card id changes nothing and does not ask the guard") {
-            val availability = FakeBookAvailability()
+            val availability = TestBookAvailability()
             val viewModel = viewModelFor(repository, sortStore, availability = availability)
             repository.enqueueRecent(success(reading(1)))
             viewModel.libraryShown()
@@ -1052,7 +1052,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("#22 TC-26: resumeHandled clears the pending resume") {
-            val viewModel = viewModelFor(repository, sortStore, availability = FakeBookAvailability(true))
+            val viewModel = viewModelFor(repository, sortStore, availability = TestBookAvailability(true))
             repository.enqueueRecent(success(reading(1)))
             viewModel.libraryShown()
             viewModel.resume("b1:epub")
@@ -1064,7 +1064,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("#22 TC-26: unavailableDismissed clears the alert") {
-            val viewModel = viewModelFor(repository, sortStore, availability = FakeBookAvailability(false))
+            val viewModel = viewModelFor(repository, sortStore, availability = TestBookAvailability(false))
             repository.enqueueRecent(success(reading(1)))
             viewModel.libraryShown()
             viewModel.resume("b1:epub")

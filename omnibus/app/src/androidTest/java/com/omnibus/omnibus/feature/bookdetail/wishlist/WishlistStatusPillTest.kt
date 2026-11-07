@@ -31,7 +31,7 @@ class WishlistStatusPillTest {
     @Test
     fun issue119_tc61_aFilelessWishlistBookWithAPhysicalCopyShowsNoPill() {
         val book = testDetailBook(formats = emptyList()).copy(hasPhysical = true)
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 CompositionLocalProvider(LocalWishlistRepository provides fake) {
@@ -47,7 +47,7 @@ class WishlistStatusPillTest {
     @Test
     fun issue119_tc62_aFilelessBookWithoutAPhysicalCopyShowsNoPillAndNoAccess() {
         val book = testDetailBook(formats = emptyList())
-        val fake = FakeWishlistRepository()
+        val fake = TestWishlistRepository()
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 CompositionLocalProvider(LocalWishlistRepository provides fake) {

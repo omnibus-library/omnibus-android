@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.merge
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
 class DefaultMergeRepositoryTest : DescribeSpec({
 
     lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     lateinit var client: OmnibusHttpClient
     lateinit var repository: DefaultMergeRepository
 
@@ -60,12 +60,12 @@ class DefaultMergeRepositoryTest : DescribeSpec({
                 return respond(request)
             }
         }
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
         client = OmnibusHttpClient(
             baseUrlProvider = baseUrlProvider,
-            authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+            authTokenProvider = TestAuthTokenProvider(token = "secret"),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         )
         repository = newRepository(Dispatchers.Unconfined)
     }

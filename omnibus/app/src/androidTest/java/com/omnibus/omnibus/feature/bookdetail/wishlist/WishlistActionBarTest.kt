@@ -49,7 +49,7 @@ private fun filelessBook(physical: Boolean = false, isbn13: String? = "978123456
 /** Renders [BookActionBarSection] for the book from [book], with [fake] as the wishlist repository. */
 private fun ComposeContentTestRule.setSection(
     book: () -> Book,
-    fake: FakeWishlistRepository,
+    fake: TestWishlistRepository,
     recorder: SectionContextRecorder = SectionContextRecorder(),
 ) {
     setContent {
@@ -78,7 +78,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc54_findCopyOpensTheStoreSearchByIsbn() {
         val book = filelessBook(isbn13 = "9781234567897")
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val recorder = SectionContextRecorder()
         rule.setSection({ book }, fake, recorder)
 
@@ -94,7 +94,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc54_findCopyWithoutAnIsbnSearchesTitleAndAuthor() {
         val book = filelessBook(isbn13 = null).copy(title = "Tom & Jerry")
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val recorder = SectionContextRecorder()
         rule.setSection({ book }, fake, recorder)
 
@@ -110,7 +110,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc55_checkInOpensTheCheckInPageOnce() {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val recorder = SectionContextRecorder()
         rule.setSection({ book }, fake, recorder)
 
@@ -123,7 +123,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc56_bothPillsAreLabelledButtons() {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         rule.setSection({ book }, fake)
 
         val buttonRole = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)
@@ -145,7 +145,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc57_unansweredOrFailedOrAbsentShowsTheNoCopyNote() {
         val book = mutableStateOf(filelessBook(physical = true))
-        val fake = FakeWishlistRepository().apply { seed(book.value.uuid, WishlistState.Unknown) }
+        val fake = TestWishlistRepository().apply { seed(book.value.uuid, WishlistState.Unknown) }
         rule.setSection({ book.value }, fake)
 
         val states = listOf(WishlistState.Unknown, WishlistState.Failed, WishlistState.Absent)
@@ -171,7 +171,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc58_barSwitchesToTheWishlistVariantAndBackWithoutAReload() {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, WishlistState.Unknown) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, WishlistState.Unknown) }
         rule.setSection({ book }, fake)
         rule.onNodeWithTag(ActionBarTestTags.NO_COPY).assertIsDisplayed()
 
@@ -190,7 +190,7 @@ class WishlistActionBarTest {
     @Test
     fun issue119_tc59_aBookWithAFileShowsNoWishlistPillsAndNoAccess() {
         val book = testDetailBook(formats = listOf("epub"))
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val variant = mutableStateOf<ActionBarModel.Wishlist?>(null)
         rule.setContent {
             OmnibusTheme(darkTheme = true) {

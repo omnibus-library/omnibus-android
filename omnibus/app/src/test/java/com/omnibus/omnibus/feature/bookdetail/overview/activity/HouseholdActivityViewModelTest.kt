@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.activity
 
-import com.omnibus.omnibus.data.household.FakeHouseholdRepository
+import com.omnibus.omnibus.data.household.TestHouseholdRepository
 import com.omnibus.omnibus.data.household.HouseholdReader
 import com.omnibus.omnibus.data.household.HouseholdResult
 import io.kotest.core.spec.style.DescribeSpec
@@ -23,11 +23,11 @@ class HouseholdActivityViewModelTest : DescribeSpec({
     describe("loading the household") {
 
         it("TC-7: starts with no readers, so the section is left out") {
-            HouseholdActivityViewModel("book-1", FakeHouseholdRepository()).readers.value shouldBe emptyList()
+            HouseholdActivityViewModel("book-1", TestHouseholdRepository()).readers.value shouldBe emptyList()
         }
 
         it("TC-8: lists the readers the repository returns, in order") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             fake.results += HouseholdResult.Success(listOf(reader(2), reader(1)))
             val vm = HouseholdActivityViewModel("book-1", fake)
 
@@ -38,7 +38,7 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         it("TC-9: a book nobody else has read shows no readers") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             fake.results += HouseholdResult.Success(emptyList())
             val vm = HouseholdActivityViewModel("book-1", fake)
 
@@ -48,7 +48,7 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         it("TC-10: a reader with no time in the book is not listed") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             fake.results += HouseholdResult.Success(listOf(reader(1, seconds = 0), reader(2)))
             val vm = HouseholdActivityViewModel("book-1", fake)
 
@@ -58,7 +58,7 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         it("TC-11: loads once per reload key") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             val vm = HouseholdActivityViewModel("book-1", fake)
 
             vm.reload(0)
@@ -69,7 +69,7 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         it("TC-12: a failed or unknown-book answer keeps the readers already shown") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             fake.results += HouseholdResult.Success(listOf(reader(1)))
             fake.results += HouseholdResult.Failed
             fake.results += HouseholdResult.NotFound
@@ -83,7 +83,7 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         it("TC-13: a reload replaces the list, so a reader who left it disappears") {
-            val fake = FakeHouseholdRepository()
+            val fake = TestHouseholdRepository()
             fake.results += HouseholdResult.Success(listOf(reader(1)))
             fake.results += HouseholdResult.Success(emptyList())
             val vm = HouseholdActivityViewModel("book-1", fake)

@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.reader.remote
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -23,8 +23,8 @@ import java.nio.file.Files
 class DefaultBookFileSourceTest : DescribeSpec({
 
     lateinit var server: MockWebServer
-    lateinit var tokenProvider: FakeAuthTokenProvider
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var tokenProvider: TestAuthTokenProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     var localFile: File? = null
     lateinit var source: DefaultBookFileSource
 
@@ -34,8 +34,8 @@ class DefaultBookFileSourceTest : DescribeSpec({
 
     beforeEach {
         server = MockWebServer().apply { start() }
-        tokenProvider = FakeAuthTokenProvider(token = "secret")
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        tokenProvider = TestAuthTokenProvider(token = "secret")
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
         localFile = null
         source = DefaultBookFileSource(
             ioDispatcher = Dispatchers.Unconfined,
@@ -43,7 +43,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
                 baseUrlProvider = baseUrlProvider,
                 authTokenProvider = tokenProvider,
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             localBookFiles = LocalBookFiles { localFile },
         )

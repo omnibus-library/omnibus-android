@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.audiobook.mini
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.chapters
@@ -26,7 +26,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-1
         it("#172 TC-15: a book already loaded when the screen opens is visible on the first read, with no command") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
 
             val vm = MiniPlayerViewModel(controller)
 
@@ -36,7 +36,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-1, P-MINI-2
         it("#172 TC-16: the bar follows the controller's book and sends nothing on show or hide") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = MiniPlayerViewModel(controller)
             vm.uiState.value.visible shouldBe false
 
@@ -54,7 +54,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-AC2
         it("#172 TC-17: skip back calls the controller's skip back") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
 
             MiniPlayerViewModel(controller).onSkipBack()
 
@@ -63,7 +63,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-AC2
         it("#172 TC-18: play/pause calls the controller's toggle") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
 
             MiniPlayerViewModel(controller).onPlayPauseToggled()
 
@@ -75,7 +75,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-19: stop calls the controller's stop exactly once") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
 
             MiniPlayerViewModel(controller).onStop()
 
@@ -84,7 +84,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-20: stop hides the bar at once, while the controller still reports the book") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
             val vm = MiniPlayerViewModel(controller)
 
             vm.onStop()
@@ -95,7 +95,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-21: the bar stays hidden while the controller reports the same book") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
             val vm = MiniPlayerViewModel(controller)
             vm.onStop()
 
@@ -108,7 +108,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-22: after idle, a different book shows the bar again") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
             val vm = MiniPlayerViewModel(controller)
             vm.onStop()
 
@@ -121,7 +121,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-23: after idle, the same book loaded again shows the bar again") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
             val vm = MiniPlayerViewModel(controller)
             vm.onStop()
 
@@ -133,7 +133,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3, P-MINI-AC3
         it("#172 TC-24: a different book without an idle state shows the bar") {
-            val controller = FakeAudiobookController(playbackState())
+            val controller = TestAudiobookController(playbackState())
             val vm = MiniPlayerViewModel(controller)
             vm.onStop()
 
@@ -145,7 +145,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-3
         it("#172 TC-25: stop with nothing loaded does nothing, and a later load still shows") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = MiniPlayerViewModel(controller)
 
             vm.onStop()
@@ -162,7 +162,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-6
         it("#172 TC-26: a load started with autoplay shows the bar before any player screen opens") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = MiniPlayerViewModel(controller)
 
             controller.state.value = playbackState(book = playingBook(title = ""), chapters = emptyList(), isLoading = true)
@@ -174,7 +174,7 @@ class MiniPlayerViewModelTest : DescribeSpec({
 
         // P-MINI-4
         it("#172 TC-27: an error keeps the bar, and its play button still sends the toggle") {
-            val controller = FakeAudiobookController(playbackState(error = PlaybackError.StoppedAfterRetries))
+            val controller = TestAudiobookController(playbackState(error = PlaybackError.StoppedAfterRetries))
             val vm = MiniPlayerViewModel(controller)
 
             vm.uiState.value.visible shouldBe true

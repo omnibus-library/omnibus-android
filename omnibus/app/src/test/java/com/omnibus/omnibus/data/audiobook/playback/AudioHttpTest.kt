@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.audiobook.playback
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import io.kotest.core.spec.style.DescribeSpec
@@ -35,10 +35,10 @@ class AudioHttpTest : DescribeSpec({
         // TC-94
         it("audio shares the app client and headers (AND-STK-3)") {
             val client = OmnibusHttpClient(
-                baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/")),
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+                baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/")),
+                authTokenProvider = TestAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             )
             val factory = audioCallFactory(client)
 

@@ -1,11 +1,11 @@
 package com.omnibus.omnibus.data.reviews
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.feature.bookdetail.format.BookDetailFormat
@@ -133,17 +133,17 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
     fun repositoryFor(
         baseUrl: HttpUrl? = server.url("/"),
         held: Boolean = false,
-        monitor: ConnectivityMonitor = FakeConnectivityMonitor(online = true),
-        provider: FakeServerBaseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
+        monitor: ConnectivityMonitor = TestConnectivityMonitor(online = true),
+        provider: TestServerBaseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
     ): DefaultReviewsRepository {
         val scope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined)
         return DefaultReviewsRepository(
             ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
             omnibusHttpClient = OmnibusHttpClient(
                 baseUrlProvider = provider,
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+                authTokenProvider = TestAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             connectivityMonitor = monitor,
             applicationScope = scope,
@@ -235,7 +235,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-4: refresh refetches a Loaded uuid, and a failed refetch keeps Loaded") {
-            val monitor = FakeConnectivityMonitor(online = false)
+            val monitor = TestConnectivityMonitor(online = false)
             val repository = repositoryFor(monitor = monitor)
             script.answer(reply(200, reviewsBody(others = listOf(obj("user_id" to 9L, "username" to "Zed")))))
             repository.refresh(UUID)
@@ -345,11 +345,11 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
 
         it("TC-10: an IOException is Offline while offline and Failed while online") {
             script.answer(dropped())
-            observeNow(repositoryFor(monitor = FakeConnectivityMonitor(online = false))).states.last() shouldBe
+            observeNow(repositoryFor(monitor = TestConnectivityMonitor(online = false))).states.last() shouldBe
                 ReviewsState.Offline
 
             script.answer(dropped())
-            observeNow(repositoryFor(monitor = FakeConnectivityMonitor(online = true))).states.last() shouldBe
+            observeNow(repositoryFor(monitor = TestConnectivityMonitor(online = true))).states.last() shouldBe
                 ReviewsState.Failed
         }
 
@@ -388,7 +388,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
 
             val offlineGate = CountDownLatch(1)
             script.answer(dropped(), offlineGate)
-            val offlineRepository = repositoryFor(held = true, monitor = FakeConnectivityMonitor(online = false))
+            val offlineRepository = repositoryFor(held = true, monitor = TestConnectivityMonitor(online = false))
             val offline = Observed(offlineRepository, UUID, newScope(Dispatchers.Default))
             nextRequest()
             offline.awaitLast(ReviewsState.Loading)
@@ -406,7 +406,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-13: going online while Offline refetches once") {
-            val monitor = FakeConnectivityMonitor(online = false)
+            val monitor = TestConnectivityMonitor(online = false)
             val repository = repositoryFor(monitor = monitor)
             script.answer(dropped())
             val observed = observeNow(repository)
@@ -424,7 +424,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-14: two collectors share the one reconnect GET") {
-            val monitor = FakeConnectivityMonitor(online = false)
+            val monitor = TestConnectivityMonitor(online = false)
             val repository = repositoryFor(held = true, monitor = monitor)
             val scope = newScope(Dispatchers.Default)
             val dropGate = CountDownLatch(1)
@@ -452,14 +452,14 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-15: reconnect refetches only an Offline state that is being collected") {
-            val failedMonitor = FakeConnectivityMonitor(online = false)
+            val failedMonitor = TestConnectivityMonitor(online = false)
             script.answer(reply(500))
             observeNow(repositoryFor(monitor = failedMonitor)).states.last() shouldBe ReviewsState.Failed
             val beforeFailed = server.requestCount
             failedMonitor.isOnline.value = true
             server.requestCount shouldBe beforeFailed
 
-            val loadedMonitor = FakeConnectivityMonitor(online = true)
+            val loadedMonitor = TestConnectivityMonitor(online = true)
             script.answer(reply(200, reviewsBody()))
             observeNow(repositoryFor(monitor = loadedMonitor)).states.last() shouldBe EMPTY
             val beforeLoaded = server.requestCount
@@ -467,7 +467,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             loadedMonitor.isOnline.value = true
             server.requestCount shouldBe beforeLoaded
 
-            val cancelledMonitor = FakeConnectivityMonitor(online = false)
+            val cancelledMonitor = TestConnectivityMonitor(online = false)
             script.answer(dropped())
             val cancelled = observeNow(repositoryFor(monitor = cancelledMonitor))
             cancelled.states.last() shouldBe ReviewsState.Offline
@@ -701,7 +701,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-23: each write error maps to its ReviewError, nothing throws, and a blank uuid sends nothing") {
-            val provider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+            val provider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
             val repository = repositoryFor(provider = provider)
             load(repository, mine = obj("stars" to 4.0, "updated_at" to 100L))
             val previous = repository.getReviewsFlow(UUID).first()
@@ -890,7 +890,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             failed.deleteMyReview(UUID) shouldBe ReviewWriteResult.Failed(ReviewError.NotLoaded)
 
             script.answer(dropped(), method = "GET")
-            val offline = repositoryFor(monitor = FakeConnectivityMonitor(online = false))
+            val offline = repositoryFor(monitor = TestConnectivityMonitor(online = false))
             observeNow(offline).states.last() shouldBe ReviewsState.Offline
             val offlineBefore = server.requestCount
             offline.updateMyReview(UUID, ReviewPatch(rating = Patch.Set(4.5f))) shouldBe

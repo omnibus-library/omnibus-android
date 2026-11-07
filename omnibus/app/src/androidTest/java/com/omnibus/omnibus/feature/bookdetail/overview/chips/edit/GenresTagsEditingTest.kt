@@ -40,7 +40,7 @@ import org.junit.Test
 
 /**
  * The Genres and Tags rows for an editor: the "+" chips, the sheet they open, saves shown on the rows, and failures.
- * The editor is a [FakeChipEditor] through [LocalChipEditorSource], so these tests never reach Hilt.
+ * The editor is a [TestChipEditor] through [LocalChipEditorSource], so these tests never reach Hilt.
  */
 class GenresTagsEditingTest {
 
@@ -77,7 +77,7 @@ class GenresTagsEditingTest {
     // TC-66
     @Test
     fun issue101_ac1_editorSeesPlusAsTheLastItemOfBothRows() {
-        val editor = FakeChipEditor(editorState(genres = listOf("Noir", "Epic"), tags = listOf("Cozy")))
+        val editor = TestChipEditor(editorState(genres = listOf("Noir", "Epic"), tags = listOf("Cozy")))
         rule.setEditor(editor, bookWith(listOf("Noir", "Epic"), listOf("Cozy")))
 
         val genresPlus = rule.onNodeWithTag(chipEdit.ADD_GENRES)
@@ -99,7 +99,7 @@ class GenresTagsEditingTest {
     // TC-67
     @Test
     fun issue101_ac1_editorSeesBothRowsEvenWithNoChips() {
-        rule.setEditor(FakeChipEditor(editorState()))
+        rule.setEditor(TestChipEditor(editorState()))
 
         rule.onNodeWithTag(tags.GENRES_ROW).assertIsDisplayed()
         rule.onNodeWithTag(tags.TAGS_ROW).assertIsDisplayed()
@@ -114,7 +114,7 @@ class GenresTagsEditingTest {
     // TC-68
     @Test
     fun issue101_ac1_editorSeesTheEmptyRowWhenTheOtherHasChips() {
-        rule.setEditor(FakeChipEditor(editorState(tags = listOf("Cozy"))), bookWith(emptyList(), listOf("Cozy")))
+        rule.setEditor(TestChipEditor(editorState(tags = listOf("Cozy"))), bookWith(emptyList(), listOf("Cozy")))
 
         rule.onNodeWithTag(tags.GENRES_ROW).assertIsDisplayed()
         rule.onNodeWithTag(tags.TAGS_ROW).assertIsDisplayed()
@@ -136,7 +136,7 @@ class GenresTagsEditingTest {
     // TC-70
     @Test
     fun issue101_ac2_plusIsDisabledWhileOfflineAndComesBack() {
-        val editor = FakeChipEditor(editorState(isOnline = false))
+        val editor = TestChipEditor(editorState(isOnline = false))
         rule.setEditor(editor)
 
         rule.onNodeWithTag(chipEdit.ADD_GENRES).assertIsDisplayed().assertIsNotEnabled()
@@ -154,7 +154,7 @@ class GenresTagsEditingTest {
     // TC-71
     @Test
     fun issue101_r5_tappingPlusOpensTheSheetForThatKind() {
-        val editor = FakeChipEditor(editorState())
+        val editor = TestChipEditor(editorState())
         rule.setEditor(editor)
 
         rule.onNodeWithContentDescription(addGenres()).performClick()
@@ -167,7 +167,7 @@ class GenresTagsEditingTest {
     // TC-72
     @Test
     fun issue101_ac3_removingInTheSheetRemovesItFromTheRowBehind() {
-        val editor = FakeChipEditor(
+        val editor = TestChipEditor(
             editorState(genres = listOf("Noir", "Epic"), openKind = MetadataListKind.Genres),
             applyEdits = true,
         )
@@ -189,7 +189,7 @@ class GenresTagsEditingTest {
     @Test
     fun issue101_ac3_overlayForwardsTheMergedBookOnce() {
         val merged = bookWith(listOf("Noir", "Epic"), listOf("Cozy"))
-        val editor = FakeChipEditor(editorState(genres = listOf("Noir", "Epic"), bookUpdate = ChipEditBookUpdate(7, merged)))
+        val editor = TestChipEditor(editorState(genres = listOf("Noir", "Epic"), bookUpdate = ChipEditBookUpdate(7, merged)))
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 ChipEditOverlay(editor, testSectionContext(book = merged, recorder = recorder), autoFocus = false)
@@ -209,7 +209,7 @@ class GenresTagsEditingTest {
     // TC-74
     @Test
     fun issue101_ac6_failureIsShownInsideTheOpenSheet() {
-        val editor = FakeChipEditor(
+        val editor = TestChipEditor(
             editorState(genres = listOf("Noir"), openKind = MetadataListKind.Genres, failure = ChipEditFailure(3, MetadataListKind.Genres)),
         )
         val message = detailText(R.string.book_detail_chipedit_failed_genres)
@@ -228,7 +228,7 @@ class GenresTagsEditingTest {
     // TC-75
     @Test
     fun issue101_ac6_failureGoesToThePageWhenTheSheetIsClosed() {
-        val editor = FakeChipEditor(editorState(failure = ChipEditFailure(4, MetadataListKind.Tags)))
+        val editor = TestChipEditor(editorState(failure = ChipEditFailure(4, MetadataListKind.Tags)))
         val message = detailText(R.string.book_detail_chipedit_failed_tags)
         rule.setContent {
             OmnibusTheme(darkTheme = true) {

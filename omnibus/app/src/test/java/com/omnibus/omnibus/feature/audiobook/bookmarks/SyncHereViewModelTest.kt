@@ -1,13 +1,13 @@
 package com.omnibus.omnibus.feature.audiobook.bookmarks
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.data.audiobook.syncpoint.FakeSyncPointRepository
+import com.omnibus.omnibus.data.audiobook.syncpoint.TestSyncPointRepository
 import com.omnibus.omnibus.data.audiobook.syncpoint.SyncPointError
 import com.omnibus.omnibus.data.audiobook.syncpoint.SyncPointResult
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -31,9 +31,9 @@ private const val NEEDS_CONNECTION = "Needs a connection"
 
 /** The player's controller, connectivity, sync repository and ViewModel. */
 private class SyncHarness(initial: PlaybackState = PlaybackState(), online: Boolean = true) {
-    val controller = FakeAudiobookController(initial)
-    val connectivity = FakeConnectivityMonitor(online)
-    val sync = FakeSyncPointRepository()
+    val controller = TestAudiobookController(initial)
+    val connectivity = TestConnectivityMonitor(online)
+    val sync = TestSyncPointRepository()
     val collecting = CollectingScope()
     val vm = SyncHereViewModel(UUID, controller, connectivity, sync)
         .also { collecting.collect(it.uiState) }

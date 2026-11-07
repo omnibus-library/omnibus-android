@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.audiobook.chapters
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.chapters
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.testing.CollectingScope
@@ -21,7 +21,7 @@ class ChaptersViewModelTest : DescribeSpec({
 
         // P-CHP-5: a tap seeks to the chapter's start and plays from there
         it("seeks to the chosen chapter's start and plays") {
-            val controller = FakeAudiobookController(playbackState(chapters = chapters(600.0, 1200.0, 900.0)))
+            val controller = TestAudiobookController(playbackState(chapters = chapters(600.0, 1200.0, 900.0)))
 
             ChaptersViewModel(controller).onChapterChosen(2)
 
@@ -30,7 +30,7 @@ class ChaptersViewModelTest : DescribeSpec({
 
         // P-CHP-5: playback that is already running is not restarted
         it("only seeks when the book is already playing") {
-            val controller = FakeAudiobookController(
+            val controller = TestAudiobookController(
                 playbackState(chapters = chapters(600.0, 1200.0), positionSeconds = 700.0, isPlaying = true),
             )
 
@@ -41,7 +41,7 @@ class ChaptersViewModelTest : DescribeSpec({
 
         // P-CHP-5: an index with no chapter (the book was unloaded under the sheet) does nothing
         it("ignores an index that has no chapter") {
-            val controller = FakeAudiobookController(playbackState(chapters = chapters(600.0)))
+            val controller = TestAudiobookController(playbackState(chapters = chapters(600.0)))
             val vm = ChaptersViewModel(controller)
 
             vm.onChapterChosen(1)
@@ -53,7 +53,7 @@ class ChaptersViewModelTest : DescribeSpec({
         // P-CHP-3: the sheet's state follows the player
         it("follows the player's position and chapters") {
             val book = chapters(1000.0, 1000.0)
-            val controller = FakeAudiobookController(playbackState(chapters = book, positionSeconds = 100.0))
+            val controller = TestAudiobookController(playbackState(chapters = book, positionSeconds = 100.0))
             val collecting = CollectingScope()
             try {
                 val vm = ChaptersViewModel(controller)

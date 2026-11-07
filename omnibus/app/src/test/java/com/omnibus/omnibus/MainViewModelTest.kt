@@ -1,8 +1,8 @@
 package com.omnibus.omnibus
 
 import com.omnibus.omnibus.data.auth.AuthSessionResult
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
-import com.omnibus.omnibus.data.configuration.FakeServerConfigurationRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import java.io.IOException
@@ -16,25 +16,25 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest : DescribeSpec({
 
-    lateinit var authRepository: FakeAuthRepository
+    lateinit var authRepository: TestAuthRepository
 
-    fun createViewModel(serverRepository: FakeServerConfigurationRepository) =
+    fun createViewModel(serverRepository: TestServerConfigurationRepository) =
         MainViewModel(serverRepository, authRepository)
 
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    beforeEach { authRepository = FakeAuthRepository() }
+    beforeEach { authRepository = TestAuthRepository() }
 
     describe("startDestination") {
         it("TC-32: opens server configuration when no server is saved") {
-            val viewModel = createViewModel(FakeServerConfigurationRepository(initialAddress = null))
+            val viewModel = createViewModel(TestServerConfigurationRepository(initialAddress = null))
 
             viewModel.startDestination.value shouldBe StartDestination.ServerConfiguration
         }
 
         it("TC-32: opens server configuration when the saved server is blank") {
-            val viewModel = createViewModel(FakeServerConfigurationRepository(initialAddress = "  "))
+            val viewModel = createViewModel(TestServerConfigurationRepository(initialAddress = "  "))
 
             viewModel.startDestination.value shouldBe StartDestination.ServerConfiguration
         }
@@ -42,7 +42,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-32: opens server configuration when no server is saved, even if a token is stored") {
             authRepository.signedIn.value = true
 
-            val viewModel = createViewModel(FakeServerConfigurationRepository(initialAddress = null))
+            val viewModel = createViewModel(TestServerConfigurationRepository(initialAddress = null))
 
             viewModel.startDestination.value shouldBe StartDestination.ServerConfiguration
         }
@@ -51,7 +51,7 @@ class MainViewModelTest : DescribeSpec({
             authRepository.signedIn.value = false
 
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.startDestination.value shouldBe StartDestination.Login
         }
@@ -60,13 +60,13 @@ class MainViewModelTest : DescribeSpec({
             authRepository.signedIn.value = true
 
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.startDestination.value shouldBe StartDestination.SignedIn
         }
 
         it("TC-35: opens server configuration when the saved config can't be read") {
-            val repository = FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000")
+            val repository = TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000")
                 .apply { readFailure = IOException("corrupt") }
 
             createViewModel(repository).startDestination.value shouldBe StartDestination.ServerConfiguration
@@ -74,14 +74,14 @@ class MainViewModelTest : DescribeSpec({
 
         it("TC-35: opens server configuration when the config can't be read, even if a token is stored") {
             authRepository.signedIn.value = true
-            val repository = FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000")
+            val repository = TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000")
                 .apply { readFailure = IOException("corrupt") }
 
             createViewModel(repository).startDestination.value shouldBe StartDestination.ServerConfiguration
         }
 
         it("TC-37: does not change after the config is edited post-launch") {
-            val repository = FakeServerConfigurationRepository(initialAddress = null)
+            val repository = TestServerConfigurationRepository(initialAddress = null)
             val viewModel = createViewModel(repository)
 
             repository.saveServerConfig("http://10.0.0.2:3000")
@@ -92,7 +92,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-37: stays on login when a session is saved after launch") {
             authRepository.signedIn.value = false
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.signedIn.value = true
 
@@ -102,7 +102,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-37: stays on the signed-in shell when the session ends after launch") {
             authRepository.signedIn.value = true
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.signedIn.value = false
 
@@ -114,7 +114,7 @@ class MainViewModelTest : DescribeSpec({
             authRepository.isSignedInGate = gate
             authRepository.signedIn.value = true
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.startDestination.value shouldBe StartDestination.Loading
 
@@ -129,14 +129,14 @@ class MainViewModelTest : DescribeSpec({
         it("TC-38: verifies the session exactly once when launching into the signed-in shell") {
             authRepository.signedIn.value = true
 
-            createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+            createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.verifySessionCalls shouldBe 1
         }
 
         it("TC-38: doesn't verify again when the session state changes afterwards") {
             authRepository.signedIn.value = true
-            createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+            createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.signedIn.value = false
             authRepository.signedIn.value = true
@@ -147,7 +147,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-38: doesn't verify when launching into login") {
             authRepository.signedIn.value = false
 
-            createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+            createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.verifySessionCalls shouldBe 0
         }
@@ -155,7 +155,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-38: doesn't verify when launching into server configuration") {
             authRepository.signedIn.value = true
 
-            createViewModel(FakeServerConfigurationRepository(initialAddress = null))
+            createViewModel(TestServerConfigurationRepository(initialAddress = null))
 
             authRepository.verifySessionCalls shouldBe 0
         }
@@ -165,7 +165,7 @@ class MainViewModelTest : DescribeSpec({
             authRepository.verifySessionResult = AuthSessionResult.Unreachable
 
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.startDestination.value shouldBe StartDestination.SignedIn
             authRepository.verifySessionCalls shouldBe 1
@@ -178,7 +178,7 @@ class MainViewModelTest : DescribeSpec({
             authRepository.isSignedInGate = CompletableDeferred()
 
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.isSignedIn.value shouldBe null
         }
@@ -186,7 +186,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-39: mirrors the repository, going from true to false when the session ends") {
             authRepository.signedIn.value = true
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
             viewModel.isSignedIn.value shouldBe true
 
             authRepository.signedIn.value = false
@@ -198,7 +198,7 @@ class MainViewModelTest : DescribeSpec({
             authRepository.signedIn.value = false
 
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             viewModel.isSignedIn.value shouldBe false
         }
@@ -206,7 +206,7 @@ class MainViewModelTest : DescribeSpec({
         it("TC-39: becomes true when a session is saved after launch") {
             authRepository.signedIn.value = false
             val viewModel =
-                createViewModel(FakeServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
+                createViewModel(TestServerConfigurationRepository(initialAddress = "http://10.0.0.2:3000"))
 
             authRepository.signedIn.value = true
 

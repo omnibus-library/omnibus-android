@@ -3,10 +3,10 @@ package com.omnibus.omnibus.feature.bookdetail.overview.reading
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
 import com.omnibus.omnibus.data.bookprogress.readingRecord
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
@@ -65,7 +65,7 @@ private fun known(status: ReadStatus, finishedAt: Long? = null) =
 
 /** Sessions reads that wait until the test completes them, in call order. Everything else is the shared fake. */
 private class GatedSessionsRepository(
-    val delegate: FakeBookProgressRepository = FakeBookProgressRepository(),
+    val delegate: TestBookProgressRepository = TestBookProgressRepository(),
 ) : BookProgressRepository by delegate {
     val pending = mutableListOf<CompletableDeferred<ReadingSessionsResult>>()
 
@@ -75,8 +75,8 @@ private class GatedSessionsRepository(
 
 /** A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. */
 private class Harness(
-    val fake: FakeBookProgressRepository = FakeBookProgressRepository(),
-    val status: FakeReadStatusRepository = FakeReadStatusRepository(),
+    val fake: TestBookProgressRepository = TestBookProgressRepository(),
+    val status: TestReadStatusRepository = TestReadStatusRepository(),
     hasFile: Boolean = true,
     repository: BookProgressRepository = fake,
 ) {
@@ -87,8 +87,8 @@ private class Harness(
 
 /** Runs [block] on a [Harness], and cancels its collection afterwards. */
 private inline fun withHarness(
-    fake: FakeBookProgressRepository = FakeBookProgressRepository(),
-    status: FakeReadStatusRepository = FakeReadStatusRepository(),
+    fake: TestBookProgressRepository = TestBookProgressRepository(),
+    status: TestReadStatusRepository = TestReadStatusRepository(),
     hasFile: Boolean = true,
     block: Harness.() -> Unit,
 ) {
@@ -117,7 +117,7 @@ class ReadingCardViewModelTest : DescribeSpec({
             }
 
             val gate = GatedSessionsRepository()
-            val pending = Harness(gate.delegate, FakeReadStatusRepository(), repository = gate)
+            val pending = Harness(gate.delegate, TestReadStatusRepository(), repository = gate)
             try {
                 pending.status.seed(UUID, known(ReadStatus.Reading))
                 pending.vm.reload(0)
@@ -219,7 +219,7 @@ class ReadingCardViewModelTest : DescribeSpec({
             val gate = GatedSessionsRepository()
             val seen = mutableListOf<ReadingCardModel>()
             val recorder = CoroutineScope(UnconfinedTestDispatcher())
-            val harness = Harness(gate.delegate, FakeReadStatusRepository(), repository = gate)
+            val harness = Harness(gate.delegate, TestReadStatusRepository(), repository = gate)
             try {
                 recorder.launch { harness.vm.uiState.map { it.card }.collect { seen += it } }
                 harness.status.seed(UUID, known(ReadStatus.Reading))

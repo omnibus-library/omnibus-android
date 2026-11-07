@@ -1,15 +1,15 @@
 package com.omnibus.omnibus.feature.reader
 
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
+import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
+import com.omnibus.omnibus.data.reader.local.TestReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
@@ -41,11 +41,11 @@ class ReaderViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    lateinit var repository: FakeLibraryRepository
+    lateinit var repository: TestLibraryRepository
 
     beforeEach {
         // The book stays Loading here, so the layer-1 cases only see page state.
-        repository = FakeLibraryRepository().apply { pendingBook = CompletableDeferred() }
+        repository = TestLibraryRepository().apply { pendingBook = CompletableDeferred() }
     }
 
     /** The one place a test builds the ViewModel, so later layers only change this helper. */
@@ -57,9 +57,9 @@ class ReaderViewModelTest : DescribeSpec({
             Dispatchers.Unconfined,
             BookFileSource { BookFileResult.NotFound },
         ),
-        progressRepository = FakeProgressRepository(),
-        settingsStore = FakeReaderSettingsStore(),
-        bookmarksRepository = FakeBookmarksRepository(),
+        progressRepository = TestProgressRepository(),
+        settingsStore = TestReaderSettingsStore(),
+        bookmarksRepository = TestBookmarksRepository(),
         timeSource = TimeSource { 0L },
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     )

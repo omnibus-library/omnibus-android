@@ -5,7 +5,7 @@ import com.omnibus.omnibus.data.audiobook.AudiobookManifestResult
 import com.omnibus.omnibus.data.audiobook.playback.CallRecorder
 import com.omnibus.omnibus.data.audiobook.playback.ControllerRig
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackListener
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.di.ClientIdSource
 import com.omnibus.omnibus.di.TimeSource
@@ -200,12 +200,12 @@ private fun answered(answer: ServerAudioPosition?): CompletableDeferred<ServerAu
 private class Wiring(scheduler: TestCoroutineScheduler, order: MutableList<String>?) {
     val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
     val time = TimeSource { scheduler.currentTime }
-    val repo = FakeListeningProgressRepository(order)
+    val repo = TestListeningProgressRepository(order)
     private var minted = 0
     lateinit var rig: ControllerRig
     val sync = DefaultListeningPositionSync(repo, dagger.Lazy { rig.controller }, time, scope)
-    val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, FakeDeviceTimeZone(), scope)
-    val readStatus = FakeReadStatusRepository()
+    val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, TestDeviceTimeZone(), scope)
+    val readStatus = TestReadStatusRepository()
     val marker = ReadStatusMarker(readStatus, scope)
     val recorder = CallRecorder()
 

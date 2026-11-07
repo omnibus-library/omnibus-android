@@ -3,12 +3,12 @@ package com.omnibus.omnibus.feature.bookdetail.progress
 import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
 import com.omnibus.omnibus.data.bookprogress.readingRecord
-import com.omnibus.omnibus.data.library.FakeBookAvailability
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
@@ -30,10 +30,10 @@ private val reading = known(ReadStatus.Reading)
 
 /** A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. */
 private class Harness(online: Boolean = true, answer: Boolean = false) {
-    val progress = FakeBookProgressRepository()
-    val status = FakeReadStatusRepository()
-    val connectivity = FakeConnectivityMonitor(online)
-    val availability = FakeBookAvailability(answer)
+    val progress = TestBookProgressRepository()
+    val status = TestReadStatusRepository()
+    val connectivity = TestConnectivityMonitor(online)
+    val availability = TestBookAvailability(answer)
     val collecting = CollectingScope()
     val vm = ReadingProgressViewModel(UUID, true, progress, status, connectivity, availability)
         .also { collecting.collect(it.uiState) }

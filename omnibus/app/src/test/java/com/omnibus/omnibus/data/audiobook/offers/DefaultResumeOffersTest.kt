@@ -1,14 +1,14 @@
 package com.omnibus.omnibus.data.audiobook.offers
 
 import com.omnibus.omnibus.data.audiobook.crossformat.CrossFormatAudioResult
-import com.omnibus.omnibus.data.audiobook.crossformat.FakeCrossFormatRepository
+import com.omnibus.omnibus.data.audiobook.crossformat.TestCrossFormatRepository
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.data.audiobook.position.FakeListeningPositionSync
+import com.omnibus.omnibus.data.audiobook.position.TestListeningPositionSync
 import com.omnibus.omnibus.data.audiobook.position.LatePosition
 import com.omnibus.omnibus.data.audiobook.position.ListeningPositionSync
 import io.kotest.assertions.withClue
@@ -25,11 +25,11 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 
 /**
  * Records the controller's commands at the moment [forceSave] runs, to prove a seek came before the save (I-SAVE-3).
- * [FakeListeningPositionSync] only counts its saves.
+ * [TestListeningPositionSync] only counts its saves.
  */
 private class OrderingSync(
-    private val inner: FakeListeningPositionSync,
-    private val controller: FakeAudiobookController,
+    private val inner: TestListeningPositionSync,
+    private val controller: TestAudiobookController,
 ) : ListeningPositionSync {
     override val lateServerPosition: StateFlow<LatePosition?> get() = inner.lateServerPosition
 
@@ -45,10 +45,10 @@ private class OrderingSync(
 class DefaultResumeOffersTest : DescribeSpec({
 
     lateinit var scope: CoroutineScope
-    lateinit var controller: FakeAudiobookController
-    lateinit var sync: FakeListeningPositionSync
+    lateinit var controller: TestAudiobookController
+    lateinit var sync: TestListeningPositionSync
     lateinit var ordering: OrderingSync
-    lateinit var repo: FakeCrossFormatRepository
+    lateinit var repo: TestCrossFormatRepository
     lateinit var holder: DefaultResumeOffers
 
     /** A settled state for the default book (book-1 at file 11) at [positionSeconds]. */
@@ -80,10 +80,10 @@ class DefaultResumeOffersTest : DescribeSpec({
 
     beforeEach {
         scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())
-        controller = FakeAudiobookController(settled())
-        sync = FakeListeningPositionSync()
+        controller = TestAudiobookController(settled())
+        sync = TestListeningPositionSync()
         ordering = OrderingSync(sync, controller)
-        repo = FakeCrossFormatRepository()
+        repo = TestCrossFormatRepository()
         holder = DefaultResumeOffers(dagger.Lazy<AudiobookController> { controller }, ordering, repo, scope)
     }
 

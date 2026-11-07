@@ -1,14 +1,14 @@
 package com.omnibus.omnibus.feature.audiobook.player
 
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.playingBook
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.FakeBookAvailability
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.testBook
 import io.kotest.core.spec.style.DescribeSpec
@@ -30,9 +30,9 @@ class PlayerViewModelTest : DescribeSpec({
 
     /** The one place a test builds the ViewModel, so the route arguments stay in one spot. */
     fun viewModel(
-        controller: FakeAudiobookController,
-        availability: FakeBookAvailability = FakeBookAvailability(answer = true),
-        library: FakeLibraryRepository = FakeLibraryRepository(),
+        controller: TestAudiobookController,
+        availability: TestBookAvailability = TestBookAvailability(answer = true),
+        library: TestLibraryRepository = TestLibraryRepository(),
         fileId: Long? = 9L,
         position: Double? = 120.0,
     ) = PlayerViewModel(BOOK, fileId, position, controller, availability, library)
@@ -41,8 +41,8 @@ class PlayerViewModelTest : DescribeSpec({
 
         // P-SCR-2, P-SCR-AC6, AND-RUSE-7
         it("#165 TC-11: shows the offline gate and never loads (P-SCR-2)") {
-            val controller = FakeAudiobookController()
-            val availability = FakeBookAvailability(answer = false)
+            val controller = TestAudiobookController()
+            val availability = TestBookAvailability(answer = false)
 
             val vm = viewModel(controller, availability)
 
@@ -53,8 +53,8 @@ class PlayerViewModelTest : DescribeSpec({
 
         // P-SCR-2 (exemption for a book already loaded)
         it("#165 TC-12: a book the controller already holds skips the gate") {
-            val controller = FakeAudiobookController(playbackState(book = playingBook(BOOK)))
-            val availability = FakeBookAvailability(answer = false)
+            val controller = TestAudiobookController(playbackState(book = playingBook(BOOK)))
+            val availability = TestBookAvailability(answer = false)
 
             val vm = viewModel(controller, availability)
 
@@ -65,8 +65,8 @@ class PlayerViewModelTest : DescribeSpec({
 
         // P-SCR-2 (exemption is per book)
         it("#165 TC-13: another loaded book does not exempt") {
-            val controller = FakeAudiobookController(playbackState(book = playingBook("other-book")))
-            val availability = FakeBookAvailability(answer = false)
+            val controller = TestAudiobookController(playbackState(book = playingBook("other-book")))
+            val availability = TestBookAvailability(answer = false)
 
             val vm = viewModel(controller, availability)
 
@@ -80,7 +80,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // P-SCR-1, P-SYNC-2, C2
         it("#165 TC-17: loads once with autoplay and the route's file and position (P-SCR-1)") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
 
             val vm = viewModel(controller, fileId = 9L, position = 120.0)
 
@@ -90,7 +90,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R4
         it("#165 TC-18: state updates never reload") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             viewModel(controller)
 
             controller.state.value = playbackState(book = playingBook(BOOK), positionSeconds = 30.0)
@@ -105,8 +105,8 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R8, P-SCR-6
         it("#165 TC-19: uses the library book until the controller knows it") {
-            val controller = FakeAudiobookController()
-            val library = FakeLibraryRepository()
+            val controller = TestAudiobookController()
+            val library = TestLibraryRepository()
             val held = CompletableDeferred<BookResult>()
             library.pendingBook = held
 
@@ -121,8 +121,8 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R4
         it("#165 TC-19: ignores a failed library read") {
-            val controller = FakeAudiobookController()
-            val library = FakeLibraryRepository()
+            val controller = TestAudiobookController()
+            val library = TestLibraryRepository()
             library.bookResult = BookResult.NotFound
 
             val vm = viewModel(controller, library = library)
@@ -137,7 +137,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R20
         it("#165 TC-20: leaves when the controller drops the book") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = viewModel(controller)
 
             controller.state.value = playbackState(book = playingBook(BOOK))
@@ -149,7 +149,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R20
         it("#165 TC-21: leaves when another book loads") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = viewModel(controller)
 
             controller.state.value = playbackState(book = playingBook(BOOK))
@@ -160,7 +160,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // R20
         it("#165 TC-22: does not leave while the load is still landing") {
-            val controller = FakeAudiobookController(playbackState(book = playingBook("other-book")))
+            val controller = TestAudiobookController(playbackState(book = playingBook("other-book")))
             val vm = viewModel(controller)
 
             controller.state.value = PlaybackState()
@@ -175,7 +175,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // P-PLAY-3-5, C2
         it("#165 TC-24: each intent maps to its controller command") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = viewModel(controller)
             controller.commands.clear()
 
@@ -203,7 +203,7 @@ class PlayerViewModelTest : DescribeSpec({
 
         // I-HLTH-3
         it("#165 TC-83: retry plays after an error (I-HLTH-3)") {
-            val controller = FakeAudiobookController()
+            val controller = TestAudiobookController()
             val vm = viewModel(controller)
             controller.state.value = playbackState(
                 book = playingBook(BOOK),

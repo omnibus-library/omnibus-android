@@ -1,10 +1,10 @@
 package com.omnibus.omnibus.data.metadata
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.library.Book
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -104,10 +104,10 @@ class DefaultMetadataRepositoryTest : DescribeSpec({
         DefaultMetadataRepository(
             ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
             omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = baseUrl),
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
+                baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+                authTokenProvider = TestAuthTokenProvider(token = "secret"),
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             applicationScope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined),
         )

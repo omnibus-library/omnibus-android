@@ -1,8 +1,8 @@
 package com.omnibus.omnibus.feature.audiobook.player.offers
 
 import com.omnibus.omnibus.data.audiobook.offers.EbookOffer
-import com.omnibus.omnibus.data.audiobook.offers.FakeResumeOffers
-import com.omnibus.omnibus.data.audiobook.offers.FakeResumeOffers.Call
+import com.omnibus.omnibus.data.audiobook.offers.TestResumeOffers
+import com.omnibus.omnibus.data.audiobook.offers.TestResumeOffers.Call
 import com.omnibus.omnibus.data.audiobook.offers.VisibleOffers
 import com.omnibus.omnibus.data.audiobook.position.LatePosition
 import io.kotest.core.spec.style.DescribeSpec
@@ -28,7 +28,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
         // P-SYNC-6, P-SYNC-7: a player shows only its own book's offers
         it("#166 TC-61: offers for another book never show, and this book's offers map through (P-SYNC-6, P-SYNC-7)") {
-            val fake = FakeResumeOffers()
+            val fake = TestResumeOffers()
             val vm = ResumeOffersViewModel(BOOK, fake)
 
             fake.offers.value = VisibleOffers(
@@ -43,7 +43,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
         // P-SYNC-7, P-SYNC-AC5: the ebook's position and direction map to the banner state, and updates follow the flow
         it("#166 TC-62: device seconds and the ebook's seconds and source direction map, including behind (P-SYNC-7, P-SYNC-AC5)") {
-            val fake = FakeResumeOffers()
+            val fake = TestResumeOffers()
             val vm = ResumeOffersViewModel(BOOK, fake)
 
             fake.offers.value = VisibleOffers(ebook = ebook.copy(positionSeconds = 65.0, sourceAhead = false))
@@ -58,7 +58,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
         // R2, R3: Go and Dismiss on the device offer hand the offer back to the holder
         it("#166 TC-63: Go and Dismiss on the device offer forward it to the holder (R2, R3)") {
-            val fake = FakeResumeOffers()
+            val fake = TestResumeOffers()
             val vm = ResumeOffersViewModel(BOOK, fake)
             fake.offers.value = VisibleOffers(device = device)
 
@@ -70,7 +70,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
         // R7, R8: Go and Dismiss on the ebook offer hand the offer back to the holder
         it("#166 TC-64: Go and Dismiss on the ebook offer forward it to the holder (R7, R8)") {
-            val fake = FakeResumeOffers()
+            val fake = TestResumeOffers()
             val vm = ResumeOffersViewModel(BOOK, fake)
             fake.offers.value = VisibleOffers(ebook = ebook)
 
@@ -82,7 +82,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
         // R2, R7: an intent with no offer, or after the offer cleared, forwards nothing
         it("#166 TC-65: the intents forward nothing when no offer is showing (R2, R7)") {
-            val fake = FakeResumeOffers()
+            val fake = TestResumeOffers()
             val vm = ResumeOffersViewModel(BOOK, fake)
 
             vm.onGoDevice()

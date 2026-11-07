@@ -1,13 +1,13 @@
 package com.omnibus.omnibus.feature.bookdetail.more.export
 
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.export.ExportSaveResult
 import com.omnibus.omnibus.data.export.ExportedFile
 import com.omnibus.omnibus.data.export.KindleSendResult
 import com.omnibus.omnibus.data.library.BookFile
 import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -51,9 +51,9 @@ private fun savedFile(name: String): ExportSaveResult =
 
 /** The fakes behind one ViewModel. */
 private class Harness(online: Boolean = true) {
-    val repo = FakeExportRepository()
-    val auth = FakeAuthRepository()
-    val monitor = FakeConnectivityMonitor(online)
+    val repo = TestExportRepository()
+    val auth = TestAuthRepository()
+    val monitor = TestConnectivityMonitor(online)
     val vm = ExportViewModel(BOOK_UUID, repo, auth, monitor)
 }
 

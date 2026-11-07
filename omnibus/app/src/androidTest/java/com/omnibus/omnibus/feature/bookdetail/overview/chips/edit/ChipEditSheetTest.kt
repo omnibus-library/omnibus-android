@@ -212,7 +212,7 @@ class ChipEditSheetTest {
     // TC-93
     @Test
     fun issue101_r5_backDismissesTheSheet() {
-        val editor = FakeChipEditor(editorState(genres = listOf("Noir"), openKind = MetadataListKind.Genres))
+        val editor = TestChipEditor(editorState(genres = listOf("Noir"), openKind = MetadataListKind.Genres))
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 ChipEditOverlay(editor, testSectionContext(), autoFocus = false)
@@ -231,7 +231,7 @@ class ChipEditSheetTest {
     fun issue101_r5_noSheetWhenNothingIsOpen() {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                ChipEditOverlay(FakeChipEditor(editorState()), testSectionContext(), autoFocus = false)
+                ChipEditOverlay(TestChipEditor(editorState()), testSectionContext(), autoFocus = false)
             }
         }
         rule.waitForIdle()

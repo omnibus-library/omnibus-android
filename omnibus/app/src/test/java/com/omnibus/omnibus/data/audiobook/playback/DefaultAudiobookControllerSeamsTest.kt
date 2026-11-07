@@ -195,7 +195,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
     describe("PlaybackRateStore") {
         // TC-77: the rate read never delays the start.
         it("does not delay the start (C6)") {
-            val store = FakePlaybackRateStore()
+            val store = TestPlaybackRateStore()
             store.answer = CompletableDeferred()
             val rig = newRig(rateStore = store)
             rig.loadAndSettle()
@@ -206,7 +206,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
         // TC-77: a saved rate is applied when it arrives, clamped, and a missing one leaves 1.0. rate(uuid) is read once per load.
         it("applies a clamped answer (C6)") {
             listOf(1.75 to 1.75, 9.0 to 3.0, null to 1.0).forEach { (answer, expected) ->
-                val store = FakePlaybackRateStore()
+                val store = TestPlaybackRateStore()
                 store.answer = answering(answer)
                 val rig = newRig(rateStore = store)
                 rig.loadAndSettle()
@@ -219,7 +219,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
 
         // TC-77: a rate read that arrives after setRate is ignored.
         it("a late answer loses to setRate (C6)") {
-            val store = FakePlaybackRateStore()
+            val store = TestPlaybackRateStore()
             val late = CompletableDeferred<Double?>()
             store.answer = late
             val rig = newRig(rateStore = store)
@@ -234,7 +234,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
     describe("setRate") {
         // TC-78: a rate applies at once with only the speed passed, and saves when asked.
         it("applies at once and persists when asked (I-SPD-1)") {
-            val store = FakePlaybackRateStore()
+            val store = TestPlaybackRateStore()
             val rig = newRig(rateStore = store)
             rig.loadAndSettle()
             val mark = rig.engine.calls.size
@@ -251,7 +251,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
 
         // TC-78: a rate is clamped, and the clamped value is what is saved.
         it("clamps (I-SPD-1)") {
-            val store = FakePlaybackRateStore()
+            val store = TestPlaybackRateStore()
             val rig = newRig(rateStore = store)
             rig.loadAndSettle()
             rig.controller.setRate(9.0, persist = true)
@@ -264,7 +264,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
 
         // TC-78: a NaN rate changes nothing and saves nothing.
         it("ignores NaN (I-SPD-1)") {
-            val store = FakePlaybackRateStore()
+            val store = TestPlaybackRateStore()
             val rig = newRig(rateStore = store)
             rig.loadAndSettle()
             val mark = rig.engine.calls.size
@@ -290,7 +290,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
     describe("SleepTimer") {
         // TC-79: the timer's state is mirrored into the controller's state.
         it("mirrors the timer state (C7)") {
-            val timer = FakeSleepTimer()
+            val timer = TestSleepTimer()
             val rig = newRig(sleepTimer = timer)
             rig.settle()
             val running = SleepTimerState(SleepTimerOption.After(10), 600.0)
@@ -304,7 +304,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
 
         // TC-79: setSleepTimer is passed on to the timer.
         it("delegates set (C7)") {
-            val timer = FakeSleepTimer()
+            val timer = TestSleepTimer()
             val rig = newRig(sleepTimer = timer)
             rig.controller.setSleepTimer(SleepTimerOption.EndOfChapter)
             timer.sets shouldBe listOf(SleepTimerOption.EndOfChapter)
@@ -312,7 +312,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
 
         // TC-79: a stop and a book switch clear the timer, and a same-book load does not touch it (I-SLP-3).
         it("stop and a book switch clear it (I-SLP-3)") {
-            val timer = FakeSleepTimer()
+            val timer = TestSleepTimer()
             val rig = newRig(sleepTimer = timer)
             rig.loadAndSettle()
             rig.controller.load("book-1", null, null, true)

@@ -31,7 +31,7 @@ private fun filelessBook(): Book = testDetailBook(formats = emptyList())
  */
 private fun ComposeContentTestRule.setStage(
     book: () -> Book,
-    fake: FakeWishlistRepository,
+    fake: TestWishlistRepository,
     reloadKey: () -> Int = { 0 },
 ) {
     setContent {
@@ -56,7 +56,7 @@ class WishlistStageSectionTest {
     @Test
     fun issue119_tc45_booksWithAFileShowNoLineAndNoAccess() {
         val book = mutableStateOf(testDetailBook(formats = listOf("epub")))
-        val fake = FakeWishlistRepository().apply { seed(book.value.uuid, present(WishlistSource.Scan)) }
+        val fake = TestWishlistRepository().apply { seed(book.value.uuid, present(WishlistSource.Scan)) }
         rule.setStage({ book.value }, fake)
         val formats = listOf(listOf("epub"), listOf("mp3"), listOf("epub", "mp3"))
         for (value in formats) {
@@ -87,7 +87,7 @@ class WishlistStageSectionTest {
 
     private fun assertNoLineFor(state: WishlistState) {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, state) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, state) }
         rule.setStage({ book }, fake)
         rule.onAllNodesWithTag(WishlistTestTags.LINE).assertCountEquals(0)
     }
@@ -96,7 +96,7 @@ class WishlistStageSectionTest {
     @Test
     fun issue119_tc47_lineDisappearsWhenTheStateBecomesAbsent() {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Detail)) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Detail)) }
         rule.setStage({ book }, fake)
         rule.onNodeWithTag(WishlistTestTags.LINE).assertIsDisplayed()
 
@@ -108,7 +108,7 @@ class WishlistStageSectionTest {
     @Test
     fun issue119_tc48_refreshRunsOncePerNewReloadKey() {
         val book = filelessBook()
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Scan)) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present(WishlistSource.Scan)) }
         val key = mutableIntStateOf(0)
         rule.setStage({ book }, fake, reloadKey = { key.intValue })
         rule.waitForIdle()

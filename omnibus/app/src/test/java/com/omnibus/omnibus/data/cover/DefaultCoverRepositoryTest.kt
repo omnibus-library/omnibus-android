@@ -3,11 +3,11 @@ package com.omnibus.omnibus.data.cover
 import coil3.Image
 import coil3.memory.MemoryCache
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.cover.local.CachedCover
-import com.omnibus.omnibus.data.cover.local.FakeCoverDiskStore
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.cover.local.TestCoverDiskStore
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.di.TimeSource
@@ -44,10 +44,10 @@ class DefaultCoverRepositoryTest : DescribeSpec({
     val startMillis = 1_000_000_000L
 
     lateinit var server: MockWebServer
-    lateinit var diskStore: FakeCoverDiskStore
+    lateinit var diskStore: TestCoverDiskStore
     lateinit var memoryCache: MemoryCache
-    lateinit var tokenProvider: FakeAuthTokenProvider
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
+    lateinit var tokenProvider: TestAuthTokenProvider
+    lateinit var baseUrlProvider: TestServerBaseUrlProvider
     var now = startMillis
     lateinit var repository: DefaultCoverRepository
 
@@ -95,10 +95,10 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
     beforeEach {
         server = MockWebServer().apply { start() }
-        diskStore = FakeCoverDiskStore()
+        diskStore = TestCoverDiskStore()
         memoryCache = MemoryCache.Builder().maxSizeBytes(1024 * 1024).build()
-        tokenProvider = FakeAuthTokenProvider(token = "secret")
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+        tokenProvider = TestAuthTokenProvider(token = "secret")
+        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
         now = startMillis
         repository = DefaultCoverRepository(
             ioDispatcher = Dispatchers.Unconfined,
@@ -106,7 +106,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
                 baseUrlProvider = baseUrlProvider,
                 authTokenProvider = tokenProvider,
                 omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
+                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
             ),
             diskStore = diskStore,
             memoryCache = memoryCache,

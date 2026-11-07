@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.series
 
-import com.omnibus.omnibus.data.series.FakeSeriesRepository
+import com.omnibus.omnibus.data.series.TestSeriesRepository
 import com.omnibus.omnibus.data.series.SeriesError
 import com.omnibus.omnibus.data.series.SeriesMember
 import com.omnibus.omnibus.data.series.SeriesResult
@@ -26,7 +26,7 @@ class SeriesViewModelTest : DescribeSpec({
     describe("loading") {
 
         it("#104 TC-52: it does nothing before reload") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             val vm = SeriesViewModel(4L, fake)
 
             vm.uiState.value.members shouldBe null
@@ -34,7 +34,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-53: reload fetches the series and keeps the members in order") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             fake.results.addLast(success("a", "b", "c"))
             val vm = SeriesViewModel(4L, fake)
 
@@ -45,7 +45,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-54: the same key fetches once") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             fake.results.addLast(success("a"))
             val vm = SeriesViewModel(4L, fake)
 
@@ -56,7 +56,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-55: a new reload key fetches again, and the same key still does not") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             fake.results.addLast(success("a"))
             fake.results.addLast(success("b"))
             val vm = SeriesViewModel(4L, fake)
@@ -79,7 +79,7 @@ class SeriesViewModelTest : DescribeSpec({
                 SeriesResult.Failure(SeriesError.Http(500)),
             )
             for (failure in failures) {
-                val fake = FakeSeriesRepository()
+                val fake = TestSeriesRepository()
                 fake.results.addLast(failure)
                 val vm = SeriesViewModel(4L, fake)
 
@@ -91,7 +91,7 @@ class SeriesViewModelTest : DescribeSpec({
 
         it("#104 TC-57: a failed refresh keeps the last good members") {
             for (failure in listOf(SeriesResult.NoServer, SeriesResult.Failure(SeriesError.Unreachable))) {
-                val fake = FakeSeriesRepository()
+                val fake = TestSeriesRepository()
                 fake.results.addLast(success("a", "b"))
                 fake.results.addLast(failure)
                 val vm = SeriesViewModel(4L, fake)
@@ -104,7 +104,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-58: a refresh replaces the members") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             fake.results.addLast(success("a"))
             fake.results.addLast(success("b", "c"))
             val vm = SeriesViewModel(4L, fake)
@@ -116,7 +116,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-59: a newer reload supersedes one in flight") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             val gate = CompletableDeferred<Unit>()
             fake.results.addLast(success("stale"))
             fake.results.addLast(success("fresh"))
@@ -132,7 +132,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-60: a failed key is not retried, and a new key retries") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             fake.results.addLast(SeriesResult.Failure(SeriesError.Unreachable))
             fake.results.addLast(success("a"))
             val vm = SeriesViewModel(4L, fake)
@@ -147,7 +147,7 @@ class SeriesViewModelTest : DescribeSpec({
         }
 
         it("#104 TC-61: it fetches the id it was created with") {
-            val fake = FakeSeriesRepository()
+            val fake = TestSeriesRepository()
             val four = SeriesViewModel(4L, fake)
             val nine = SeriesViewModel(9L, fake)
 

@@ -2,8 +2,8 @@ package com.omnibus.omnibus.feature.auth
 
 import com.omnibus.omnibus.data.auth.AuthRegisterResult
 import com.omnibus.omnibus.data.auth.AuthSignInResult
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
-import com.omnibus.omnibus.data.configuration.FakeServerConfigurationRepository
+import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
 import com.omnibus.omnibus.testing.CollectingScope
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -17,8 +17,8 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginViewModelTest : DescribeSpec({
 
-    lateinit var authRepository: FakeAuthRepository
-    lateinit var serverConfigRepository: FakeServerConfigurationRepository
+    lateinit var authRepository: TestAuthRepository
+    lateinit var serverConfigRepository: TestServerConfigurationRepository
     lateinit var collecting: CollectingScope
 
     fun createViewModel() = LoginViewModel(authRepository, serverConfigRepository).also {
@@ -29,8 +29,8 @@ class LoginViewModelTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     beforeEach {
-        authRepository = FakeAuthRepository()
-        serverConfigRepository = FakeServerConfigurationRepository(initialAddress = SERVER)
+        authRepository = TestAuthRepository()
+        serverConfigRepository = TestServerConfigurationRepository(initialAddress = SERVER)
         collecting = CollectingScope()
     }
 

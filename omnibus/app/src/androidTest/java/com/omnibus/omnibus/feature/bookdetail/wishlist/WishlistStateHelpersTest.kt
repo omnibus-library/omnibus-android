@@ -40,7 +40,7 @@ private fun HelperProbe(book: Book, results: HelperResults) {
 private fun ComposeContentTestRule.setHelpers(
     book: Book,
     results: HelperResults,
-    fake: FakeWishlistRepository?,
+    fake: TestWishlistRepository?,
 ) {
     setContent {
         OmnibusTheme(darkTheme = true) {
@@ -80,7 +80,7 @@ class WishlistStateHelpersTest {
     @Test
     fun issue119_tc50_aBookWithAFileIsNeverWishlistOnlyAndNeverTouchesTheRepository() {
         val book = testDetailBook(formats = listOf("epub"))
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val results = HelperResults()
         rule.setHelpers(book, results, fake)
 
@@ -94,7 +94,7 @@ class WishlistStateHelpersTest {
     @Test
     fun issue119_tc50_aFilelessPresentBookIsWishlistOnlyWithAnActionModel() {
         val book = testDetailBook(formats = emptyList()).copy(isbn13 = "9781234567897")
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, present()) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, present()) }
         val results = HelperResults()
         rule.setHelpers(book, results, fake)
 
@@ -127,7 +127,7 @@ class WishlistStateHelpersTest {
 
     private fun assertNotWishlistOnly(state: WishlistState) {
         val book = testDetailBook(formats = emptyList())
-        val fake = FakeWishlistRepository().apply { seed(book.uuid, state) }
+        val fake = TestWishlistRepository().apply { seed(book.uuid, state) }
         val results = HelperResults()
         rule.setHelpers(book, results, fake)
 

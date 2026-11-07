@@ -1,7 +1,7 @@
 package com.omnibus.omnibus.feature.bookdetail.wishlist
 
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.wishlist.FakeWishlistRepository
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.data.wishlist.TestWishlistRepository
 import com.omnibus.omnibus.data.wishlist.WishlistEntry
 import com.omnibus.omnibus.data.wishlist.WishlistError
 import com.omnibus.omnibus.data.wishlist.WishlistRemovalResult
@@ -31,15 +31,15 @@ class WishlistRemovalViewModelTest : DescribeSpec({
     val present = WishlistState.Present(WishlistEntry(id = 7, addedAtMillis = null, source = WishlistSource.Scan))
 
     /** The one place a test builds the ViewModel, so later changes only touch this helper. */
-    fun viewModel(repo: FakeWishlistRepository, online: Boolean = true): Pair<WishlistRemovalViewModel, FakeConnectivityMonitor> {
-        val monitor = FakeConnectivityMonitor(online)
+    fun viewModel(repo: TestWishlistRepository, online: Boolean = true): Pair<WishlistRemovalViewModel, TestConnectivityMonitor> {
+        val monitor = TestConnectivityMonitor(online)
         return WishlistRemovalViewModel(bookUuid, repo, monitor) to monitor
     }
 
     describe("state from the repository and connectivity") {
 
         it("#119 TC-26: the VM mirrors the wishlist state and connectivity, and follows later changes") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val (vm, monitor) = viewModel(repo, online = true)
 
             vm.uiState.value.state shouldBe present
@@ -55,7 +55,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-26: a VM that starts offline reports offline") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             viewModel(repo, online = false).first.uiState.value.isOnline shouldBe false
         }
     }
@@ -63,7 +63,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
     describe("opening the confirmation") {
 
         it("#119 TC-27: openConfirm opens only when the row is enabled") {
-            val repo = FakeWishlistRepository()
+            val repo = TestWishlistRepository()
             for (state in listOf(WishlistState.Unknown, WishlistState.Absent, WishlistState.Failed)) {
                 repo.seed(bookUuid, state)
                 val (vm, _) = viewModel(repo)
@@ -82,7 +82,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-27: openConfirm is ignored while a removal is in flight") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val gate = CompletableDeferred<Unit>()
             repo.removalGates.addLast(gate)
             val (vm, _) = viewModel(repo)
@@ -95,7 +95,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-28: openConfirm then dismissConfirm closes it with no repository call") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val (vm, _) = viewModel(repo)
 
             vm.openConfirm()
@@ -107,7 +107,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-34: the confirmation lives in the VM, so it survives a new collector (a recreated Activity)") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val (vm, _) = viewModel(repo)
             vm.openConfirm()
 
@@ -123,7 +123,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
     describe("removing the book") {
 
         it("#119 TC-29: confirmRemoval closes the dialog at once and sends exactly one request") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val gate = CompletableDeferred<Unit>()
             repo.removalGates.addLast(gate)
             val (vm, _) = viewModel(repo)
@@ -139,7 +139,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-30: further confirms and opens while the request is in flight send nothing") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val gate = CompletableDeferred<Unit>()
             repo.removalGates.addLast(gate)
             val (vm, _) = viewModel(repo)
@@ -157,7 +157,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-31: each removal result is reported once with a rising id, and outcomeShown clears only its own") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             repo.removalResults.addLast(WishlistRemovalResult.Removed(bookDeleted = true))
             repo.removalResults.addLast(WishlistRemovalResult.Removed(bookDeleted = false))
             val (vm, _) = viewModel(repo)
@@ -186,7 +186,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
         }
 
         it("#119 TC-32: each failure is reported once with a new id, and the state and retry are unchanged") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val errors = listOf(
                 WishlistError.NoServer,
                 WishlistError.Unreachable,
@@ -212,7 +212,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
     describe("reloading the page") {
 
         it("#119 TC-33: the first key is only recorded, and each new key refreshes once") {
-            val repo = FakeWishlistRepository().apply { seed(bookUuid, present) }
+            val repo = TestWishlistRepository().apply { seed(bookUuid, present) }
             val (vm, _) = viewModel(repo)
 
             vm.pageReloaded(1)

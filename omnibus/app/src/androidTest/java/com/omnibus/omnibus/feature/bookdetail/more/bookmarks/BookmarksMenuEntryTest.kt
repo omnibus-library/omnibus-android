@@ -13,7 +13,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.more.BookMoreMenu
 import com.omnibus.omnibus.feature.bookdetail.more.BookMoreMenuEntry
 import com.omnibus.omnibus.feature.bookdetail.more.BookMoreTestTags
-import com.omnibus.omnibus.feature.bookdetail.more.FakeEntry
+import com.omnibus.omnibus.feature.bookdetail.more.TestEntry
 import com.omnibus.omnibus.feature.bookdetail.more.MORE_HOST
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
@@ -53,7 +53,7 @@ class BookmarksMenuEntryTest {
     fun issue117_tc6_rowIsAbsentWithoutFilesAndLeavesNoRule() {
         setMenu(
             testDetailBook(formats = emptyList()),
-            listOf(FakeEntry("Add to shelf"), BookmarksTestEntry(), FakeEntry("Export")),
+            listOf(TestEntry("Add to shelf"), BookmarksTestEntry(), TestEntry("Export")),
         )
         rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()
 

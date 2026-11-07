@@ -1,9 +1,9 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PendingResume
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.withClue
@@ -25,11 +25,11 @@ import kotlinx.coroutines.test.setMain
 /** One resolver with its repository and sync, on one scope that shares [scheduler]'s virtual clock. */
 private class Harness(scheduler: TestCoroutineScheduler) {
     val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val repo = FakeListeningProgressRepository()
+    val repo = TestListeningProgressRepository()
     val sync = DefaultListeningPositionSync(
         repo,
-        dagger.Lazy<AudiobookController> { FakeAudiobookController() },
-        FakeTimeSource(),
+        dagger.Lazy<AudiobookController> { TestAudiobookController() },
+        TestTimeSource(),
         scope,
     )
     val resolver = DefaultResumeStartResolver(repo, sync, scope)

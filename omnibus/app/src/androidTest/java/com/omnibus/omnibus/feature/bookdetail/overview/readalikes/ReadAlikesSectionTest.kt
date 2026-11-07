@@ -13,7 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.data.suggestions.FakeSuggestionsRepository
+import com.omnibus.omnibus.data.suggestions.TestSuggestionsRepository
 import com.omnibus.omnibus.data.suggestions.SuggestionCoverResult
 import com.omnibus.omnibus.data.suggestions.SuggestionsAnswer
 import com.omnibus.omnibus.data.suggestions.SuggestionsError
@@ -45,7 +45,7 @@ class ReadAlikesSectionTest {
     private val notConfiguredAnswer: SuggestionsResult = SuggestionsResult.Success(SuggestionsAnswer.NotConfigured)
     private val failure: SuggestionsResult = SuggestionsResult.Failure(SuggestionsError.Unreachable)
 
-    private fun viewModelFor(fake: FakeSuggestionsRepository) = ReadAlikesViewModel("uuid-1", fake)
+    private fun viewModelFor(fake: TestSuggestionsRepository) = ReadAlikesViewModel("uuid-1", fake)
 
     /** Renders the section for [viewModel] at a fixed reload key. */
     private fun setSection(viewModel: ReadAlikesViewModel, recorder: SectionContextRecorder = SectionContextRecorder()) {
@@ -89,7 +89,7 @@ class ReadAlikesSectionTest {
     // #106 TC-74 (AC2)
     @Test
     fun tc74_pendingShowsTheSpinnerLineThenTheShelfReplacesIt() {
-        val fake = FakeSuggestionsRepository(pending, ready(suggestion(1), suggestion(2)))
+        val fake = TestSuggestionsRepository(pending, ready(suggestion(1), suggestion(2)))
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { statusText() == detailText(R.string.book_detail_readalikes_searching) }
@@ -106,7 +106,7 @@ class ReadAlikesSectionTest {
     // #106 TC-75 (AC1)
     @Test
     fun tc75_aReadyAnswerShowsTheShelfNamingTheBook() {
-        val fake = FakeSuggestionsRepository(ready(suggestion(1), suggestion(2), suggestion(3)))
+        val fake = TestSuggestionsRepository(ready(suggestion(1), suggestion(2), suggestion(3)))
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { cardCount() == 3 }
@@ -121,7 +121,7 @@ class ReadAlikesSectionTest {
     fun tc76_tappingACardNavigatesToItsHardcoverUrl() {
         val recorder = SectionContextRecorder()
         val second = suggestion(2)
-        val fake = FakeSuggestionsRepository(ready(suggestion(1), second))
+        val fake = TestSuggestionsRepository(ready(suggestion(1), second))
         setSection(viewModelFor(fake), recorder = recorder)
 
         rule.waitUntil(5_000) { cardCount() == 2 }
@@ -134,7 +134,7 @@ class ReadAlikesSectionTest {
     // #106 TC-77 (AC3)
     @Test
     fun tc77_unavailableAnswerShowsTheMessage() {
-        val fake = FakeSuggestionsRepository(unavailableAnswer)
+        val fake = TestSuggestionsRepository(unavailableAnswer)
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { statusText() == detailText(R.string.book_detail_readalikes_unavailable) }
@@ -145,7 +145,7 @@ class ReadAlikesSectionTest {
     // #106 TC-78 (AC4)
     @Test
     fun tc78a_notConfiguredShowsNothing() {
-        val fake = FakeSuggestionsRepository(notConfiguredAnswer)
+        val fake = TestSuggestionsRepository(notConfiguredAnswer)
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { fake.requests >= 1 }
@@ -156,7 +156,7 @@ class ReadAlikesSectionTest {
     // #106 TC-78 (AC4)
     @Test
     fun tc78b_readyWithNoItemsShowsNothing() {
-        val fake = FakeSuggestionsRepository(ready())
+        val fake = TestSuggestionsRepository(ready())
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { fake.requests >= 1 }
@@ -167,7 +167,7 @@ class ReadAlikesSectionTest {
     // #106 TC-78 (AC4)
     @Test
     fun tc78c_aFailedFirstReadShowsNothing() {
-        val fake = FakeSuggestionsRepository(failure)
+        val fake = TestSuggestionsRepository(failure)
         setSection(viewModelFor(fake))
 
         rule.waitUntil(5_000) { fake.requests >= 1 }
@@ -178,7 +178,7 @@ class ReadAlikesSectionTest {
     // #106 TC-79 (AC7)
     @Test
     fun tc79_leavingCompositionStopsPolling() {
-        val fake = FakeSuggestionsRepository(pending)
+        val fake = TestSuggestionsRepository(pending)
         val viewModel = viewModelFor(fake)
         var shown by mutableStateOf(true)
         rule.setContent {
@@ -201,7 +201,7 @@ class ReadAlikesSectionTest {
     // #106 TC-80 (R8)
     @Test
     fun tc80_aNewReloadKeyReadsAgain() {
-        val fake = FakeSuggestionsRepository(ready(suggestion(1)))
+        val fake = TestSuggestionsRepository(ready(suggestion(1)))
         val viewModel = viewModelFor(fake)
         var reloadKey by mutableIntStateOf(0)
         rule.setContent {
@@ -224,7 +224,7 @@ class ReadAlikesSectionTest {
     // #106 TC-81a (R8)
     @Test
     fun tc81a_returningWithAFinishedKeyDoesNotReadAgain() {
-        val fake = FakeSuggestionsRepository(ready(suggestion(1)))
+        val fake = TestSuggestionsRepository(ready(suggestion(1)))
         val viewModel = viewModelFor(fake)
         var shown by mutableStateOf(true)
         rule.setContent {
@@ -246,7 +246,7 @@ class ReadAlikesSectionTest {
     // #106 TC-81b (R8)
     @Test
     fun tc81b_returningAfterAnInterruptedPollReadsAgain() {
-        val fake = FakeSuggestionsRepository(pending)
+        val fake = TestSuggestionsRepository(pending)
         val viewModel = viewModelFor(fake)
         var shown by mutableStateOf(true)
         rule.setContent {
@@ -286,7 +286,7 @@ class ReadAlikesSectionTest {
         val run = System.nanoTime()
         val firstPath = "/api/suggestions/u$run/1/cover"
         val secondPath = "/api/suggestions/u$run/2/cover"
-        val fake = FakeSuggestionsRepository(
+        val fake = TestSuggestionsRepository(
             ready(suggestion(run, coverPath = firstPath), suggestion(run + 1, coverPath = secondPath)),
         )
         fake.coverResults[firstPath] = SuggestionCoverResult.Found(pngBytes(), "image/png")
@@ -306,7 +306,7 @@ class ReadAlikesSectionTest {
     // #106 TC-84 (AC2, AC3)
     @Test
     fun tc84_failedReAsksKeepTheSpinnerThenEndInUnavailable() {
-        val fake = FakeSuggestionsRepository(pending, failure)
+        val fake = TestSuggestionsRepository(pending, failure)
         setSection(viewModelFor(fake))
         rule.waitUntil(5_000) { statusText() == detailText(R.string.book_detail_readalikes_searching) }
 

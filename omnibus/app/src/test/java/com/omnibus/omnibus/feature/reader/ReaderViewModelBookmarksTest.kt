@@ -4,12 +4,12 @@ import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.bookmarks.BookmarkError
 import com.omnibus.omnibus.data.bookmarks.BookmarkWriteResult
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
+import com.omnibus.omnibus.data.library.TestLibraryRepository
+import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.BookFileResult
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
+import com.omnibus.omnibus.data.reader.local.TestReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
@@ -37,16 +37,16 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     /** The one place these cases build the ViewModel. The book stays Loading, so only the bookmark state is in play. */
-    fun viewModel(bookmarks: FakeBookmarksRepository = FakeBookmarksRepository()): ReaderViewModel = ReaderViewModel(
+    fun viewModel(bookmarks: TestBookmarksRepository = TestBookmarksRepository()): ReaderViewModel = ReaderViewModel(
         bookUuid = "book-1",
-        libraryRepository = FakeLibraryRepository().apply { pendingBook = CompletableDeferred() },
+        libraryRepository = TestLibraryRepository().apply { pendingBook = CompletableDeferred() },
         assetLoaderFactory = ReaderAssetLoaderFactory(
             mockk(relaxed = true),
             Dispatchers.Unconfined,
             BookFileSource { BookFileResult.NotFound },
         ),
-        progressRepository = FakeProgressRepository(),
-        settingsStore = FakeReaderSettingsStore(),
+        progressRepository = TestProgressRepository(),
+        settingsStore = TestReaderSettingsStore(),
         bookmarksRepository = bookmarks,
         timeSource = TimeSource { 0L },
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
@@ -65,7 +65,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-40: the state mirrors the repository's list and status, for this book's uuid.
         it("TC-40: the state mirrors the repository's bookmarks and status") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val a = bookmark(1L, "client-a", "epubcfi(/6/4)")
             val b = bookmark(2L, "client-b", "epubcfi(/6/8)")
             bookmarks.seed("book-1", BookmarksState.Loading)
@@ -84,7 +84,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-42: the count rises when an add starts and drops back when the repository rolls it back.
         it("TC-42: the count follows optimistic adds and rollbacks") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val gate = CompletableDeferred<Unit>()
             bookmarks.onAdd = { draft ->
                 val optimistic = Bookmark(null, "client-1", draft.bookUuid, draft.position, draft.title, null, null, 1L)
@@ -105,7 +105,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-43: an unbookmarked page sends one add built from the location; the open menu stays open.
         it("TC-43: toggling an unbookmarked page adds a draft built from the location") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val vm = viewModel(bookmarks)
             vm.onPageEvent(relocate("  epubcfi(/6/8)  ", chapterTitle = "Ch 1 "))
             vm.onChromeToggled()
@@ -123,7 +123,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-44: the draft limits apply before the repository sees anything.
         it("TC-44: the toggle applies the draft limits before calling the repository") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val vm = viewModel(bookmarks)
 
             vm.onPageEvent(relocate("e".repeat(4097), chapterTitle = "Ch"))
@@ -141,7 +141,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-45: with no location, a null cfi or a blank cfi, the toggle does nothing.
         it("TC-45: toggling without a current cfi does nothing") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val vm = viewModel(bookmarks)
 
             vm.onBookmarkToggled()
@@ -156,7 +156,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-46: a bookmarked page removes every bookmark at its cfi, whitespace aside, and nothing else.
         it("TC-46: toggling a bookmarked page removes every bookmark at that cfi") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val first = bookmark(1L, "client-a", "epubcfi(/6/8)")
             val second = bookmark(2L, "client-b", " epubcfi(/6/8) ")
             val elsewhere = bookmark(3L, "client-c", "epubcfi(/6/10)")
@@ -211,7 +211,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
         // TC-52: retry asks the repository to refresh this book, once.
         it("TC-52: retry refreshes the book's bookmarks") {
-            val bookmarks = FakeBookmarksRepository()
+            val bookmarks = TestBookmarksRepository()
             val vm = viewModel(bookmarks)
 
             vm.onBookmarksRetryRequested()

@@ -66,7 +66,7 @@ class BookMoreMenuTest {
     // TC-3
     @Test
     fun issue116_tc3_tappingMoreOpensTheMenuWithItsRows() {
-        rule.setMoreButton(listOf(FakeEntry(rowLabel)))
+        rule.setMoreButton(listOf(TestEntry(rowLabel)))
 
         openMenu()
 
@@ -82,7 +82,7 @@ class BookMoreMenuTest {
     // TC-4
     @Test
     fun issue116_tc4_menuClosesOnRowChoiceBackAndOutsideTap() {
-        rule.setMoreButton(listOf(FakeEntry(rowLabel)))
+        rule.setMoreButton(listOf(TestEntry(rowLabel)))
 
         openMenu()
         rule.onNodeWithText(rowLabel).performClick()
@@ -103,12 +103,12 @@ class BookMoreMenuTest {
         val sheetOpen = mutableStateOf(false)
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = rowLabel,
                     onClick = { sheetOpen.value = true },
                     overlay = { if (sheetOpen.value) Text("sheet open") },
                 ),
-                FakeEntry(label = null, overlay = { Text("always composed") }),
+                TestEntry(label = null, overlay = { Text("always composed") }),
             ),
         )
         rule.onNodeWithText("always composed").assertIsDisplayed()
@@ -127,7 +127,7 @@ class BookMoreMenuTest {
         var clicks = 0
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = rowLabel,
                     enabled = false,
                     subLabel = needsConnection,

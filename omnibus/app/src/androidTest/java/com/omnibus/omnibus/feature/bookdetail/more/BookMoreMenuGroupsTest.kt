@@ -54,7 +54,7 @@ class BookMoreMenuGroupsTest {
     @Test
     fun issue116_tc10_entryEmittingNothingLeavesOneRuleBetweenItsNeighbours() {
         setMenu {
-            listOf(FakeEntry("Alpha row"), FakeEntry(label = null), FakeEntry("Gamma row"))
+            listOf(TestEntry("Alpha row"), TestEntry(label = null), TestEntry("Gamma row"))
         }
         rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()
 
@@ -82,21 +82,21 @@ class BookMoreMenuGroupsTest {
     @Test
     fun issue116_tc11_rulesAppearOnlyBetweenEntriesThatEmittedRows() {
         var entries by mutableStateOf(
-            listOf<BookMoreMenuEntry>(FakeEntry("Alpha row"), FakeEntry("Beta row"), FakeEntry("Gamma row")),
+            listOf<BookMoreMenuEntry>(TestEntry("Alpha row"), TestEntry("Beta row"), TestEntry("Gamma row")),
         )
         setMenu { entries }
         rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()
         assertEquals(2, placedRules())
 
-        entries = listOf(FakeEntry("Alpha row"), FakeEntry(null), FakeEntry(null))
+        entries = listOf(TestEntry("Alpha row"), TestEntry(null), TestEntry(null))
         rule.waitForIdle()
         assertEquals(0, placedRules())
 
-        entries = listOf(FakeEntry(null), FakeEntry(null), FakeEntry("Gamma row"))
+        entries = listOf(TestEntry(null), TestEntry(null), TestEntry("Gamma row"))
         rule.waitForIdle()
         assertEquals(0, placedRules())
 
-        entries = listOf(FakeEntry(null), FakeEntry(null), FakeEntry(null))
+        entries = listOf(TestEntry(null), TestEntry(null), TestEntry(null))
         rule.waitForIdle()
         assertEquals(0, placedRules())
     }
@@ -106,8 +106,8 @@ class BookMoreMenuGroupsTest {
     fun issue116_tc12_menuMeasuresWithIntrinsicSizeMaxWithoutCrashing() {
         setMenu {
             listOf(
-                FakeEntry("A label long enough to be the widest row in this menu"),
-                FakeEntry("Short"),
+                TestEntry("A label long enough to be the widest row in this menu"),
+                TestEntry("Short"),
             )
         }
         rule.onNodeWithTag(BookMoreTestTags.MENU).assertIsDisplayed()

@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
+import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
+import com.omnibus.omnibus.data.library.TestLibraryRepository
+import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.data.progress.PositionSaveResult
 import com.omnibus.omnibus.data.progress.ProgressError
 import com.omnibus.omnibus.data.progress.ReadingPosition
@@ -14,7 +14,7 @@ import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
+import com.omnibus.omnibus.data.reader.local.TestReaderSettingsStore
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
@@ -42,15 +42,15 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    lateinit var library: FakeLibraryRepository
-    lateinit var fake: FakeProgressRepository
+    lateinit var library: TestLibraryRepository
+    lateinit var fake: TestProgressRepository
     lateinit var persistScope: CoroutineScope
     var now = 5_000_500L
 
     beforeEach {
         // The book stays Loading, so these cases only see the position state.
-        library = FakeLibraryRepository().apply { pendingBook = CompletableDeferred() }
-        fake = FakeProgressRepository()
+        library = TestLibraryRepository().apply { pendingBook = CompletableDeferred() }
+        fake = TestProgressRepository()
         now = 5_000_500L
         persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
@@ -58,7 +58,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
     afterEach { persistScope.cancel() }
 
     /** The one place these cases build the ViewModel. Reads [fake], [now] and [persistScope] when called. */
-    fun viewModel(settings: FakeReaderSettingsStore = FakeReaderSettingsStore(), startCfi: String? = null) = ReaderViewModel(
+    fun viewModel(settings: TestReaderSettingsStore = TestReaderSettingsStore(), startCfi: String? = null) = ReaderViewModel(
         bookUuid = "book-1",
         libraryRepository = library,
         assetLoaderFactory = ReaderAssetLoaderFactory(
@@ -68,7 +68,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         ),
         progressRepository = fake,
         settingsStore = settings,
-        bookmarksRepository = FakeBookmarksRepository(),
+        bookmarksRepository = TestBookmarksRepository(),
         timeSource = TimeSource { now },
         persistScope = persistScope,
         startCfi = startCfi,
@@ -96,8 +96,8 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             vm.onPageEvent(relocate("epubcfi(/6/10)", pct = 7, totalPages = 0))
 
             fake.saves shouldBe listOf(
-                FakeProgressRepository.Save(position("epubcfi(/6/8)", percent = 40), push = false),
-                FakeProgressRepository.Save(position("epubcfi(/6/10)", percent = null), push = true),
+                TestProgressRepository.Save(position("epubcfi(/6/8)", percent = 40), push = false),
+                TestProgressRepository.Save(position("epubcfi(/6/10)", percent = null), push = true),
             )
         }
 
@@ -147,7 +147,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 "onReaderStopped" to { vm -> vm.onReaderStopped() },
             )
             triggers.forEach { (name, trigger) ->
-                fake = FakeProgressRepository()
+                fake = TestProgressRepository()
                 val vm = viewModel()
                 vm.land()
                 // The first movement is suppressed, the second pushes, and the third is inside the window.
@@ -158,21 +158,21 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 trigger(vm)
 
                 withClue(name) {
-                    fake.saves.last() shouldBe FakeProgressRepository.Save(position("epubcfi(/6/12)"), push = true)
+                    fake.saves.last() shouldBe TestProgressRepository.Save(position("epubcfi(/6/12)"), push = true)
                 }
             }
         }
 
         it("TC-32: a flush with nothing unpushed sends nothing") {
             // No movement since the open, then a close.
-            fake = FakeProgressRepository()
+            fake = TestProgressRepository()
             val idle = viewModel()
             idle.land()
             idle.onReaderClosed()
             fake.saves shouldBe emptyList()
 
             // The latest position was already pushed, so a close adds nothing.
-            fake = FakeProgressRepository()
+            fake = TestProgressRepository()
             val pushed = viewModel()
             pushed.land()
             pushed.move("epubcfi(/6/8)")
@@ -182,7 +182,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             fake.saves shouldBe beforeClose
 
             // A position still pending is flushed once, and the stop and close after it add nothing.
-            fake = FakeProgressRepository()
+            fake = TestProgressRepository()
             val pending = viewModel()
             pending.land()
             pending.move("epubcfi(/6/8)")
@@ -207,21 +207,21 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
             closed.onReaderClosed()
             store.clear()
-            fake.completedSaves.contains(FakeProgressRepository.Save(position("epubcfi(/6/8)"), true)) shouldBe false
+            fake.completedSaves.contains(TestProgressRepository.Save(position("epubcfi(/6/8)"), true)) shouldBe false
 
             fake.holdSaves!!.complete(Unit)
-            fake.completedSaves.last() shouldBe FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = true)
+            fake.completedSaves.last() shouldBe TestProgressRepository.Save(position("epubcfi(/6/8)"), push = true)
 
             // (b) Cleared with no close: onCleared still sends the pending position.
-            fake = FakeProgressRepository()
+            fake = TestProgressRepository()
             val cleared = ViewModelStore()
             val clearedVm = ViewModelProvider.create(cleared, viewModelFactory { initializer { viewModel() } })[ReaderViewModel::class]
             clearedVm.land()
             clearedVm.move("epubcfi(/6/8)")
-            fake.saves.last() shouldBe FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = false)
+            fake.saves.last() shouldBe TestProgressRepository.Save(position("epubcfi(/6/8)"), push = false)
 
             cleared.clear()
-            fake.saves.last() shouldBe FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = true)
+            fake.saves.last() shouldBe TestProgressRepository.Save(position("epubcfi(/6/8)"), push = true)
         }
 
         it("TC-36: a failed push stays pending and goes out with the next push") {
@@ -230,7 +230,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 PositionSaveResult.NoServer,
             )
             failures.forEach { failure ->
-                fake = FakeProgressRepository().apply { pushResult = failure }
+                fake = TestProgressRepository().apply { pushResult = failure }
                 val vm = viewModel()
                 vm.land()
                 vm.move("epubcfi(/6/8)")
@@ -239,14 +239,14 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
                 // The second movement pushed and failed, so the third is written unpushed and stays pending.
                 fake.saves shouldBe listOf(
-                    FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = false),
-                    FakeProgressRepository.Save(position("epubcfi(/6/10)"), push = true),
-                    FakeProgressRepository.Save(position("epubcfi(/6/12)"), push = false),
+                    TestProgressRepository.Save(position("epubcfi(/6/8)"), push = false),
+                    TestProgressRepository.Save(position("epubcfi(/6/10)"), push = true),
+                    TestProgressRepository.Save(position("epubcfi(/6/12)"), push = false),
                 )
 
                 vm.onReaderClosed()
 
-                fake.saves.last() shouldBe FakeProgressRepository.Save(position("epubcfi(/6/12)"), push = true)
+                fake.saves.last() shouldBe TestProgressRepository.Save(position("epubcfi(/6/12)"), push = true)
             }
         }
 
@@ -258,8 +258,8 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             vm.move("epubcfi(/6/10)")
 
             fake.saves shouldBe listOf(
-                FakeProgressRepository.Save(position("epubcfi(/6/8)"), push = false),
-                FakeProgressRepository.Save(position("epubcfi(/6/10)", at = 5_004), push = true),
+                TestProgressRepository.Save(position("epubcfi(/6/8)"), push = false),
+                TestProgressRepository.Save(position("epubcfi(/6/10)", at = 5_004), push = true),
             )
         }
     }
@@ -273,7 +273,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 ReadingPosition("book-1", null, 40, 5_000) to ReaderStart.Beginning,
             )
             rows.forEach { (stored, start) ->
-                fake = FakeProgressRepository().apply { stored?.let { this.stored["book-1"] = it } }
+                fake = TestProgressRepository().apply { stored?.let { this.stored["book-1"] = it } }
 
                 viewModel().uiState.value.opening shouldBe ReaderOpening.Resolved(start)
             }
@@ -281,7 +281,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
         it("TC-41: opening resolves independently of the book load") {
             // The local read is held while the book is Ready: opening waits for the read, and the book is unaffected.
-            fake = FakeProgressRepository().apply { pendingLocal = CompletableDeferred() }
+            fake = TestProgressRepository().apply { pendingLocal = CompletableDeferred() }
             library.pendingBook = null
             val vm = viewModel()
             vm.uiState.value.book.shouldBeTypeOf<ReaderBookState.Ready>()
@@ -292,7 +292,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             vm.uiState.value.book.shouldBeTypeOf<ReaderBookState.Ready>()
 
             // The book is still loading when the local read answers: opening doesn't wait for the book.
-            fake = FakeProgressRepository().apply { stored["book-1"] = position("epubcfi(/6/14)") }
+            fake = TestProgressRepository().apply { stored["book-1"] = position("epubcfi(/6/14)") }
             library.pendingBook = CompletableDeferred()
             val loading = viewModel()
             loading.uiState.value.book shouldBe ReaderBookState.Loading
@@ -325,7 +325,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             vm.move("epubcfi(/6/22)", pct = 3)
 
             fake.saves shouldBe listOf(
-                FakeProgressRepository.Save(position("epubcfi(/6/22)", percent = 3), push = false),
+                TestProgressRepository.Save(position("epubcfi(/6/22)", percent = 3), push = false),
             )
         }
     }
@@ -333,7 +333,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
     describe("settings") {
 
         it("a settings save still completes after the view model is cleared") {
-            val settings = FakeReaderSettingsStore().apply { holdSaves = CompletableDeferred() }
+            val settings = TestReaderSettingsStore().apply { holdSaves = CompletableDeferred() }
             val store = ViewModelStore()
             val vm = ViewModelProvider.create(store, viewModelFactory { initializer { viewModel(settings) } })[ReaderViewModel::class]
 

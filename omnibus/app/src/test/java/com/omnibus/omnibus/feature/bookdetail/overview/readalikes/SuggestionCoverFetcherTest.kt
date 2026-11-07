@@ -4,7 +4,7 @@ import android.content.Context
 import coil3.decode.DataSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import com.omnibus.omnibus.data.suggestions.FakeSuggestionsRepository
+import com.omnibus.omnibus.data.suggestions.TestSuggestionsRepository
 import com.omnibus.omnibus.data.suggestions.SuggestionCoverResult
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
@@ -20,7 +20,7 @@ class SuggestionCoverFetcherTest : DescribeSpec({
     val request = SuggestionCoverRequest(path)
     val options = Options(mockk<Context>(relaxed = true))
 
-    fun fetcher(repository: FakeSuggestionsRepository) =
+    fun fetcher(repository: TestSuggestionsRepository) =
         SuggestionCoverFetcher.Factory(repository).create(request, options, mockk(relaxed = true))
 
     describe("SuggestionCoverFetcher") {
@@ -30,7 +30,7 @@ class SuggestionCoverFetcherTest : DescribeSpec({
             "a failed cover" to SuggestionCoverResult.Failure,
         ).forEach { (name, result) ->
             it("#106 TC-51: $name throws IOException, so the plate stays visible") {
-                val repository = FakeSuggestionsRepository().also { it.coverResult = result }
+                val repository = TestSuggestionsRepository().also { it.coverResult = result }
 
                 shouldThrow<IOException> { fetcher(repository).fetch() }
 
@@ -39,7 +39,7 @@ class SuggestionCoverFetcherTest : DescribeSpec({
         }
 
         it("#106 TC-52: a found cover gives a network source result with its mime type") {
-            val repository = FakeSuggestionsRepository().also {
+            val repository = TestSuggestionsRepository().also {
                 it.coverResult = SuggestionCoverResult.Found("art".encodeToByteArray(), "image/png")
             }
 

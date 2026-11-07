@@ -1,6 +1,6 @@
 package com.omnibus.omnibus.data.library
 
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.reader.local.LocalBookFiles
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -27,7 +27,7 @@ class BookAvailabilityTest : DescribeSpec({
                     val availability = DefaultBookAvailability(
                         UnconfinedTestDispatcher(testScheduler),
                         fakeFiles(row.fileOnDisk),
-                        FakeConnectivityMonitor(row.online),
+                        TestConnectivityMonitor(row.online),
                     )
 
                     availability.canOpen("b1", row.medium) shouldBe row.expected
@@ -37,7 +37,7 @@ class BookAvailabilityTest : DescribeSpec({
 
         it("#22 TC-17: reads the connectivity at call time") {
             runTest {
-                val monitor = FakeConnectivityMonitor(online = true)
+                val monitor = TestConnectivityMonitor(online = true)
                 val availability = DefaultBookAvailability(UnconfinedTestDispatcher(testScheduler), fakeFiles(false), monitor)
                 availability.canOpen("b1", ProgressFormat.Reading) shouldBe true
 
