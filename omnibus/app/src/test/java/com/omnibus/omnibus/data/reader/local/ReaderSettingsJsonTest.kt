@@ -4,184 +4,177 @@ import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
+import com.omnibus.omnibus.data.reader.randomReaderSettings
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.doubles.shouldBeExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 class ReaderSettingsJsonTest : DescribeSpec({
 
-    /** Every stored field set away from its default. */
-    val changed = ReaderSettings(
-        theme = ReaderTheme.Sepia,
-        typeface = ReaderTypeface.Classic,
-        fontSize = 24,
-        lineHeight = 1.8,
-        margins = ReaderMargins.Wide,
-        justify = false,
-    )
+    /** Settings as they can come back from storage, where spread is not kept. */
+    fun randomStoredSettings(): ReaderSettings = randomReaderSettings().copy(spread = ReaderSettings().spread)
 
-    /** A stored blob with every key set away from its default. */
-    val changedBlob = """
-        {"fontSize":24,"fontFamily":"classic","lineHeight":1.8,"margins":"wide","justify":false,"theme":"sepia"}
-    """.trimIndent()
+    /** The stored form of [settings] with the value of [key] replaced by raw JSON, or removed when [value] is null. */
+    fun blobWith(settings: ReaderSettings, key: String, value: String?): String {
+        val fields = Json.parseToJsonElement(ReaderSettingsJson.encode(settings)).jsonObject
+        return JsonObject(if (value == null) fields - key else fields + (key to Json.parseToJsonElement(value))).toString()
+    }
 
-    fun objectOf(raw: String): JsonObject = Json.parseToJsonElement(raw).jsonObject
-
-    /** [raw] with [key] removed. */
-    fun without(raw: String, key: String): String = JsonObject(objectOf(raw) - key).toString()
-
-    /** [raw] with the value of [key] replaced by [value] (raw JSON). */
-    fun replacing(raw: String, key: String, value: String): String =
-        JsonObject(objectOf(raw) + (key to Json.parseToJsonElement(value))).toString()
-
-    describe("encode and decode") {
-
-        it("round-trips a value with every field changed") {
-            ReaderSettingsJson.decode(ReaderSettingsJson.encode(changed)) shouldBe changed
-        }
-
-        it("round-trips the defaults") {
-            ReaderSettingsJson.decode(ReaderSettingsJson.encode(ReaderSettings())) shouldBe ReaderSettings()
-        }
-
-        it("writes exactly the six iOS keys with the iOS tokens") {
-            val encoded = objectOf(ReaderSettingsJson.encode(changed))
-
-            encoded.keys shouldBe setOf(
-                "fontSize",
-                "fontFamily",
-                "lineHeight",
-                "margins",
-                "justify",
-                "theme",
-            )
-            encoded["fontFamily"]!!.jsonPrimitive.content shouldBe "classic"
-            encoded["margins"]!!.jsonPrimitive.content shouldBe "wide"
-            encoded["theme"]!!.jsonPrimitive.content shouldBe "sepia"
-        }
-
-        it("never writes spread, which is fixed") {
-            ReaderSettingsJson.encode(ReaderSettings()).contains("spread") shouldBe false
+    /** [settings] with the field stored under [key] back at its default. */
+    fun defaulted(settings: ReaderSettings, key: String): ReaderSettings {
+        val defaults = ReaderSettings()
+        return when (key) {
+            "fontSize" -> settings.copy(fontSize = defaults.fontSize)
+            "fontFamily" -> settings.copy(typeface = defaults.typeface)
+            "lineHeight" -> settings.copy(lineHeight = defaults.lineHeight)
+            "margins" -> settings.copy(margins = defaults.margins)
+            "justify" -> settings.copy(justify = defaults.justify)
+            "theme" -> settings.copy(theme = defaults.theme)
+            else -> error("Not a stored key: $key")
         }
     }
 
-    describe("decode") {
+    describe("storing settings") {
 
-        it("reads a complete blob into the stored values") {
-            ReaderSettingsJson.decode(changedBlob) shouldBe changed
+        it("reads back the same settings") {
+            val settings = randomStoredSettings()
+
+            ReaderSettingsJson.decode(ReaderSettingsJson.encode(settings)) shouldBe settings
         }
 
-        it("falls back to the default for a missing key and keeps the other five") {
-            val keys = listOf("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme")
-            val defaults = ReaderSettings()
-            val fieldDefault = mapOf(
-                "fontSize" to changed.copy(fontSize = defaults.fontSize),
-                "fontFamily" to changed.copy(typeface = defaults.typeface),
-                "lineHeight" to changed.copy(lineHeight = defaults.lineHeight),
-                "margins" to changed.copy(margins = defaults.margins),
-                "justify" to changed.copy(justify = defaults.justify),
-                "theme" to changed.copy(theme = defaults.theme),
-            )
+        it("writes exactly the keys iOS uses") {
+            val encoded = Json.parseToJsonElement(ReaderSettingsJson.encode(randomReaderSettings())).jsonObject
 
-            keys.forEach { key ->
-                ReaderSettingsJson.decode(without(changedBlob, key)) shouldBe fieldDefault.getValue(key)
+            encoded.keys shouldBe setOf("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme")
+        }
+    }
+
+    describe("reading stored settings") {
+
+        it("understands every token iOS writes regardless of the key") {
+            checkAll(
+                Exhaustive.of<Pair<String, (ReaderSettings) -> Boolean>>(
+                    """{"theme":"light"}""" to { it.theme == ReaderTheme.Light },
+                    """{"theme":"sepia"}""" to { it.theme == ReaderTheme.Sepia },
+                    """{"theme":"dark"}""" to { it.theme == ReaderTheme.Dark },
+                    """{"theme":"black"}""" to { it.theme == ReaderTheme.Black },
+                    """{"margins":"narrow"}""" to { it.margins == ReaderMargins.Narrow },
+                    """{"margins":"normal"}""" to { it.margins == ReaderMargins.Normal },
+                    """{"margins":"wide"}""" to { it.margins == ReaderMargins.Wide },
+                    """{"fontFamily":"original"}""" to { it.typeface == ReaderTypeface.Original },
+                    """{"fontFamily":"editorial"}""" to { it.typeface == ReaderTypeface.Editorial },
+                    """{"fontFamily":"classic"}""" to { it.typeface == ReaderTypeface.Classic },
+                    """{"fontFamily":"modern"}""" to { it.typeface == ReaderTypeface.Modern },
+                    """{"fontFamily":"sans"}""" to { it.typeface == ReaderTypeface.Sans },
+                    """{"fontFamily":"mono"}""" to { it.typeface == ReaderTypeface.Mono },
+                ),
+            ) { (blob, holds) ->
+                withClue(blob) { holds(ReaderSettingsJson.decode(blob)) shouldBe true }
             }
         }
 
-        it("falls back to the default for a wrong JSON type and keeps the rest") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "\"big\"")) shouldBe
-                changed.copy(fontSize = ReaderSettings().fontSize)
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "true")) shouldBe
-                changed.copy(lineHeight = ReaderSettings().lineHeight)
-            ReaderSettingsJson.decode(replacing(changedBlob, "justify", "\"yes\"")) shouldBe
-                changed.copy(justify = ReaderSettings().justify)
-            ReaderSettingsJson.decode(replacing(changedBlob, "margins", "5")) shouldBe
-                changed.copy(margins = ReaderSettings().margins)
-            ReaderSettingsJson.decode(replacing(changedBlob, "theme", "{}")) shouldBe
-                changed.copy(theme = ReaderSettings().theme)
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontFamily", "[]")) shouldBe
-                changed.copy(typeface = ReaderSettings().typeface)
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "null")) shouldBe
-                changed.copy(lineHeight = ReaderSettings().lineHeight)
+        it("falls back for that setting alone regardless of which key is missing") {
+            val settings = randomStoredSettings()
+
+            checkAll(Exhaustive.of("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme")) { key ->
+                ReaderSettingsJson.decode(blobWith(settings, key, value = null)) shouldBe defaulted(settings, key)
+            }
         }
 
-        it("falls back to the default for an unknown enum token and keeps the rest") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "margins", "\"huge\"")) shouldBe
-                changed.copy(margins = ReaderSettings().margins)
-            ReaderSettingsJson.decode(replacing(changedBlob, "theme", "\"solarized\"")) shouldBe
-                changed.copy(theme = ReaderSettings().theme)
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontFamily", "\"comic\"")) shouldBe
-                changed.copy(typeface = ReaderSettings().typeface)
+        it("falls back for that setting alone regardless of which key holds which unreadable value") {
+            val settings = randomStoredSettings()
+
+            checkAll(
+                Exhaustive.of(
+                    "fontSize" to "\"big\"",
+                    "fontSize" to "\"NaN\"",
+                    "fontSize" to "1e999",
+                    "lineHeight" to "true",
+                    "lineHeight" to "null",
+                    "lineHeight" to "\"Infinity\"",
+                    "lineHeight" to "1e999",
+                    "justify" to "\"yes\"",
+                    "margins" to "5",
+                    "theme" to "{}",
+                    "fontFamily" to "[]",
+                    "margins" to "\"huge\"",
+                    "theme" to "\"solarized\"",
+                    "fontFamily" to "\"comic\"",
+                ),
+            ) { (key, value) ->
+                ReaderSettingsJson.decode(blobWith(settings, key, value)) shouldBe defaulted(settings, key)
+            }
         }
 
-        it("falls back for a non-finite or string-typed number and never clamps an infinity") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "\"NaN\"")) shouldBe
-                changed.copy(fontSize = ReaderSettings().fontSize)
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "\"Infinity\"")) shouldBe
-                changed.copy(lineHeight = ReaderSettings().lineHeight)
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "1e999")) shouldBe
-                changed.copy(lineHeight = ReaderSettings().lineHeight)
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "1e999")) shouldBe
-                changed.copy(fontSize = ReaderSettings().fontSize)
+        it("clamps a number regardless of the key or which side it is out on") {
+            val sizes = ReaderSettings.FONT_SIZE_RANGE
+            val tenths = ReaderSettings.LINE_HEIGHT_TENTHS
+
+            checkAll(
+                Exhaustive.of(
+                    "-3" to sizes.first,
+                    "5" to sizes.first,
+                    "500" to sizes.last,
+                ),
+            ) { (raw, clamped) ->
+                ReaderSettingsJson.decode("""{"fontSize":$raw}""").fontSize shouldBe clamped
+            }
+            checkAll(Exhaustive.of("0.1" to tenths.first / 10.0, "7" to tenths.last / 10.0)) { (raw, clamped) ->
+                ReaderSettingsJson.decode("""{"lineHeight":$raw}""").lineHeight shouldBe clamped
+            }
         }
 
-        it("takes the all-defaults path for a bare NaN, which is not JSON") {
-            val blob = """{"fontSize":24,"lineHeight":NaN}"""
-
-            ReaderSettingsJson.decode(blob) shouldBe ReaderSettings()
-        }
-
-        it("clamps out-of-range font sizes and line heights into range") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "5")).fontSize shouldBe 12
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "500")).fontSize shouldBe 34
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "-3")).fontSize shouldBe 12
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "0.1")).lineHeight shouldBe 1.2
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "7")).lineHeight shouldBe 2.2
-        }
-
-        it("rounds a stored line height to one decimal") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "1.64")).lineHeight shouldBeExactly 1.6
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "1.66")).lineHeight shouldBeExactly 1.7
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "1.6000000000000001"))
-                .lineHeight shouldBeExactly 1.6
-            ReaderSettingsJson.decode(replacing(changedBlob, "lineHeight", "2")).lineHeight shouldBeExactly 2.0
+        it("rounds a line height to one decimal regardless of how it was written") {
+            checkAll(
+                Exhaustive.of(
+                    "1.64" to 1.6,
+                    "1.66" to 1.7,
+                    "1.6000000000000001" to 1.6,
+                    "2" to 2.0,
+                ),
+            ) { (raw, rounded) ->
+                ReaderSettingsJson.decode("""{"lineHeight":$raw}""").lineHeight shouldBe rounded
+            }
         }
 
         it("rounds a fractional font size to a whole point") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "19.0")).fontSize shouldBe 19
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontSize", "19.4")).fontSize shouldBe 19
+            ReaderSettingsJson.decode("""{"fontSize":19.4}""").fontSize shouldBe 19
         }
 
-        it("maps the legacy typeface tokens to their faces") {
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontFamily", "\"serif\"")).typeface shouldBe
-                ReaderTypeface.Original
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontFamily", "\"sans-serif\"")).typeface shouldBe
-                ReaderTypeface.Sans
-            ReaderSettingsJson.decode(replacing(changedBlob, "fontFamily", "\"monospace\"")).typeface shouldBe
-                ReaderTypeface.Mono
-        }
+        context("when the blob has keys this app does not store") {
 
-        it("ignores unknown extra keys and keeps spread fixed") {
-            val blob = replacing(changedBlob, "spread", "\"double\"").let {
-                JsonObject(objectOf(it) + ("extra" to Json.parseToJsonElement("""{"a":1}"""))).toString()
+            it("ignores them regardless of the key") {
+                val settings = randomStoredSettings()
+
+                checkAll(Exhaustive.of("spread" to "\"auto\"", "extra" to """{"a":1}""")) { (key, value) ->
+                    ReaderSettingsJson.decode(blobWith(settings, key, value)) shouldBe settings
+                }
             }
-
-            ReaderSettingsJson.decode(blob) shouldBe changed
-            ReaderSettingsJson.decode(blob).spread shouldBe "none"
         }
 
-        it("gives every default for an absent, non-JSON or non-object blob") {
-            listOf(null, "", "not json", "[1,2]", "\"str\"", "42", "{").forEach { raw ->
+        it("gives every default regardless of why the blob is unusable") {
+            checkAll(
+                Exhaustive.of(
+                    null,
+                    "",
+                    "not json",
+                    "[1,2]",
+                    "\"str\"",
+                    "42",
+                    "{",
+                    "{}",
+                    // The parser takes a bare NaN, but it is not JSON, so the whole blob is unusable.
+                    """{"fontSize":24,"lineHeight":NaN}""",
+                ),
+            ) { raw ->
                 ReaderSettingsJson.decode(raw) shouldBe ReaderSettings()
             }
-        }
-
-        it("gives every default for an empty object without an error") {
-            ReaderSettingsJson.decode("{}") shouldBe ReaderSettings()
         }
     }
 })

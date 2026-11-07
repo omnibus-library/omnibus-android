@@ -1,20 +1,18 @@
 package com.omnibus.omnibus.data.reader.local
 
+import app.cash.turbine.test
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
-import com.omnibus.omnibus.data.reader.ReaderTheme
-import com.omnibus.omnibus.data.reader.ReaderTypeface
+import com.omnibus.omnibus.data.reader.randomReaderSettings
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.throwables.shouldNotThrowAny
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import java.io.File
 import java.io.IOException
@@ -22,126 +20,131 @@ import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.job
+
+/** An in-memory DataStore, optionally holding [initial]. */
+private class TestPreferencesDataStore(initial: Preferences = emptyPreferences()) : DataStore<Preferences> {
+
+    private val state = MutableStateFlow(initial)
+
+    override val data: Flow<Preferences> = state
+
+    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
+        transform(state.value).also { state.value = it }
+}
+
+/** A DataStore whose every read and write fails with [error]. */
+private class FailingDataStore(private val error: Exception) : DataStore<Preferences> {
+
+    override val data: Flow<Preferences> = flow { throw error }
+
+    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = throw error
+}
 
 class DefaultReaderSettingsStoreTest : DescribeSpec({
 
-    lateinit var dataStoreDir: File
-    lateinit var dataStoreScope: CoroutineScope
-    lateinit var dataStore: DataStore<Preferences>
-    lateinit var store: DefaultReaderSettingsStore
+    fun sut(dataStore: DataStore<Preferences> = TestPreferencesDataStore()): DefaultReaderSettingsStore =
+        DefaultReaderSettingsStore(dataStore)
 
-    fun openDataStore(scope: CoroutineScope): DataStore<Preferences> = PreferenceDataStoreFactory.create(
-        scope = scope,
-        produceFile = { File(dataStoreDir, "reader_preferences.preferences_pb") },
-    )
-
-    /** Replaces the stored value of `reader.settings` with the raw [blob]. */
-    suspend fun seed(blob: String) {
-        dataStore.updateData {
-            mutablePreferencesOf().apply { this[DefaultReaderSettingsStore.SETTINGS_KEY] = blob }
-        }
-    }
+    /** [settings] as they come back from storage, where spread is not kept. */
+    fun stored(settings: ReaderSettings): ReaderSettings = settings.copy(spread = ReaderSettings().spread)
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        dataStoreDir = createTempDirectory("reader-settings-test").toFile()
-        dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        dataStore = openDataStore(dataStoreScope)
-        store = DefaultReaderSettingsStore(dataStore)
-    }
+    describe("observing the settings") {
 
-    afterEach {
-        dataStoreScope.cancel()
-        dataStoreDir.deleteRecursively()
-    }
+        context("when nothing is stored") {
 
-    describe("settings") {
-
-        it("emits the defaults when nothing is stored, then the saved value, then the latest one") {
-            store.settings.first() shouldBe ReaderSettings()
-
-            val first = ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 24)
-            store.save(first)
-            store.settings.first() shouldBe first
-
-            val second = ReaderSettings(typeface = ReaderTypeface.Mono, margins = ReaderMargins.Wide)
-            store.save(second)
-            store.settings.first() shouldBe second
-        }
-
-        it("reads a stored blob with a missing key and an extra key tolerantly") {
-            seed("""{"fontSize":24,"theme":"sepia","extra":{"a":1}}""")
-
-            store.settings.first() shouldBe ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 24)
-        }
-
-        it("keeps one global value under one key, with no book in it") {
-            val settings = ReaderSettings(theme = ReaderTheme.Light)
-            store.save(settings)
-
-            // Only one DataStore may be open on the file at a time. Cancelling does not wait for the first to
-            // release the file, so join it before reopening.
-            dataStoreScope.coroutineContext.job.cancelAndJoin()
-            val reopenedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            try {
-                val reopened = openDataStore(reopenedScope)
-
-                DefaultReaderSettingsStore(reopened).settings.first() shouldBe settings
-                reopened.data.first().asMap().keys.map { it.name } shouldContainExactly listOf("reader.settings")
-            } finally {
-                reopenedScope.cancel()
+            it("emits the defaults") {
+                sut().settings.first() shouldBe ReaderSettings()
             }
         }
 
-        it("emits the defaults and completes when the read throws an IOException") {
-            val failing = DefaultReaderSettingsStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { throw IOException("boom") }
+        context("when settings are saved") {
 
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IOException("boom")
-                },
-            )
+            it("emits each saved value") {
+                val store = sut()
+                val first = stored(randomReaderSettings())
+                val second = first.copy(justify = !first.justify)
 
-            failing.settings.toList() shouldBe listOf(ReaderSettings())
+                store.settings.test {
+                    awaitItem() shouldBe ReaderSettings()
+
+                    store.save(first)
+                    awaitItem() shouldBe first
+
+                    store.save(second)
+                    awaitItem() shouldBe second
+
+                    cancelAndIgnoreRemainingEvents()
+                }
+            }
         }
 
-        it("still propagates a read failure that is not an IOException") {
-            val failing = DefaultReaderSettingsStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { throw IllegalStateException("bug") }
+        context("when the value was stored by an earlier version") {
 
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IllegalStateException("bug")
-                },
-            )
+            it("reads it from the key the stored format has always used") {
+                val dataStore = TestPreferencesDataStore(
+                    mutablePreferencesOf(stringPreferencesKey("reader.settings") to """{"fontSize":24}"""),
+                )
 
-            shouldThrow<IllegalStateException> { failing.settings.toList() }
+                sut(dataStore).settings.first() shouldBe ReaderSettings(fontSize = 24)
+            }
+        }
+
+        context("when the app restarts") {
+
+            it("reads the value saved before the restart") {
+                val settings = stored(randomReaderSettings())
+                val directory = createTempDirectory("reader-settings-test").toFile()
+                fun open(scope: CoroutineScope) = PreferenceDataStoreFactory.create(
+                    scope = scope,
+                    produceFile = { File(directory, "reader_preferences.preferences_pb") },
+                )
+                val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                try {
+                    sut(open(firstScope)).save(settings)
+                    // Only one DataStore may be open on the file at a time. Cancelling does not wait for the first to
+                    // release the file, so join it before reopening.
+                    firstScope.coroutineContext.job.cancelAndJoin()
+
+                    sut(open(secondScope)).settings.first() shouldBe settings
+                } finally {
+                    firstScope.coroutineContext.job.cancelAndJoin()
+                    secondScope.coroutineContext.job.cancelAndJoin()
+                    directory.deleteRecursively()
+                }
+            }
+        }
+
+        context("when the read fails with an IOException") {
+
+            it("emits the defaults, then completes") {
+                sut(FailingDataStore(IOException())).settings.test {
+                    awaitItem() shouldBe ReaderSettings()
+                    awaitComplete()
+                }
+            }
         }
     }
 
-    describe("save") {
+    describe("saving the settings") {
 
-        it("does not throw when the write fails with an IOException") {
-            val failing = DefaultReaderSettingsStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { emit(mutablePreferencesOf()) }
+        context("when the write fails with an IOException") {
 
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IOException("boom")
-                },
-            )
+            it("does not throw") {
+                val store = sut(FailingDataStore(IOException()))
 
-            shouldNotThrowAny { failing.save(ReaderSettings(fontSize = 22)) }
+                shouldNotThrowAny { store.save(randomReaderSettings()) }
+            }
         }
     }
 })

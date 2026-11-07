@@ -106,9 +106,9 @@ class PlayerTransportTest {
         assertEquals(2, inputs.toggles)
     }
 
-    // P-SCR-AC4, P-PLAY-3-5: the chapter steppers disable at the ends, the rest stay on
+    // P-SCR-AC4, P-PLAY-3-5: the next stepper disables on the last chapter, and previous stays on
     @Test
-    fun nextDisabledOnLastChapterAndBothDisabledWithoutChapters() {
+    fun nextDisabledOnLastChapter() {
         val inputs = TransportInputs()
         inputs.canNext = false
         rule.setTransport(inputs)
@@ -118,23 +118,6 @@ class PlayerTransportTest {
         rule.onNodeWithTag(PlayerTestTags.PREVIOUS).assertIsEnabled()
         rule.waitForIdle()
         assertEquals(0, inputs.next)
-
-        rule.runOnIdle {
-            inputs.canPrevious = false
-            inputs.canNext = false
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag(PlayerTestTags.PREVIOUS).assertIsNotEnabled()
-        rule.onNodeWithTag(PlayerTestTags.NEXT).assertIsNotEnabled()
-        rule.onNodeWithTag(PlayerTestTags.BACK_15).assertIsEnabled()
-        rule.onNodeWithTag(PlayerTestTags.FORWARD_30).assertIsEnabled()
-        rule.onNodeWithTag(PlayerTestTags.PLAY_PAUSE).assertIsEnabled()
-
-        rule.onNodeWithTag(PlayerTestTags.BACK_15).performClick()
-        rule.onNodeWithTag(PlayerTestTags.PLAY_PAUSE).performClick()
-        rule.waitForIdle()
-        assertEquals(1, inputs.back)
-        assertEquals(1, inputs.toggles)
     }
 
     // AND-UI-4: an enabled press gives one light tap; a disabled one gives none

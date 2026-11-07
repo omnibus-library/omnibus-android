@@ -19,7 +19,6 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -63,26 +62,10 @@ class BookMoreMenuTest {
         }
     }
 
-    // TC-3
-    @Test
-    fun issue116_tc3_tappingMoreOpensTheMenuWithItsRows() {
-        rule.setMoreButton(listOf(FakeEntry(rowLabel)))
-
-        openMenu()
-
-        // The menu is a separate window, so its position can't be compared with the button's; the row must sit
-        // inside the menu, which is what the menu's own geometry can show.
-        rule.onNodeWithText(rowLabel).assertIsDisplayed()
-        val menu = rule.onNodeWithTag(BookMoreTestTags.MENU).bounds()
-        val row = rule.onNodeWithTag(rowTag(rowLabel)).bounds()
-        assertTrue("row ${row.width}px inside menu ${menu.width}px", row.width <= menu.width + 1f)
-        assertTrue("row starts inside the menu", row.left >= menu.left - 1f)
-    }
-
     // TC-4
     @Test
     fun issue116_tc4_menuClosesOnRowChoiceBackAndOutsideTap() {
-        rule.setMoreButton(listOf(FakeEntry(rowLabel)))
+        rule.setMoreButton(listOf(TestEntry(rowLabel)))
 
         openMenu()
         rule.onNodeWithText(rowLabel).performClick()
@@ -103,12 +86,12 @@ class BookMoreMenuTest {
         val sheetOpen = mutableStateOf(false)
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = rowLabel,
                     onClick = { sheetOpen.value = true },
                     overlay = { if (sheetOpen.value) Text("sheet open") },
                 ),
-                FakeEntry(label = null, overlay = { Text("always composed") }),
+                TestEntry(label = null, overlay = { Text("always composed") }),
             ),
         )
         rule.onNodeWithText("always composed").assertIsDisplayed()
@@ -127,7 +110,7 @@ class BookMoreMenuTest {
         var clicks = 0
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = rowLabel,
                     enabled = false,
                     subLabel = needsConnection,

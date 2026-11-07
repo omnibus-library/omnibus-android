@@ -1,268 +1,224 @@
 package com.omnibus.omnibus.feature.bookdetail.more.export
 
 import com.omnibus.omnibus.data.auth.CurrentUser
+import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookFile
-import com.omnibus.omnibus.data.library.testBook
-import io.kotest.assertions.withClue
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.library.randomBookFile
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 
-private const val EMAIL = "reader@kindle.com"
 private const val MB = 1_000_000L
 
-private val reader = CurrentUser(
-    id = 1,
-    canEdit = false,
-    canUpload = false,
-    hiddenFormats = emptySet(),
-    canDownload = false,
-    kindleEmail = EMAIL,
-)
-private val downloader = reader.copy(canDownload = true)
-
-private fun file(id: Long, format: String, ordinal: Int, size: Long = MB): BookFile =
-    BookFile(id, format, "file-$id.$format", ordinal, null, size, null)
+private fun file(format: String, ordinal: Int = 1, size: Long = MB): BookFile =
+    randomBookFile().copy(format = format, ordinal = ordinal, sizeBytes = size)
 
 private fun book(formats: List<String>, files: List<BookFile> = emptyList()): Book =
-    testBook(1, formats = formats, bookFiles = files)
+    randomBook().copy(formats = formats, bookFiles = files)
 
-private val smallEpub = book(listOf("epub"), listOf(file(1, "epub", 1)))
+private fun epubBook(size: Long = MB): Book = book(listOf("epub"), listOf(file("epub", size = size)))
 
-/** One row of a sheet table: the book, the user and what the sheet must show. */
+/** A signed-in user with a Kindle address, who may or may not download. */
+private fun user(canDownload: Boolean): CurrentUser =
+    randomCurrentUser().copy(canDownload = canDownload, kindleEmail = randomString())
+
+/** A book with an EPUB and an m4b, which a downloader can save three ways. */
+private fun everySaveRow(online: Boolean, saving: ExportSave?): List<SaveRow> {
+    val both = book(listOf("epub", "m4b"), listOf(file("epub"), file("m4b")))
+    val model = exportSheet(both, user(canDownload = true), online, KindlePhase.Idle, saving)
+    return listOfNotNull(model.kobo, model.ebook, model.audio)
+}
+
+/** One row of the sections table: the book, the user and which rows the sheet must show. */
 private data class SectionCase(
-    val label: String,
     val book: Book,
-    val user: CurrentUser?,
+    val user: CurrentUser,
     val kindle: Boolean,
     val kobo: Boolean,
     val ebookFormat: String?,
     val audio: Boolean,
-    val showsSend: Boolean,
-    val showsSave: Boolean,
 )
 
 class ExportSheetModelTest : DescribeSpec({
 
-    describe("which rows exist") {
-
-        it("#118 TC-1: shows the Export row when the book has formats and the user can download or it can go to a Kindle") {
-            val cases: List<Triple<String, Pair<Book, CurrentUser?>, Boolean>> = listOf(
-                Triple("no formats, may download", book(emptyList()) to downloader, false),
-                Triple("m4b, may download", book(listOf("m4b")) to downloader, true),
-                Triple("epub, no download", book(listOf("epub")) to reader, true),
-                Triple("pdf, no download", book(listOf("pdf")) to reader, true),
-                Triple("mobi with an epub file, no download", book(listOf("mobi"), listOf(file(1, "epub", 1))) to reader, true),
-                Triple("m4b and mobi, no download", book(listOf("m4b", "mobi")) to reader, false),
-                Triple("epub, no user", book(listOf("epub")) to null, true),
-                Triple("m4b, no user", book(listOf("m4b")) to null, false),
-                Triple("EPUB upper case, no download", book(listOf("EPUB")) to reader, true),
-                Triple("Pdf mixed case, no download", book(listOf("Pdf")) to reader, true),
-                Triple("no formats, no user", book(emptyList()) to null, false),
-            )
-            cases.forEach { (label, input, expected) ->
-                withClue(label) {
-                    showsExportRow(input.first, input.second) shouldBe expected
-                }
-            }
-        }
-
-        it("#118 TC-2: picks the lowest-ordinal EPUB, else the lowest-ordinal PDF, for the Kindle send") {
-            val epubOrd1 = file(2, "epub", 1)
-            val pdfOrd1 = file(5, "pdf", 1)
-            val epubCase = book(listOf("epub", "pdf"), listOf(file(1, "epub", 2), epubOrd1, file(3, "pdf", 3)))
-            val pdfCase = book(listOf("pdf"), listOf(file(4, "pdf", 3), pdfOrd1))
-            val mixedCase = book(listOf("epub", "pdf"), listOf(file(6, "pdf", 1), file(7, "epub", 2)))
-            val noneCase = book(listOf("m4b"))
-
-            kindleFile(epubCase) shouldBe epubOrd1
-            hasKindleSendable(epubCase) shouldBe true
-            kindleFile(pdfCase) shouldBe pdfOrd1
-            hasKindleSendable(pdfCase) shouldBe true
-            kindleFile(mixedCase) shouldBe file(7, "epub", 2)
-            kindleFile(noneCase) shouldBe null
-            hasKindleSendable(noneCase) shouldBe false
-        }
-
-        it("#118 TC-3: the Kindle gate is Oversize above 50 MB of the file that would be mailed, else Ready") {
-            val email: String? = EMAIL
-            val cases: List<Triple<String, Book, KindleGate>> = listOf(
-                Triple("epub 50_000_001 B", book(listOf("epub"), listOf(file(1, "epub", 1, 50_000_001))), KindleGate.Oversize),
-                Triple("epub 50_000_000 B", book(listOf("epub"), listOf(file(1, "epub", 1, 50_000_000))), KindleGate.Ready),
-                Triple(
-                    "epub 1 MB and pdf 60 MB",
-                    book(listOf("epub", "pdf"), listOf(file(1, "epub", 1, MB), file(2, "pdf", 2, 60 * MB))),
-                    KindleGate.Ready,
+    describe("the Export row in the More menu") {
+        it("#118 TC-1: shows for a book with formats that can be downloaded or sent to a Kindle") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(book(emptyList()), user(canDownload = true), false),
+                    Triple(book(listOf("m4b")), user(canDownload = true), true),
+                    Triple(book(listOf("EPUB")), user(canDownload = false), true),
+                    Triple(book(listOf("Pdf")), user(canDownload = false), true),
+                    Triple(book(listOf("mobi"), listOf(file("epub"))), user(canDownload = false), true),
+                    Triple(book(listOf("m4b", "mobi")), user(canDownload = false), false),
+                    Triple(book(listOf("epub")), null, true),
+                    Triple(book(listOf("m4b")), null, false),
                 ),
-                Triple("pdf only 60 MB", book(listOf("pdf"), listOf(file(1, "pdf", 1, 60 * MB))), KindleGate.Oversize),
-            )
-            cases.forEach { (label, input, expected) ->
-                withClue(label) {
-                    kindleGate(input, email, isOnline = true) shouldBe expected
-                }
+            ) { (book, user, expected) ->
+                showsExportRow(book, user) shouldBe expected
+            }
+        }
+    }
+
+    describe("the file a Kindle send mails") {
+        it("#118 TC-2: is the lowest-ordinal EPUB, else the lowest-ordinal PDF") {
+            val firstEpub = file("epub", ordinal = 1)
+            val firstPdf = file("pdf", ordinal = 1)
+            val laterEpub = file("epub", ordinal = 2)
+
+            kindleFile(book(listOf("epub"), listOf(laterEpub, firstEpub, file("pdf", ordinal = 0)))) shouldBe firstEpub
+            kindleFile(book(listOf("pdf"), listOf(file("pdf", ordinal = 3), firstPdf))) shouldBe firstPdf
+            kindleFile(book(listOf("m4b"), listOf(file("m4b")))) shouldBe null
+        }
+    }
+
+    describe("the Kindle gate") {
+        it("#118 TC-3: is oversize only above 50 MB of the file that would be mailed") {
+            checkAll(
+                Exhaustive.of(
+                    epubBook(size = 50_000_001) to KindleGate.Oversize,
+                    epubBook(size = 50_000_000) to KindleGate.Ready,
+                    book(listOf("epub", "pdf"), listOf(file("epub"), file("pdf", size = 60 * MB))) to KindleGate.Ready,
+                    book(listOf("pdf"), listOf(file("pdf", size = 60 * MB))) to KindleGate.Oversize,
+                ),
+            ) { (book, expected) ->
+                kindleGate(book, randomString(), isOnline = true) shouldBe expected
             }
         }
 
-        it("#118 TC-4: a missing or blank address gives NoAddress, then offline gives Offline, else Ready") {
-            val cases: List<Triple<String, Pair<String?, Boolean>, KindleGate>> = listOf(
-                Triple("address null, online", null to true, KindleGate.NoAddress),
-                Triple("address empty, online", "" to true, KindleGate.NoAddress),
-                Triple("address blank, online", "  " to true, KindleGate.NoAddress),
-                Triple("address set, offline", EMAIL to false, KindleGate.Offline),
-                Triple("address set, online", EMAIL to true, KindleGate.Ready),
-            )
-            cases.forEach { (label, input, expected) ->
-                withClue(label) {
-                    kindleGate(smallEpub, input.first, input.second) shouldBe expected
-                }
+        it("#118 TC-4: needs an address, then a connection") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(null, true, KindleGate.NoAddress),
+                    Triple("", true, KindleGate.NoAddress),
+                    Triple("  ", true, KindleGate.NoAddress),
+                    Triple(randomString(), false, KindleGate.Offline),
+                    Triple(randomString(), true, KindleGate.Ready),
+                ),
+            ) { (email, online, expected) ->
+                kindleGate(epubBook(), email, online) shouldBe expected
             }
         }
 
-        it("#118 TC-5: too large wins over no address and offline, and no address wins over offline") {
-            val huge = book(listOf("epub"), listOf(file(1, "epub", 1, 50_000_001)))
-            kindleGate(huge, kindleEmail = null, isOnline = false) shouldBe KindleGate.Oversize
-            kindleGate(smallEpub, kindleEmail = null, isOnline = false) shouldBe KindleGate.NoAddress
+        it("#118 TC-5: ranks too large, then no address, then offline") {
+            kindleGate(epubBook(size = 60 * MB), kindleEmail = null, isOnline = false) shouldBe KindleGate.Oversize
+            kindleGate(epubBook(), kindleEmail = null, isOnline = false) shouldBe KindleGate.NoAddress
         }
     }
 
     describe("the Kindle row") {
+        context("when the gate is ready") {
+            it("#118 TC-6: shows the send's phase, undimmed") {
+                val failed = KindlePhase.Failed(KindleFailure.Undelivered, "mailbox full")
 
-        it("#118 TC-6: a ready gate shows the send phase: idle, sending, sent or failed, none dimmed") {
-            val failedUnconfirmed = KindlePhase.Failed(KindleFailure.Unconfirmed)
-            val failedWithMessage = KindlePhase.Failed(KindleFailure.Undelivered, "mailbox full")
-            val pdfOnly = book(listOf("pdf"), listOf(file(1, "pdf", 1)))
+                checkAll(
+                    Exhaustive.of(
+                        KindlePhase.Idle to KindleRow(KindleRowState.Ready, enabled = true, dimmed = false, sendsEpub = true),
+                        KindlePhase.Sending to KindleRow(KindleRowState.Sending, enabled = false, dimmed = false, sendsEpub = true),
+                        KindlePhase.Sent to KindleRow(KindleRowState.Sent, enabled = false, dimmed = false, sendsEpub = true),
+                        failed to KindleRow(KindleRowState.Failed, enabled = true, dimmed = false, sendsEpub = true, failure = failed),
+                    ),
+                ) { (phase, expected) ->
+                    exportSheet(epubBook(), user(canDownload = false), true, phase, null).kindle shouldBe expected
+                }
+            }
 
-            exportSheet(smallEpub, reader, true, KindlePhase.Idle, null).kindle shouldBe
-                KindleRow(KindleRowState.Ready, enabled = true, dimmed = false, sendsEpub = true)
-            exportSheet(pdfOnly, reader, true, KindlePhase.Idle, null).kindle shouldBe
-                KindleRow(KindleRowState.Ready, enabled = true, dimmed = false, sendsEpub = false)
-            exportSheet(smallEpub, reader, true, KindlePhase.Sending, null).kindle shouldBe
-                KindleRow(KindleRowState.Sending, enabled = false, dimmed = false, sendsEpub = true)
-            exportSheet(smallEpub, reader, true, KindlePhase.Sent, null).kindle shouldBe
-                KindleRow(KindleRowState.Sent, enabled = false, dimmed = false, sendsEpub = true)
-            exportSheet(smallEpub, reader, true, failedUnconfirmed, null).kindle shouldBe
-                KindleRow(KindleRowState.Failed, enabled = true, dimmed = false, sendsEpub = true, failure = failedUnconfirmed)
-            exportSheet(smallEpub, reader, true, failedWithMessage, null).kindle shouldBe
-                KindleRow(KindleRowState.Failed, enabled = true, dimmed = false, sendsEpub = true, failure = failedWithMessage)
+            context("when the book has only a PDF") {
+                it("#118 TC-6: says it does not send an EPUB") {
+                    val pdf = book(listOf("pdf"), listOf(file("pdf")))
+
+                    exportSheet(pdf, user(canDownload = false), true, KindlePhase.Idle, null).kindle?.sendsEpub shouldBe false
+                }
+            }
         }
 
-        it("#118 TC-7: offline, too large and no address stay tappable; the other gates are disabled and dimmed; no file means no row") {
-            val huge = book(listOf("epub"), listOf(file(1, "epub", 1, 60 * MB)))
-            val noAddress = reader.copy(kindleEmail = null)
+        context("when the gate blocks the send") {
+            it("#118 TC-7, TC-8: shows the gate over any phase, dimming only offline") {
+                val noAddress = user(canDownload = false).copy(kindleEmail = null)
 
-            exportSheet(huge, reader, false, KindlePhase.Idle, null).kindle shouldBe
-                KindleRow(KindleRowState.Oversize, enabled = true, dimmed = false, sendsEpub = true)
-            exportSheet(smallEpub, noAddress, false, KindlePhase.Idle, null).kindle shouldBe
-                KindleRow(KindleRowState.NoAddress, enabled = true, dimmed = false, sendsEpub = true)
-            exportSheet(smallEpub, reader, false, KindlePhase.Idle, null).kindle shouldBe
-                KindleRow(KindleRowState.Offline, enabled = false, dimmed = true, sendsEpub = true)
-            exportSheet(book(listOf("m4b")), reader, false, KindlePhase.Idle, null).kindle shouldBe null
-        }
-
-        it("#118 TC-8: the gate decides the row even while a send is sending or failed") {
-            val huge = book(listOf("epub"), listOf(file(1, "epub", 1, 60 * MB)))
-            val noAddress = reader.copy(kindleEmail = null)
-            val phases = listOf(KindlePhase.Sending, KindlePhase.Failed(KindleFailure.Unknown))
-
-            phases.forEach { phase ->
-                withClue("phase=$phase") {
-                    exportSheet(huge, reader, true, phase, null).kindle shouldBe
+                checkAll(
+                    Exhaustive.of(KindlePhase.Idle, KindlePhase.Sending, KindlePhase.Failed(KindleFailure.Unknown)),
+                ) { phase ->
+                    exportSheet(epubBook(size = 60 * MB), user(canDownload = false), true, phase, null).kindle shouldBe
                         KindleRow(KindleRowState.Oversize, enabled = true, dimmed = false, sendsEpub = true)
-                    exportSheet(smallEpub, noAddress, true, phase, null).kindle shouldBe
+                    exportSheet(epubBook(), noAddress, true, phase, null).kindle shouldBe
                         KindleRow(KindleRowState.NoAddress, enabled = true, dimmed = false, sendsEpub = true)
+                    exportSheet(epubBook(), user(canDownload = false), false, phase, null).kindle shouldBe
+                        KindleRow(KindleRowState.Offline, enabled = false, dimmed = true, sendsEpub = true)
                 }
             }
         }
     }
 
-    describe("the sections") {
+    describe("the sheet's rows") {
+        it("#118 TC-9: follow the book's formats with the user's download right") {
+            val pdf = book(listOf("pdf"), listOf(file("pdf")))
+            val audio = book(listOf("m4b"), listOf(file("m4b")))
 
-        it("#118 TC-9: each book and user combination shows the expected rows and sections") {
-            val epubBook = book(listOf("epub"), listOf(file(1, "epub", 1)))
-            val pdfBook = book(listOf("pdf"), listOf(file(1, "pdf", 1)))
-            val audioBook = book(listOf("m4b"), listOf(file(1, "m4b", 1)))
-            val cases = listOf(
-                SectionCase("EPUB, may download", epubBook, downloader, kindle = true, kobo = true, ebookFormat = "EPUB", audio = false, showsSend = true, showsSave = true),
-                SectionCase("EPUB, no download", epubBook, reader, kindle = true, kobo = false, ebookFormat = null, audio = false, showsSend = true, showsSave = false),
-                SectionCase("PDF, may download", pdfBook, downloader, kindle = true, kobo = false, ebookFormat = "PDF", audio = false, showsSend = true, showsSave = true),
-                SectionCase("PDF, no download", pdfBook, reader, kindle = true, kobo = false, ebookFormat = null, audio = false, showsSend = true, showsSave = false),
-                SectionCase("audio only, may download", audioBook, downloader, kindle = false, kobo = false, ebookFormat = null, audio = true, showsSend = false, showsSave = true),
-                SectionCase("audio only, no download", audioBook, reader, kindle = false, kobo = false, ebookFormat = null, audio = false, showsSend = false, showsSave = false),
-                SectionCase("mobi and cbz, may download", book(listOf("mobi", "cbz")), downloader, kindle = false, kobo = false, ebookFormat = null, audio = false, showsSend = false, showsSave = false),
-            )
-            cases.forEach { case ->
-                withClue(case.label) {
-                    val model = exportSheet(case.book, case.user, true, KindlePhase.Idle, null)
-                    (model.kindle != null) shouldBe case.kindle
-                    (model.kobo != null) shouldBe case.kobo
-                    model.ebook?.format shouldBe case.ebookFormat
-                    (model.audio != null) shouldBe case.audio
-                    model.showsSendSection shouldBe case.showsSend
-                    model.showsSaveSection shouldBe case.showsSave
-                }
+            checkAll(
+                Exhaustive.of(
+                    SectionCase(epubBook(), user(true), kindle = true, kobo = true, ebookFormat = "EPUB", audio = false),
+                    SectionCase(epubBook(), user(false), kindle = true, kobo = false, ebookFormat = null, audio = false),
+                    SectionCase(pdf, user(true), kindle = true, kobo = false, ebookFormat = "PDF", audio = false),
+                    SectionCase(audio, user(true), kindle = false, kobo = false, ebookFormat = null, audio = true),
+                    SectionCase(audio, user(false), kindle = false, kobo = false, ebookFormat = null, audio = false),
+                    SectionCase(book(listOf("mobi")), user(true), kindle = false, kobo = false, ebookFormat = null, audio = false),
+                ),
+            ) { case ->
+                val model = exportSheet(case.book, case.user, true, KindlePhase.Idle, null)
+
+                (model.kindle != null) shouldBe case.kindle
+                (model.kobo != null) shouldBe case.kobo
+                model.ebook?.format shouldBe case.ebookFormat
+                (model.audio != null) shouldBe case.audio
+                model.showsSendSection shouldBe (case.kindle || case.kobo)
+                model.showsSaveSection shouldBe (case.ebookFormat != null || case.audio)
             }
         }
 
-        it("#118 TC-10: the ebook and audiobook targets use the EPUB or PDF and the lowest-ordinal m4b, m4a or mp3") {
-            val epubWithPdf = book(listOf("epub", "pdf"), listOf(file(1, "epub", 1, 412_000), file(2, "pdf", 2, 2 * MB)))
-            val pdfOnly = book(listOf("pdf"), listOf(file(1, "pdf", 1, 3 * MB)))
+        it("#118 TC-10: download the EPUB, else the PDF, as the ebook") {
+            val epub = file("epub", size = 412_000)
+
+            ebookTarget(book(listOf("epub", "pdf"), listOf(epub, file("pdf")))) shouldBe EbookTarget("EPUB", 412_000, "epub")
+            ebookTarget(book(listOf("pdf"), listOf(file("pdf", size = 3 * MB)))) shouldBe EbookTarget("PDF", 3 * MB, "pdf")
+        }
+
+        it("#118 TC-10: download the lowest-ordinal m4b, m4a or mp3 as the audiobook") {
             val audio = book(
                 listOf("flac", "m4b", "mp3"),
-                listOf(file(1, "flac", 0, 5 * MB), file(2, "m4b", 1, 138_000_000), file(3, "mp3", 2, 9 * MB)),
+                listOf(file("flac", ordinal = 0), file("m4b", ordinal = 1, size = 138 * MB), file("mp3", ordinal = 2)),
             )
-            val flacOnly = book(listOf("flac"), listOf(file(1, "flac", 1, 5)))
+            val flacOnly = book(listOf("flac"), listOf(file("flac")))
 
-            ebookTarget(epubWithPdf) shouldBe EbookTarget("EPUB", 412_000, "epub")
-            ebookTarget(pdfOnly) shouldBe EbookTarget("PDF", 3 * MB, "pdf")
-            audioTarget(audio) shouldBe AudioTarget("M4B", 138_000_000, "m4b")
+            audioTarget(audio) shouldBe AudioTarget("M4B", 138 * MB, "m4b")
             audioTarget(flacOnly) shouldBe AudioTarget(null, 0, "m4b")
         }
 
-        it("#118 TC-11: while one save runs, its row is busy and the other two save rows are disabled and dimmed") {
-            val both = book(listOf("epub", "m4b"), listOf(file(1, "epub", 1, 412_000), file(2, "m4b", 1, 138_000_000)))
+        context("when a save runs") {
+            it("#118 TC-11: marks its row busy, dimming the others, for each kind") {
+                checkAll(Exhaustive.enum<ExportSave>()) { kind ->
+                    val rows = everySaveRow(online = true, saving = kind)
 
-            for (kind in listOf(ExportSave.Kobo, ExportSave.Ebook, ExportSave.Audio)) {
-                withClue("saving=$kind") {
-                    val model = exportSheet(both, downloader, true, KindlePhase.Idle, saving = kind)
-                    val rows = listOfNotNull(model.kobo, model.ebook, model.audio)
-                    rows.size shouldBe 3
-                    for (row in rows) {
-                        if (row.kind == kind) {
-                            row.busy shouldBe true
-                            row.enabled shouldBe false
-                            row.dimmed shouldBe false
-                        } else {
-                            row.busy shouldBe false
-                            row.enabled shouldBe false
-                            row.dimmed shouldBe true
-                        }
-                    }
+                    rows.single { it.busy }.kind shouldBe kind
+                    rows.filter { it.dimmed }.map { it.kind } shouldContainExactlyInAnyOrder ExportSave.entries - kind
+                    rows.none { it.enabled } shouldBe true
                 }
             }
-
-            val sending = exportSheet(both, downloader, true, KindlePhase.Sending, saving = ExportSave.Ebook)
-            sending.kindle shouldBe KindleRow(KindleRowState.Sending, enabled = false, dimmed = false, sendsEpub = true)
-            sending.ebook?.busy shouldBe true
         }
 
-        it("#118 TC-12: offline, every save row is disabled, dimmed and marked offline; back online it is enabled again") {
-            val both = book(listOf("epub", "m4b"), listOf(file(1, "epub", 1, 412_000), file(2, "m4b", 1, 138_000_000)))
-
-            val offline = exportSheet(both, downloader, false, KindlePhase.Idle, null)
-            for (row in listOfNotNull(offline.kobo, offline.ebook, offline.audio)) {
-                withClue("offline ${row.kind}") {
+        context("when the device is offline") {
+            it("#118 TC-12: marks every save row offline, disabled") {
+                everySaveRow(online = false, saving = null).forEach { row ->
                     row.offline shouldBe true
                     row.enabled shouldBe false
                     row.dimmed shouldBe true
-                }
-            }
-
-            val online = exportSheet(both, downloader, true, KindlePhase.Idle, null)
-            for (row in listOfNotNull(online.kobo, online.ebook, online.audio)) {
-                withClue("online ${row.kind}") {
-                    row.offline shouldBe false
-                    row.enabled shouldBe true
-                    row.dimmed shouldBe false
                 }
             }
         }

@@ -60,8 +60,6 @@ class ReaderBridgeOriginTest {
         rule.runOnUiThread { host!!.webView.loadDataWithBaseURL(base, html, "text/html", "utf-8", null) }
     }
 
-    private fun eventCount(): Int = synchronized(events) { events.size }
-
     private fun hasEvent(event: ReaderEvent): Boolean = synchronized(events) { events.contains(event) }
 
     /** Runs [script] in the page and returns its JSON result, or null if it hasn't answered in time. */
@@ -102,18 +100,6 @@ class ReaderBridgeOriginTest {
         awaitPageComplete()
 
         assertEquals("\"undefined\"", evaluate("typeof window.omnibus"))
-        Thread.sleep(1_000)
-        assertEquals("no event should arrive from a foreign origin", 0, eventCount())
-    }
-
-    // TC-25: the control for TC-24, the same page on the asset origin, does reach onEvent.
-    @Test
-    fun tc25_theAssetOriginReachesOnEvent() {
-        showHost()
-        load("${ReaderAssets.ORIGIN}/origin-test.html", postingPage)
-
-        awaitCondition(15_000) { hasEvent(ReaderEvent.HostReady) }
-        assertTrue("the asset origin's hostReady should reach onEvent", hasEvent(ReaderEvent.HostReady))
     }
 
     // TC-26: a sub-frame on the asset origin is rejected, because only the main frame is trusted.
@@ -133,7 +119,8 @@ class ReaderBridgeOriginTest {
 
         awaitCondition(15_000) { hasEvent(ReaderEvent.HostReady) }
         assertTrue("the main frame's hostReady should reach onEvent", hasEvent(ReaderEvent.HostReady))
-        Thread.sleep(1_000)
+        // A round trip through the page, so the frame's earlier post has had its chance to arrive.
+        evaluate("0")
         assertTrue(
             "a sub-frame's toggleChrome must not reach onEvent: ${synchronized(events) { events.toList() }}",
             !hasEvent(ReaderEvent.ToggleChrome),

@@ -1,47 +1,40 @@
 package com.omnibus.omnibus.feature.reader
 
-import com.omnibus.omnibus.feature.reader.ui.RelocateData
+import com.omnibus.omnibus.feature.reader.ui.randomCfi
+import com.omnibus.omnibus.feature.reader.ui.randomRelocateData
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 
 class PersistGateTest : DescribeSpec({
 
-    fun relocate(cfi: String?, settled: Int? = null, echo: Boolean = false) =
-        RelocateData(cfi = cfi, pct = 10, totalPages = 100, echo = echo, settledSeek = settled)
+    fun relocate(cfi: String? = randomCfi(), settled: Int? = null, echo: Boolean = false) =
+        randomRelocateData().copy(cfi = cfi, echo = echo, settledSeek = settled)
 
-    describe("PersistGate") {
+    describe("admitting a relocate for saving") {
+        context("when held after a seek was sent") {
+            it("TC-93: admits only the reader's own move off the seek's landing") {
+                val gate = PersistGate(held = true)
+                gate.onSeekSent()
+                val landing = randomCfi()
 
-        // TC-93: the hold releases only on the reader's own move, not on the seek's landing or a repeat.
-        it("TC-93: the hold releases only on the reader's own move") {
-            val gate = PersistGate(held = true)
-            gate.onSeekSent()
+                listOf(relocate(), relocate(landing, settled = 1), relocate(landing), relocate())
+                    .map(gate::admit) shouldContainExactly listOf(false, false, false, true)
+            }
 
-            val admitted = listOf(
-                relocate("a"),
-                relocate("b", settled = 1),
-                relocate("b"),
-                relocate("c"),
-            ).map(gate::admit)
+            it("TC-94: is not released by an echo") {
+                val gate = PersistGate(held = true)
+                gate.onSeekSent()
 
-            admitted shouldContainExactly listOf(false, false, false, true)
-            gate.held shouldBe false
+                listOf(relocate(settled = 1), relocate(echo = true), relocate())
+                    .map(gate::admit) shouldContainExactly listOf(false, false, true)
+            }
         }
 
-        // TC-94: a relocate that settles the seek, or an echo, never releases; an unheld gate admits everything.
-        it("TC-94: a relocate that settles the seek or is an echo never releases") {
-            val held = PersistGate(held = true)
-            held.onSeekSent()
-
-            val admitted = listOf(
-                relocate("x", settled = 1),
-                relocate("y", echo = true),
-                relocate("z"),
-            ).map(held::admit)
-
-            admitted shouldContainExactly listOf(false, false, true)
-
-            PersistGate(held = false).admit(relocate("a")) shouldBe true
+        context("when not held") {
+            it("TC-94: admits the relocate") {
+                PersistGate(held = false).admit(relocate()) shouldBe true
+            }
         }
     }
 })

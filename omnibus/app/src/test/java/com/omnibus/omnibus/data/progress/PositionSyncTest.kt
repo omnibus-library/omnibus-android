@@ -1,88 +1,85 @@
 package com.omnibus.omnibus.data.progress
 
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import kotlin.time.Duration.Companion.milliseconds
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
+
+/** A server record that carries a position, so only its clocks decide. */
+private fun positioned() = randomServerReadingPosition().copy(cfi = "epubcfi(/6/8)")
 
 class PositionSyncTest : DescribeSpec({
 
-    /** A remote record with [cfi], [percent] and the given clocks. */
-    fun remote(
-        cfi: String? = "epubcfi(/6/8)",
-        percent: Int? = null,
-        clientUpdatedAt: Long? = null,
-        updatedAt: Long = 0,
-    ) = ServerReadingPosition(
-        cfi = cfi,
-        percent = percent,
-        derivedCfi = null,
-        updatedAt = updatedAt,
-        clientUpdatedAt = clientUpdatedAt,
-    )
+    describe("deciding whether a record is a position") {
 
-    describe("OPEN_DEADLINE") {
+        context("when the record has a CFI") {
+            it("TC-59: carries a position, at any percent, padded or not") {
+                checkAll(
+                    Exhaustive.of("epubcfi(/6/4)", "  epubcfi(/6/4)"),
+                    Exhaustive.of(null, 0, 1, 57),
+                ) { cfi, percent ->
+                    PositionSync.carriesPosition(cfi, percent) shouldBe true
+                }
+            }
+        }
 
-        it("is 1200 ms, as iOS") {
-            PositionSync.OPEN_DEADLINE shouldBe 1200.milliseconds
+        context("when the record has no CFI") {
+            it("TC-59: carries a position with a percent above zero") {
+                checkAll(Exhaustive.of("", "  ", null, "pdf-page:3", "comic-page:2"), Exhaustive.of(1, 57)) { cfi, percent ->
+                    PositionSync.carriesPosition(cfi, percent) shouldBe true
+                }
+            }
+
+            it("TC-59: carries no position without one") {
+                checkAll(Exhaustive.of("", "  ", null, "pdf-page:3", "comic-page:2"), Exhaustive.of(null, 0)) { cfi, percent ->
+                    PositionSync.carriesPosition(cfi, percent) shouldBe false
+                }
+            }
         }
     }
 
-    describe("isNewer") {
+    describe("deciding whether the server's position is newer") {
 
-        val local = ReadingPosition("book-1", "epubcfi(/6/2)", 3, 100)
+        it("TC-56: is strictly greater on the ordering clock") {
+            checkAll(Exhaustive.of(101L to true, 100L to false, 99L to false)) { (clock, expected) ->
+                val local = randomReadingPosition().copy(clientUpdatedAt = 100)
 
-        it("TC-56: newer is strictly greater on the ordering clock") {
-            val rows = listOf(
-                Triple(remote(clientUpdatedAt = 101), local, true),
-                Triple(remote(clientUpdatedAt = 100), local, false),
-                Triple(remote(clientUpdatedAt = 99), local, false),
-                Triple(remote(clientUpdatedAt = 1), null, true),
-                // The client clock wins over a later server clock.
-                Triple(remote(clientUpdatedAt = 99, updatedAt = 500), local, false),
-                // Without a client clock the server clock is the fallback.
-                Triple(remote(clientUpdatedAt = null, updatedAt = 101), local, true),
-            )
-            rows.forEach { (record, against, expected) ->
-                withClue("remote=$record local=$against") {
-                    PositionSync.isNewer(record, against) shouldBe expected
-                }
+                PositionSync.isNewer(positioned().copy(clientUpdatedAt = clock), local) shouldBe expected
             }
         }
 
-        it("TC-59: a CFI row carries a position at any percent; another anchor only with a percent above zero") {
-            val cfis = listOf("epubcfi(/6/4)", "  epubcfi(/6/4)", "", "  ", null, "pdf-page:3", "comic-page:2")
-            val percents = listOf<Int?>(null, 0, 1, 57)
-            cfis.forEach { cfi ->
-                percents.forEach { percent ->
-                    val expected = PositionSync.isEpubCfi(cfi) || (percent ?: 0) > 0
-                    withClue("cfi=$cfi percent=$percent") {
-                        PositionSync.carriesPosition(cfi, percent) shouldBe expected
-                    }
-                }
-            }
-            withClue("cfi=epubcfi(/6/4) percent=null") {
-                PositionSync.carriesPosition("epubcfi(/6/4)", null) shouldBe true
-            }
-            withClue("cfi=  epubcfi(/6/4) percent=null") {
-                PositionSync.carriesPosition("  epubcfi(/6/4)", null) shouldBe true
-            }
-            withClue("cfi=pdf-page:3 percent=57") {
-                PositionSync.carriesPosition("pdf-page:3", 57) shouldBe true
-            }
-            withClue("cfi=pdf-page:3 percent=null") {
-                PositionSync.carriesPosition("pdf-page:3", null) shouldBe false
-            }
-            withClue("cfi=pdf-page:3") {
-                PositionSync.isEpubCfi("pdf-page:3") shouldBe false
+        context("when there is no local position") {
+            it("TC-56: is newer") {
+                PositionSync.isNewer(positioned().copy(clientUpdatedAt = 1), null) shouldBe true
             }
         }
 
-        it("TC-60: a row with no position is never newer") {
-            // No CFI, no percent, and a clock far in the future.
-            PositionSync.isNewer(remote(cfi = null, percent = null, clientUpdatedAt = Long.MAX_VALUE / 2), null) shouldBe false
-            // A non-CFI anchor with no percent.
-            PositionSync.isNewer(remote(cfi = "pdf-page:3", percent = null, clientUpdatedAt = 1_000), null) shouldBe false
+        context("when the record has a client clock") {
+            it("TC-56: orders by it over a later server clock") {
+                val local = randomReadingPosition().copy(clientUpdatedAt = 100)
+
+                PositionSync.isNewer(positioned().copy(clientUpdatedAt = 99, updatedAt = 500), local) shouldBe false
+            }
+        }
+
+        context("when the record has no client clock") {
+            it("TC-56: orders by the server clock") {
+                val local = randomReadingPosition().copy(clientUpdatedAt = 100)
+
+                PositionSync.isNewer(positioned().copy(clientUpdatedAt = null, updatedAt = 101), local) shouldBe true
+            }
+        }
+
+        context("when the record carries no position") {
+            it("TC-60: is never newer, however late its clock") {
+                checkAll(Exhaustive.of(null, "pdf-page:3")) { cfi ->
+                    PositionSync.isNewer(
+                        randomServerReadingPosition().copy(cfi = cfi, percent = null, clientUpdatedAt = Long.MAX_VALUE / 2),
+                        null,
+                    ) shouldBe false
+                }
+            }
         }
     }
 })

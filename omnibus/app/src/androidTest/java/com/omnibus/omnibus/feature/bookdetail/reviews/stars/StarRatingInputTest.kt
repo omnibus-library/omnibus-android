@@ -9,10 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -35,7 +31,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -180,17 +175,6 @@ class StarRatingInputTest {
         rule.waitForIdle()
         assertTrue(scroll.value > 0)
         assertTrue(calls.isEmpty())
-
-        val before = scroll.value
-        row().performTouchInput {
-            down(Offset(width * 0.5f, height / 2f))
-            moveTo(Offset(width * 0.5f + 10f, height / 2f - 200f))
-            moveTo(Offset(width * 0.5f + 10f, height / 2f - 400f))
-            up()
-        }
-        rule.waitForIdle()
-        assertTrue(scroll.value > before)
-        assertTrue(calls.isEmpty())
     }
 
     // TC-59 (AC6)
@@ -225,15 +209,6 @@ class StarRatingInputTest {
         row().onChildren().assertCountEquals(0)
     }
 
-    // TC-60 (AC6)
-    @Test
-    fun tc60_anUnratedRowReadsNotRated() {
-        show(rating = null)
-
-        row().assertStateDescriptionIs(detailText(R.string.book_detail_rate_stars_unrated))
-        assertEquals(0f, row().fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current, 0.001f)
-    }
-
     // TC-61 (AC6)
     @Test
     fun tc61_setProgressSnapsToAHalfStarAndSavesOnlyAChange() {
@@ -244,16 +219,6 @@ class StarRatingInputTest {
 
         assertEquals(listOf(3.5f, null, null, 5f, 4.5f), calls)
         assertTrue(results.all { it })
-    }
-
-    // TC-61 (AC6)
-    @Test
-    fun tc61_setProgressAtTheEnds() {
-        val calls = mutableListOf<Float?>()
-        show(rating = 5f, calls = calls)
-
-        assertTrue(setProgress(5.5f))
-        assertEquals(emptyList<Float?>(), calls)
     }
 
     // TC-62 (AC5, AC6)

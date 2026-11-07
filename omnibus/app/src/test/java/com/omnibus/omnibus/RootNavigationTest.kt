@@ -15,9 +15,9 @@ import kotlinx.serialization.json.Json
 
 class RootNavigationTest : DescribeSpec({
 
-    describe("closeReader") {
+    describe("closing the reader") {
 
-        it("TC-75: pops only its own route, and a second close is a no-op") {
+        it("TC-75: pops its own route a single time, for repeated closes") {
             val route = ReaderRoute("a")
             val stack = mutableListOf<NavKey>(SignedInShellRoute, route)
 
@@ -38,7 +38,7 @@ class RootNavigationTest : DescribeSpec({
         }
     }
 
-    describe("openPlayer") {
+    describe("opening the player") {
 
         it("#165 TC-1: ignores an identical PlayerRoute already on top") {
             val stack = mutableListOf<NavKey>(SignedInShellRoute)
@@ -65,9 +65,9 @@ class RootNavigationTest : DescribeSpec({
         }
     }
 
-    describe("closePlayer") {
+    describe("closing the player") {
 
-        it("#165 TC-3: pops only its own route when on top; a second close and a buried route are no-ops") {
+        it("#165 TC-3: pops its own route only from the top, a single time") {
             val route = PlayerRoute("a", 9L)
             val stack = mutableListOf<NavKey>(SignedInShellRoute, route)
 
@@ -83,9 +83,9 @@ class RootNavigationTest : DescribeSpec({
         }
     }
 
-    describe("openReader") {
+    describe("opening the reader") {
 
-        it("TC-75: opening the same book twice pushes it once") {
+        it("TC-75: pushes the same book once") {
             val stack = mutableListOf<NavKey>(SignedInShellRoute)
 
             stack.openReader("a")
@@ -94,7 +94,7 @@ class RootNavigationTest : DescribeSpec({
             stack shouldContainExactly listOf(SignedInShellRoute, ReaderRoute("a"))
         }
 
-        it("#117 TC-57: openReader carries the start cfi, and a different cfi is pushed") {
+        it("#117 TC-57: pushes one route per start cfi") {
             val stack = mutableListOf<NavKey>(SignedInShellRoute)
 
             stack.openReader("a", "epubcfi(/6/4)")
@@ -111,7 +111,7 @@ class RootNavigationTest : DescribeSpec({
 
     describe("route serialization") {
 
-        it("#117 TC-58: routes round trip and decode old payloads") {
+        it("#117 TC-58: decodes current and old payloads") {
             val route = ReaderRoute("a", "epubcfi(/6/4)")
             Json.decodeFromString<ReaderRoute>(Json.encodeToString(route)) shouldBe route
             Json.decodeFromString<ReaderRoute>(Json.encodeToString(ReaderRoute("a"))) shouldBe ReaderRoute("a", null)
@@ -125,9 +125,9 @@ class RootNavigationTest : DescribeSpec({
         }
     }
 
-    describe("shouldLeaveForLogin") {
+    describe("leaving for login") {
 
-        it("TC-83: leaves for Login only when signed out with the shell on the stack") {
+        it("TC-83: leaves only for a signed-out user with the shell on the stack") {
             shouldLeaveForLogin(listOf(SignedInShellRoute), isSignedIn = false) shouldBe true
             shouldLeaveForLogin(listOf(SignedInShellRoute, ReaderRoute("a")), isSignedIn = false) shouldBe true
             shouldLeaveForLogin(listOf(SignedInShellRoute), isSignedIn = true) shouldBe false
@@ -145,9 +145,9 @@ class RootNavigationTest : DescribeSpec({
         }
     }
 
-    describe("drawsOwnInsets") {
+    describe("which routes draw their own insets") {
 
-        it("TC-85: the shell and the reader draw their own insets; other routes do not") {
+        it("TC-85: includes the shell and the reader, not login, server configuration or no route") {
             drawsOwnInsets(SignedInShellRoute) shouldBe true
             drawsOwnInsets(ReaderRoute("x")) shouldBe true
             drawsOwnInsets(LoginScreenRoute) shouldBe false

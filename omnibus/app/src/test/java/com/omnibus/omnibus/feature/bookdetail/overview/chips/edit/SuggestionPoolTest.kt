@@ -1,90 +1,108 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.chips.edit
 
-import com.omnibus.omnibus.data.metadata.VocabularyEntry
+import com.omnibus.omnibus.data.metadata.randomVocabularyEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class SuggestionPoolTest : DescribeSpec({
+    fun entry(name: String) = randomVocabularyEntry().copy(name = name)
 
-    fun entry(name: String, count: Long = 1) = VocabularyEntry(name, count)
+    fun entries(vararg names: String) = names.map { entry(it) }
 
-    describe("collect") {
+    describe("collecting the library's values") {
+        context("when values repeat in different cases") {
+            it("TC-26: merges them under the first spelling with the highest count") {
+                val merged = SuggestionPool.collect(
+                    listOf(entry("Fantasy").copy(count = 3), entry("fantasy").copy(count = 9), entry("FANTASY").copy(count = 1)),
+                )
 
-        it("TC-26: dedups ignoring case, first spelling wins, higher count kept") {
-            SuggestionPool.collect(listOf(entry("Fantasy", 3), entry("fantasy", 9), entry("FANTASY", 1))) shouldBe
-                listOf(entry("Fantasy", 9))
+                merged shouldBe listOf(entry("Fantasy").copy(count = 9))
+            }
         }
 
-        it("TC-27: sorts by lowercased name") {
-            SuggestionPool.collect(listOf(entry("cherry"), entry("Banana"), entry("apple"))).map { it.name } shouldContainExactly
+        it("TC-27: sorts them ignoring case") {
+            SuggestionPool.collect(entries("cherry", "Banana", "apple")).map { it.name } shouldContainExactly
                 listOf("apple", "Banana", "cherry")
         }
     }
 
-    describe("filtered") {
+    describe("filtering the suggestions") {
+        it("TC-28: matches the trimmed query anywhere in a value, ignoring case") {
+            val pool = entries("Urban Fantasy", "Noir", "Cozy")
 
-        val pool = listOf(entry("Urban Fantasy"), entry("Noir"), entry("Cozy"))
-
-        it("TC-28: matches the trimmed query as a case-insensitive substring") {
-            SuggestionPool.filtered(pool, emptyList(), "  FAN ") shouldBe listOf(entry("Urban Fantasy"))
-            SuggestionPool.filtered(pool, emptyList(), "zzz") shouldBe emptyList()
+            SuggestionPool.filtered(pool, emptyList(), "  FAN ") shouldBe listOf(pool[0])
         }
 
-        it("TC-29: returns at most 5, and the head of the pool for an empty query") {
-            val eight = (1..8).map { entry("Tale $it") }
-            SuggestionPool.filtered(eight, emptyList(), "tale") shouldBe eight.take(5)
-            SuggestionPool.filtered(eight, emptyList(), "") shouldBe eight.take(5)
-            SuggestionPool.filtered(eight, emptyList(), "   ") shouldBe eight.take(5)
+        context("when the query is blank") {
+            it("TC-29: gives the first five values, for an empty or a whitespace query") {
+                val pool = (1..8).map { entry("Tale $it") }
+
+                checkAll(Exhaustive.of("", "   ")) { query ->
+                    SuggestionPool.filtered(pool, emptyList(), query) shouldBe pool.take(5)
+                }
+            }
         }
 
-        it("TC-30: leaves out current chips ignoring case, before the 5-limit") {
-            val withMatch = listOf(entry("Fantasy"), entry("Fantasy A"), entry("Fantasy B"), entry("Fantasy C"), entry("Fantasy D"), entry("Fantasy E"))
-            SuggestionPool.filtered(withMatch, listOf("fantasy"), "") shouldBe withMatch.drop(1)
-        }
-    }
+        context("when a value is already a chip") {
+            it("TC-30: leaves it out before taking the five") {
+                val pool = entries("Fantasy", "Fantasy A", "Fantasy B", "Fantasy C", "Fantasy D", "Fantasy E")
 
-    describe("showsCreateRow") {
-
-        val pool = listOf(entry("Fantasy"), entry("Noir"))
-
-        it("TC-31: true for text no value equals, including a substring-only match") {
-            SuggestionPool.showsCreateRow(pool, emptyList(), "Grimdark") shouldBe true
-            SuggestionPool.showsCreateRow(pool, emptyList(), "fan") shouldBe true
-        }
-
-        it("TC-32: false for blank text, an existing pool value, a current chip, or a value the 5-limit cut off") {
-            val sixValues = listOf("Ant", "Bee", "Cat", "Dog", "Eel", "Fox")
-            val sixPool = sixValues.map { entry(it) }
-            SuggestionPool.filtered(sixPool, emptyList(), "").map { it.name } shouldBe sixValues.take(5)
-
-            SuggestionPool.showsCreateRow(pool, emptyList(), "   ") shouldBe false
-            SuggestionPool.showsCreateRow(pool, emptyList(), "fantasy") shouldBe false
-            SuggestionPool.showsCreateRow(pool, listOf("Cozy"), "cozy") shouldBe false
-            SuggestionPool.showsCreateRow(pool, listOf("Cozy"), "Grimdark") shouldBe true
-            SuggestionPool.showsCreateRow(pool, listOf("Cozy"), " COZY ") shouldBe false
-            SuggestionPool.showsCreateRow(sixPool, emptyList(), "fox") shouldBe false
+                SuggestionPool.filtered(pool, listOf("fantasy"), "") shouldBe pool.drop(1)
+            }
         }
     }
 
-    describe("committedChip") {
+    describe("offering to add typed text as a new value") {
+        context("when no value equals the text") {
+            it("TC-31: offers it, for new text or text only part of a value") {
+                checkAll(Exhaustive.of("Grimdark", "fan")) { typed ->
+                    SuggestionPool.showsCreateRow(entries("Fantasy", "Noir"), emptyList(), typed) shouldBe true
+                }
+            }
+        }
 
-        it("TC-33: returns the trimmed text, accepts exactly 128 characters, and accepts a 64th value up to 63 existing") {
+        context("when the text cannot be a new value") {
+            it("TC-32: does not offer it, for blank text, a value past the suggestion limit or a current chip") {
+                val pool = entries("Ant", "Bee", "Cat", "Dog", "Eel", "Fox")
+
+                checkAll(Exhaustive.of("   ", "fox", " COZY ")) { typed ->
+                    SuggestionPool.showsCreateRow(pool, listOf("Cozy"), typed) shouldBe false
+                }
+            }
+        }
+    }
+
+    describe("committing typed text as a chip") {
+        it("TC-33: gives the trimmed text") {
             SuggestionPool.committedChip("  Space Opera ", emptyList()) shouldBe "Space Opera"
-            SuggestionPool.committedChip("a".repeat(128), emptyList()) shouldBe "a".repeat(128)
-            SuggestionPool.committedChip("new", List(63) { "v$it" }) shouldBe "new"
         }
 
-        it("TC-34: refuses blank text and case-insensitive duplicates of a current chip") {
-            SuggestionPool.committedChip("", emptyList()) shouldBe null
-            SuggestionPool.committedChip("   ", emptyList()) shouldBe null
-            SuggestionPool.committedChip("noir", listOf("Noir")) shouldBe null
-            SuggestionPool.committedChip("NOIR", listOf("Noir")) shouldBe null
+        context("when the text is at a limit") {
+            it("TC-33: accepts 128 characters or a 64th value") {
+                checkAll(Exhaustive.of("a".repeat(128) to emptyList(), "new" to List(63) { "v$it" })) { (typed, existing) ->
+                    SuggestionPool.committedChip(typed, existing) shouldBe typed
+                }
+            }
         }
 
-        it("TC-35: refuses past 64 values or 128 characters") {
-            SuggestionPool.committedChip("new", List(64) { "v$it" }) shouldBe null
-            SuggestionPool.committedChip("a".repeat(129), emptyList()) shouldBe null
+        context("when the text breaks a rule") {
+            it("TC-34: refuses blank text, a repeat in any case, 129 characters or a 65th value") {
+                val cases = Exhaustive.of(
+                    "   " to emptyList(),
+                    "NOIR" to listOf("Noir"),
+                    "a".repeat(129) to emptyList(),
+                    "new" to List(64) { "v$it" },
+                )
+
+                checkAll(cases) { (typed, existing) ->
+                    SuggestionPool.committedChip(typed, existing).shouldBeNull()
+                }
+            }
         }
     }
 })

@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.feature.bookdetail.BookDetailViewModel
-import com.omnibus.omnibus.feature.bookdetail.FakeBookDetailRepository
+import com.omnibus.omnibus.feature.bookdetail.TestBookDetailRepository
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -29,7 +29,7 @@ class BookDetailReloadOnReturnTest {
     fun issue93_tc109_returningReloadsSilently() {
         // Nothing to track and no linked author: the Hilt-only read-status and more-by-author sections stay out.
         val book = testDetailBook(formats = emptyList(), creators = emptyList())
-        val repository = FakeBookDetailRepository(bookResult = BookResult.Success(book))
+        val repository = TestBookDetailRepository(bookResult = BookResult.Success(book))
         val viewModel = BookDetailViewModel("uuid-1", repository)
         val shown = mutableStateOf(true)
         rule.setContent {

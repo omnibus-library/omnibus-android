@@ -1,293 +1,270 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews
 
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.readstatus.ReadStatus
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.data.reviews.BookReviews
 import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewSummary
 import com.omnibus.omnibus.data.reviews.ReviewsState
+import com.omnibus.omnibus.data.reviews.randomRating
+import com.omnibus.omnibus.data.reviews.randomReview
 import com.omnibus.omnibus.feature.bookdetail.BookDetailAnchor
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTabController
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.of
 import java.util.Locale
 
-/** A reader's review with the fields the rules read. */
-private fun review(
-    userId: Long,
-    name: String = "Reader $userId",
-    hasAvatar: Boolean = false,
-    rating: Float? = null,
-    text: String? = null,
-    spoiler: Boolean = false,
-    updatedAtMillis: Long? = null,
-) = Review(
-    userId = userId,
-    displayName = name,
-    hasAvatar = hasAvatar,
-    rating = rating,
-    text = text,
-    privateNotes = null,
-    isSpoiler = spoiler,
-    updatedAtMillis = updatedAtMillis,
-)
-
-/** The signed-in reader's own review, which the server does not attribute. */
-private fun mine(rating: Float? = null, text: String? = null) = review(userId = 0L, name = "", rating = rating, text = text)
-
-private val EMPTY_STATE = ReviewsState.Loaded(BookReviews(mine = null, others = emptyList(), summary = null))
+/** Records which tab the page's tab strip was asked to jump to. */
+private class TestTabController : BookDetailTabController {
+    val jumps = mutableListOf<BookDetailTab>()
+    override val selected: BookDetailTab = BookDetailTab.Overview
+    override fun select(tab: BookDetailTab) = Unit
+    override fun jumpTo(tab: BookDetailTab) {
+        jumps += tab
+    }
+    override fun scrollTo(anchor: BookDetailAnchor) = Unit
+}
 
 class HouseholdReviewsTest : DescribeSpec({
 
-    describe("householdAverage") {
+    /** A spoiler that has text to hide. */
+    fun spoiler() = randomReview().copy(isSpoiler = true, text = randomString())
 
-        it("TC-16: the server summary wins") {
-            val reviews = BookReviews(
-                mine = mine(rating = 2f),
-                others = listOf(review(1, rating = 1f)),
-                summary = ReviewSummary(4.3f, 3),
-            )
+    fun others(vararg reviews: Review) =
+        BookReviews(mine = randomReview(), others = reviews.toList(), summary = null)
 
-            householdAverage(reviews) shouldBe HouseholdAverage(4.3f, 3)
-        }
+    describe("the household's average") {
+        context("when the server sent a summary") {
+            it("TC-16: is the server's summary") {
+                val summary = ReviewSummary(randomRating(), randomInt(1..99))
+                val reviews = BookReviews(randomReview(), listOf(randomReview()), summary)
 
-        it("TC-17: without a summary the mean of every rating, yours included, or null") {
-            householdAverage(
-                BookReviews(mine = mine(rating = 3f), others = listOf(review(1, rating = 4f), review(2, rating = 5f), review(3)), summary = null),
-            ) shouldBe HouseholdAverage(4.0f, 3)
-            householdAverage(BookReviews(mine = mine(rating = 3.5f), others = emptyList(), summary = null)) shouldBe
-                HouseholdAverage(3.5f, 1)
-            householdAverage(BookReviews(mine = null, others = listOf(review(1, rating = 4f)), summary = null)) shouldBe
-                HouseholdAverage(4.0f, 1)
-            householdAverage(
-                BookReviews(mine = mine(text = "Lovely"), others = listOf(review(1, text = "Fine")), summary = null),
-            ) shouldBe null
-            householdAverage(BookReviews(mine = null, others = emptyList(), summary = null)) shouldBe null
-        }
-    }
-
-    describe("halfStarRound and starNumber") {
-
-        it("TC-18: halfStarRound snaps to the nearest half with ties up, clamped, NaN to zero") {
-            val values = listOf(4.3f, 4.24f, 4.25f, 0.2f, 5.4f, 4.75f, 2.75f, 0.25f, 0f, -1f, 7f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)
-            val expected = listOf(4.5f, 4.0f, 4.5f, 0.0f, 5.0f, 5.0f, 3.0f, 0.5f, 0f, 0f, 5f, 0f, 5f, 0f)
-
-            values.zip(expected).forEach { (value, rounded) -> halfStarRound(value) shouldBe rounded }
-        }
-
-        it("TC-19: starNumber rounds half up to one decimal, drops .0 and uses the locale separator") {
-            starNumber(4.33f, Locale.US) shouldBe "4.3"
-            starNumber(4.0f, Locale.US) shouldBe "4"
-            starNumber(4.5f, Locale.US) shouldBe "4.5"
-            starNumber(4.35f, Locale.US) shouldBe "4.4"
-            starNumber(0f, Locale.US) shouldBe "0"
-            starNumber(5f, Locale.US) shouldBe "5"
-            starNumber(4.5f, Locale.GERMANY) shouldBe "4,5"
-            starNumber(4.0f, Locale.GERMANY) shouldBe "4"
-            starNumber(4.33f, Locale.FRANCE) shouldBe "4,3"
-        }
-    }
-
-    describe("reviewEntries") {
-
-        it("TC-20: entries keep the server order and never include mine") {
-            val reviews = BookReviews(
-                mine = mine(rating = 4f, text = "Mine"),
-                others = listOf(review(9, "Zed"), review(2, "Amy"), review(5, "Bo")),
-                summary = null,
-            )
-
-            val entries = reviewEntries(reviews, finished = false, revealed = emptySet())
-
-            entries.map { it.userId } shouldBe listOf(9L, 2L, 5L)
-            entries.size shouldBe 3
-            entries.any { it.userId == 0L } shouldBe false
-        }
-
-        it("TC-21: entry fields and the body kind") {
-            val reviews = BookReviews(
-                mine = null,
-                others = listOf(
-                    review(1, "Maren", hasAvatar = true, rating = 4f, text = "Great", updatedAtMillis = 123L),
-                    review(2, "Theo", rating = 3.5f),
-                    review(3, "Jo"),
-                    review(4, "Ada", rating = 5f, text = "![x](u)"),
-                ),
-                summary = null,
-            )
-
-            val entries = reviewEntries(reviews, finished = false, revealed = emptySet())
-
-            val first = entries[0]
-            first.userId shouldBe 1L
-            first.name shouldBe "Maren"
-            first.hasAvatar shouldBe true
-            first.dateMillis shouldBe 123L
-            first.rating shouldBe 4f
-            first.markdown shouldBe "Great"
-            first.body shouldBe ReviewBody.Text
-            entries[1].body shouldBe ReviewBody.RatedOnly
-            entries[2].body shouldBe ReviewBody.None
-            entries[3].body shouldBe ReviewBody.ImageOnly
-        }
-
-        it("TC-22: spoilers are veiled until finished or revealed") {
-            val spoilers = listOf(
-                review(9, text = "Butler", spoiler = true),
-                review(8, text = "Twist", spoiler = true),
-            )
-            val reviews = BookReviews(mine = null, others = spoilers, summary = null)
-
-            reviewEntries(reviews, finished = false, revealed = emptySet()).map { it.veiled } shouldBe listOf(true, true)
-            reviewEntries(reviews, finished = true, revealed = emptySet()).map { it.veiled } shouldBe listOf(false, false)
-            reviewEntries(reviews, finished = false, revealed = setOf(9L)).map { it.veiled } shouldBe listOf(false, true)
-
-            val plain = BookReviews(mine = null, others = listOf(review(1, text = "Fine")), summary = null)
-            reviewEntries(plain, finished = false, revealed = emptySet()).single().veiled shouldBe false
-            val noText = BookReviews(mine = null, others = listOf(review(1, rating = 4f, spoiler = true)), summary = null)
-            reviewEntries(noText, finished = false, revealed = emptySet()).single().veiled shouldBe false
-        }
-    }
-
-    describe("isFinished") {
-
-        it("TC-23: only a Known Finished status counts as finished") {
-            isFinished(ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, 1L, 1L))) shouldBe true
-            isFinished(ReadStatusState.Known(ReadStatusRecord(ReadStatus.Unread, null, null))) shouldBe false
-            isFinished(ReadStatusState.Known(ReadStatusRecord(ReadStatus.Reading, 1L, null))) shouldBe false
-            isFinished(ReadStatusState.Unknown) shouldBe false
-            isFinished(ReadStatusState.Failed) shouldBe false
-        }
-    }
-
-    describe("reviewsTabModel") {
-
-        it("TC-24: non-loaded states map to Hidden, Offline and Failed") {
-            reviewsTabModel(ReviewsState.Loading, finished = false, revealed = emptySet()) shouldBe ReviewsTabModel.Hidden
-            reviewsTabModel(ReviewsState.Offline, finished = false, revealed = emptySet()) shouldBe ReviewsTabModel.Offline
-            reviewsTabModel(ReviewsState.Failed, finished = false, revealed = emptySet()) shouldBe ReviewsTabModel.Failed
-        }
-
-        it("TC-25: nobody reviewed is Empty, only your own review is Hidden") {
-            val nobody = listOf(
-                BookReviews(mine = null, others = emptyList(), summary = null),
-                BookReviews(mine = mine(), others = emptyList(), summary = null),
-            )
-            nobody.map { reviewsTabModel(ReviewsState.Loaded(it), finished = false, revealed = emptySet()) } shouldBe
-                listOf(ReviewsTabModel.Empty, ReviewsTabModel.Empty)
-
-            val yours = listOf(
-                BookReviews(mine = mine(rating = 3f), others = emptyList(), summary = null),
-                BookReviews(mine = mine(text = "Mine"), others = emptyList(), summary = null),
-            )
-            yours.map { reviewsTabModel(ReviewsState.Loaded(it), finished = false, revealed = emptySet()) } shouldBe
-                listOf(ReviewsTabModel.Hidden, ReviewsTabModel.Hidden)
-        }
-
-        it("TC-26: a populated tab is Listed with count, average and finished") {
-            val rated = BookReviews(
-                mine = null,
-                others = listOf(review(1, rating = 4f), review(2, rating = 4.5f), review(3, rating = 4f)),
-                summary = ReviewSummary(4.33f, 3),
-            )
-
-            val listed = reviewsTabModel(ReviewsState.Loaded(rated), finished = true, revealed = emptySet())
-                .shouldBeInstanceOf<ReviewsTabModel.Listed>()
-            listed.count shouldBe 3
-            listed.average shouldBe 4.33f
-            listed.entries.size shouldBe 3
-            listed.finished shouldBe true
-
-            val textOnly = BookReviews(mine = null, others = listOf(review(1, text = "Fine")), summary = null)
-            reviewsTabModel(ReviewsState.Loaded(textOnly), finished = false, revealed = emptySet())
-                .shouldBeInstanceOf<ReviewsTabModel.Listed>()
-                .average shouldBe null
-        }
-    }
-
-    describe("stageRatingModel") {
-
-        it("TC-31: stageRatingModel maps every non-average state") {
-            stageRatingModel(ReviewsState.Loading) shouldBe StageRatingModel.Checking
-            stageRatingModel(ReviewsState.Offline) shouldBe StageRatingModel.NeedsConnection
-            stageRatingModel(ReviewsState.Failed) shouldBe StageRatingModel.CouldNotLoad
-            stageRatingModel(EMPTY_STATE) shouldBe StageRatingModel.NoReviews
-
-            listOf(StageRatingModel.Checking, StageRatingModel.NeedsConnection, StageRatingModel.CouldNotLoad).forEach {
-                it.dimmed shouldBe true
-                it.stars shouldBe 0f
+                householdAverage(reviews) shouldBe HouseholdAverage(summary.average, summary.count)
             }
-            StageRatingModel.NoReviews.dimmed shouldBe false
-            StageRatingModel.NoReviews.stars shouldBe 0f
         }
 
-        it("TC-32: Average carries half-star stars, the raw average and the count") {
-            val summarised = ReviewsState.Loaded(
-                BookReviews(mine = null, others = listOf(review(1, rating = 4f)), summary = ReviewSummary(4.3f, 3)),
-            )
-            val average = stageRatingModel(summarised).shouldBeInstanceOf<StageRatingModel.Average>()
-            average.stars shouldBe 4.5f
-            average.average shouldBe 4.3f
-            average.count shouldBe 3
-            average.dimmed shouldBe false
+        context("when the server sent no summary") {
+            it("TC-17: is the mean of every rating, yours included") {
+                val reviews = BookReviews(
+                    mine = randomReview().copy(rating = 3f),
+                    others = listOf(4f, 5f, null).map { randomReview().copy(rating = it) },
+                    summary = null,
+                )
 
-            val threeFours = ReviewsState.Loaded(
-                BookReviews(mine = null, others = listOf(review(1, rating = 4f), review(2, rating = 4f), review(3, rating = 4f)), summary = null),
-            )
-            stageRatingModel(threeFours) shouldBe StageRatingModel.Average(4.0f, 4.0f, 3)
+                householdAverage(reviews) shouldBe HouseholdAverage(4f, 3)
+            }
+
+            it("TC-17: is missing for a book nobody has rated") {
+                val reviews = BookReviews(
+                    mine = randomReview().copy(rating = null),
+                    others = listOf(randomReview().copy(rating = null)),
+                    summary = null,
+                )
+
+                householdAverage(reviews) shouldBe null
+            }
         }
     }
 
-    describe("showsReviews") {
+    describe("the half star a value snaps to") {
+        it("TC-18: is the nearest half with ties up, clamped to the row, for each of these values") {
+            checkAll(
+                Exhaustive.of(
+                    4.24f to 4f,
+                    4.25f to 4.5f,
+                    4.75f to 5f,
+                    0.2f to 0f,
+                    0.25f to 0.5f,
+                    -1f to 0f,
+                    7f to 5f,
+                    Float.NaN to 0f,
+                    Float.POSITIVE_INFINITY to 5f,
+                    Float.NEGATIVE_INFINITY to 0f,
+                ),
+            ) { (value, snapped) ->
+                halfStarRound(value) shouldBe snapped
+            }
+        }
+    }
 
-        it("TC-33: showsReviews follows the owned formats") {
-            for (ebook in listOf(false, true)) {
-                for (audiobook in listOf(false, true)) {
-                    for (physical in listOf(false, true)) {
-                        for (wishlisted in listOf(false, true)) {
-                            val formats = buildList {
-                                if (ebook) add("epub")
-                                if (audiobook) add("m4b")
-                            }
-                            val book = testBook(1).copy(formats = formats, hasPhysical = physical, isWishlisted = wishlisted)
+    describe("a star number for display") {
+        it("TC-19: has one decimal rounded half up without a trailing zero, in the notation of each locale") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(4.33f, Locale.US, "4.3"),
+                    Triple(4.35f, Locale.US, "4.4"),
+                    Triple(4f, Locale.US, "4"),
+                    Triple(4.5f, Locale.GERMANY, "4,5"),
+                    Triple(4.33f, Locale.FRANCE, "4,3"),
+                ),
+            ) { (value, locale, text) ->
+                starNumber(value, locale) shouldBe text
+            }
+        }
+    }
 
-                            showsReviews(book) shouldBe (ebook || audiobook || physical)
-                        }
-                    }
+    describe("the review entries") {
+        it("TC-20: are the other readers' reviews in the server's order") {
+            val others = List(3) { randomReview() }
+            val reviews = BookReviews(mine = randomReview(), others = others, summary = null)
+
+            reviewEntries(reviews, randomBoolean(), emptySet()).map { it.userId } shouldBe others.map { it.userId }
+        }
+
+        it("TC-21: name the body kind of each kind of review") {
+            checkAll(
+                Exhaustive.of(
+                    Triple("Great", 4f, ReviewBody.Text),
+                    Triple(null, 3.5f, ReviewBody.RatedOnly),
+                    Triple(null, null, ReviewBody.None),
+                    Triple("![x](u)", 5f, ReviewBody.ImageOnly),
+                ),
+            ) { (text, rating, body) ->
+                val reviews = others(randomReview().copy(text = text, rating = rating))
+
+                reviewEntries(reviews, randomBoolean(), emptySet()).single().body shouldBe body
+            }
+        }
+
+        it("TC-22: are veiled only for an unfinished reader's unopened spoiler with text, for each case") {
+            val secret = spoiler()
+
+            checkAll(
+                Exhaustive.of(
+                    Triple(secret.copy(), false to emptySet<Long>(), true),
+                    Triple(secret.copy(), true to emptySet(), false),
+                    Triple(secret.copy(), false to setOf(secret.userId), false),
+                    Triple(secret.copy(), false to setOf(secret.userId + 1), true),
+                    Triple(secret.copy(isSpoiler = false), false to emptySet(), false),
+                    Triple(secret.copy(text = null), false to emptySet(), false),
+                ),
+            ) { (review, reader, veiled) ->
+                val (finished, revealed) = reader
+
+                reviewEntries(others(review), finished, revealed).single().veiled shouldBe veiled
+            }
+        }
+    }
+
+    describe("whether the reader has finished") {
+        it("TC-23: is true only for a known Finished status, across every status") {
+            fun known(status: ReadStatus) = ReadStatusState.Known(randomReadStatusRecord().copy(status = status))
+
+            checkAll(
+                Exhaustive.of(
+                    known(ReadStatus.Finished) to true,
+                    known(ReadStatus.Reading) to false,
+                    known(ReadStatus.Unread) to false,
+                    ReadStatusState.Unknown to false,
+                    ReadStatusState.Failed to false,
+                ),
+            ) { (status, finished) ->
+                isFinished(status) shouldBe finished
+            }
+        }
+    }
+
+    describe("the Reviews tab") {
+        it("TC-24: follows each state that has no reviews yet") {
+            checkAll(
+                Exhaustive.of(
+                    ReviewsState.Loading to ReviewsTabModel.Hidden,
+                    ReviewsState.Offline to ReviewsTabModel.Offline,
+                    ReviewsState.Failed to ReviewsTabModel.Failed,
+                ),
+            ) { (state, model) ->
+                reviewsTabModel(state, randomBoolean(), emptySet()) shouldBe model
+            }
+        }
+
+        context("when no other reader has reviewed the book") {
+            it("TC-25: is Hidden only for a review of yours with content, across each kind of review") {
+                checkAll(
+                    Exhaustive.of(
+                        null to ReviewsTabModel.Empty,
+                        randomReview().copy(rating = null, text = null) to ReviewsTabModel.Empty,
+                        randomReview().copy(rating = randomRating(), text = null) to ReviewsTabModel.Hidden,
+                        randomReview().copy(rating = null, text = randomString()) to ReviewsTabModel.Hidden,
+                    ),
+                ) { (mine, model) ->
+                    val reviews = BookReviews(mine = mine, others = emptyList(), summary = null)
+
+                    reviewsTabModel(ReviewsState.Loaded(reviews), randomBoolean(), emptySet()) shouldBe model
                 }
             }
         }
+
+        context("when other readers have reviewed the book") {
+            it("TC-26: lists them under the household's count, average") {
+                val summary = ReviewSummary(randomRating(), randomInt(1..99))
+                val reviews = BookReviews(randomReview(), List(3) { randomReview() }, summary)
+                val finished = randomBoolean()
+
+                reviewsTabModel(ReviewsState.Loaded(reviews), finished, emptySet()) shouldBe ReviewsTabModel.Listed(
+                    count = 3,
+                    average = summary.average,
+                    entries = reviewEntries(reviews, finished, emptySet()),
+                    finished = finished,
+                )
+            }
+        }
     }
 
-    describe("openReviews") {
+    describe("the stage rating") {
+        it("TC-31: follows each state with no average") {
+            checkAll(
+                Exhaustive.of(
+                    ReviewsState.Loading to StageRatingModel.Checking,
+                    ReviewsState.Offline to StageRatingModel.NeedsConnection,
+                    ReviewsState.Failed to StageRatingModel.CouldNotLoad,
+                    ReviewsState.Loaded(BookReviews(null, emptyList(), null)) to StageRatingModel.NoReviews,
+                ),
+            ) { (state, model) ->
+                stageRatingModel(state) shouldBe model
+            }
+        }
 
-        it("TC-34: openReviews jumps to the Reviews tab") {
-            val tabs = RecordingTabs()
+        context("when the household has an average") {
+            it("TC-32: carries the snapped stars, the raw average, the count") {
+                val reviews = BookReviews(randomReview(), listOf(randomReview()), ReviewSummary(4.3f, 3))
+
+                stageRatingModel(ReviewsState.Loaded(reviews)) shouldBe StageRatingModel.Average(4.5f, 4.3f, 3)
+            }
+        }
+    }
+
+    describe("whether a book shows reviews") {
+        it("TC-33: follows the owned formats, across every mix of ebook, audiobook, physical copy, wishlist") {
+            val flag = Exhaustive.boolean()
+            checkAll(flag, flag, flag, flag) { ebook, audiobook, physical, wishlisted ->
+                val book = randomBook().copy(
+                    formats = listOfNotNull("epub".takeIf { ebook }, "m4b".takeIf { audiobook }),
+                    hasPhysical = physical,
+                    isWishlisted = wishlisted,
+                )
+
+                showsReviews(book) shouldBe (ebook || audiobook || physical)
+            }
+        }
+    }
+
+    describe("opening the reviews") {
+        it("TC-34: jumps to the Reviews tab") {
+            val tabs = TestTabController()
 
             openReviews(tabs)
 
             tabs.jumps shouldBe listOf(BookDetailTab.Reviews)
-            tabs.others shouldBe emptyList()
         }
     }
 })
-
-/** Records what the page's tab strip was asked to do. */
-private class RecordingTabs : BookDetailTabController {
-    val jumps = mutableListOf<BookDetailTab>()
-    val others = mutableListOf<String>()
-    override val selected: BookDetailTab = BookDetailTab.Overview
-    override fun select(tab: BookDetailTab) {
-        others += "select:$tab"
-    }
-    override fun jumpTo(tab: BookDetailTab) {
-        jumps += tab
-    }
-    override fun scrollTo(anchor: BookDetailAnchor) {
-        others += "scrollTo:$anchor"
-    }
-}

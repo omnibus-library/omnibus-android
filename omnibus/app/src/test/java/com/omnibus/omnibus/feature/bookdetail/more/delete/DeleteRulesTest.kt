@@ -4,16 +4,20 @@ import com.omnibus.omnibus.data.deletion.DeletableCopy
 import com.omnibus.omnibus.data.deletion.DeletableFile
 import com.omnibus.omnibus.data.deletion.DeletionImpact
 import com.omnibus.omnibus.data.deletion.DeletionManifest
-import com.omnibus.omnibus.data.library.BookFile
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.deletion.randomDeletableCopy
+import com.omnibus.omnibus.data.deletion.randomDeletableFile
+import com.omnibus.omnibus.data.library.randomBook
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.of
 
-private fun deletableFile(id: Long, label: String? = null, filename: String = "f$id.epub") =
-    DeletableFile(id = id, format = "epub", filename = filename, label = label, sizeBytes = 10)
+private fun files(count: Int): List<DeletableFile> = List(count) { randomDeletableFile() }
 
-private fun deletableCopy(id: Long, isbn: String? = null, note: String? = null) =
-    DeletableCopy(id = id, isbn = isbn, note = note)
+private fun copies(count: Int): List<DeletableCopy> = List(count) { randomDeletableCopy() }
 
 private fun manifestOf(
     files: List<DeletableFile> = emptyList(),
@@ -21,207 +25,213 @@ private fun manifestOf(
     impact: DeletionImpact = DeletionImpact(),
 ) = DeletionManifest(files = files, copies = copies, impact = impact)
 
+private fun List<DeletableFile>.fileIds(): Set<Long> = map { it.id }.toSet()
+
+private fun List<DeletableCopy>.copyIds(): Set<Long> = map { it.id }.toSet()
+
+private fun confirmEverything(manifest: DeletionManifest): DeleteConfirmCopy =
+    confirmCopy(manifest, manifest.files.fileIds(), manifest.copies.copyIds())
+
 class DeleteRulesTest : DescribeSpec({
 
     describe("the delete row") {
-
-        it("#121 TC-1: only an admin sees the row, and offline it is disabled, with the label from the files") {
-            deleteRow(isAdmin = false, isOnline = true, hasFiles = true) shouldBe DeleteRow.Hidden
-            deleteRow(isAdmin = false, isOnline = true, hasFiles = false) shouldBe DeleteRow.Hidden
-            deleteRow(isAdmin = false, isOnline = false, hasFiles = true) shouldBe DeleteRow.Hidden
-            deleteRow(isAdmin = false, isOnline = false, hasFiles = false) shouldBe DeleteRow.Hidden
-
-            deleteRow(isAdmin = true, isOnline = true, hasFiles = true) shouldBe DeleteRow.Enabled(DeleteRowLabel.Files)
-            deleteRow(isAdmin = true, isOnline = true, hasFiles = false) shouldBe DeleteRow.Enabled(DeleteRowLabel.Record)
-            deleteRow(isAdmin = true, isOnline = false, hasFiles = true) shouldBe
-                DeleteRow.DisabledOffline(DeleteRowLabel.Files)
-            deleteRow(isAdmin = true, isOnline = false, hasFiles = false) shouldBe
-                DeleteRow.DisabledOffline(DeleteRowLabel.Record)
+        context("when the user is not an admin") {
+            it("#121 TC-1: is hidden, regardless of connectivity or files") {
+                checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { online, hasFiles ->
+                    deleteRow(isAdmin = false, isOnline = online, hasFiles = hasFiles) shouldBe DeleteRow.Hidden
+                }
+            }
         }
 
-        it("#121 TC-2: a book has files when either its file list or its format list is non-empty") {
-            hasFiles(testBook(1, formats = listOf("epub"), bookFiles = emptyList())) shouldBe true
-            hasFiles(testBook(1, formats = emptyList(), bookFiles = listOf(BookFile(1, "epub", "a.epub", 0, null, 0, null)))) shouldBe true
-            hasFiles(testBook(1, formats = emptyList(), bookFiles = emptyList())) shouldBe false
-            hasFiles(testBook(1, formats = emptyList(), bookFiles = emptyList()).copy(hasPhysical = true)) shouldBe false
+        context("when the user is an admin") {
+            it("#121 TC-1: is enabled online, disabled offline, labelled from the files") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple(true, true, DeleteRow.Enabled(DeleteRowLabel.Files)),
+                        Triple(true, false, DeleteRow.Enabled(DeleteRowLabel.Record)),
+                        Triple(false, true, DeleteRow.DisabledOffline(DeleteRowLabel.Files)),
+                        Triple(false, false, DeleteRow.DisabledOffline(DeleteRowLabel.Record)),
+                    ),
+                ) { (online, hasFiles, expected) ->
+                    deleteRow(isAdmin = true, isOnline = online, hasFiles = hasFiles) shouldBe expected
+                }
+            }
+        }
+    }
+
+    describe("whether a book has files") {
+        context("when it has only a physical copy") {
+            it("#121 TC-2: has no files") {
+                hasFiles(randomBook().copy(formats = emptyList(), bookFiles = emptyList(), hasPhysical = true)) shouldBe false
+            }
+        }
+    }
+
+    describe("which step the sheet opens on") {
+        context("when the book has something to pick") {
+            it("#121 TC-3: does not open on confirm") {
+                checkAll(
+                    Exhaustive.of(
+                        manifestOf(files = files(1)),
+                        manifestOf(copies = copies(1)),
+                        manifestOf(files = files(1), copies = copies(1)),
+                    ),
+                ) { manifest ->
+                    opensOnConfirm(manifest) shouldBe false
+                }
+            }
+        }
+    }
+
+    describe("the choose step") {
+        it("#121 TC-4: counts files on disk, switching to items with copies") {
+            chooseSummary(manifestOf(files = files(2))) shouldBe ChooseSummary(2, DeleteNoun.File, onDisk = true)
+            chooseSummary(manifestOf(files = files(2), copies = copies(1))) shouldBe
+                ChooseSummary(3, DeleteNoun.Item, onDisk = false)
         }
 
-        it("#121 TC-3: the sheet opens on confirm only when the book has no files and no copies") {
-            opensOnConfirm(manifestOf()) shouldBe true
-            opensOnConfirm(manifestOf(copies = listOf(deletableCopy(5)))) shouldBe false
-            opensOnConfirm(manifestOf(files = listOf(deletableFile(1)))) shouldBe false
-            opensOnConfirm(manifestOf(files = listOf(deletableFile(1)), copies = listOf(deletableCopy(5)))) shouldBe false
+        it("#121 TC-4: offers its action only with a pick") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(0, false, ChooseAction.Unpicked(DeleteNoun.File)),
+                    Triple(0, true, ChooseAction.Unpicked(DeleteNoun.Item)),
+                    Triple(2, false, ChooseAction.Picked(2, DeleteNoun.File)),
+                    Triple(2, true, ChooseAction.Picked(2, DeleteNoun.Item)),
+                ),
+            ) { (picked, hasCopies, expected) ->
+                chooseAction(picked, hasCopies) shouldBe expected
+            }
+        }
+    }
+
+    describe("the confirm step") {
+        context("when everything is picked") {
+            it("#121 TC-5, TC-8, TC-9, TC-10, TC-11: deletes the book, naming it for a single item") {
+                checkAll(
+                    Exhaustive.of(
+                        manifestOf(files = files(2)) to
+                            Triple(ConfirmHeading.All(2, DeleteNoun.File), ConfirmBody.TotalFiles, ConfirmAction.DeleteBook),
+                        manifestOf(files = files(1)) to
+                            Triple(ConfirmHeading.NameBook, ConfirmBody.TotalFiles, ConfirmAction.DeleteBook),
+                        manifestOf(copies = copies(1)) to
+                            Triple(ConfirmHeading.NameBook, ConfirmBody.TotalCopiesOnly, ConfirmAction.DeleteBook),
+                        manifestOf(copies = copies(2)) to
+                            Triple(ConfirmHeading.All(2, DeleteNoun.Item), ConfirmBody.TotalCopiesOnly, ConfirmAction.DeleteBook),
+                        manifestOf(files = files(2), copies = copies(1)) to
+                            Triple(ConfirmHeading.All(3, DeleteNoun.Item), ConfirmBody.TotalFilesAndCopies, ConfirmAction.DeleteBook),
+                        manifestOf() to
+                            Triple(ConfirmHeading.NameBook, ConfirmBody.RecordOnly, ConfirmAction.DeleteRecord),
+                    ),
+                ) { (manifest, expected) ->
+                    val (heading, body, action) = expected
+
+                    confirmEverything(manifest) shouldBe DeleteConfirmCopy(heading, body, action, emptyList())
+                }
+            }
         }
 
-        it("#121 TC-4: the choose step counts files on disk, or items when there are copies, and the action needs a pick") {
-            chooseSummary(manifestOf(files = listOf(deletableFile(1), deletableFile(2)))) shouldBe
-                ChooseSummary(count = 2, noun = DeleteNoun.File, onDisk = true)
-            chooseSummary(
-                manifestOf(files = listOf(deletableFile(1), deletableFile(2)), copies = listOf(deletableCopy(5))),
-            ) shouldBe ChooseSummary(count = 3, noun = DeleteNoun.Item, onDisk = false)
+        context("when only some items are picked") {
+            it("#121 TC-7, TC-10, TC-11: counts what goes against what stays") {
+                val threeFiles = files(3)
+                val twoCopies = copies(2)
+                val mixedFiles = files(2)
+                val mixedCopies = copies(1)
 
-            chooseAction(picked = 0, hasCopies = false) shouldBe ChooseAction.Unpicked(DeleteNoun.File)
-            chooseAction(picked = 0, hasCopies = true) shouldBe ChooseAction.Unpicked(DeleteNoun.Item)
-            chooseAction(picked = 2, hasCopies = false) shouldBe ChooseAction.Picked(2, DeleteNoun.File)
-            chooseAction(picked = 2, hasCopies = true) shouldBe ChooseAction.Picked(2, DeleteNoun.Item)
+                confirmCopy(manifestOf(threeFiles), threeFiles.take(2).fileIds(), emptySet()) shouldBe DeleteConfirmCopy(
+                    ConfirmHeading.Some(2, DeleteNoun.File),
+                    ConfirmBody.PartialFiles(PickedLabel.Counts(2, 0), remaining = 1, remainingNoun = DeleteNoun.File),
+                    ConfirmAction.DeleteSome(2, DeleteNoun.File),
+                    emptyList(),
+                )
+                confirmCopy(manifestOf(copies = twoCopies), emptySet(), twoCopies.take(1).copyIds()) shouldBe DeleteConfirmCopy(
+                    ConfirmHeading.Some(1, DeleteNoun.Item),
+                    ConfirmBody.PartialCopies(PickedLabel.Counts(0, 1), remaining = 1, remainingNoun = DeleteNoun.Item),
+                    ConfirmAction.DeleteSome(1, DeleteNoun.Item),
+                    emptyList(),
+                )
+                confirmCopy(
+                    manifestOf(mixedFiles, mixedCopies),
+                    mixedFiles.take(1).fileIds(),
+                    mixedCopies.copyIds(),
+                ) shouldBe DeleteConfirmCopy(
+                    ConfirmHeading.Some(2, DeleteNoun.Item),
+                    ConfirmBody.PartialMixed(PickedLabel.Counts(1, 1), remaining = 1, remainingNoun = DeleteNoun.Item),
+                    ConfirmAction.DeleteSome(2, DeleteNoun.Item),
+                    emptyList(),
+                )
+            }
+
+            context("when the pick is one file") {
+                it("#121 TC-6, TC-11: names it by its label, else its filename") {
+                    checkAll(
+                        Exhaustive.of<Pair<String?, String>>("Read copy" to "Read copy", " " to "f.epub", null to "f.epub"),
+                    ) { (label, name) ->
+                        val picked = randomDeletableFile().copy(label = label, filename = "f.epub")
+                        val manifest = manifestOf(files = listOf(picked) + files(1), copies = copies(1))
+
+                        confirmCopy(manifest, setOf(picked.id), emptySet()).body shouldBe
+                            ConfirmBody.PartialFiles(PickedLabel.NamedFile(name), remaining = 2, remainingNoun = DeleteNoun.Item)
+                    }
+                }
+            }
         }
+    }
 
-        it("#121 TC-5: picking every file of a files-only book is a total delete of the book") {
-            val manifest = manifestOf(files = listOf(deletableFile(1), deletableFile(2)))
-
-            confirmCopy(manifest, pickedFiles = setOf(1, 2), pickedCopies = emptySet()) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.All(2, DeleteNoun.File),
-                body = ConfirmBody.TotalFiles,
-                action = ConfirmAction.DeleteBook,
-                losses = emptyList(),
-            )
-        }
-
-        it("#121 TC-6: one file of two picked names that file, by its label or else its filename") {
-            val labelled = manifestOf(files = listOf(deletableFile(1, label = "Read copy"), deletableFile(2)))
-            confirmCopy(labelled, pickedFiles = setOf(1), pickedCopies = emptySet()) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.Some(1, DeleteNoun.File),
-                body = ConfirmBody.PartialFiles(PickedLabel.NamedFile("Read copy"), remaining = 1, remainingNoun = DeleteNoun.File),
-                action = ConfirmAction.DeleteSome(1, DeleteNoun.File),
-                losses = emptyList(),
-            )
-
-            val blankLabel = manifestOf(files = listOf(deletableFile(1, label = " "), deletableFile(2)))
-            confirmCopy(blankLabel, pickedFiles = setOf(1), pickedCopies = emptySet()).body shouldBe
-                ConfirmBody.PartialFiles(PickedLabel.NamedFile("f1.epub"), remaining = 1, remainingNoun = DeleteNoun.File)
-        }
-
-        it("#121 TC-7: two of three files picked are counted, not named") {
-            val manifest = manifestOf(files = listOf(deletableFile(1), deletableFile(2), deletableFile(3)))
-
-            confirmCopy(manifest, pickedFiles = setOf(1, 2), pickedCopies = emptySet()) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.Some(2, DeleteNoun.File),
-                body = ConfirmBody.PartialFiles(PickedLabel.Counts(2, 0), remaining = 1, remainingNoun = DeleteNoun.File),
-                action = ConfirmAction.DeleteSome(2, DeleteNoun.File),
-                losses = emptyList(),
-            )
-        }
-
-        it("#121 TC-8: a single-item total names the book and never says all 1") {
-            confirmCopy(
-                manifestOf(files = listOf(deletableFile(1))),
-                pickedFiles = setOf(1),
-                pickedCopies = emptySet(),
-            ) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.NameBook,
-                body = ConfirmBody.TotalFiles,
-                action = ConfirmAction.DeleteBook,
-                losses = emptyList(),
-            )
-
-            confirmCopy(
-                manifestOf(copies = listOf(deletableCopy(5))),
-                pickedFiles = emptySet(),
-                pickedCopies = setOf(5),
-            ) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.NameBook,
-                body = ConfirmBody.TotalCopiesOnly,
-                action = ConfirmAction.DeleteBook,
-                losses = emptyList(),
-            )
-        }
-
-        it("#121 TC-9: a book with nothing to pick is a record-only delete") {
-            confirmCopy(manifestOf(), pickedFiles = emptySet(), pickedCopies = emptySet()) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.NameBook,
-                body = ConfirmBody.RecordOnly,
-                action = ConfirmAction.DeleteRecord,
-                losses = emptyList(),
-            )
-        }
-
-        it("#121 TC-10: copies-only books count items, and a partial pick says the copies are un-recorded") {
-            val manifest = manifestOf(copies = listOf(deletableCopy(5), deletableCopy(6)))
-
-            confirmCopy(manifest, pickedFiles = emptySet(), pickedCopies = setOf(5, 6)) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.All(2, DeleteNoun.Item),
-                body = ConfirmBody.TotalCopiesOnly,
-                action = ConfirmAction.DeleteBook,
-                losses = emptyList(),
-            )
-            confirmCopy(manifest, pickedFiles = emptySet(), pickedCopies = setOf(5)) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.Some(1, DeleteNoun.Item),
-                body = ConfirmBody.PartialCopies(PickedLabel.Counts(0, 1), remaining = 1, remainingNoun = DeleteNoun.Item),
-                action = ConfirmAction.DeleteSome(1, DeleteNoun.Item),
-                losses = emptyList(),
-            )
-        }
-
-        it("#121 TC-11: a mixed book counts items, and a partial pick of a file and a copy is a mixed partial") {
-            val manifest = manifestOf(
-                files = listOf(deletableFile(1), deletableFile(2)),
-                copies = listOf(deletableCopy(5)),
-            )
-
-            confirmCopy(manifest, pickedFiles = setOf(1, 2), pickedCopies = setOf(5)) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.All(3, DeleteNoun.Item),
-                body = ConfirmBody.TotalFilesAndCopies,
-                action = ConfirmAction.DeleteBook,
-                losses = emptyList(),
-            )
-            confirmCopy(manifest, pickedFiles = setOf(1), pickedCopies = setOf(5)) shouldBe DeleteConfirmCopy(
-                heading = ConfirmHeading.Some(2, DeleteNoun.Item),
-                body = ConfirmBody.PartialMixed(PickedLabel.Counts(1, 1), remaining = 1, remainingNoun = DeleteNoun.Item),
-                action = ConfirmAction.DeleteSome(2, DeleteNoun.Item),
-                losses = emptyList(),
-            )
-            confirmCopy(manifest, pickedFiles = setOf(1), pickedCopies = emptySet()).body shouldBe
-                ConfirmBody.PartialFiles(PickedLabel.NamedFile("f1.epub"), remaining = 2, remainingNoun = DeleteNoun.Item)
-        }
-
-        it("#121 TC-12: a total delete lists the full impact in the order of the server's losses") {
+    describe("what else a delete takes") {
+        it("#121 TC-12, TC-13: lists the non-zero counts in the server's order") {
             val impact = DeletionImpact(
                 highlights = 4,
                 journalEntries = 3,
-                bookmarks = 2,
+                bookmarks = 0,
                 readingSessions = 1,
                 listeningSessions = 5,
                 reviews = 6,
                 shelves = 7,
             )
-            val expected = listOf(
+
+            losses(impact) shouldBe listOf(
                 Loss(LossKind.Highlights, 4),
                 Loss(LossKind.JournalEntries, 3),
-                Loss(LossKind.Bookmarks, 2),
                 Loss(LossKind.ReadingSessions, 1),
                 Loss(LossKind.ListeningSessions, 5),
                 Loss(LossKind.Reviews, 6),
                 Loss(LossKind.Shelves, 7),
             )
-
-            losses(impact) shouldBe expected
-            confirmCopy(
-                manifestOf(files = listOf(deletableFile(1)), impact = impact),
-                pickedFiles = setOf(1),
-                pickedCopies = emptySet(),
-            ).losses shouldBe expected
         }
 
-        it("#121 TC-13: zero counts are left out, a partial delete lists none, and a record-only delete still lists them") {
-            val impact = DeletionImpact(highlights = 1, shelves = 2)
-            val files = listOf(deletableFile(1), deletableFile(2))
+        context("when the delete takes the whole book") {
+            it("#121 TC-12, TC-13: warns of the losses, for files or a record only") {
+                val impact = DeletionImpact(highlights = 1)
 
-            confirmCopy(manifestOf(files = files, impact = impact), setOf(1, 2), emptySet()).losses shouldBe
-                listOf(Loss(LossKind.Highlights, 1), Loss(LossKind.Shelves, 2))
-            losses(DeletionImpact()) shouldBe emptyList()
-            confirmCopy(manifestOf(files = files), setOf(1, 2), emptySet()).losses shouldBe emptyList()
-            confirmCopy(manifestOf(files = files, impact = impact), setOf(1), emptySet()).losses shouldBe emptyList()
-            confirmCopy(manifestOf(impact = impact), emptySet(), emptySet()).losses shouldBe
-                listOf(Loss(LossKind.Highlights, 1), Loss(LossKind.Shelves, 2))
+                checkAll(Exhaustive.of(manifestOf(files = files(1), impact = impact), manifestOf(impact = impact))) { manifest ->
+                    confirmEverything(manifest).losses shouldNotBe emptyList<Loss>()
+                }
+            }
         }
 
-        it("#121 TC-14: the done toast follows the iOS wording for files, copies and both") {
-            doneToast(files = 1, copies = 0) shouldBe DoneToast.File
-            doneToast(files = 2, copies = 0) shouldBe DoneToast.Files(2)
-            doneToast(files = 0, copies = 1) shouldBe DoneToast.Copy
-            doneToast(files = 0, copies = 2) shouldBe DoneToast.ItemsRemoved(2)
-            doneToast(files = 1, copies = 1) shouldBe DoneToast.ItemsDeleted(2)
-            doneToast(files = 2, copies = 1) shouldBe DoneToast.ItemsDeleted(3)
+        context("when the delete is partial") {
+            it("#121 TC-13: warns of no losses") {
+                val twoFiles = files(2)
+                val manifest = manifestOf(twoFiles, impact = DeletionImpact(highlights = 1))
+
+                confirmCopy(manifest, twoFiles.take(1).fileIds(), emptySet()).losses shouldBe emptyList()
+            }
+        }
+    }
+
+    describe("the done message") {
+        it("#121 TC-14: follows the iOS wording for files, copies, or both") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(1, 0, DoneToast.File),
+                    Triple(2, 0, DoneToast.Files(2)),
+                    Triple(0, 1, DoneToast.Copy),
+                    Triple(0, 2, DoneToast.ItemsRemoved(2)),
+                    Triple(1, 1, DoneToast.ItemsDeleted(2)),
+                ),
+            ) { (files, copies, expected) ->
+                doneToast(files, copies) shouldBe expected
+            }
         }
     }
 })

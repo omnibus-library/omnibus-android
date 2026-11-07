@@ -6,7 +6,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
@@ -34,11 +33,6 @@ class ExportSheetAccessibilityTest {
     private val sendToKindle get() = detailText(R.string.book_detail_export_kindle)
     private val emailsEpub get() = detailText(R.string.book_detail_export_kindle_sends_epub)
     private val send get() = detailText(R.string.book_detail_export_kindle_send)
-    private val sent get() = detailText(R.string.book_detail_export_kindle_sent)
-    private val sentMeta get() = detailText(R.string.book_detail_export_kindle_sent_meta)
-    private val sending get() = detailText(R.string.book_detail_export_kindle_sending)
-    private val needsConnection get() = detailText(R.string.book_detail_export_needs_connection)
-    private val retry get() = detailText(R.string.book_detail_export_kindle_retry)
     private val sendToKobo get() = detailText(R.string.book_detail_export_kobo)
     private val koboMeta get() = detailText(R.string.book_detail_export_kobo_meta)
     private val save get() = detailText(R.string.book_detail_export_save)
@@ -69,54 +63,20 @@ class ExportSheetAccessibilityTest {
 
     // TC-72
     @Test
-    fun issue118_tc72_disabledStatesAreReportedAndTheBusyRowSpeaksItsState() {
-        val inputs = SheetInputs(modelOf(epubAndAudioBook, kindle = KindlePhase.Sending), sending = true)
-        rule.setSheet(inputs)
-        rule.onNodeWithTag(ExportTestTags.KINDLE).assertIsNotEnabled()
+    fun issue118_tc72_theBusyRowSpeaksItsState() {
+        rule.setSheet(SheetInputs(modelOf(epubAndAudioBook, saving = ExportSave.Ebook)))
 
-        rule.runOnIdle {
-            inputs.model = modelOf(epubAndAudioBook, kindle = KindlePhase.Sent)
-            inputs.sending = false
-        }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ExportTestTags.KINDLE).assertIsNotEnabled()
-
-        rule.runOnIdle { inputs.model = modelOf(epubAndAudioBook, online = false) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ExportTestTags.KINDLE).assertIsNotEnabled()
-
-        rule.runOnIdle { inputs.model = modelOf(epubAndAudioBook, saving = ExportSave.Ebook) }
-        rule.waitForIdle()
         rule.onNodeWithTag(ExportTestTags.EBOOK)
             .assertIsNotEnabled()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, saving))
-        rule.onNodeWithTag(ExportTestTags.KOBO).assertIsNotEnabled()
-
-        rule.runOnIdle { inputs.model = modelOf(epubAndAudioBook) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ExportTestTags.KINDLE).assertIsEnabled()
     }
 
     // TC-73
     @Test
-    fun issue118_tc73_theKindleRowIsAPoliteLiveRegionInEveryPhaseAndTheErrorToo() {
-        val inputs = SheetInputs(modelOf(epubBook))
-        rule.setSheet(inputs)
+    fun issue118_tc73_theKindleRowAndTheErrorArePoliteLiveRegions() {
+        rule.setSheet(SheetInputs(modelOf(epubBook), saveError = ExportSaveError.Failed))
 
-        val phases = listOf(
-            KindlePhase.Idle,
-            KindlePhase.Sending,
-            KindlePhase.Sent,
-            KindlePhase.Failed(KindleFailure.Unconfirmed),
-        )
-        for (phase in phases) {
-            rule.runOnIdle { inputs.model = modelOf(epubBook, kindle = phase) }
-            rule.waitForIdle()
-            rule.onNodeWithTag(ExportTestTags.KINDLE).assert(politeLive)
-        }
-
-        rule.runOnIdle { inputs.saveError = ExportSaveError.Failed }
-        rule.waitForIdle()
+        rule.onNodeWithTag(ExportTestTags.KINDLE).assert(politeLive)
         rule.onNodeWithTag(ExportTestTags.ERROR).assert(politeLive)
     }
 

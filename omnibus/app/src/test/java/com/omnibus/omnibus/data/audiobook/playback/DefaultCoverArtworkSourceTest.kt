@@ -1,32 +1,47 @@
 package com.omnibus.omnibus.data.audiobook.playback
 
 import com.omnibus.omnibus.data.cover.CoverImageResult
+import com.omnibus.omnibus.data.cover.CoverRepository
 import com.omnibus.omnibus.data.cover.CoverSize
-import com.omnibus.omnibus.data.cover.FakeCoverRepository
+import com.omnibus.omnibus.data.cover.TestCoverRepository
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import okio.ByteString.Companion.encodeUtf8
 
 class DefaultCoverArtworkSourceTest : DescribeSpec({
 
-    describe("cover results") {
+    fun sut(repository: CoverRepository = TestCoverRepository()) = DefaultCoverArtworkSource(repository)
 
-        // TC-46
-        it("maps cover results (AND-STK-8)") {
-            val repository = FakeCoverRepository()
-            val source = DefaultCoverArtworkSource(repository)
-            val bytes = "cover".encodeUtf8()
+    describe("reading a book's artwork") {
+        context("when the book has a cover") {
+            // TC-46
+            it("gives the cover's bytes (AND-STK-8)") {
+                val bytes = randomString().encodeUtf8()
+                val repository = TestCoverRepository(CoverImageResult.Found(bytes, randomEnum<CoverSize>(), randomBoolean()))
 
-            repository.result = CoverImageResult.Found(bytes, CoverSize.Lg, fromCache = false)
-            source.artwork("book-1") shouldBe CoverArtwork.Found(bytes)
+                sut(repository).artwork(randomString()) shouldBe CoverArtwork.Found(bytes)
+            }
+        }
 
-            repository.result = CoverImageResult.NotFound
-            source.artwork("book-1") shouldBe CoverArtwork.NoCover
+        context("when the book has no cover") {
+            // TC-46
+            it("reports no cover (AND-STK-8)") {
+                val repository = TestCoverRepository(CoverImageResult.NotFound)
 
-            repository.result = CoverImageResult.Error
-            source.artwork("book-1") shouldBe CoverArtwork.Failed
+                sut(repository).artwork(randomString()) shouldBe CoverArtwork.NoCover
+            }
+        }
 
-            repository.requests shouldBe List(3) { "book-1" to CoverSize.Lg }
+        context("when the cover cannot be fetched") {
+            // TC-46
+            it("reports a failure (AND-STK-8)") {
+                val repository = TestCoverRepository(CoverImageResult.Error)
+
+                sut(repository).artwork(randomString()) shouldBe CoverArtwork.Failed
+            }
         }
     }
 })

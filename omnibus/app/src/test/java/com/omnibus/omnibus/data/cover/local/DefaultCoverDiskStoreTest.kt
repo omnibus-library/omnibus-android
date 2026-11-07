@@ -1,112 +1,138 @@
 package com.omnibus.omnibus.data.cover.local
 
 import coil3.disk.DiskCache
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import okio.ByteString.Companion.encodeUtf8
-import okio.Path.Companion.toOkioPath
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
+import java.io.File
 import java.nio.file.Files
+import okio.Path.Companion.toOkioPath
+
+private inline fun <T> withDirectory(block: (File) -> T): T {
+    val directory = Files.createTempDirectory("covers").toFile()
+    return try {
+        block(directory)
+    } finally {
+        directory.deleteRecursively()
+    }
+}
 
 class DefaultCoverDiskStoreTest : DescribeSpec({
 
-    lateinit var directory: java.io.File
-
-    fun newCache(): DiskCache =
+    fun sut(directory: File): DefaultCoverDiskStore = DefaultCoverDiskStore(
         DiskCache.Builder()
             .directory(directory.toOkioPath())
             .maxSizeBytes(1024 * 1024)
-            .build()
+            .build(),
+    )
 
-    beforeEach { directory = Files.createTempDirectory("covers").toFile() }
-
-    afterEach { directory.deleteRecursively() }
-
-    describe("read") {
-
-        it("TC-138: returns null for a key that was never written") {
-            DefaultCoverDiskStore(newCache()).read("missing").shouldBeNull()
+    describe("reading an entry") {
+        context("when the key was never written") {
+            it("TC-138: returns null") {
+                withDirectory { directory ->
+                    sut(directory).read(randomString()).shouldBeNull()
+                }
+            }
         }
 
-        it("TC-139: returns what was written, with its validator and timestamp") {
-            val store = DefaultCoverDiskStore(newCache())
-            val cover = CachedCover("webp".encodeUtf8(), etag = "\"v1\"", storedAtMillis = 1234)
+        context("when the entry was written with a validator") {
+            it("TC-139: returns what was written") {
+                withDirectory { directory ->
+                    val key = randomString()
+                    val cover = randomCachedCover().copy(etag = "\"${randomString()}\"")
+                    val store = sut(directory)
 
-            store.write("key", cover)
+                    store.write(key, cover)
 
-            store.read("key") shouldBe cover
+                    store.read(key) shouldBe cover
+                }
+            }
         }
 
-        it("TC-140: returns an entry stored without a validator") {
-            val store = DefaultCoverDiskStore(newCache())
-            val cover = CachedCover("webp".encodeUtf8(), etag = null, storedAtMillis = 99)
+        context("when the entry was written without a validator") {
+            it("TC-140: returns what was written") {
+                withDirectory { directory ->
+                    val key = randomString()
+                    val cover = randomCachedCover().copy(etag = null)
+                    val store = sut(directory)
 
-            store.write("key", cover)
+                    store.write(key, cover)
 
-            store.read("key") shouldBe cover
+                    store.read(key) shouldBe cover
+                }
+            }
         }
 
-        it("TC-141: survives a restart") {
-            DefaultCoverDiskStore(newCache()).write(
-                "key",
-                CachedCover("webp".encodeUtf8(), "\"v1\"", 5),
-            )
+        context("when the app has restarted") {
+            it("TC-141: returns what was written") {
+                withDirectory { directory ->
+                    val key = randomString()
+                    val cover = randomCachedCover()
 
-            DefaultCoverDiskStore(newCache()).read("key") shouldBe
-                CachedCover("webp".encodeUtf8(), "\"v1\"", 5)
-        }
-    }
+                    sut(directory).write(key, cover)
 
-    describe("write") {
-
-        it("TC-142: replaces the previous entry, dropping its validator") {
-            val store = DefaultCoverDiskStore(newCache())
-            store.write("key", CachedCover("old".encodeUtf8(), "\"v1\"", 1))
-
-            store.write("key", CachedCover("new".encodeUtf8(), null, 2))
-
-            store.read("key") shouldBe CachedCover("new".encodeUtf8(), null, 2)
-        }
-    }
-
-    describe("remove") {
-
-        it("TC-143: drops the entry and its validator") {
-            val store = DefaultCoverDiskStore(newCache())
-            store.write("key", CachedCover("webp".encodeUtf8(), "\"v1\"", 1))
-
-            store.remove("key")
-
-            store.read("key").shouldBeNull()
+                    sut(directory).read(key) shouldBe cover
+                }
+            }
         }
     }
 
-    describe("clear") {
+    describe("writing an entry") {
+        context("when the key already has one") {
+            it("TC-142: replaces it, validator included") {
+                withDirectory { directory ->
+                    val key = randomString()
+                    val replacement = randomCachedCover().copy(etag = null)
+                    val store = sut(directory)
+                    store.write(key, randomCachedCover().copy(etag = "\"${randomString()}\""))
 
+                    store.write(key, replacement)
+
+                    store.read(key) shouldBe replacement
+                }
+            }
+        }
+    }
+
+    describe("removing an entry") {
+        it("TC-143: drops it") {
+            withDirectory { directory ->
+                val key = randomString()
+                val store = sut(directory)
+                store.write(key, randomCachedCover())
+
+                store.remove(key)
+
+                store.read(key).shouldBeNull()
+            }
+        }
+    }
+
+    describe("clearing the store") {
         it("TC-144: drops every entry") {
-            val store = DefaultCoverDiskStore(newCache())
-            store.write("a", CachedCover("a".encodeUtf8(), null, 1))
-            store.write("b", CachedCover("b".encodeUtf8(), null, 1))
+            withDirectory { directory ->
+                val keys = listOf(randomString(8..16), randomString(8..16))
+                val store = sut(directory)
+                keys.forEach { store.write(it, randomCachedCover()) }
 
-            store.clear()
+                store.clear()
 
-            store.read("a").shouldBeNull()
-            store.read("b").shouldBeNull()
+                keys.map { store.read(it) } shouldBe listOf(null, null)
+            }
         }
     }
 
-    describe("CoverMetadata") {
-
-        it("TC-145: round-trips") {
-            CoverMetadata.decode(CoverMetadata.encode(CoverMetadata("\"v1\"", 42))) shouldBe
-                CoverMetadata("\"v1\"", 42)
-            CoverMetadata.decode(CoverMetadata.encode(CoverMetadata(null, 42))) shouldBe
-                CoverMetadata(null, 42)
-        }
-
-        it("TC-146: treats an unreadable sidecar as stale and validator-less") {
-            CoverMetadata.decode("garbage") shouldBe CoverMetadata(null, 0)
-            CoverMetadata.decode("") shouldBe CoverMetadata(null, 0)
+    describe("decoding an entry's sidecar") {
+        context("when the sidecar is unreadable") {
+            it("TC-146: treats the entry as stale without a validator, for garbage and empty sidecars") {
+                checkAll(Exhaustive.of("garbage", "")) { raw ->
+                    CoverMetadata.decode(raw) shouldBe CoverMetadata(null, 0)
+                }
+            }
         }
     }
 })

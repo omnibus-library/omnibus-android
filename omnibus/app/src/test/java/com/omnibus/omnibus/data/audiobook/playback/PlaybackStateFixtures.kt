@@ -2,15 +2,9 @@ package com.omnibus.omnibus.data.audiobook.playback
 
 import com.omnibus.omnibus.data.audiobook.AudioPart
 import com.omnibus.omnibus.data.audiobook.AudiobookManifest
-
-/** A [PlayingBook] for tests, with the given fields. */
-fun playingBook(
-    bookUuid: String = "book-1",
-    bookFileId: Long = 11L,
-    title: String = "The Book",
-    author: String? = "An Author",
-    hasEbook: Boolean = false,
-): PlayingBook = PlayingBook(bookUuid, bookFileId, title, author, hasEbook)
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomOf
 
 /**
  * Chapters of the given lengths, contiguous from 0, with resolved lengths already set. Titles default to "Chapter 1",
@@ -32,20 +26,21 @@ fun chapters(
 }
 
 /**
- * A [PlaybackState] for tests. The current chapter index is derived from [positionSeconds] with [chapterIndexAt], and the
- * duration defaults to the sum of the chapters.
+ * A [PlaybackState] whose chapters, position and duration agree: the current chapter index is derived from
+ * [positionSeconds] with [chapterIndexAt], and the duration defaults to the sum of the chapters. Everything a test does
+ * not state is random. A test that needs no such agreement uses `randomPlaybackState().copy(...)` instead.
  */
 fun playbackState(
-    book: PlayingBook? = playingBook(),
+    book: PlayingBook? = randomPlayingBook(),
     chapters: List<Chapter> = chapters(600.0, 1200.0, 900.0),
-    positionSeconds: Double = 0.0,
+    positionSeconds: Double = randomDouble(0.0, 2700.0),
     durationSeconds: Double = chapters.sumOf { it.durationSeconds }.takeIf { it > 0 } ?: 2700.0,
-    isPlaying: Boolean = false,
-    isLoading: Boolean = false,
-    isBuffering: Boolean = false,
-    rate: Double = 1.0,
-    error: PlaybackError? = null,
-    sleepTimer: SleepTimerState? = null,
+    isPlaying: Boolean = randomBoolean(),
+    isLoading: Boolean = randomBoolean(),
+    isBuffering: Boolean = randomBoolean(),
+    rate: Double = randomDouble(MIN_RATE, MAX_RATE),
+    error: PlaybackError? = randomOf(listOf(null, randomPlaybackError())),
+    sleepTimer: SleepTimerState? = randomOf(listOf(null, randomSleepTimerState())),
 ): PlaybackState = PlaybackState(
     book = book,
     chapters = chapters,

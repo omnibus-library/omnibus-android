@@ -9,18 +9,19 @@ import java.util.UUID
 
 class UuidClientIdSourceTest : DescribeSpec({
 
-    describe("UuidClientIdSource") {
+    describe("minting a client id") {
 
-        // TC-10: each mint is a parseable 36-character UUID within the server's 64-character limit, and two mints differ.
-        it("TC-10: mints distinct uuid strings within the server limit") {
+        it("TC-10: gives a uuid string within the server's limit") {
+            val id = UuidClientIdSource().mint()
+
+            UUID.fromString(id).toString() shouldBe id
+            id.length shouldBeLessThanOrEqual BookmarkDraft.CLIENT_ID_MAX_LENGTH
+        }
+
+        it("TC-10: gives a new id each time") {
             val source = UuidClientIdSource()
-            val first = source.mint()
-            val second = source.mint()
 
-            UUID.fromString(first).toString() shouldBe first
-            first.length shouldBe 36
-            first.length shouldBeLessThanOrEqual BookmarkDraft.CLIENT_ID_MAX_LENGTH
-            second shouldNotBe first
+            source.mint() shouldNotBe source.mint()
         }
     }
 })

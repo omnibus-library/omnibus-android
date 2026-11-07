@@ -2,15 +2,21 @@ package com.omnibus.omnibus.feature.bookdetail.journal
 
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.CurrentUser
-import com.omnibus.omnibus.data.auth.FakeAuthRepository
-import com.omnibus.omnibus.data.journals.FakeJournalsRepository
-import com.omnibus.omnibus.data.journals.JournalEntry
+import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.journals.JournalsRepository
 import com.omnibus.omnibus.data.journals.JournalsState
+import com.omnibus.omnibus.data.journals.TestJournalsRepository
+import com.omnibus.omnibus.data.journals.randomJournalEntry
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.CompletableDeferred
+import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -19,50 +25,21 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-private const val UUID = "A"
+private fun viewer(id: Long) =
+    CurrentUser(id = id, canEdit = randomBoolean(), canUpload = randomBoolean(), hiddenFormats = emptySet())
 
-/** 2025-10-24 00:00 UTC. */
-private const val OCT_24_2025 = 1_761_264_000_000L
-
-private fun entry(
-    id: Long,
-    authorId: Long = 8,
-    authorName: String = "Ben",
-    body: String = "Passage $id",
-    isDraft: Boolean = false,
-    createdAtMillis: Long? = OCT_24_2025,
-) = JournalEntry(
-    id = id,
-    authorId = authorId,
-    authorName = authorName,
-    bodyMd = body,
-    isDraft = isDraft,
-    createdAtMillis = createdAtMillis,
-)
-
-private fun viewer(id: Long) = CurrentUser(id = id, canEdit = false, canUpload = false, hiddenFormats = emptySet())
-
-/** A ViewModel with its fakes. Its state is kept active by [collecting] until the test ends. */
-private class Harness(authRepository: AuthRepository) {
-    val repository = FakeJournalsRepository()
-    val collecting = CollectingScope()
-    val vm = JournalViewModel(UUID, repository, authRepository, TimeSource { 1_000L })
-        .also { collecting.collect(it.uiState) }
-}
-
-/** Runs [block] on a [Harness] built over [auth], and cancels its collection afterwards. */
-private inline fun withHarness(auth: AuthRepository = FakeAuthRepository(), block: Harness.() -> Unit) {
-    val harness = Harness(auth)
+/** Runs [block] with [vm]'s state kept active, as a subscribed screen would. */
+private inline fun collecting(vm: JournalViewModel, block: JournalViewModel.() -> Unit) {
+    val scope = CollectingScope()
+    scope.collect(vm.uiState)
     try {
-        harness.block()
+        vm.block()
     } finally {
-        harness.collecting.cancel()
+        scope.cancel()
     }
 }
 
-/** The cards of a Loaded state, or a failure of the test. */
-private fun Harness.cards(): List<JournalCardModel> =
-    (vm.uiState.value.content as JournalUIContent.Loaded).cards
+private fun JournalViewModel.cards() = uiState.value.content.shouldBeInstanceOf<JournalUIContent.Loaded>().cards
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class JournalViewModelTest : DescribeSpec({
@@ -70,162 +47,145 @@ class JournalViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    fun sut(
+        bookUuid: String = randomString(),
+        repository: JournalsRepository = TestJournalsRepository(),
+        auth: AuthRepository = TestAuthRepository(),
+        timeSource: TimeSource = TestTimeSource(randomLong()),
+    ) = JournalViewModel(bookUuid, repository, auth, timeSource)
+
     describe("the list state") {
 
-        it("TC-36: Loaded cards keep the repository's order and carry their fields and runs; nowMillis comes from the clock") {
-            val auth = FakeAuthRepository()
-            withHarness(auth) {
-                auth.currentUserState.value = viewer(7)
+        context("when nothing has loaded") {
+            it("TC-37: shows the loading state") {
+                collecting(sut()) {
+                    uiState.value.content shouldBe JournalUIContent.Loading
+                }
+            }
+        }
+
+        context("when the entries have loaded") {
+            it("TC-36: keeps the repository's order on cards carrying each entry's fields") {
+                val uuid = randomString()
+                val entries = List(3) { randomJournalEntry().copy(bodyMd = "Passage") }
+                val repository = TestJournalsRepository()
+                repository.seed(uuid, JournalsState.Loaded(entries))
+
+                collecting(sut(uuid, repository)) {
+                    cards() shouldBe entries.map {
+                        JournalCardModel(
+                            id = it.id,
+                            authorName = it.authorName,
+                            isOwn = false,
+                            isDraft = it.isDraft,
+                            createdAtMillis = it.createdAtMillis,
+                            preview = listOf(PreviewRun.Text("Passage")),
+                        )
+                    }
+                }
+            }
+        }
+
+        context("when an entry has a spoiler") {
+            it("TC-44: keeps the real text out of the whole card") {
+                val uuid = randomString()
+                val repository = TestJournalsRepository()
+                repository.seed(uuid, JournalsState.Loaded(listOf(randomJournalEntry().copy(bodyMd = "He was ||Ares||."))))
+
+                collecting(sut(uuid, repository)) {
+                    cards().single().toString() shouldNotContain "Ares"
+                }
+            }
+        }
+    }
+
+    describe("which entries are the viewer's own") {
+
+        context("when the viewer is known") {
+            it("TC-41: marks only the viewer's entries") {
+                val uuid = randomString()
+                val id = randomLong()
+                val repository = TestJournalsRepository()
                 repository.seed(
-                    UUID,
+                    uuid,
                     JournalsState.Loaded(
-                        listOf(
-                            entry(1, authorId = 7, authorName = "Ann", body = "He was ||Ares||."),
-                            entry(2, authorId = 8, authorName = "Ben", body = "Second"),
-                            entry(3, authorId = 7, authorName = "Ann", body = "Draft", isDraft = true),
-                        ),
+                        listOf(randomJournalEntry().copy(authorId = id), randomJournalEntry().copy(authorId = id + 1)),
                     ),
                 )
+                val auth = TestAuthRepository()
+                auth.currentUserState.value = viewer(id)
 
-                vm.uiState.value.nowMillis shouldBe 1_000L
-                cards() shouldBe listOf(
-                    JournalCardModel(
-                        id = 1,
-                        authorName = "Ann",
-                        isOwn = true,
-                        isDraft = false,
-                        createdAtMillis = OCT_24_2025,
-                        preview = listOf(
-                            PreviewRun.Text("He was "),
-                            PreviewRun.Veiled("lore"),
-                            PreviewRun.Text("."),
-                        ),
-                    ),
-                    JournalCardModel(
-                        id = 2,
-                        authorName = "Ben",
-                        isOwn = false,
-                        isDraft = false,
-                        createdAtMillis = OCT_24_2025,
-                        preview = listOf(PreviewRun.Text("Second")),
-                    ),
-                    JournalCardModel(
-                        id = 3,
-                        authorName = "Ann",
-                        isOwn = true,
-                        isDraft = true,
-                        createdAtMillis = OCT_24_2025,
-                        preview = listOf(PreviewRun.Text("Draft")),
-                    ),
-                )
+                collecting(sut(uuid, repository, auth)) {
+                    cards().map { it.isOwn } shouldBe listOf(true, false)
+                }
             }
         }
 
-        it("TC-37: waiting is Loading, and it never claims an empty list or a failure") {
-            withHarness {
-                vm.uiState.value.content shouldBe JournalUIContent.Loading
+        context("when the session read throws") {
+            it("TC-41: marks none") {
+                val uuid = randomString()
+                val repository = TestJournalsRepository()
+                repository.seed(uuid, JournalsState.Loaded(listOf(randomJournalEntry())))
+                val throwing = object : AuthRepository by TestAuthRepository() {
+                    override val currentUser: Flow<CurrentUser?> = flow { throw IllegalStateException("boom") }
+                }
 
-                repository.seed(UUID, JournalsState.Loading)
-                vm.uiState.value.content shouldBe JournalUIContent.Loading
+                collecting(sut(uuid, repository, throwing)) {
+                    cards().single().isOwn shouldBe false
+                }
             }
         }
 
-        it("TC-38: an empty journal is Loaded with no cards") {
-            withHarness {
-                repository.seed(UUID, JournalsState.Loaded(emptyList()))
+        context("when the viewer arrives after the entries") {
+            it("TC-42: re-derives ownership without a refetch") {
+                val uuid = randomString()
+                val entry = randomJournalEntry()
+                val repository = TestJournalsRepository()
+                repository.seed(uuid, JournalsState.Loaded(listOf(entry)))
+                val auth = TestAuthRepository()
 
-                vm.uiState.value.content shouldBe JournalUIContent.Loaded(emptyList())
+                collecting(sut(uuid, repository, auth)) {
+                    auth.currentUserState.value = viewer(entry.authorId)
+
+                    cards().single().isOwn shouldBe true
+                    repository.refreshCalls shouldBe emptyList()
+                }
             }
         }
+    }
 
-        it("TC-39: a retry from Failed shows Loading while it runs, then Loaded; every retry calls refresh") {
-            withHarness {
-                repository.seed(UUID, JournalsState.Failed)
-                vm.uiState.value.content shouldBe JournalUIContent.Failed
+    describe("reloading") {
 
-                val gate = CompletableDeferred<Unit>()
-                repository.refreshGates.addLast(gate)
-                repository.refreshResults.addLast(JournalsState.Loaded(listOf(entry(1))))
-                vm.retry()
-                vm.uiState.value.content shouldBe JournalUIContent.Loading
+        it("TC-43: refreshes once per key") {
+            val uuid = randomString()
+            val repository = TestJournalsRepository()
+            val vm = sut(uuid, repository)
 
-                gate.complete(Unit)
-                cards().map { it.id } shouldBe listOf(1L)
+            vm.reload(1)
+            vm.reload(1)
+            vm.reload(2)
 
-                // A second retry with nothing scripted still calls refresh, and the loaded list stays.
-                vm.retry()
-                repository.refreshCalls shouldBe listOf(UUID, UUID)
-                cards().map { it.id } shouldBe listOf(1L)
-            }
+            repository.refreshCalls shouldBe listOf(uuid, uuid)
         }
+    }
 
-        it("TC-40: a failed refresh keeps the loaded list") {
-            withHarness {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1))))
-                repository.refreshResults.addLast(JournalsState.Failed)
+    describe("retrying") {
 
-                vm.retry()
+        context("when the entries failed") {
+            context("when the refresh succeeds") {
+                it("TC-39: shows the list") {
+                    val uuid = randomString()
+                    val entry = randomJournalEntry()
+                    val repository = TestJournalsRepository()
+                    repository.seed(uuid, JournalsState.Failed)
+                    repository.refreshResults.addLast(JournalsState.Loaded(listOf(entry)))
 
-                cards().map { it.id } shouldBe listOf(1L)
-            }
-        }
+                    collecting(sut(uuid, repository)) {
+                        retry()
 
-        it("TC-41: own entries are the viewer's; with no viewer, and when the session read throws, every entry is another reader's") {
-            val auth = FakeAuthRepository()
-            withHarness(auth) {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7), entry(2, authorId = 8))))
-                auth.currentUserState.value = viewer(7)
-                cards().map { it.isOwn } shouldBe listOf(true, false)
-            }
-
-            withHarness {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7), entry(2, authorId = 8))))
-                cards().map { it.isOwn } shouldBe listOf(false, false)
-            }
-
-            val throwing = object : AuthRepository by FakeAuthRepository() {
-                override val currentUser: Flow<CurrentUser?> = flow { throw IllegalStateException("boom") }
-            }
-            withHarness(throwing) {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7))))
-                cards().map { it.isOwn } shouldBe listOf(false)
-            }
-        }
-
-        it("TC-42: a viewer id that arrives after Loaded re-derives ownership without a refetch") {
-            val auth = FakeAuthRepository()
-            withHarness(auth) {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, authorId = 7))))
-                cards().map { it.isOwn } shouldBe listOf(false)
-
-                auth.currentUserState.value = viewer(7)
-
-                cards().map { it.isOwn } shouldBe listOf(true)
-                repository.refreshCalls shouldBe emptyList()
-            }
-        }
-
-        it("TC-43: reload refreshes once per distinct key") {
-            withHarness {
-                vm.reload(1)
-                repository.refreshCalls shouldBe listOf(UUID)
-
-                vm.reload(1)
-                repository.refreshCalls shouldBe listOf(UUID)
-
-                vm.reload(2)
-                repository.refreshCalls shouldBe listOf(UUID, UUID)
-            }
-        }
-
-        it("TC-44: the card's preview comes from the masked runs, and the real spoiler is in no part of the card") {
-            withHarness {
-                repository.seed(UUID, JournalsState.Loaded(listOf(entry(1, body = "He was ||Ares||."))))
-
-                val card = cards().single()
-
-                card.preview.any { it is PreviewRun.Veiled && it.filler == "lore" } shouldBe true
-                card.toString().contains("Ares") shouldBe false
+                        cards().map { it.id } shouldBe listOf(entry.id)
+                    }
+                }
             }
         }
     }

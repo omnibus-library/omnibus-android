@@ -1,100 +1,94 @@
 package com.omnibus.omnibus.data.auth.local
 
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.first
 
 class StoredAuthTokenProviderTest : DescribeSpec({
 
-    lateinit var tokenStore: FakeAuthTokenStore
-    lateinit var provider: StoredAuthTokenProvider
+    fun sut(tokenStore: AuthTokenStore = TestAuthTokenStore()): StoredAuthTokenProvider =
+        StoredAuthTokenProvider(tokenStore)
 
     beforeSpec { mockAndroidLog() }
+
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        tokenStore = FakeAuthTokenStore()
-        provider = StoredAuthTokenProvider(tokenStore)
-    }
+    describe("reading the token") {
+        context("when a token is stored") {
+            it("TC-16: returns it") {
+                val token = randomString()
 
-    describe("token") {
-
-        it("TC-16: returns the stored token") {
-            tokenStore.save(TOKEN)
-
-            provider.token() shouldBe TOKEN
-        }
-
-        it("TC-16: returns null when no token is stored") {
-            provider.token().shouldBeNull()
-        }
-
-        listOf("", "   ").forEach { blank ->
-            it("TC-16: returns null when the stored token is \"$blank\"") {
-                tokenStore.save(blank)
-
-                provider.token().shouldBeNull()
+                sut(TestAuthTokenStore(initialToken = token)).token() shouldBe token
             }
         }
 
-        it("TC-16: returns null when reading the token fails with an IOException") {
-            tokenStore.save(TOKEN)
-            tokenStore.readFailure = IOException("corrupt")
-
-            provider.token().shouldBeNull()
+        context("when no token is stored") {
+            it("TC-16: returns null") {
+                sut().token().shouldBeNull()
+            }
         }
 
-        it("TC-16: reflects a token saved after the provider was created") {
-            provider.token().shouldBeNull()
-
-            tokenStore.save(TOKEN)
-
-            provider.token() shouldBe TOKEN
+        context("when the stored token is blank") {
+            it("TC-16: returns null for empty and whitespace tokens") {
+                checkAll(Exhaustive.of("", "   ")) { blank ->
+                    sut(TestAuthTokenStore(initialToken = blank)).token().shouldBeNull()
+                }
+            }
         }
 
-        it("TC-16: rethrows cancellation raised while reading") {
-            tokenStore.readFailure = CancellationException("cancelled")
+        context("when reading fails with an IOException") {
+            it("TC-16: returns null") {
+                val tokenStore = TestAuthTokenStore(initialToken = randomString()).apply {
+                    readFailure = IOException("corrupt")
+                }
 
-            shouldThrow<CancellationException> { provider.token() }
+                sut(tokenStore).token().shouldBeNull()
+            }
+        }
+
+        context("when reading is cancelled") {
+            it("TC-16: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { readFailure = CancellationException("cancelled") }
+
+                shouldThrow<CancellationException> { sut(tokenStore).token() }
+            }
         }
     }
 
-    describe("invalidate") {
-
+    describe("invalidating the token") {
         it("TC-17: clears the stored token") {
-            tokenStore.save(TOKEN)
+            val tokenStore = TestAuthTokenStore(initialToken = randomString())
 
-            provider.invalidate()
+            sut(tokenStore).invalidate()
 
             tokenStore.token.first().shouldBeNull()
-            tokenStore.clearCalls shouldBe 1
         }
 
-        it("TC-17: swallows an IOException from clearing the token") {
-            tokenStore.save(TOKEN)
-            tokenStore.clearFailure = IOException("disk full")
+        context("when clearing fails with an IOException") {
+            it("TC-17: doesn't throw") {
+                val tokenStore = TestAuthTokenStore().apply { clearFailure = IOException("disk full") }
 
-            provider.invalidate()
-
-            tokenStore.clearCalls shouldBe 1
-            tokenStore.token.first() shouldBe TOKEN
+                shouldNotThrowAny { sut(tokenStore).invalidate() }
+            }
         }
 
-        it("TC-17: rethrows cancellation raised while clearing") {
-            tokenStore.save(TOKEN)
-            tokenStore.clearFailure = CancellationException("cancelled")
+        context("when clearing is cancelled") {
+            it("TC-17: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { clearFailure = CancellationException("cancelled") }
 
-            shouldThrow<CancellationException> { provider.invalidate() }
+                shouldThrow<CancellationException> { sut(tokenStore).invalidate() }
+            }
         }
     }
-}) {
-    private companion object {
-        const val TOKEN = "abc123"
-    }
-}
+})

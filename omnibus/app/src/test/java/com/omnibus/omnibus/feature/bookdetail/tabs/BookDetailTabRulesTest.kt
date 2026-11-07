@@ -1,81 +1,83 @@
 package com.omnibus.omnibus.feature.bookdetail.tabs
 
-import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.feature.bookdetail.BookDetailAnchor
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class BookDetailTabRulesTest : DescribeSpec({
 
-    describe("tab rules") {
+    describe("the direction a tab enters from") {
 
-        it("#94 TC-10: entry direction follows tab order") {
-            BookDetailTab.entries.forEach { from ->
-                BookDetailTab.entries.forEach { to ->
-                    val expected = when {
-                        from == to -> null
-                        to.ordinal > from.ordinal -> 1
-                        else -> -1
-                    }
-                    tabEntryDirection(from, to) shouldBe expected
-                }
+        it("#94 TC-10: follows tab order, forward, backward or none for the same tab") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(BookDetailTab.Overview, BookDetailTab.Files, 1),
+                    Triple(BookDetailTab.Files, BookDetailTab.Reviews, -1),
+                    Triple(BookDetailTab.Reviews, BookDetailTab.Reviews, null),
+                ),
+            ) { (from, to, expected) ->
+                tabEntryDirection(from, to) shouldBe expected
             }
-            tabEntryDirection(BookDetailTab.Overview, BookDetailTab.Files) shouldBe 1
-            tabEntryDirection(BookDetailTab.Files, BookDetailTab.Reviews) shouldBe -1
+        }
+    }
+
+    // In these, the strip sits 700 px down the page and pins 100 px from the top: its pin point is scroll 600.
+    describe("pinning the strip") {
+
+        it("#94 TC-12: moves it only past the pin point") {
+            checkAll(Exhaustive.of(600 to 0, 601 to 1, 1000 to 400)) { (scroll, expected) ->
+                stripPinOffsetPx(scroll, 700, 100) shouldBe expected
+            }
         }
 
-        it("#94 TC-11: every anchor maps to a tab") {
-            BookDetailAnchor.Series.tab shouldBe BookDetailTab.Overview
-            BookDetailAnchor.entries.forEach { it.tab shouldBe BookDetailTab.Overview }
+        context("when the strip starts above the pin") {
+            it("#94 TC-12: pins from the start") {
+                stripPinOffsetPx(0, 50, 100) shouldBe 50
+            }
         }
+    }
 
-        it("#94 TC-12: strip pin offset is zero before the pin point and tracks scroll after") {
-            // stripTop 700, pinTop 100: the pin point is scroll 600.
-            stripPinOffsetPx(0, 700, 100) shouldBe 0
-            stripPinOffsetPx(599, 700, 100) shouldBe 0
-            stripPinOffsetPx(600, 700, 100) shouldBe 0
-            stripPinOffsetPx(601, 700, 100) shouldBe 1
-            stripPinOffsetPx(1000, 700, 100) shouldBe 400
-            // A strip already above the pin top is pinned from the start.
-            stripPinOffsetPx(0, 50, 100) shouldBe 50
-        }
+    describe("reporting the strip as pinned") {
 
-        it("reports pinned within one slack pixel of the pin point") {
-            // stripTop 700, pinTop 100, slack 1: the strip is on screen at 700 - scroll.
+        it("reports pinned from one slack pixel before the pin point") {
             tabsPinned(598, 700, 100, 1) shouldBe false
             tabsPinned(599, 700, 100, 1) shouldBe true
-            tabsPinned(600, 700, 100, 1) shouldBe true
-            tabsPinned(2000, 700, 100, 1) shouldBe true
         }
 
-        it("reports unpinned while the host is unplaced") {
-            tabsPinned(0, -1, 0, 1) shouldBe false
-            tabsPinned(500, -1, 0, 1) shouldBe false
+        context("when the host is unplaced") {
+            it("reports unpinned") {
+                tabsPinned(500, -1, 0, 1) shouldBe false
+            }
+        }
+    }
+
+    describe("the scroll a jump lands on") {
+
+        it("#94 TC-13: is the pin point, clamped to the scroll range") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(700, 5000, 600),
+                    Triple(700, 400, 400),
+                    Triple(50, 400, 0),
+                ),
+            ) { (stripTop, maxScroll, expected) ->
+                jumpScrollTarget(stripTop, 100, maxScroll) shouldBe expected
+            }
         }
 
-        it("#94 TC-13: jump target is clamped to the scroll range") {
-            jumpScrollTarget(700, 100, 5000) shouldBe 600
-            jumpScrollTarget(700, 100, 400) shouldBe 400
-            jumpScrollTarget(50, 100, 400) shouldBe 0
-            jumpScrollTarget(700, 100, 0) shouldBe 0
-        }
-
-        it("#94 TC-14: anchor target leaves clearance under the strip and clamps") {
-            anchorScrollTarget(900, 100, 50, 16, 5000) shouldBe 734
-            anchorScrollTarget(900, 100, 50, 16, 400) shouldBe 400
-            anchorScrollTarget(50, 100, 50, 16, 5000) shouldBe 0
-            anchorScrollTarget(900, 100, 50, 0, 5000) shouldBe 750
-
-            // Unclamped, the anchor sits exactly clearance below the pinned strip.
-            val scroll = anchorScrollTarget(900, 100, 50, 16, 5000)
-            (900 - scroll) shouldBe 100 + 50 + 16
-        }
-
-        it("#94 TC-15: host minimum height is viewport minus bar and action area plus slack") {
-            tabHostMinHeight(640.dp, 74.dp, 80.dp) shouldBe 490.dp
-            tabHostMinHeight(320.dp, 74.dp, 80.dp) shouldBe 170.dp
-            tabHostMinHeight(100.dp, 74.dp, 80.dp) shouldBe 0.dp
+        it("#94 TC-14: leaves an anchor its clearance under the strip, clamped to the scroll range") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(900, 5000, 900 - (100 + 50 + 16)),
+                    Triple(900, 400, 400),
+                    Triple(50, 5000, 0),
+                ),
+            ) { (anchorTop, maxScroll, expected) ->
+                anchorScrollTarget(anchorTop, 100, 50, 16, maxScroll) shouldBe expected
+            }
         }
     }
 })

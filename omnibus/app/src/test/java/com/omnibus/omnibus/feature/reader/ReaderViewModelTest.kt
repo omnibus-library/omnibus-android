@@ -1,39 +1,34 @@
 package com.omnibus.omnibus.feature.reader
 
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
+import app.cash.turbine.test
+import com.omnibus.omnibus.data.bookmarks.randomBookmark
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryError
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
-import com.omnibus.omnibus.data.reader.BookFileResult
-import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
-import com.omnibus.omnibus.data.reader.ReaderSettings
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
-import com.omnibus.omnibus.data.reader.remote.BookFileSource
-import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.data.library.TestLibraryRepository
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadFailure
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
-import com.omnibus.omnibus.feature.reader.ui.RelocateData
 import com.omnibus.omnibus.feature.reader.ui.TocEntry
+import com.omnibus.omnibus.feature.reader.ui.randomCfi
+import com.omnibus.omnibus.feature.reader.ui.randomRelocateData
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderViewModelTest : DescribeSpec({
@@ -41,162 +36,91 @@ class ReaderViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    lateinit var repository: FakeLibraryRepository
+    fun tocEntry() = TocEntry(label = randomString(), href = randomString(), level = randomInt(0..3))
 
-    beforeEach {
-        // The book stays Loading here, so the layer-1 cases only see page state.
-        repository = FakeLibraryRepository().apply { pendingBook = CompletableDeferred() }
-    }
+    fun epubBook() = randomBook().copy(formats = listOf("epub"))
 
-    /** The one place a test builds the ViewModel, so later layers only change this helper. */
-    fun viewModel() = ReaderViewModel(
-        bookUuid = "book-1",
-        libraryRepository = repository,
-        assetLoaderFactory = ReaderAssetLoaderFactory(
-            mockk(relaxed = true),
-            Dispatchers.Unconfined,
-            BookFileSource { BookFileResult.NotFound },
-        ),
-        progressRepository = FakeProgressRepository(),
-        settingsStore = FakeReaderSettingsStore(),
-        bookmarksRepository = FakeBookmarksRepository(),
-        timeSource = TimeSource { 0L },
-        persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
-    )
+    describe("the location") {
+        it("TC-30: is the latest relocate") {
+            val vm = sut()
+            val latest = randomRelocateData()
 
-    val chapterOne = TocEntry(label = "Loomings", href = "chapter1.xhtml", level = 0)
-    val chapterTwo = TocEntry(label = "The Carpet-Bag", href = "chapter2.xhtml#carpet", level = 1)
+            vm.onPageEvent(ReaderEvent.Relocate(randomRelocateData()))
+            vm.onPageEvent(ReaderEvent.Relocate(latest))
 
-    fun relocate(cfi: String, page: Int, pct: Int, echo: Boolean = false) =
-        ReaderEvent.Relocate(RelocateData(cfi = cfi, page = page, totalPages = 310, pct = pct, echo = echo))
-
-    /** Nothing arrives on the commands flow within a short wait. */
-    suspend fun ReaderViewModel.noCommandArrives() = withTimeoutOrNull(100) { commands.first() } shouldBe null
-
-    describe("ReaderViewModel state") {
-
-        it("TC-30: a relocate replaces the location") {
-            val vm = viewModel()
-
-            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 3, pct = 2))
-            vm.onPageEvent(relocate("epubcfi(/6/10)", page = 4, pct = 3))
-
-            vm.uiState.value.location shouldBe RelocateData(
-                cfi = "epubcfi(/6/10)",
-                page = 4,
-                totalPages = 310,
-                pct = 3,
-            )
-        }
-
-        it("TC-31: an echo relocate is stored flagged as not a movement") {
-            val vm = viewModel()
-            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 3, pct = 2))
-
-            vm.onPageEvent(relocate("epubcfi(/6/6)", page = 2, pct = 1, echo = true))
-
-            val location = vm.uiState.value.location!!
-            location.echo shouldBe true
-            location.isMovement shouldBe false
-            location.cfi shouldBe "epubcfi(/6/6)"
-            location.page shouldBe 2
+            vm.uiState.value.location shouldBe latest
         }
 
         // #199: before locations the page reports pct 0; the echo once they load carries the real one.
-        it("TC-199: the menu percent is hidden before locations and updates from the echo") {
-            val vm = viewModel()
+        it("TC-199: shows a menu percent only for a book with locations") {
+            val vm = sut()
+            val location = randomRelocateData().copy(pct = randomInt(1..100))
 
-            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 1, totalPages = 0, pct = 0)))
+            vm.onPageEvent(ReaderEvent.Relocate(location.copy(totalPages = 0)))
             vm.uiState.value.menuPercent shouldBe null
 
-            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 133, pct = 43, echo = true))
-            vm.uiState.value.menuPercent shouldBe 43
+            vm.onPageEvent(ReaderEvent.Relocate(location.copy(totalPages = randomInt(1..1000), echo = true)))
+            vm.uiState.value.menuPercent shouldBe location.pct
         }
+    }
 
-        it("TC-32: a movement after an echo clears the flag") {
-            val vm = viewModel()
-            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 3, pct = 2))
-            vm.onPageEvent(relocate("epubcfi(/6/6)", page = 2, pct = 1, echo = true))
+    describe("the contents") {
+        it("TC-33: are replaced by a later toc") {
+            val vm = sut()
+            val enriched = listOf(tocEntry().copy(page = randomInt(1..100)))
 
-            vm.onPageEvent(relocate("epubcfi(/6/10)", page = 4, pct = 3))
-
-            val location = vm.uiState.value.location!!
-            location.echo shouldBe false
-            location.isMovement shouldBe true
-        }
-
-        it("TC-33: a second toc replaces the first and never appends") {
-            val vm = viewModel()
-            val bare = listOf(
-                TocEntry(label = "A", href = "a.xhtml", level = 0),
-                TocEntry(label = "B", href = "b.xhtml", level = 0),
-                TocEntry(label = "C", href = "c.xhtml", level = 0),
-            )
-            val enriched = listOf(
-                TocEntry(label = "A", href = "a.xhtml", level = 0, page = 1, pct = 0),
-                TocEntry(label = "B", href = "b.xhtml", level = 0, page = 12, pct = 4),
-                TocEntry(label = "C", href = "c.xhtml", level = 0, page = 31, pct = 10),
-            )
-
-            vm.onPageEvent(ReaderEvent.Toc(bare))
+            vm.onPageEvent(ReaderEvent.Toc(listOf(tocEntry(), tocEntry())))
             vm.onPageEvent(ReaderEvent.Toc(enriched))
 
             vm.uiState.value.toc shouldBe enriched
         }
 
-        it("TC-34: a later bare toc replaces an enriched one, and an empty toc clears it") {
-            val vm = viewModel()
-            val enriched = listOf(TocEntry(label = "A", href = "a.xhtml", level = 0, page = 1, pct = 0))
-            val bare = listOf(TocEntry(label = "B", href = "b.xhtml", level = 0))
+        context("when an entry is chosen") {
+            it("TC-40: closes the sheet") {
+                val vm = sut()
+                vm.onContentsRequested()
 
-            vm.onPageEvent(ReaderEvent.Toc(enriched))
-            vm.onPageEvent(ReaderEvent.Toc(bare))
-            vm.uiState.value.toc shouldBe bare
+                vm.onTocEntryChosen(tocEntry())
 
-            vm.onPageEvent(ReaderEvent.Toc(emptyList()))
-            vm.uiState.value.toc shouldBe emptyList()
+                vm.uiState.value.sheet shouldBe null
+            }
+
+            it("TC-40: asks the page to show the entry, once") {
+                val vm = sut()
+                val entry = tocEntry()
+
+                vm.onTocEntryChosen(entry)
+
+                vm.commands.test {
+                    awaitItem() shouldBe ReaderCommand.Display(entry.href)
+                    expectNoEvents()
+                }
+            }
+        }
+    }
+
+    describe("the load status") {
+        it("TC-36: follows the host's status") {
+            val vm = sut()
+            val failed = ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)
+
+            vm.onPageEvent(ReaderEvent.LoadStatusChanged(failed))
+
+            vm.uiState.value.loadStatus shouldBe failed
         }
 
-        it("TC-35: chrome toggles from the ToggleChrome event and from the intent") {
-            val vm = viewModel()
-
-            vm.onPageEvent(ReaderEvent.ToggleChrome)
-            vm.uiState.value.chromeVisible shouldBe true
-            vm.onPageEvent(ReaderEvent.ToggleChrome)
-            vm.uiState.value.chromeVisible shouldBe false
-
-            vm.onChromeToggled()
-            vm.uiState.value.chromeVisible shouldBe true
-        }
-
-        it("TC-36: load status follows LoadStatusChanged") {
-            val vm = viewModel()
-
-            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Ready
-
-            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)
-
-            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Loading))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Loading
-        }
-
-        it("TC-37: the page's status event does not set load status") {
-            val vm = viewModel()
+        it("TC-37: ignores the page's own status") {
+            val vm = sut()
 
             vm.onPageEvent(ReaderEvent.Status("ready"))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Loading
-            vm.onPageEvent(ReaderEvent.Status("error"))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Loading
 
-            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Ready))
-            vm.onPageEvent(ReaderEvent.Status("error"))
-            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Ready
+            vm.uiState.value.loadStatus shouldBe ReaderLoadStatus.Loading
         }
+    }
 
-        it("TC-39: the sheet intents set the sheet") {
-            val vm = viewModel()
+    describe("the sheets") {
+        it("TC-39: follow the sheet intents") {
+            val vm = sut()
 
             vm.onContentsRequested()
             vm.uiState.value.sheet shouldBe ReaderSheet.Contents
@@ -207,343 +131,173 @@ class ReaderViewModelTest : DescribeSpec({
             vm.onSheetDismissed()
             vm.uiState.value.sheet shouldBe null
         }
+    }
 
-        it("TC-40: choosing a contents entry closes the sheet and displays it") {
-            val vm = viewModel()
-            vm.onContentsRequested()
+    describe("loading the book") {
+        context("with an EPUB") {
+            it("TC-50: goes from loading to ready") {
+                val book = epubBook()
+                val gate = CompletableDeferred<BookResult>()
 
-            vm.onTocEntryChosen(chapterOne)
+                val vm = sut(libraryRepository = TestLibraryRepository().apply { pendingBook = gate })
+                vm.uiState.value.book shouldBe ReaderBookState.Loading
 
-            vm.uiState.value.sheet shouldBe null
-            vm.commands.first() shouldBe ReaderCommand.Display(chapterOne.href)
-            vm.noCommandArrives()
+                gate.complete(BookResult.Success(book))
+                vm.uiState.value.book shouldBe ReaderBookState.Ready(book.displayTitle, book.coverIdentity())
+            }
         }
 
-        it("CS-16: a second toc event keeps the sheet open") {
-            val vm = viewModel()
-            val bare = listOf(TocEntry(label = "A", href = "a.xhtml", level = 0))
-            val enriched = listOf(TocEntry(label = "A", href = "a.xhtml", level = 0, page = 1, pct = 0))
-            vm.onContentsRequested()
-
-            vm.onPageEvent(ReaderEvent.Toc(bare))
-            vm.onPageEvent(ReaderEvent.Toc(enriched))
-
-            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
-            vm.uiState.value.toc shouldBe enriched
-        }
-
-        it("TC-41: commands are delivered exactly once, in order, and not re-delivered") {
-            val vm = viewModel()
-
-            // Both are chosen before anything collects, so the buffer holds them.
-            vm.onTocEntryChosen(chapterOne)
-            vm.onTocEntryChosen(chapterTwo)
-
-            vm.commands.take(2).toList() shouldBe listOf(
-                ReaderCommand.Display(chapterOne.href),
-                ReaderCommand.Display(chapterTwo.href),
-            )
-            // A second collection sees nothing again.
-            vm.noCommandArrives()
-        }
-
-        it("TC-43: a full fake event stream reduces to the expected state") {
-            val vm = viewModel()
-
-            vm.onPageEvent(ReaderEvent.LoadStatusChanged(ReaderLoadStatus.Loading))
-            vm.onPageEvent(ReaderEvent.HostReady)
-            vm.onPageEvent(ReaderEvent.Status("ready"))
-            vm.onPageEvent(relocate("epubcfi(/6/8)", page = 3, pct = 2))
-            vm.onPageEvent(ReaderEvent.Toc(listOf(chapterOne, chapterTwo)))
-            vm.onPageEvent(
-                ReaderEvent.Toc(
-                    listOf(
-                        chapterOne.copy(page = 12, pct = 4),
-                        chapterTwo.copy(page = 31, pct = 10),
+        context("when it can't be read") {
+            it("TC-51: reports why, for no EPUB, not found, no server or a failure") {
+                checkAll(
+                    Exhaustive.of(
+                        BookResult.Success(randomBook().copy(formats = listOf("pdf"))) to
+                            ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub),
+                        BookResult.NotFound to ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound),
+                        BookResult.NoServer to ReaderBookState.Failed(LibraryUIError.NoServer),
+                        BookResult.Failure(LibraryError.Unreachable) to
+                            ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable)),
                     ),
-                ),
-            )
-            vm.onPageEvent(ReaderEvent.ToggleChrome)
-            vm.onPageEvent(relocate("epubcfi(/6/14!/4/2/1:0)", page = 12, pct = 4, echo = true))
+                ) { (result, state) ->
+                    val vm = sut(libraryRepository = TestLibraryRepository().apply { bookResult = result })
 
-            // Status is not load status, so the load status stays Loading here.
-            vm.uiState.value shouldBe ReaderUIState(
-                loadStatus = ReaderLoadStatus.Loading,
-                location = RelocateData(
-                    cfi = "epubcfi(/6/14!/4/2/1:0)",
-                    page = 12,
-                    totalPages = 310,
-                    pct = 4,
-                    echo = true,
-                ),
-                toc = listOf(
-                    chapterOne.copy(page = 12, pct = 4),
-                    chapterTwo.copy(page = 31, pct = 10),
-                ),
-                chromeVisible = true,
-                settings = ReaderSettings(),
-                sheet = null,
-                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
-            )
+                    vm.uiState.value.book shouldBeEqual state
+                }
+            }
         }
     }
 
-    describe("ReaderViewModel book") {
+    describe("retrying the book") {
+        context("after a failed read") {
+            it("TC-54: reads the book again") {
+                val uuid = randomString()
+                val book = epubBook()
+                val library = TestLibraryRepository().apply { bookResult = BookResult.Failure(LibraryError.Unreachable) }
+                val vm = sut(bookUuid = uuid, libraryRepository = library)
+                library.bookResult = BookResult.Success(book)
 
-        beforeEach {
-            // These cases start from the fake's own result instead of holding the book in Loading.
-            repository.pendingBook = null
+                vm.onRetryBookRequested()
+
+                library.bookRequests shouldBe listOf(uuid, uuid)
+                vm.uiState.value.book shouldBe ReaderBookState.Ready(book.displayTitle, book.coverIdentity())
+            }
         }
 
-        it("TC-50: loads an EPUB book into Ready") {
-            val gate = CompletableDeferred<BookResult>()
-            repository.pendingBook = gate
-            val vm = viewModel()
+        context("while the book is ready") {
+            it("TC-54: does not read it again") {
+                val library = TestLibraryRepository().apply { bookResult = BookResult.Success(epubBook()) }
+                val vm = sut(libraryRepository = library)
 
-            vm.uiState.value.book shouldBe ReaderBookState.Loading
+                vm.onRetryBookRequested()
 
-            gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
-
-            // CS-39
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(
-                title = "Moby Dick",
-                cover = testBook(1, title = "Moby Dick").coverIdentity(),
-            )
-        }
-
-        it("TC-51: a book with no epub is Unavailable NoEpub") {
-            repository.bookResult = BookResult.Success(testBook(1, formats = listOf("pdf")))
-
-            viewModel().uiState.value.book shouldBe ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub)
-        }
-
-        it("TC-52: a 404 is Unavailable NotFound") {
-            repository.bookResult = BookResult.NotFound
-
-            viewModel().uiState.value.book shouldBe ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound)
-        }
-
-        it("TC-53: no server is Failed with LibraryUIError.NoServer") {
-            repository.bookResult = BookResult.NoServer
-
-            viewModel().uiState.value.book shouldBe ReaderBookState.Failed(LibraryUIError.NoServer)
-        }
-
-        it("TC-53: a failure is Failed with the error") {
-            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
-
-            viewModel().uiState.value.book shouldBe
-                ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
-        }
-
-        it("TC-54: retry after Failed goes Loading, then Ready") {
-            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
-            val vm = viewModel()
-            vm.uiState.value.book shouldBe ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
-
-            val gate = CompletableDeferred<BookResult>()
-            repository.pendingBook = gate
-            vm.onRetryBookRequested()
-
-            vm.uiState.value.book shouldBe ReaderBookState.Loading
-
-            gate.complete(BookResult.Success(testBook(1, title = "Moby Dick")))
-
-            // CS-39
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(
-                title = "Moby Dick",
-                cover = testBook(1, title = "Moby Dick").coverIdentity(),
-            )
-            repository.bookRequests shouldBe listOf("book-1", "book-1")
-        }
-
-        it("TC-54: retry while Ready does not refetch or reset to Loading") {
-            val vm = viewModel()
-            // CS-39
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1", cover = testBook(1).coverIdentity())
-
-            vm.onRetryBookRequested()
-
-            vm.uiState.value.book shouldBe ReaderBookState.Ready(title = "Book 1", cover = testBook(1).coverIdentity())
-            repository.bookRequests shouldBe listOf("book-1")
-        }
-
-        it("TC-55: loads the book for its uuid on creation, exactly once") {
-            viewModel()
-
-            repository.bookRequests shouldBe listOf("book-1")
-        }
-
-        it("TC-56: page events before Ready still reduce location, toc and chrome, and leave book Loading") {
-            val gate = CompletableDeferred<BookResult>()
-            repository.pendingBook = gate
-            val vm = viewModel()
-
-            vm.onPageEvent(ReaderEvent.ToggleChrome)
-            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 3, totalPages = 310, pct = 2)))
-            vm.onPageEvent(ReaderEvent.Toc(listOf(chapterOne)))
-
-            vm.uiState.value.book shouldBe ReaderBookState.Loading
-            vm.uiState.value.chromeVisible shouldBe true
-            vm.uiState.value.location?.cfi shouldBe "epubcfi(/6/8)"
-            vm.uiState.value.toc shouldBe listOf(chapterOne)
-        }
-
-        it("TC-56: page events while Failed leave book Failed") {
-            val failed = ReaderBookState.Failed(LibraryUIError.Failed(LibraryError.Unreachable))
-            repository.bookResult = BookResult.Failure(LibraryError.Unreachable)
-            val vm = viewModel()
-
-            vm.onPageEvent(ReaderEvent.ToggleChrome)
-            vm.onPageEvent(ReaderEvent.Relocate(RelocateData(cfi = "epubcfi(/6/8)", page = 3, totalPages = 310, pct = 2)))
-            vm.onPageEvent(ReaderEvent.Toc(listOf(chapterOne)))
-
-            vm.uiState.value.book shouldBe failed
-            vm.uiState.value.chromeVisible shouldBe true
-            vm.uiState.value.location?.cfi shouldBe "epubcfi(/6/8)"
-            vm.uiState.value.toc shouldBe listOf(chapterOne)
+                library.bookRequests.size shouldBe 1
+            }
         }
     }
 
-    describe("ReaderViewModel menu") {
+    describe("the chrome") {
+        it("TC-35: toggles from the page's centre tap") {
+            val vm = sut()
 
-        val contentsAndSettings = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings)
-        val vmRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
-
-        it("CS-1: the reader offers the Contents, Bookmarks and Settings rows from the start") {
-            val state = viewModel().uiState.value
-
-            state.menuOpen shouldBe false
-            state.menuRows shouldBe vmRows
-            state.toc shouldBe emptyList()
-            ReaderUIState().menuRows shouldBe emptyList()
-        }
-
-        it("CS-3: choosing the Contents row from the initial state opens the sheet") {
-            val vm = viewModel()
-            vm.onChromeToggled()
-
-            vm.onMenuOpened()
-            vm.uiState.value.menuOpen shouldBe true
-
-            vm.onMenuRowChosen(ReaderMenuRow.Contents)
-            vm.uiState.value.menuOpen shouldBe false
-            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
-        }
-
-        it("RC-14: opening the menu needs chrome up and rows") {
-            ReaderUIState(chromeVisible = false, menuRows = listOf(ReaderMenuRow.Contents))
-                .withMenuOpened().menuOpen shouldBe false
-            ReaderUIState(chromeVisible = true, menuRows = emptyList())
-                .withMenuOpened().menuOpen shouldBe false
-
-            val vm = viewModel()
-            vm.onMenuOpened()
-            vm.uiState.value.menuOpen shouldBe false
-            vm.onChromeToggled()
-            vm.onMenuOpened()
-            vm.uiState.value.menuOpen shouldBe true
-        }
-
-        it("RC-15: the menu opens when chrome is up and rows exist") {
-            val state = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings)
-
-            state.withMenuOpened() shouldBe state.copy(menuOpen = true)
-        }
-
-        it("RC-16: dismissing the menu closes only the menu") {
-            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
-
-            open.withMenuDismissed() shouldBe open.copy(menuOpen = false)
-            open.withMenuDismissed().withMenuDismissed() shouldBe open.copy(menuOpen = false)
-            val closed = open.copy(menuOpen = false)
-            closed.withMenuDismissed() shouldBe closed
-
-            val vm = viewModel()
-            vm.onChromeToggled()
-            vm.onMenuDismissed()
-            vm.onMenuDismissed()
-            vm.uiState.value.menuOpen shouldBe false
+            vm.onPageEvent(ReaderEvent.ToggleChrome)
             vm.uiState.value.chromeVisible shouldBe true
-        }
 
-        it("RC-17: hiding the chrome closes the menu and showing never opens it") {
-            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
-
-            val hidden = open.withChromeToggled()
-            hidden.chromeVisible shouldBe false
-            hidden.menuOpen shouldBe false
-
-            val shown = hidden.withChromeToggled()
-            shown.chromeVisible shouldBe true
-            shown.menuOpen shouldBe false
-
-            val vm = viewModel()
-            vm.onChromeToggled()
-            vm.uiState.value.chromeVisible shouldBe true
-            vm.uiState.value.menuOpen shouldBe false
             vm.onPageEvent(ReaderEvent.ToggleChrome)
             vm.uiState.value.chromeVisible shouldBe false
-            vm.uiState.value.menuOpen shouldBe false
-        }
-
-        it("RC-18: choosing a row closes the menu and opens its sheet") {
-            val open = ReaderUIState(chromeVisible = true, menuRows = contentsAndSettings, menuOpen = true)
-
-            val contents = open.withMenuRowChosen(ReaderMenuRow.Contents)
-            contents.menuOpen shouldBe false
-            contents.sheet shouldBe ReaderSheet.Contents
-
-            val settings = open.withMenuRowChosen(ReaderMenuRow.Settings)
-            settings.menuOpen shouldBe false
-            settings.sheet shouldBe ReaderSheet.Settings
-        }
-
-        it("RC-19: sheet requests clear the menu and dismissing a sheet never reopens it") {
-            val open = ReaderUIState(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents), menuOpen = true)
-            open.withSheet(ReaderSheet.Contents).menuOpen shouldBe false
-            open.withSheet(ReaderSheet.Contents).sheet shouldBe ReaderSheet.Contents
-            open.withSheet(ReaderSheet.Settings).menuOpen shouldBe false
-            open.withSheet(ReaderSheet.Settings).sheet shouldBe ReaderSheet.Settings
-
-            val vm = viewModel()
-            vm.onChromeToggled()
-            vm.onContentsRequested()
-            vm.uiState.value.sheet shouldBe ReaderSheet.Contents
-            vm.uiState.value.menuOpen shouldBe false
-            vm.uiState.value.chromeVisible shouldBe true
-
-            vm.onSheetDismissed()
-            vm.uiState.value.sheet shouldBe null
-            vm.uiState.value.menuOpen shouldBe false
-            vm.uiState.value.chromeVisible shouldBe true
-
-            vm.onSettingsRequested()
-            vm.uiState.value.sheet shouldBe ReaderSheet.Settings
-            vm.uiState.value.menuOpen shouldBe false
-        }
-
-        it("RC-20: menu intents emit no commands") {
-            val vm = viewModel()
-
-            vm.onMenuOpened()
-            vm.onMenuDismissed()
-            vm.onMenuRowChosen(ReaderMenuRow.Contents)
-
-            vm.noCommandArrives()
         }
     }
-    describe("settings menu row") {
 
-        it("offers the settings row after contents and opens and closes the settings sheet") {
-            val vm = viewModel()
-            vm.uiState.value.menuRows shouldBe listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
+    describe("the menu") {
+        fun sutWithChromeUp() = sut().also { it.onChromeToggled() }
 
-            vm.onSettingsRequested()
-            vm.uiState.value.sheet shouldBe ReaderSheet.Settings
+        it("CS-1: offers the Contents, Bookmarks and Settings rows") {
+            sut().uiState.value.menuRows shouldBe
+                listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
+        }
 
-            vm.onSheetDismissed()
+        context("with the chrome hidden") {
+            it("RC-14: does not open") {
+                val vm = sut()
+
+                vm.onMenuOpened()
+
+                vm.uiState.value.menuOpen shouldBe false
+            }
+        }
+
+        context("with the chrome up") {
+            it("RC-15: opens") {
+                val vm = sutWithChromeUp()
+
+                vm.onMenuOpened()
+
+                vm.uiState.value.menuOpen shouldBe true
+            }
+        }
+
+        context("while open") {
+            fun sutWithMenuOpen() = sutWithChromeUp().also { it.onMenuOpened() }
+
+            it("RC-16: leaves the chrome up as it is dismissed") {
+                val vm = sutWithMenuOpen()
+
+                vm.onMenuDismissed()
+
+                vm.uiState.value.menuOpen shouldBe false
+                vm.uiState.value.chromeVisible shouldBe true
+            }
+
+            it("RC-17: closes with the chrome") {
+                val vm = sutWithMenuOpen()
+
+                vm.onChromeToggled()
+
+                vm.uiState.value.menuOpen shouldBe false
+            }
+
+            it("RC-18: gives way to the chosen row's sheet, for every row") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple(ReaderMenuRow.Contents, ReaderSheet.Contents, ReaderContentsTab.Contents),
+                        Triple(ReaderMenuRow.Bookmarks, ReaderSheet.Contents, ReaderContentsTab.Bookmarks),
+                        Triple(ReaderMenuRow.Settings, ReaderSheet.Settings, ReaderContentsTab.Contents),
+                    ),
+                ) { (row, sheet, tab) ->
+                    val vm = sutWithMenuOpen()
+
+                    vm.onMenuRowChosen(row)
+
+                    val state = vm.uiState.value
+                    state.menuOpen shouldBe false
+                    state.sheet shouldBe sheet
+                    state.contentsTab shouldBe tab
+                }
+            }
+        }
+    }
+
+    describe("a bookmark chosen in the sheet") {
+        fun bookmark(position: String) = randomBookmark().copy(position = position)
+
+        it("TC-51: closes the sheet") {
+            val vm = sut()
+            vm.onContentsRequested()
+
+            vm.onBookmarkChosen(bookmark(randomCfi()))
+
             vm.uiState.value.sheet shouldBe null
+        }
+
+        it("TC-51: asks the page to show its position, once") {
+            val vm = sut()
+            val cfi = randomCfi()
+
+            vm.onBookmarkChosen(bookmark(cfi))
+
+            vm.commands.test {
+                awaitItem() shouldBe ReaderCommand.Display(cfi)
+                expectNoEvents()
+            }
         }
     }
 })

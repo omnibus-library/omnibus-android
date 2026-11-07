@@ -8,8 +8,10 @@ import com.omnibus.omnibus.data.library.PositionConfidence
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.ResolvedPosition
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.floats.plusOrMinus
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 private fun resolved(ordinal: Int?) = ResolvedPosition(
     chapterOrdinal = ordinal,
@@ -26,128 +28,99 @@ private fun alignment(
 
 class BookReadingProgressTest : DescribeSpec({
 
-    describe("chapter lookup") {
-
-        it("TC-24: chapterAt picks the chapter containing the fraction") {
-            emptyList<BookChapter>().chapterAt(.5f) shouldBe null
-            chapters(0f, .5f).chapterAt(Float.NaN) shouldBe null
-            chapters(.2f, .5f).chapterAt(.1f) shouldBe null
-
-            val unsorted = listOf(BookChapter(0, null, .5f), BookChapter(1, null, 0f), BookChapter(2, null, .25f))
-            unsorted.chapterAt(.3f) shouldBe BookChapter(2, null, .25f)
-            chapters(0f, .5f).chapterAt(.49995f) shouldBe BookChapter(1, null, .5f)
-            chapters(0f, .5f).chapterAt(1f) shouldBe BookChapter(1, null, .5f)
-
-            val tied = listOf(BookChapter(0, null, .5f), BookChapter(1, null, .5f))
-            tied.chapterAt(.6f) shouldBe BookChapter(1, null, .5f)
+    describe("the chapter containing a fraction") {
+        it("TC-24: is the last to start by that fraction, for each kind of list") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(listOf(BookChapter(0, null, .5f), BookChapter(1, null, 0f), BookChapter(2, null, .25f)), .3f, 2),
+                    Triple(chapters(0f, .5f), .49995f, 1),
+                    Triple(chapters(0f, .5f), 1f, 1),
+                    Triple(listOf(BookChapter(0, null, .5f), BookChapter(1, null, .5f)), .6f, 1),
+                    Triple(emptyList(), .5f, null),
+                    Triple(chapters(0f, .5f), Float.NaN, null),
+                    Triple(chapters(.2f, .5f), .1f, null),
+                ),
+            ) { (list, fraction, index) ->
+                list.chapterAt(fraction)?.index shouldBe index
+            }
         }
     }
 
     describe("the progress of a book") {
-
-        it("TC-27: a reading record gives the fraction") {
-            bookReadingProgress(emptyList(), null) shouldBe null
-
-            val reading = bookReadingProgress(listOf(readingRecord(62.4, 100)), null)!!
-            reading.fraction shouldBe (.624f plusOrMinus 1e-4f)
-            reading.latestMedium shouldBe ProgressFormat.Reading
-            reading.audioFileId shouldBe null
-            reading.audioElapsedSeconds shouldBe null
-            reading.audioTotalSeconds shouldBe null
-
-            bookReadingProgress(listOf(readingRecord(null, 100)), null)!!.let {
-                it.fraction shouldBe null
-                it.latestMedium shouldBe ProgressFormat.Reading
+        context("when there are no records") {
+            it("TC-27: is missing") {
+                bookReadingProgress(emptyList(), null) shouldBe null
             }
-            bookReadingProgress(listOf(readingRecord(Double.NaN, 100)), null)!!.fraction shouldBe null
-            bookReadingProgress(listOf(readingRecord(120.0, 100)), null)!!.fraction shouldBe (1f plusOrMinus 1e-4f)
-            bookReadingProgress(listOf(readingRecord(-5.0, 100)), null)!!.fraction shouldBe (0f plusOrMinus 1e-4f)
         }
 
-        it("TC-30: audio fraction needs a known total") {
-            bookReadingProgress(listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0)), null)!!.fraction shouldBe
-                (.5f plusOrMinus 1e-4f)
-            bookReadingProgress(listOf(listeningRecord(3600.0, 100)), alignment(audioTotal = 7200))!!.fraction shouldBe
-                (.5f plusOrMinus 1e-4f)
-            bookReadingProgress(listOf(listeningRecord(3600.0, 100)), null)!!.fraction shouldBe null
-            bookReadingProgress(listOf(listeningRecord(3600.0, 100, totalSeconds = 0.0)), null)!!.fraction shouldBe null
-            bookReadingProgress(listOf(listeningRecord(9000.0, 100, totalSeconds = 7200.0)), null)!!.fraction shouldBe
-                (1f plusOrMinus 1e-4f)
-        }
-
-        it("TC-31: the newest record speaks for the book") {
-            val readingNewer = bookReadingProgress(
-                listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0), readingRecord(80.0, 200, resolved = resolved(3))),
-                null,
-            )!!
-            readingNewer.latestMedium shouldBe ProgressFormat.Reading
-            readingNewer.fraction shouldBe (.8f plusOrMinus 1e-4f)
-            readingNewer.chapterNumber shouldBe 3
-
-            val listeningNewer = bookReadingProgress(
-                listOf(listeningRecord(3600.0, 300, totalSeconds = 7200.0), readingRecord(80.0, 200)),
-                null,
-            )!!
-            listeningNewer.latestMedium shouldBe ProgressFormat.Listening
-            listeningNewer.fraction shouldBe (.5f plusOrMinus 1e-4f)
-
-            val tie = bookReadingProgress(
-                listOf(listeningRecord(3600.0, 200, totalSeconds = 7200.0), readingRecord(80.0, 200)),
-                null,
-            )!!
-            tie.latestMedium shouldBe ProgressFormat.Reading
-
-            val byClock = bookReadingProgress(
-                listOf(
-                    readingRecord(10.0, 0, updatedAt = 99, clientUpdatedAt = 10),
-                    listeningRecord(3600.0, 0, updatedAt = 20, clientUpdatedAt = null, totalSeconds = 7200.0),
+        it("TC-27: has the fraction of each kind of reading percent") {
+            checkAll(
+                Exhaustive.of(
+                    50.0 to .5f,
+                    null to null,
+                    Double.NaN to null,
+                    120.0 to 1f,
+                    -5.0 to 0f,
                 ),
-                null,
-            )!!
-            byClock.latestMedium shouldBe ProgressFormat.Listening
-
-            val cfiOnly = bookReadingProgress(
-                listOf(readingRecord(null, 300, cfi = "epubcfi(/6/8)"), listeningRecord(3600.0, 100, totalSeconds = 7200.0)),
-                null,
-            )!!
-            cfiOnly.fraction shouldBe null
-            cfiOnly.latestMedium shouldBe ProgressFormat.Reading
+            ) { (percent, fraction) ->
+                bookReadingProgress(listOf(readingRecord(percent, 100)), null)?.fraction shouldBe fraction
+            }
         }
 
-        it("TC-34: chapter number comes from the server, else from the alignment") {
-            val fromServer = bookReadingProgress(listOf(readingRecord(60.0, 100, resolved = resolved(6))), null)!!
-            fromServer.chapterNumber shouldBe 6
-
-            val ebook = chapters(0f, .25f, .5f, .75f)
-            val alignmentChapters = alignment(ebook = ebook)
-            bookReadingProgress(listOf(readingRecord(60.0, 100, resolved = null)), alignmentChapters)!!.chapterNumber shouldBe
-                (ebook.chapterAt(.6f)!!.index + 1)
-            bookReadingProgress(listOf(readingRecord(60.0, 100, resolved = resolved(0))), alignmentChapters)!!.chapterNumber shouldBe
-                (ebook.chapterAt(.6f)!!.index + 1)
-            bookReadingProgress(listOf(readingRecord(null, 100)), alignmentChapters)!!.chapterNumber shouldBe null
-            bookReadingProgress(listOf(readingRecord(60.0, 100)), null)!!.chapterNumber shouldBe null
-            bookReadingProgress(
-                listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0), readingRecord(50.0, 50)),
-                alignmentChapters,
-            )!!.chapterNumber shouldBe null
-            bookReadingProgress(listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0)), alignmentChapters)!!
-                .chapterNumber shouldBe null
+        it("TC-30: has an audio fraction only for each record with a known total") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(listeningRecord(3600.0, 100, totalSeconds = 7200.0), null, .5f),
+                    Triple(listeningRecord(3600.0, 100), alignment(audioTotal = 7200), .5f),
+                    Triple(listeningRecord(3600.0, 100), null, null),
+                    Triple(listeningRecord(3600.0, 100, totalSeconds = 0.0), null, null),
+                    Triple(listeningRecord(9000.0, 100, totalSeconds = 7200.0), null, 1f),
+                ),
+            ) { (record, chapters, fraction) ->
+                bookReadingProgress(listOf(record), chapters)?.fraction shouldBe fraction
+            }
         }
 
-        it("TC-35: audio fields survive a newer reading record") {
-            val progress = bookReadingProgress(
-                listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0), readingRecord(80.0, 200)),
-                null,
-            )!!
-            progress.audioFileId shouldBe 7L
-            progress.audioElapsedSeconds shouldBe 3600L
-            progress.audioTotalSeconds shouldBe 7200L
+        it("TC-31: follows the newest record by its clock, a tie going to Reading") {
+            checkAll(
+                Exhaustive.of(
+                    listOf(listeningRecord(3600.0, 100), readingRecord(80.0, 200)) to ProgressFormat.Reading,
+                    listOf(listeningRecord(3600.0, 300), readingRecord(80.0, 200)) to ProgressFormat.Listening,
+                    listOf(listeningRecord(3600.0, 200), readingRecord(80.0, 200)) to ProgressFormat.Reading,
+                    listOf(
+                        readingRecord(10.0, 0, updatedAt = 99, clientUpdatedAt = 10),
+                        listeningRecord(3600.0, 0, updatedAt = 20, clientUpdatedAt = null),
+                    ) to ProgressFormat.Listening,
+                ),
+            ) { (records, medium) ->
+                bookReadingProgress(records, null)?.latestMedium shouldBe medium
+            }
+        }
 
-            val fromChapters = bookReadingProgress(
-                listOf(listeningRecord(3600.0, 100, totalSeconds = null), readingRecord(80.0, 200)),
-                alignment(audioTotal = 7200),
-            )!!
-            fromChapters.audioTotalSeconds shouldBe 7200L
+        it("TC-34: numbers the chapter from the server, else the alignment, never for audio") {
+            val alignment = alignment(ebook = chapters(0f, .25f, .5f, .75f))
+
+            checkAll(
+                Exhaustive.of(
+                    listOf(readingRecord(60.0, 100, resolved = resolved(6))) to 6,
+                    listOf(readingRecord(60.0, 100, resolved = null)) to 3,
+                    listOf(readingRecord(60.0, 100, resolved = resolved(0))) to 3,
+                    listOf(listeningRecord(3600.0, 100), readingRecord(50.0, 50)) to null,
+                ),
+            ) { (records, number) ->
+                bookReadingProgress(records, alignment)?.chapterNumber shouldBe number
+            }
+        }
+
+        context("when a reading record is newer than a listening one") {
+            it("TC-35: keeps the audio fields") {
+                val records = listOf(listeningRecord(3600.0, 100, totalSeconds = 7200.0, bookFileId = 7L), readingRecord(80.0, 200))
+                val progress = bookReadingProgress(records, null)
+
+                progress?.audioFileId shouldBe 7L
+                progress?.audioElapsedSeconds shouldBe 3600L
+                progress?.audioTotalSeconds shouldBe 7200L
+            }
         }
     }
 })

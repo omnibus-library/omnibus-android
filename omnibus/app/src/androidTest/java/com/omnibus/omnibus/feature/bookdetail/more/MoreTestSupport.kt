@@ -29,7 +29,7 @@ const val MORE_HOST = "more-test-host"
  * A More menu entry for tests. [label] null emits no rows. A row runs [onClick] after closing the menu, like a real
  * entry that opens something. [overlay] is composed beside the disc.
  */
-class FakeEntry(
+class TestEntry(
     private val label: String?,
     private val enabled: Boolean = true,
     private val subLabel: String? = null,

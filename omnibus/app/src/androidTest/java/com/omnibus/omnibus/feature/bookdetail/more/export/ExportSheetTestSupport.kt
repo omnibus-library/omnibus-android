@@ -21,9 +21,6 @@ internal val downloader = CurrentUser(
     kindleEmail = "reader@kindle.com",
 )
 
-/** The same user without download permission. */
-internal val kindleOnlyUser = downloader.copy(canDownload = false)
-
 /** A file of [format] at [ordinal] in a book, of [sizeBytes]. */
 internal fun bookFile(format: String, sizeBytes: Long, ordinal: Int = 1): BookFile =
     BookFile(ordinal.toLong(), format, "book-$ordinal.$format", ordinal, null, sizeBytes, null)
@@ -33,8 +30,7 @@ internal fun bookWith(vararg files: BookFile): Book =
     testDetailBook(formats = files.map { it.format }.distinct()).copy(bookFiles = files.toList())
 
 internal val epubBook: Book = bookWith(bookFile("epub", 412_000))
-internal val pdfBook: Book = bookWith(bookFile("pdf", 412_000))
-internal val audioBook: Book = bookWith(bookFile("m4b", 138_000_000))
+
 internal val oversizeBook: Book = bookWith(bookFile("epub", 60_000_000))
 internal val epubAndAudioBook: Book = bookWith(bookFile("epub", 412_000), bookFile("m4b", 138_000_000, ordinal = 2))
 

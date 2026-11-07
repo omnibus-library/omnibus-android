@@ -2,139 +2,129 @@ package com.omnibus.omnibus.data.progress.local
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.omnibus.omnibus.data.library.local.FailingPreferencesDataStore
+import com.omnibus.omnibus.data.library.local.TestPreferencesDataStore
 import com.omnibus.omnibus.data.progress.ReadingPosition
+import com.omnibus.omnibus.data.progress.randomReadingPosition
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import java.io.File
-import java.io.IOException
-import kotlin.io.path.createTempDirectory
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
+
+/** Book 1's stored value is corrupt and book 2's is sound, written in the stored format. */
+private val CORRUPT_BOOK_1 = preferencesOf(
+    stringPreferencesKey("position.book-1") to "not json",
+    stringPreferencesKey("position.book-2") to """{"cfi":"epubcfi(/6/4)","percent":40,"clientUpdatedAt":1700000000}""",
+)
 
 class DefaultReadingPositionStoreTest : DescribeSpec({
 
-    lateinit var dataStoreDir: File
-    lateinit var dataStoreScope: CoroutineScope
-    lateinit var dataStore: DataStore<Preferences>
-    lateinit var store: DefaultReadingPositionStore
-
-    fun openDataStore(scope: CoroutineScope): DataStore<Preferences> = PreferenceDataStoreFactory.create(
-        scope = scope,
-        produceFile = { File(dataStoreDir, "reading_positions.preferences_pb") },
-    )
-
-    /** Replaces every stored value with [values], written as raw string keys. */
-    suspend fun seed(vararg values: Pair<String, String>) {
-        dataStore.updateData {
-            mutablePreferencesOf().apply {
-                values.forEach { (name, value) -> this[stringPreferencesKey(name)] = value }
-            }
-        }
-    }
+    fun sut(dataStore: DataStore<Preferences> = TestPreferencesDataStore()) = DefaultReadingPositionStore(dataStore)
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        dataStoreDir = createTempDirectory("reading-position-test").toFile()
-        dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        dataStore = openDataStore(dataStoreScope)
-        store = DefaultReadingPositionStore(dataStore)
-    }
+    describe("reading a stored position") {
 
-    afterEach {
-        dataStoreScope.cancel()
-        dataStoreDir.deleteRecursively()
-    }
+        context("when a position was saved") {
+            it("TC-15: reads it back, with or without its nullable fields") {
+                checkAll(
+                    Exhaustive.of(
+                        randomReadingPosition().copy(cfi = randomString(), percent = 40),
+                        randomReadingPosition().copy(cfi = randomString(), percent = null),
+                        randomReadingPosition().copy(cfi = null, percent = 57),
+                    ),
+                ) { position ->
+                    val store = sut()
 
-    describe("save and getPositionFlow") {
+                    store.save(position)
 
-        it("TC-15: a saved position is read back, nullable fields included, and the last write wins") {
-            val rows = listOf(
-                ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000),
-                ReadingPosition("book-2", "epubcfi(/6/8)", null, 1_700_000_001),
-                ReadingPosition("book-3", null, 57, 1_700_000_002),
-            )
-            rows.forEach { position ->
-                store.save(position)
-                store.getPositionFlow(position.bookUuid).first() shouldBe position
+                    store.getPositionFlow(position.bookUuid).first() shouldBe position
+                }
+            }
+        }
+
+        context("when a book was saved twice") {
+            it("TC-15: reads the last write") {
+                val store = sut()
+                val first = randomReadingPosition()
+                val last = randomReadingPosition().copy(bookUuid = first.bookUuid)
+                store.save(first)
+
+                store.save(last)
+
+                store.getPositionFlow(first.bookUuid).first() shouldBe last
+            }
+        }
+
+        context("when only another book was saved") {
+            it("TC-17: reads null") {
+                val store = sut()
+                val saved = randomReadingPosition()
+
+                store.save(saved)
+
+                store.getPositionFlow(saved.bookUuid + "-other").first().shouldBeNull()
+            }
+        }
+
+        context("when another book is saved later") {
+            it("TC-17: leaves this book's position") {
+                val store = sut()
+                val saved = randomReadingPosition()
+                store.save(saved)
+
+                store.save(randomReadingPosition().copy(bookUuid = saved.bookUuid + "-other"))
+
+                store.getPositionFlow(saved.bookUuid).first() shouldBe saved
+            }
+        }
+
+        context("when a stored value is corrupt") {
+            it("TC-19: reads null for that book") {
+                sut(TestPreferencesDataStore(CORRUPT_BOOK_1)).getPositionFlow("book-1").first().shouldBeNull()
             }
 
-            val second = ReadingPosition("book-1", "epubcfi(/6/12)", 60, 1_700_000_100)
-            store.save(second)
-            store.getPositionFlow("book-1").first() shouldBe second
+            it("TC-19: still reads other books") {
+                sut(TestPreferencesDataStore(CORRUPT_BOOK_1)).getPositionFlow("book-2").first() shouldBe
+                    ReadingPosition("book-2", "epubcfi(/6/4)", 40, 1_700_000_000)
+            }
         }
 
-        it("TC-17: an unknown book reads null, and books are independent") {
-            store.save(ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000))
+        context("when a stored value has unknown fields") {
+            it("TC-19: ignores them") {
+                val stored = preferencesOf(
+                    stringPreferencesKey("position.book-1") to """{"percent":40,"clientUpdatedAt":1700000000,"foo":1}""",
+                )
 
-            store.getPositionFlow("book-2").first().shouldBeNull()
-
-            store.save(ReadingPosition("book-2", "epubcfi(/6/8)", 10, 1_700_000_005))
-
-            store.getPositionFlow("book-1").first() shouldBe
-                ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000)
+                sut(TestPreferencesDataStore(stored)).getPositionFlow("book-1").first() shouldBe
+                    ReadingPosition("book-1", null, 40, 1_700_000_000)
+            }
         }
 
-        it("TC-19: a corrupt value reads null for its book only, and unknown fields are ignored") {
-            seed(
-                "position.book-1" to "not json",
-                "position.book-2" to """{"cfi":"epubcfi(/6/4)","percent":40,"clientUpdatedAt":1700000000,"foo":1}""",
-            )
-
-            store.getPositionFlow("book-1").first().shouldBeNull()
-            store.getPositionFlow("book-2").first() shouldBe
-                ReadingPosition("book-2", "epubcfi(/6/4)", 40, 1_700_000_000)
+        context("when the read fails") {
+            it("TC-21: emits null once") {
+                sut(FailingPreferencesDataStore()).getPositionFlow(randomString()).toList() shouldBe listOf(null)
+            }
         }
+    }
 
-        it("TC-20: the stored key and the JSON field names are stable and nulls are omitted") {
-            store.save(ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000))
-            store.save(ReadingPosition("book-2", null, 57, 1_700_000_001))
+    describe("saving a position") {
 
-            val prefs = dataStore.data.first()
-
-            val full = prefs[stringPreferencesKey("position.book-1")]!!
-            Json.parseToJsonElement(full).jsonObject.keys shouldContainExactlyInAnyOrder
-                listOf("cfi", "percent", "clientUpdatedAt")
-
-            val percentOnly = prefs[stringPreferencesKey("position.book-2")]!!
-            Json.parseToJsonElement(percentOnly).jsonObject.keys shouldContainExactlyInAnyOrder
-                listOf("percent", "clientUpdatedAt")
-
-            prefs.asMap().keys.map { it.name }.toSet() shouldContainExactlyInAnyOrder
-                listOf("position.book-1", "position.book-2")
-        }
-
-        it("TC-21: IO failures are swallowed: the read emits null and the write does not throw") {
-            val failingStore = DefaultReadingPositionStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { throw IOException("boom") }
-
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IOException("boom")
-                },
-            )
-
-            failingStore.getPositionFlow("book-1").toList() shouldBe listOf(null)
-
-            shouldNotThrowAny {
-                failingStore.save(ReadingPosition("book-1", "epubcfi(/6/4)", 40, 1_700_000_000))
+        context("when the write fails") {
+            it("TC-21: does not throw") {
+                shouldNotThrowAny { sut(FailingPreferencesDataStore()).save(randomReadingPosition()) }
             }
         }
     }

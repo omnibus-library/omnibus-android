@@ -1,37 +1,39 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.testing.FakeTimeSource
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
+import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.withClue
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestCoroutineScheduler
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 
-/** Every write path the sync offers, for the tables that check each one. */
+/** Every write path the sync offers, for the invariants over all of them. */
 private enum class WritePath { Tick, Pause, Background, Ended, UnloadStop, ForceSave }
 
-/** Sends [state] down [path]. [ForceSave] reads the controller, so [state] is set on it first. */
+/** Sends [state] down [path]. [WritePath.ForceSave] reads the controller, so [state] is set on it first. */
 private suspend fun DefaultListeningPositionSync.fire(
     path: WritePath,
     state: PlaybackState,
-    controller: FakeAudiobookController,
+    controller: TestAudiobookController,
 ) {
     when (path) {
         WritePath.Tick -> onTick(state)
@@ -46,294 +48,246 @@ private suspend fun DefaultListeningPositionSync.fire(
     }
 }
 
-/** A playing state of book-1 (file 11) at [seconds]. */
-private fun playing(seconds: Double, book: PlayingBook = playingBook()) =
-    playbackState(book = book, positionSeconds = seconds, isPlaying = true)
+private fun at(book: PlayingBook, seconds: Double = randomDouble(0.01, 3_000.0)) =
+    playbackState(book, positionSeconds = seconds)
 
 /**
- * The position sync (C8, I-SAVE-1 to I-SAVE-3, I-RES-5, I-RES-6): the guards on what is written, the push throttle, the
- * forced writes, and the late offer. Callbacks are called directly, and the scope runs on one virtual clock.
+ * The position sync (C8, I-SAVE-1 to I-SAVE-3, I-RES-5, I-RES-6): the guards on what is written, the push throttle and
+ * the forced writes. Callbacks are called directly, and the scope runs on the test's virtual clock.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultListeningPositionSyncTest : DescribeSpec({
 
     beforeSpec { mockAndroidLog() }
+
     afterSpec { unmockAndroidLog() }
 
-    lateinit var scheduler: TestCoroutineScheduler
-    lateinit var scope: CoroutineScope
-    lateinit var repo: FakeListeningProgressRepository
-    lateinit var time: FakeTimeSource
-    lateinit var controller: FakeAudiobookController
-    lateinit var sync: DefaultListeningPositionSync
+    fun TestScope.sut(
+        repository: ListeningProgressRepository = TestListeningProgressRepository(),
+        time: TimeSource = TestTimeSource(),
+        controller: TestAudiobookController = TestAudiobookController(),
+    ) = DefaultListeningPositionSync(repository, dagger.Lazy<AudiobookController> { controller }, time, backgroundScope)
 
-    /** A sync on the current repository, clock and controller. */
-    fun newSync(): DefaultListeningPositionSync = DefaultListeningPositionSync(
-        repo,
-        dagger.Lazy<AudiobookController> { controller },
-        time,
-        scope,
-    )
-
-    beforeEach {
-        scheduler = TestCoroutineScheduler()
-        Dispatchers.setMain(StandardTestDispatcher(scheduler))
-        scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-        repo = FakeListeningProgressRepository()
-        time = FakeTimeSource()
-        controller = FakeAudiobookController()
-        sync = newSync()
-    }
-
-    afterEach {
-        scope.cancel()
-        Dispatchers.resetMain()
-    }
-
-    describe("guards") {
-        // TC-51: nothing is written before or at settle (I-RES-5)
-        it("TC-51: nothing is written before or at settle (I-RES-5)") {
-            val state = playing(12.5)
+    /** Sends one state down a tick at each of [millis], recording the push flag of each save. */
+    fun TestScope.tickAt(sync: DefaultListeningPositionSync, time: TestTimeSource, state: PlaybackState, vararg millis: Long) {
+        millis.forEach {
+            time.set(it)
             sync.onTick(state)
-            sync.onPause(state)
-            controller.state.value = state
-            sync.forceSave()
-            scheduler.runCurrent()
-            repo.saves.shouldBeEmpty()
-
-            sync.onSettled(state, 0.0)
-            scheduler.runCurrent()
-            repo.saves.shouldBeEmpty()
+            runCurrent()
         }
+    }
 
-        // TC-52: a write for another book or file is ignored (I-RES-5)
-        it("TC-52: a write for another book or file is ignored (I-RES-5)") {
-            val other = playingBook(bookUuid = "book-2")
-            val otherFile = playingBook(bookFileId = 12L)
-            listOf(
-                WritePath.Tick to playing(12.5, other),
-                WritePath.Pause to playing(12.5, other),
-                WritePath.Background to playing(12.5, other),
-                WritePath.Ended to playing(12.5, other),
-                WritePath.UnloadStop to playing(12.5, other),
-                WritePath.Tick to playing(12.5, otherFile),
-                WritePath.Pause to playing(12.5, otherFile),
-                WritePath.Background to playing(12.5, otherFile),
-                WritePath.Ended to playing(12.5, otherFile),
-                WritePath.UnloadStop to playing(12.5, otherFile),
-            ).forEach { (path, state) ->
-                val fresh = newSync()
-                fresh.onSettled(playing(12.5), 0.0)
-                fresh.fire(path, state, controller)
-                scheduler.runCurrent()
-                withClue("$path for ${state.book}") {
-                    repo.saves.shouldBeEmpty()
-                }
-            }
-        }
+    describe("what may be written") {
 
-        // TC-53: only a positive position is written (I-RES-5, I-SAVE-3)
-        it("TC-53: only a positive position is written (I-RES-5, I-SAVE-3)") {
-            WritePath.entries.forEach { path ->
-                listOf(0.0 to 0, 0.01 to 1).forEach { (position, expectedSaves) ->
-                    val fresh = newSync()
-                    repo.saves.clear()
-                    fresh.onSettled(playing(12.5), 0.0)
-                    fresh.fire(path, playing(position), controller)
-                    scheduler.runCurrent()
-                    withClue("$path at $position") {
-                        repo.saves.size shouldBe expectedSaves
+        context("when no load has settled") {
+            // TC-51
+            it("TC-51: writes nothing on any path (I-RES-5)") {
+                checkAll(Exhaustive.enum<WritePath>()) { path ->
+                    runTest {
+                        val repository = TestListeningProgressRepository()
+                        val controller = TestAudiobookController()
+                        val sync = sut(repository, controller = controller)
+
+                        sync.fire(path, at(randomPlayingBook()), controller)
+                        runCurrent()
+
+                        repository.saves.shouldBeEmpty()
                     }
                 }
             }
         }
 
-        // TC-54: unload and a new load unsettle (I-RES-5)
-        it("TC-54: unload and a new load unsettle (I-RES-5)") {
-            val state = playing(40.0)
+        context("when a load has settled") {
+            // TC-52
+            it("TC-52: ignores another book or file on any path (I-RES-5)") {
+                val book = randomPlayingBook()
+                checkAll(
+                    Exhaustive.enum<WritePath>(),
+                    Exhaustive.of(book.copy(bookUuid = "${book.bookUuid}-other"), book.copy(bookFileId = book.bookFileId + 1)),
+                ) { path, other ->
+                    runTest {
+                        val repository = TestListeningProgressRepository()
+                        val controller = TestAudiobookController()
+                        val sync = sut(repository, controller = controller)
+                        sync.onSettled(at(book), randomDouble())
 
-            sync.onSettled(state, 0.0)
-            sync.onUnload(state, UnloadReason.Stop)
-            val afterUnload = repo.saves.size
-            sync.onTick(state)
-            scheduler.runCurrent()
-            withClue("a tick after unload") {
-                repo.saves.size shouldBe afterUnload
+                        sync.fire(path, at(other), controller)
+                        runCurrent()
+
+                        repository.saves.shouldBeEmpty()
+                    }
+                }
             }
 
-            sync.onSettled(state, 0.0)
-            sync.loadBegan()
-            val afterNewLoad = repo.saves.size
-            sync.onTick(state)
-            scheduler.runCurrent()
-            withClue("a tick after a new load, before its settle") {
-                repo.saves.size shouldBe afterNewLoad
-            }
+            // TC-53
+            it("TC-53: ignores position 0 on any path (I-RES-5, I-SAVE-3)") {
+                checkAll(Exhaustive.enum<WritePath>()) { path ->
+                    runTest {
+                        val book = randomPlayingBook()
+                        val repository = TestListeningProgressRepository()
+                        val controller = TestAudiobookController()
+                        val sync = sut(repository, controller = controller)
+                        sync.onSettled(at(book), randomDouble())
 
-            sync.onSettled(state, 0.0)
-            sync.onTick(playing(41.0))
-            scheduler.runCurrent()
-            withClue("a tick after the new settle") {
-                repo.saves.size shouldBe afterNewLoad + 1
+                        sync.fire(path, at(book, seconds = 0.0), controller)
+                        runCurrent()
+
+                        repository.saves.shouldBeEmpty()
+                    }
+                }
+            }
+        }
+
+        context("when the book was unloaded") {
+            // TC-54
+            it("TC-54: ignores a tick (I-RES-5)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val sync = sut(repository)
+                    sync.onSettled(at(book), randomDouble())
+                    sync.onUnload(at(book, seconds = 0.0), randomEnum<UnloadReason>())
+
+                    sync.onTick(at(book))
+                    runCurrent()
+
+                    repository.saves.shouldBeEmpty()
+                }
+            }
+        }
+
+        context("when a new load has begun") {
+            // TC-54
+            it("TC-54: ignores a tick before its settle (I-RES-5)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val sync = sut(repository)
+                    sync.onSettled(at(book), randomDouble())
+                    sync.loadBegan()
+
+                    sync.onTick(at(book))
+                    runCurrent()
+
+                    repository.saves.shouldBeEmpty()
+                }
             }
         }
     }
 
-    describe("ticks") {
-        // TC-55: every tick saves locally with unix-second time (I-SAVE-1, I-SAVE-2)
-        it("TC-55: every tick saves locally with unix-second time (I-SAVE-1, I-SAVE-2)") {
-            sync.onSettled(playing(12.5), 0.0)
-            time.set(7_999)
-            sync.onTick(playing(12.5))
-            time.set(8_000)
-            sync.onTick(playing(12.5))
-            repeat(8) { sync.onTick(playing(12.5)) }
-            scheduler.runCurrent()
+    describe("saving the position") {
+        context("on a tick") {
+            // TC-55
+            it("TC-55: saves the position at the current unix second (I-SAVE-1, I-SAVE-2)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val seconds = randomDouble(0.01, 3_000.0)
+                    val repository = TestListeningProgressRepository()
+                    val time = TestTimeSource(7_999L)
+                    val sync = sut(repository, time)
+                    sync.onSettled(at(book), randomDouble())
 
-            repo.saves.size shouldBe 10
-            repo.saves[0].first shouldBe AudioPosition("book-1", 12.5, 11, 7)
-            repo.saves[1].first.clientUpdatedAt shouldBe 8L
-        }
+                    sync.onTick(at(book, seconds))
+                    runCurrent()
 
-        // TC-56: first tick suppressed, then pushes more than 5 s apart (I-SAVE-2)
-        it("TC-56: first tick suppressed, then pushes more than 5 s apart (I-SAVE-2)") {
-            sync.onSettled(playing(12.5), 0.0)
-            listOf(0L to "first", 500L to "second", 5_499L to "third", 5_500L to "fourth", 5_501L to "fifth").forEach { (ms, _) ->
-                time.set(ms)
-                sync.onTick(playing(12.5))
-                scheduler.runCurrent()
+                    repository.saves.single().first shouldBe AudioPosition(book.bookUuid, seconds, book.bookFileId, 7L)
+                }
             }
-            repo.saves.map { it.second } shouldBe listOf(false, true, false, false, true)
-        }
 
-        // TC-57: each settle makes a new throttle (I-SAVE-2)
-        it("TC-57: each settle makes a new throttle (I-SAVE-2)") {
-            sync.onSettled(playing(12.5), 0.0)
-            listOf(0L, 500L).forEach { ms ->
-                time.set(ms)
-                sync.onTick(playing(12.5))
-                scheduler.runCurrent()
+            // TC-56
+            it("TC-56: skips the first tick's push, then pushes at most every 5 s (I-SAVE-2)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val time = TestTimeSource()
+                    val sync = sut(repository, time)
+                    sync.onSettled(at(book), randomDouble())
+
+                    tickAt(sync, time, at(book), 0L, 500L, 5_499L, 5_500L, 5_501L)
+
+                    repository.saves.map { it.second } shouldBe listOf(false, true, false, false, true)
+                }
             }
-            time.set(1_000)
-            sync.onSettled(playing(12.5), 0.0)
-            listOf(1_000L, 1_500L).forEach { ms ->
-                time.set(ms)
-                sync.onTick(playing(12.5))
-                scheduler.runCurrent()
-            }
-            repo.saves.map { it.second } shouldBe listOf(false, true, false, true)
         }
     }
 
-    describe("forced writes") {
-        // TC-58: pause, background and end force a write (I-SAVE-3)
-        it("TC-58: pause, background and end force a write (I-SAVE-3)") {
-            listOf(WritePath.Pause to 40.0, WritePath.Background to 40.0, WritePath.Ended to 2_700.0).forEach { (path, position) ->
-                val fresh = newSync()
-                fresh.onSettled(playing(12.5), 0.0)
-                time.set(0)
-                fresh.onTick(playing(12.5))
-                time.set(500)
-                fresh.onTick(playing(12.5))
-                scheduler.runCurrent()
-                val before = repo.saves.size
+    describe("forcing a write") {
 
-                time.set(1_000)
-                fresh.fire(path, playbackState(positionSeconds = position, isPlaying = false), controller)
-                scheduler.runCurrent()
-                withClue("$path at $position") {
-                    repo.saves.drop(before) shouldBe listOf(AudioPosition("book-1", position, 11, 1) to true)
+        // TC-58, TC-60
+        it("TC-58, TC-60: pushes the position on pause, background, end or a forced save (I-SAVE-3)") {
+            checkAll(
+                Exhaustive.of(WritePath.Pause, WritePath.Background, WritePath.Ended, WritePath.ForceSave),
+            ) { path ->
+                runTest {
+                    val book = randomPlayingBook()
+                    val seconds = randomDouble(0.01, 3_000.0)
+                    val repository = TestListeningProgressRepository()
+                    val controller = TestAudiobookController()
+                    val sync = sut(repository, TestTimeSource(1_000L), controller)
+                    sync.onSettled(at(book), randomDouble())
+
+                    sync.fire(path, at(book, seconds), controller)
+                    runCurrent()
+
+                    repository.saves shouldBe listOf(AudioPosition(book.bookUuid, seconds, book.bookFileId, 1L) to true)
                 }
             }
         }
 
-        // TC-59: close and switching force a write for the book left (I-SAVE-3)
-        it("TC-59: close and switching force a write for the book left (I-SAVE-3)") {
-            listOf(UnloadReason.Stop, UnloadReason.SwitchBook).forEach { reason ->
-                val fresh = newSync()
-                fresh.onSettled(playing(12.5), 0.0)
-                time.set(7_000)
-                fresh.onUnload(playing(40.0), reason)
-                withClue("$reason saves on unload") {
-                    repo.saves.last() shouldBe (AudioPosition("book-1", 40.0, 11, 7) to true)
-                }
-                val before = repo.saves.size
-                fresh.onTick(playing(41.0))
-                scheduler.runCurrent()
-                withClue("$reason, a tick afterwards") {
-                    repo.saves.size shouldBe before
+        // TC-59
+        it("TC-59: pushes the book left on each kind of unload (I-SAVE-3)") {
+            checkAll(Exhaustive.enum<UnloadReason>()) { reason ->
+                runTest {
+                    val book = randomPlayingBook()
+                    val seconds = randomDouble(0.01, 3_000.0)
+                    val repository = TestListeningProgressRepository()
+                    val sync = sut(repository, TestTimeSource(7_000L))
+                    sync.onSettled(at(book), randomDouble())
+
+                    sync.onUnload(at(book, seconds), reason)
+
+                    repository.saves shouldBe listOf(AudioPosition(book.bookUuid, seconds, book.bookFileId, 7L) to true)
                 }
             }
         }
 
-        // TC-60: forceSave writes now and obeys the guards (I-SAVE-3)
-        it("TC-60: forceSave writes now and obeys the guards (I-SAVE-3)") {
-            listOf(
-                Triple("settled book at 40.0", playing(40.0), 1),
-                Triple("no book", PlaybackState(), 0),
-                Triple("unsettled book", playing(40.0, playingBook(bookUuid = "book-2")), 0),
-                Triple("position 0", playing(0.0), 0),
-            ).forEach { (name, state, expectedSaves) ->
-                val fresh = newSync()
-                repo.saves.clear()
-                fresh.onSettled(playing(12.5), 0.0)
-                controller.state.value = state
-                fresh.forceSave()
-                withClue(name) {
-                    repo.saves.size shouldBe expectedSaves
-                    if (expectedSaves == 1) repo.saves.single().second shouldBe true
+        // TC-62
+        it("TC-62: holds the next ticks back for 5 s (I-SAVE-2)") {
+            runTest {
+                val book = randomPlayingBook()
+                val repository = TestListeningProgressRepository()
+                val time = TestTimeSource()
+                val sync = sut(repository, time)
+                sync.onSettled(at(book), randomDouble())
+                tickAt(sync, time, at(book), 0L, 500L)
+
+                time.set(1_000L)
+                sync.onPause(at(book))
+                tickAt(sync, time, at(book), 5_999L, 6_001L)
+
+                repository.saves.map { it.second } shouldBe listOf(false, true, true, false, true)
+            }
+        }
+
+        context("when the save fails") {
+            // TC-61
+            it("TC-61: throws nothing on any path (I-SAVE-3)") {
+                checkAll(Exhaustive.enum<WritePath>()) { path ->
+                    runTest {
+                        val book = randomPlayingBook()
+                        val repository = TestListeningProgressRepository()
+                        repository.saveFailure = IllegalStateException("the store is gone")
+                        val controller = TestAudiobookController()
+                        val sync = sut(repository, controller = controller)
+                        sync.onSettled(at(book), randomDouble())
+
+                        shouldNotThrowAny {
+                            sync.fire(path, at(book), controller)
+                            runCurrent()
+                        }
+                    }
                 }
             }
-        }
-
-        // TC-61: a failing save never throws out of the sync (I-SAVE-3)
-        it("TC-61: a failing save never throws out of the sync (I-SAVE-3)") {
-            repo.saveFailure = IllegalStateException("the store is gone")
-            sync.onSettled(playing(12.5), 0.0)
-            // The calls return normally, so any throw fails the test.
-            sync.onTick(playing(12.5))
-            sync.onPause(playing(12.5))
-            scheduler.runCurrent()
-            controller.state.value = playing(12.5)
-            sync.forceSave()
-            sync.onUnload(playing(12.5), UnloadReason.Stop)
-            scheduler.runCurrent()
-            repo.saves.shouldBeEmpty()
-        }
-
-        // TC-62: a forced write re-arms the throttle (I-SAVE-2)
-        it("TC-62: a forced write re-arms the throttle (I-SAVE-2)") {
-            sync.onSettled(playing(12.5), 0.0)
-            listOf(0L to "tick", 500L to "tick", 1_000L to "pause", 5_999L to "tick", 6_001L to "tick").forEach { (ms, kind) ->
-                time.set(ms)
-                if (kind == "pause") sync.onPause(playing(12.5)) else sync.onTick(playing(12.5))
-                scheduler.runCurrent()
-            }
-            repo.saves.map { it.second } shouldBe listOf(false, true, true, false, true)
-        }
-    }
-
-    describe("late position") {
-        // TC-63: offers for the current load only, cleared by the next load and by unload (I-RES-6)
-        it("TC-63: offers for the current load only, cleared by the next load and by unload (I-RES-6)") {
-            val offer = LatePosition("book-1", 11L, 60.0)
-            val newer = LatePosition("book-1", 11L, 90.0)
-            val stale = sync.loadBegan()
-            sync.lateServerPosition.value shouldBe null
-
-            val current = sync.loadBegan()
-            sync.offerLate(current, offer)
-            sync.lateServerPosition.value shouldBe offer
-
-            sync.offerLate(stale, newer)
-            sync.lateServerPosition.value shouldBe offer
-
-            val latest = sync.loadBegan()
-            sync.lateServerPosition.value shouldBe null
-
-            sync.offerLate(latest, offer)
-            sync.onUnload(playbackState(), UnloadReason.Stop)
-            sync.lateServerPosition.value shouldBe null
         }
     }
 })

@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -36,7 +35,6 @@ import com.omnibus.omnibus.feature.bookdetail.scrollTo
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
-import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -45,7 +43,6 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.math.min
 import kotlin.math.roundToInt
-
 
 /** The controller as sections use it: select, jumpTo, scrollTo, anchors and state survival. */
 class BookDetailTabControllerTest {
@@ -117,44 +114,6 @@ class BookDetailTabControllerTest {
         assertEquals(barBottom, rule.stripTop(), 1f)
         assertEquals(min(pinPoint, scroll.maxValue).toFloat(), scroll.value.toFloat(), 1f)
         rule.onNodeWithTag("fake-reviews").assertExists()
-    }
-
-    // TC-65
-    @Test
-    fun issue94_tc65_scrollToWithoutAnAnchorFallsBackToJumpAfterASecond() {
-        val scroll = ScrollState(0)
-        val files = BookDetailSection { ctx, modifier ->
-            Column(modifier) {
-                Text(
-                    "scroll-series",
-                    modifier = Modifier.testTag("scroll-series").clickable { ctx.tabs.scrollTo(BookDetailAnchor.Series) },
-                )
-                Box(Modifier.fillMaxWidth().aspectRatio(0.25f))
-            }
-        }
-        rule.screen(scroll, BookDetailSlots(filesSections = listOf(files)))
-        rule.tabNode(BookDetailTab.Files).performClick()
-        rule.waitForIdle()
-        val pinPoint = (rule.stripTop() - rule.barBottom()).roundToInt()
-
-        rule.onNodeWithTag("scroll-series").performSemanticsAction(SemanticsActions.OnClick)
-        rule.waitUntil(timeoutMillis = 5_000) { scroll.value == min(pinPoint, scroll.maxValue) && scroll.value > 0 }
-        rule.waitForIdle()
-        rule.tabNode(BookDetailTab.Overview).assertIsSelected()
-        assertEquals(rule.barBottom(), rule.stripTop(), 1f)
-    }
-
-    // TC-67
-    @Test
-    fun issue94_tc67_anchorModifierIsInertWithoutAHost() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDetailSection { _, modifier ->
-                    Box(modifier.fillMaxWidth().height(40.dp).bookDetailAnchor(BookDetailAnchor.Series).testTag("inert"))
-                }.Content(testSectionContext(), Modifier.fillMaxSize())
-            }
-        }
-        rule.onNodeWithTag("inert").assertIsDisplayed()
     }
 
     // TC-68

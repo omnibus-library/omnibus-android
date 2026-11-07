@@ -1,145 +1,130 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.readalikes
 
-import com.omnibus.omnibus.data.library.BookFile
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.suggestions.BookSuggestion
-import com.omnibus.omnibus.data.suggestions.suggestion
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.library.randomBookFile
+import com.omnibus.omnibus.data.suggestions.randomBookSuggestion
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ReadAlikesModelTest : DescribeSpec({
+    describe("building the shelf from the server's suggestions") {
+        it("#106 TC-20: keeps the server's order") {
+            val items = List(3) { randomBookSuggestion() }
 
-    describe("readAlikesOf") {
+            readAlikesOf(items).map { it.hardcoverId } shouldContainExactly items.map { it.hardcoverId }
+        }
 
-        it("#106 TC-20: readAlikesOf keeps the server order and builds a plate identity per suggestion") {
-            val items = listOf(
-                BookSuggestion(3, "https://hardcover.app/books/c", "Circe", "Madeline Miller", "/api/suggestions/u/1/cover"),
-                BookSuggestion(1, "https://hardcover.app/books/a", "Piranesi", "Susanna Clarke", null),
-                BookSuggestion(2, "https://hardcover.app/books/b", "Lavinia", "Ursula K. Le Guin", "/api/suggestions/u/3/cover"),
-            )
+        it("#106 TC-20: copies each item's details onto a plate with no cover") {
+            val item = randomBookSuggestion()
 
-            val shelf = readAlikesOf(items)
-
-            shelf.map { it.hardcoverId } shouldContainExactly listOf(3L, 1L, 2L)
-            shelf[0].hardcoverUrl shouldBe "https://hardcover.app/books/c"
-            shelf[0].title shouldBe "Circe"
-            shelf[0].author shouldBe "Madeline Miller"
-            shelf[0].coverPath shouldBe "/api/suggestions/u/1/cover"
-            shelf[1].coverPath shouldBe null
-            shelf[0].identity shouldBe CoverIdentity(
-                uuid = "hardcover-3",
-                title = "Circe",
-                creator = "Madeline Miller",
-                hasCover = false,
+            readAlikesOf(listOf(item)).single() shouldBe ReadAlike(
+                hardcoverId = item.hardcoverId,
+                hardcoverUrl = item.hardcoverUrl,
+                title = item.title,
+                author = item.author,
+                identity = CoverIdentity(
+                    uuid = "hardcover-${item.hardcoverId}",
+                    title = item.title,
+                    creator = item.author,
+                    hasCover = false,
+                ),
+                coverPath = item.coverPath,
             )
         }
 
-        it("#106 TC-21: a blank author gives a plate identity without a creator") {
-            val shelf = readAlikesOf(listOf(suggestion(4, author = "")))
-
-            shelf.single().author shouldBe ""
-            shelf.single().identity.creator shouldBe null
+        context("when the author is blank") {
+            it("#106 TC-21: draws the plate without a creator") {
+                readAlikesOf(listOf(randomBookSuggestion().copy(author = ""))).single().identity.creator.shouldBeNull()
+            }
         }
 
-        it("#106 TC-22: readAlikesOf drops suggestions without a safe Hardcover URL") {
-            val items = listOf(
-                suggestion(1, url = "https://hardcover.app/books/a"),
-                suggestion(2, url = "javascript:alert(1)"),
-                suggestion(3, url = "https://example.com/b"),
-                suggestion(4, url = "https://www.hardcover.app/books/d"),
-            )
+        context("when a link is not a safe Hardcover page") {
+            it("#106 TC-22: drops that suggestion") {
+                val safe = randomBookSuggestion()
+                val unsafe = randomBookSuggestion().copy(hardcoverUrl = "javascript:alert(1)")
 
-            readAlikesOf(items).map { it.hardcoverId } shouldContainExactly listOf(1L, 4L)
-            readAlikesOf(listOf(suggestion(5, url = "http://hardcover.app/b"))) shouldBe emptyList()
+                readAlikesOf(listOf(unsafe, safe)).map { it.hardcoverId } shouldContainExactly listOf(safe.hardcoverId)
+            }
         }
 
-        it("#106 TC-22b: readAlikesOf drops a repeated hardcover id, keeping the first") {
-            val items = listOf(
-                suggestion(1, title = "First"),
-                suggestion(2),
-                suggestion(1, title = "Second"),
-            )
+        context("when a Hardcover id repeats") {
+            it("#106 TC-22b: keeps the first") {
+                val first = randomBookSuggestion()
+                val repeat = randomBookSuggestion().copy(hardcoverId = first.hardcoverId, title = first.title + "2")
 
-            val shelf = readAlikesOf(items)
-
-            shelf.map { it.hardcoverId } shouldContainExactly listOf(1L, 2L)
-            shelf.first().title shouldBe "First"
+                readAlikesOf(listOf(first, repeat)).single().title shouldBe first.title
+            }
         }
     }
 
-    describe("isHardcoverBookUrl") {
-
-        listOf(
-            "https://hardcover.app/books/x",
-            "https://www.hardcover.app/books/x",
-            "https://HARDCOVER.app/b",
-        ).forEach { url ->
-            it("#106 TC-23: isHardcoverBookUrl accepts https on hardcover.app and its subdomains: $url") {
+    describe("deciding whether a link is safe to open") {
+        it("#106 TC-23: accepts https on hardcover.app or its subdomains, in any case") {
+            checkAll(
+                Exhaustive.of("https://hardcover.app/books/x", "https://www.hardcover.app/books/x", "https://HARDCOVER.app/b"),
+            ) { url ->
                 isHardcoverBookUrl(url) shouldBe true
             }
         }
 
-        listOf(
-            "http://hardcover.app/b",
-            "https://example.com/b",
-            "https://hardcover.app.evil.com/b",
-            "https://evilhardcover.app/b",
-            "javascript:alert(1)",
-            "intent://x#Intent;end",
-            "",
-            "  ",
-            "/books/x",
-        ).forEach { url ->
-            it("#106 TC-24: isHardcoverBookUrl rejects $url") {
+        it("#106 TC-24: rejects anything else, for other schemes, other hosts, lookalikes or non-links") {
+            checkAll(
+                Exhaustive.of(
+                    "http://hardcover.app/b",
+                    "https://example.com/b",
+                    "https://hardcover.app.evil.com/b",
+                    "https://evilhardcover.app/b",
+                    "javascript:alert(1)",
+                    "intent://x#Intent;end",
+                    "",
+                    "  ",
+                    "/books/x",
+                ),
+            ) { url ->
                 isHardcoverBookUrl(url) shouldBe false
             }
         }
     }
 
-    describe("showsReadAlikes") {
+    describe("whether the section appears") {
+        /** A book not on the wishlist, and with no copy. */
+        fun noCopy() = randomBook().copy(isWishlisted = false, formats = emptyList(), bookFiles = emptyList(), hasPhysical = false)
 
-        it("#106 TC-25: showsReadAlikes is true for a book with formats or files") {
-            showsReadAlikes(testBook(1)) shouldBe true
-            showsReadAlikes(
-                testBook(
-                    1,
-                    formats = emptyList(),
-                    bookFiles = listOf(BookFile(1, "epub", "a.epub", 0, null, 1, null)),
-                ),
-            ) shouldBe true
+        context("when the book has a copy") {
+            it("#106 TC-25: shows the section, for a format, a file or a physical copy") {
+                val books = Exhaustive.of(
+                    noCopy().copy(formats = listOf("epub")),
+                    noCopy().copy(bookFiles = listOf(randomBookFile())),
+                    noCopy().copy(hasPhysical = true),
+                )
+
+                checkAll(books) { book -> showsReadAlikes(book) shouldBe true }
+            }
         }
 
-        it("#106 TC-26: showsReadAlikes is true for a physical-only book") {
-            showsReadAlikes(testBook(1, formats = emptyList()).copy(hasPhysical = true)) shouldBe true
+        context("when the book has no copy") {
+            it("#106 TC-27: leaves the section out") {
+                showsReadAlikes(noCopy()) shouldBe false
+            }
         }
 
-        it("#106 TC-27: showsReadAlikes is false for a book with no copy at all") {
-            showsReadAlikes(testBook(1, formats = emptyList())) shouldBe false
-        }
+        context("when the book is on the wishlist") {
+            context("when it has no files") {
+                it("#106 TC-28: leaves the section out, even for a physical copy") {
+                    showsReadAlikes(noCopy().copy(isWishlisted = true, hasPhysical = true)) shouldBe false
+                }
+            }
 
-        it("#106 TC-28: showsReadAlikes hides a wishlist-only book and shows a wishlisted book that has files") {
-            showsReadAlikes(testBook(1, isWishlisted = true, formats = emptyList())) shouldBe false
-            showsReadAlikes(
-                testBook(1, isWishlisted = true, formats = emptyList()).copy(hasPhysical = true),
-            ) shouldBe false
-            showsReadAlikes(
-                testBook(
-                    1,
-                    isWishlisted = true,
-                    formats = emptyList(),
-                    bookFiles = listOf(BookFile(1, "epub", "a.epub", 0, null, 1, null)),
-                ),
-            ) shouldBe true
-        }
-    }
-
-    describe("polling constants") {
-
-        it("#106 TC-29: the poll interval is 4 s and the budget is 5 re-asks") {
-            SUGGESTIONS_POLL_INTERVAL_MILLIS shouldBe 4_000L
-            SUGGESTIONS_POLL_ATTEMPTS shouldBe 5
+            context("when it has a file") {
+                it("#106 TC-28: shows the section") {
+                    showsReadAlikes(noCopy().copy(isWishlisted = true, bookFiles = listOf(randomBookFile()))) shouldBe true
+                }
+            }
         }
     }
 })

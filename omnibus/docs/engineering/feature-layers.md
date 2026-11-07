@@ -192,8 +192,8 @@ Data sources do one kind of I/O and contain no business decisions.
 
 Follow [Testing](testing.md). Per layer:
 
-* **Repository**: Kotest `DescribeSpec` JVM test. Construct `Default<Name>Repository` directly (no Hilt), pass `Dispatchers.Unconfined`, point `OmnibusHttpClient` at a `MockWebServer` with `FakeServerBaseUrlProvider`, and use fakes for local data sources. See `DefaultAuthRepositoryTest`.
-* **Local data sources**: hand-written in-memory fakes in `app/src/test/` that implement the interface (`FakeAuthTokenStore`). Fakes can expose hooks such as `saveFailure` to simulate errors. The real implementations need a `Context` and are tested with instrumented tests.
+* **Repository**: Kotest `DescribeSpec` JVM test. Construct `Default<Name>Repository` directly (no Hilt), pass `Dispatchers.Unconfined`, point `OmnibusHttpClient` at a `MockWebServer` with `TestServerBaseUrlProvider`, and use fakes for local data sources. See `DefaultAuthRepositoryTest`.
+* **Local data sources**: hand-written in-memory `Test*` fakes in `app/src/test/` that implement the interface (`TestAuthTokenStore`). Fakes can expose hooks such as `saveFailure` to simulate errors. The real implementations need a `Context` and are tested with instrumented tests.
 * **Android-only collaborators** (anything touching `Build`, `PackageManager`, `Log`): stub with MockK on the JVM, e.g. a pass-through `AuthClientMetadataInterceptor` or `mockkStatic(Log::class)`.
 * **ViewModel**: inject a fake repository interface and assert on `uiState` emissions.
 

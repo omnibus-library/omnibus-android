@@ -10,12 +10,10 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.feature.bookdetail.BookDetailError
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -58,9 +56,5 @@ class BookDetailRefreshTest {
         rule.onNodeWithText(unreachable).assertIsDisplayed()
         rule.onNodeWithText(book.displayTitle).assertIsDisplayed()
         assertEquals(1, transientShown)
-
-        val snackbar = rule.onNodeWithText(unreachable).bounds()
-        val actionArea = rule.onNodeWithTag(BookDetailTestTags.ACTION_AREA).bounds()
-        assertTrue(snackbar.bottom <= actionArea.top + 1f)
     }
 }

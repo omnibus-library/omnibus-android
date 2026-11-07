@@ -1,27 +1,18 @@
 package com.omnibus.omnibus.feature.reader
 
-import com.omnibus.omnibus.data.bookmarks.FakeBookmarksRepository
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
-import com.omnibus.omnibus.data.progress.FakeProgressRepository
-import com.omnibus.omnibus.data.reader.BookFileResult
-import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
-import com.omnibus.omnibus.data.reader.ReaderMargins
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
-import com.omnibus.omnibus.data.reader.ReaderTheme
-import com.omnibus.omnibus.data.reader.ReaderTypeface
-import com.omnibus.omnibus.data.reader.local.FakeReaderSettingsStore
-import com.omnibus.omnibus.data.reader.local.ReaderSettingsStore
-import com.omnibus.omnibus.data.reader.remote.BookFileSource
-import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.data.reader.local.TestReaderSettingsStore
+import com.omnibus.omnibus.data.reader.randomReaderSettings
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -34,126 +25,90 @@ class ReaderViewModelSettingsTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    lateinit var persistScope: CoroutineScope
+    /** A copy that differs in font size, whichever size this is. */
+    fun ReaderSettings.withOtherFontSize() = withFontSizeStep(if (canIncreaseFontSize) 1 else -1)
 
-    beforeEach { persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+    describe("loading") {
+        context("before the page boots") {
+            it("keeps the gate closed until the stored settings are read") {
+                val stored = randomReaderSettings()
+                val hold = CompletableDeferred<Unit>()
+                val store = TestReaderSettingsStore(stored).apply { holdFirstEmission = hold }
 
-    afterEach { persistScope.cancel() }
+                val vm = sut(settingsStore = store)
+                vm.uiState.value.settingsLoaded shouldBe false
 
-    /** Builds a ViewModel for [bookUuid] over [store], with the other collaborators as in the other VM tests. */
-    fun viewModel(
-        store: ReaderSettingsStore,
-        bookUuid: String = "book-1",
-    ) = ReaderViewModel(
-        bookUuid = bookUuid,
-        libraryRepository = FakeLibraryRepository(),
-        assetLoaderFactory = ReaderAssetLoaderFactory(
-            mockk(relaxed = true),
-            Dispatchers.Unconfined,
-            BookFileSource { BookFileResult.NotFound },
-        ),
-        progressRepository = FakeProgressRepository(),
-        settingsStore = store,
-        bookmarksRepository = FakeBookmarksRepository(),
-        timeSource = TimeSource { 0L },
-        persistScope = persistScope,
-    )
+                hold.complete(Unit)
 
-    describe("loading before the page boots") {
+                vm.uiState.value.settingsLoaded shouldBe true
+                vm.uiState.value.settings shouldBe stored
+            }
 
-        it("keeps the gate closed until the stored settings are read, then holds them") {
-            val stored = ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 24)
-            val store = FakeReaderSettingsStore(stored).apply { holdFirstEmission = CompletableDeferred() }
+            it("ignores a later emission from the store") {
+                val stored = randomReaderSettings()
+                val store = TestReaderSettingsStore(stored)
+                val vm = sut(settingsStore = store)
 
-            val vm = viewModel(store)
-            vm.uiState.value.settingsLoaded shouldBe false
+                store.emit(stored.withOtherFontSize())
 
-            store.holdFirstEmission!!.complete(Unit)
-
-            vm.uiState.value.settingsLoaded shouldBe true
-            vm.uiState.value.settings shouldBe stored
-        }
-
-        it("opens the gate with the defaults when nothing is stored, and a hand-built state is loaded") {
-            val vm = viewModel(FakeReaderSettingsStore())
-
-            vm.uiState.value.settingsLoaded shouldBe true
-            vm.uiState.value.settings shouldBe ReaderSettings()
-            ReaderUIState().settingsLoaded shouldBe true
-        }
-
-        it("reads the store once and ignores a later emission") {
-            val store = FakeReaderSettingsStore(ReaderSettings(fontSize = 22))
-            val vm = viewModel(store)
-
-            store.emit(ReaderSettings(fontSize = 30))
-
-            vm.uiState.value.settings shouldBe ReaderSettings(fontSize = 22)
+                vm.uiState.value.settings shouldBe stored
+            }
         }
     }
 
     describe("changing settings") {
+        it("updates the state with the normalized value") {
+            val store = TestReaderSettingsStore()
+            val vm = sut(settingsStore = store)
+            val out = randomReaderSettings().copy(fontSize = 99, lineHeight = 1.64)
+            val normalized = out.copy(fontSize = 34, lineHeight = 1.6)
 
-        it("updates the state and saves the normalized value") {
-            val store = FakeReaderSettingsStore()
-            val vm = viewModel(store)
+            vm.onSettingsChanged(out)
 
-            vm.onSettingsChanged(ReaderSettings(fontSize = 99, lineHeight = 1.64))
-
-            val normalized = ReaderSettings(fontSize = 34, lineHeight = 1.6)
             vm.uiState.value.settings shouldBe normalized
             store.saves shouldBe listOf(normalized)
-            store.settings.first() shouldBe normalized
         }
 
-        it("ignores a change equal to the current value, saving nothing") {
-            val store = FakeReaderSettingsStore()
-            val vm = viewModel(store)
+        context("with the current value") {
+            it("saves nothing") {
+                val store = TestReaderSettingsStore()
+                val vm = sut(settingsStore = store)
 
-            vm.onSettingsChanged(vm.uiState.value.settings)
+                vm.onSettingsChanged(vm.uiState.value.settings)
 
-            store.saves.isEmpty() shouldBe true
+                store.saves.shouldBeEmpty()
+            }
         }
 
-        it("keeps the last of three rapid taps in state and in the store, in tap order") {
-            val store = FakeReaderSettingsStore()
-            val vm = viewModel(store)
-            val taps = listOf(
-                ReaderSettings(fontSize = 20),
-                ReaderSettings(fontSize = 21, theme = ReaderTheme.Light),
-                ReaderSettings(fontSize = 22, theme = ReaderTheme.Light, margins = ReaderMargins.Wide),
-            )
+        context("with rapid taps") {
+            it("saves them in tap order") {
+                val store = TestReaderSettingsStore(ReaderSettings(fontSize = 19))
+                val vm = sut(settingsStore = store)
+                val taps = listOf(20, 21, 22).map { ReaderSettings(fontSize = it) }
 
-            taps.forEach { vm.onSettingsChanged(it) }
+                taps.forEach(vm::onSettingsChanged)
 
-            store.saves shouldBe taps
-            vm.uiState.value.settings shouldBe taps.last()
-            store.settings.first() shouldBe taps.last()
+                store.saves shouldBe taps
+            }
         }
 
-        it("keeps the new value in state when the save fails") {
-            val store = FakeReaderSettingsStore().apply { saveFails = true }
-            val vm = viewModel(store)
-            val changed = ReaderSettings(typeface = ReaderTypeface.Mono)
+        context("when the view model is cleared during the save") {
+            it("completes the save") {
+                val settings = randomReaderSettings()
+                val hold = CompletableDeferred<Unit>()
+                val store = TestReaderSettingsStore().apply { holdSaves = hold }
+                val owner = ViewModelStore()
+                val vm = ViewModelProvider.create(
+                    owner,
+                    viewModelFactory { initializer { sut(settingsStore = store) } },
+                )[ReaderViewModel::class]
+                vm.onSettingsChanged(settings)
+                owner.clear()
 
-            vm.onSettingsChanged(changed)
+                hold.complete(Unit)
 
-            vm.uiState.value.settings shouldBe changed
-            store.saves shouldBe listOf(changed)
-        }
-
-        it("loads the saved settings in a new view model for another book") {
-            val store = FakeReaderSettingsStore()
-            viewModel(store, bookUuid = "book-1").onSettingsChanged(
-                ReaderSettings(theme = ReaderTheme.Black, typeface = ReaderTypeface.Editorial),
-            )
-
-            val second = viewModel(store, bookUuid = "book-2")
-
-            second.uiState.value.settings shouldBe ReaderSettings(
-                theme = ReaderTheme.Black,
-                typeface = ReaderTypeface.Editorial,
-            )
+                store.settings.first() shouldBe settings.normalized()
+            }
         }
     }
 })

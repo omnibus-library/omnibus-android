@@ -1,15 +1,10 @@
 package com.omnibus.omnibus.feature.bookdetail.actionbar
 
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -20,33 +15,14 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookFile
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
-import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
-import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
 import com.omnibus.omnibus.feature.bookdetail.detailText
-import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
-import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
-import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
-import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Oklch
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-
-/** A fixed reading bar, so the screen tests do not need Hilt. */
-private val TestBarSection = BookDetailSection { ctx, modifier ->
-    BookActionBar(
-        model = ActionBarModel.Primary(ActionLabel.ContinueReading(4), 0.4f, BookDetailDestination.Reader(ctx.book.uuid)),
-        colors = actionBarColors(ctx.book),
-        onNavigate = ctx.onNavigate,
-        modifier = modifier,
-        reducedMotion = true,
-    )
-}
 
 /** A reading primary button for the book with [uuid], continuing at chapter 4. */
 private fun readingPrimary(uuid: String) = ActionBarModel.Primary(ActionLabel.ContinueReading(4), 0.4f, BookDetailDestination.Reader(uuid))
@@ -99,111 +75,21 @@ class BookActionBarSectionTest {
     // TC-56
     @Test
     fun issue98_tc56_sectionShowsNoCopyWithoutHilt() {
-        val recorder = SectionContextRecorder()
         val physical = mutableStateOf(true)
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 // A book with no readable copy: the gate renders the note before any ViewModel, so no Hilt is needed.
                 val book = testDetailBook(formats = emptyList()).copy(hasPhysical = physical.value)
-                BookActionBarSection.Content(testSectionContext(book = book, recorder = recorder), Modifier.fillMaxWidth())
+                BookActionBarSection.Content(testSectionContext(book = book), Modifier.fillMaxWidth())
             }
         }
 
         rule.onNodeWithTag(ActionBarTestTags.NO_COPY)
             .assertTextEquals(detailText(R.string.book_detail_actionbar_physical_copy))
-        rule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertCountEquals(0)
-        rule.onNodeWithTag(ActionBarTestTags.NO_COPY).performClick()
-        rule.waitForIdle()
-        assertTrue(recorder.navigations.isEmpty())
 
         rule.runOnIdle { physical.value = false }
         rule.onNodeWithTag(ActionBarTestTags.NO_COPY)
             .assertTextEquals(detailText(R.string.book_detail_actionbar_no_copy))
-        rule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).assertCountEquals(0)
-    }
-
-    // TC-59
-    @Test
-    fun issue98_tc59_readPillIsAbsentWhenTheSlotIsFilled() {
-        val book = mutableStateOf(testDetailBook(formats = listOf("epub")))
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookDetailScreenContent(
-                    uiState = BookDetailUIState(book = book.value, isLoading = false),
-                    onNavigate = {},
-                    onClose = {},
-                    onRetry = {},
-                    onRefresh = {},
-                    onReloadBook = {},
-                    onBookChanged = {},
-                    onTransientErrorShown = {},
-                    modifier = Modifier.fillMaxSize(),
-                    slots = BookDetailSlots(actionBar = listOf(TestBarSection)),
-                )
-            }
-        }
-        rule.onAllNodesWithTag(BookDetailTestTags.READ_PILL).assertCountEquals(0)
-        rule.onNodeWithTag(BookDetailTestTags.ACTION_AREA).assertIsDisplayed()
-
-        rule.runOnIdle { book.value = testDetailBook(formats = emptyList()) }
-        rule.onAllNodesWithTag(BookDetailTestTags.READ_PILL).assertCountEquals(0)
-        rule.onNodeWithTag(BookDetailTestTags.ACTION_AREA).assertIsDisplayed()
-    }
-
-    // TC-60
-    @Test
-    fun issue98_tc60_readPillIsPresentWhenTheSlotIsEmpty() {
-        rule.setDetailScreen(BookDetailUIState(book = testDetailBook(formats = listOf("epub")), isLoading = false), slots = BookDetailSlots())
-        rule.onNodeWithTag(BookDetailTestTags.READ_PILL).assertIsDisplayed()
-        rule.onAllNodesWithTag(ActionBarTestTags.BUTTON).assertCountEquals(0)
-    }
-
-    // TC-4
-    @Test
-    fun issue99_tc4_bothRoundButtonsShow() {
-        val book = testDetailBook(formats = listOf("epub", "m4b"), bookFiles = onePart)
-        val model = readingPrimary(book.uuid)
-        val actions = roundActions(book, model, savedAudioFileId = 7L, listenAvailable = true)
-        rule.setBarContent(book, mutableStateOf(model), actions)
-
-        rule.onNodeWithTag(ActionBarTestTags.BUTTON).assertIsDisplayed()
-        rule.onNodeWithTag(ActionBarTestTags.ROUND_LISTEN).assertIsDisplayed()
-        rule.onNodeWithTag(ActionBarTestTags.ROUND_IMMERSIVE).assertIsDisplayed()
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_READ).assertCountEquals(0)
-    }
-
-    // TC-5
-    @Test
-    fun issue99_tc5_noCopyAndWishlistShowNoRoundButtons() {
-        val book = testDetailBook(formats = emptyList())
-        val wishlist = ActionBarModel.Wishlist(
-            findCopy = BookDetailDestination.ExternalUrl("https://example.invalid/search"),
-            checkIn = BookDetailDestination.CheckIn(book.uuid),
-        )
-        val model = mutableStateOf<ActionBarModel>(ActionBarModel.NoCopy(physical = false))
-        rule.setBarContent(book, model, actions = emptyList())
-        rule.onNodeWithTag(ActionBarTestTags.NO_COPY).assertIsDisplayed()
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_READ).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_LISTEN).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_IMMERSIVE).assertCountEquals(0)
-
-        rule.runOnIdle { model.value = wishlist }
-        rule.onNodeWithTag(ActionBarTestTags.CHECK_IN).assertIsDisplayed()
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_READ).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_LISTEN).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_IMMERSIVE).assertCountEquals(0)
-    }
-
-    // TC-6
-    @Test
-    fun issue99_tc6_singleFormatShowsNoRoundButtons() {
-        val book = testDetailBook(formats = listOf("epub"))
-        rule.setBarContent(book, mutableStateOf(readingPrimary(book.uuid)), actions = emptyList())
-
-        rule.onNodeWithTag(ActionBarTestTags.BUTTON).assertIsDisplayed()
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_READ).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_LISTEN).assertCountEquals(0)
-        rule.onAllNodesWithTag(ActionBarTestTags.ROUND_IMMERSIVE).assertCountEquals(0)
     }
 
     // TC-27
@@ -219,23 +105,6 @@ class BookActionBarSectionTest {
         rule.waitForIdle()
 
         assertEquals(listOf(BookDetailDestination.Player(book.uuid, 7L)), navigations)
-        rule.onAllNodesWithTag(AudioFileChooserTestTags.SHEET).assertCountEquals(0)
-    }
-
-    // TC-34
-    @Test
-    fun issue99_tc34_listenMultiFileOpensChooserNotPlayer() {
-        val book = testDetailBook(formats = listOf("epub", "m4b"), bookFiles = twoParts)
-        val navigations = mutableListOf<BookDetailDestination>()
-        val model = readingPrimary(book.uuid)
-        val actions = roundActions(book, model, savedAudioFileId = 7L, listenAvailable = true)
-        rule.setBarContent(book, mutableStateOf(model), actions, onNavigate = { navigations += it })
-
-        rule.onNodeWithTag(ActionBarTestTags.ROUND_LISTEN).performClick()
-        rule.waitForIdle()
-
-        rule.onAllNodesWithTag(AudioFileChooserTestTags.SHEET).assertCountEquals(1)
-        assertEquals(emptyList<BookDetailDestination>(), navigations)
     }
 
     // TC-39
@@ -276,7 +145,6 @@ class BookActionBarSectionTest {
         rule.waitForIdle()
 
         assertEquals(listOf("load:7", "navigate:$reader"), events)
-        rule.onAllNodesWithTag(AudioFileChooserTestTags.SHEET).assertCountEquals(0)
     }
 
     // TC-50

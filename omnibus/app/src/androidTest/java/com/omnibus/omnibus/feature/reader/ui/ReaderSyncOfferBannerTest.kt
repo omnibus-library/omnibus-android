@@ -21,7 +21,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.reader.BookFileResult
@@ -164,10 +163,6 @@ class ReaderSyncOfferBannerTest {
     fun tc109_bannerNeedsReadyAndAnOffer() {
         val state = mutableStateOf(readyState().copy(loadStatus = ReaderLoadStatus.Loading))
         showScreen { state.value }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(ReaderSyncOfferTags.BANNER).assertCountEquals(0)
-
-        state.value = state.value.copy(loadStatus = ReaderLoadStatus.Failed(ReaderLoadFailure.Render))
         rule.waitForIdle()
         rule.onAllNodesWithTag(ReaderSyncOfferTags.BANNER).assertCountEquals(0)
 

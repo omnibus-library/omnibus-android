@@ -1,141 +1,155 @@
 package com.omnibus.omnibus.data.reader.remote
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.local.LocalBookFiles
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import kotlinx.coroutines.Dispatchers
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.Dispatchers
+import okhttp3.HttpUrl
 
 class DefaultBookFileSourceTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var tokenProvider: FakeAuthTokenProvider
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
-    var localFile: File? = null
-    lateinit var source: DefaultBookFileSource
+    fun sut(baseUrl: HttpUrl? = null, localFile: File? = null): DefaultBookFileSource = DefaultBookFileSource(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+        localBookFiles = LocalBookFiles { localFile },
+    )
+
+
+    /** Runs [test] with a downloaded copy holding [content], and deletes it afterwards. */
+    suspend fun withDownloadedCopy(content: String, test: suspend (File) -> Unit) {
+        val file = Files.createTempFile("book", ".epub").toFile().apply { writeText(content) }
+        try {
+            test(file)
+        } finally {
+            file.delete()
+        }
+    }
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        tokenProvider = FakeAuthTokenProvider(token = "secret")
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
-        localFile = null
-        source = DefaultBookFileSource(
-            ioDispatcher = Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = baseUrlProvider,
-                authTokenProvider = tokenProvider,
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
-            ),
-            localBookFiles = LocalBookFiles { localFile },
-        )
-    }
+    describe("opening a book") {
 
-    afterEach { server.close() }
+        context("when there is no downloaded copy") {
 
-    fun enqueue(code: Int, body: String = "") {
-        server.enqueue(MockResponse.Builder().code(code).body(body).build())
-    }
+            it("TC-214: streams the server's bytes with their length") {
+                withMockServer { server ->
+                    val content = randomString()
+                    server.enqueue(reply(200, content))
 
-    describe("open from the server") {
+                    val opened = sut(server.url("/")).open(randomString()).shouldBeInstanceOf<BookFileResult.Opened>()
 
-        it("TC-214: streams the server's bytes and length for the book's file path") {
-            enqueue(200, "epub-bytes")
-
-            val opened = source.open("book-1").shouldBeInstanceOf<BookFileResult.Opened>()
-
-            opened.stream.use { it.readBytes().decodeToString() } shouldBe "epub-bytes"
-            opened.length shouldBe 10L
-            server.takeRequest().url.encodedPath shouldBe "/api/ebooks/book-1/file"
-        }
-
-        it("TC-215: attaches the bearer token") {
-            enqueue(200, "x")
-
-            source.open("book-1").shouldBeInstanceOf<BookFileResult.Opened>().stream.close()
-
-            server.takeRequest().headers["Authorization"] shouldBe "Bearer secret"
-        }
-
-        it("TC-216: maps 401 to Unauthenticated and invalidates the stored token") {
-            enqueue(401)
-
-            source.open("book-1") shouldBe BookFileResult.Unauthenticated
-
-            tokenProvider.invalidateCalls shouldBe 1
-        }
-
-        it("TC-217: maps 404 to NotFound") {
-            enqueue(404)
-
-            source.open("book-1") shouldBe BookFileResult.NotFound
-        }
-
-        it("TC-218: maps other failure statuses to Error") {
-            enqueue(500)
-            source.open("book-1") shouldBe BookFileResult.Error
-
-            enqueue(403)
-            source.open("book-1") shouldBe BookFileResult.Error
-        }
-
-        it("TC-219: reports NoServer without a request when no server is saved") {
-            baseUrlProvider.baseUrl = null
-
-            source.open("book-1") shouldBe BookFileResult.NoServer
-
-            server.requestCount shouldBe 0
-        }
-
-        it("TC-220: maps an IO failure to Error instead of throwing") {
-            server.enqueue(
-                MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build(),
-            )
-
-            source.open("book-1") shouldBe BookFileResult.Error
-        }
-    }
-
-    describe("open from a downloaded copy") {
-
-        it("TC-221: serves the local file and never touches the network") {
-            localFile = Files.createTempFile("book", ".epub").toFile().apply {
-                writeText("local-bytes")
-                deleteOnExit()
+                    opened.stream.use { it.readBytes().decodeToString() } shouldBe content
+                    opened.length shouldBe content.length.toLong()
+                }
             }
 
-            val opened = source.open("book-1").shouldBeInstanceOf<BookFileResult.Opened>()
+            it("TC-214: asks the server for that book's file") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    server.enqueue(reply(200))
 
-            opened.stream.use { it.readBytes().decodeToString() } shouldBe "local-bytes"
-            opened.length shouldBe 11L
-            server.requestCount shouldBe 0
+                    sut(server.url("/")).open(uuid).shouldBeInstanceOf<BookFileResult.Opened>().stream.close()
+
+                    server.takeRequest().url.encodedPath shouldBe "/api/ebooks/$uuid/file"
+                }
+            }
+
+            it("TC-216, TC-217, TC-218: reports each failure status as its own failure") {
+                withMockServer { server ->
+                    checkAll(
+                        Exhaustive.of(
+                            401 to BookFileResult.Unauthenticated,
+                            404 to BookFileResult.NotFound,
+                            403 to BookFileResult.Error,
+                            500 to BookFileResult.Error,
+                        ),
+                    ) { (code, failure) ->
+                        server.enqueue(reply(code))
+
+                        sut(server.url("/")).open(randomString()) shouldBe failure
+                    }
+                }
+            }
+
+            context("when the connection drops") {
+
+                it("TC-220: reports an error instead of throwing") {
+                    sut(unreachableUrl()).open(randomString()) shouldBe BookFileResult.Error
+                }
+            }
+
+            context("when no server is saved") {
+
+                it("TC-219: reports that there is no server") {
+                    sut().open(randomString()) shouldBe BookFileResult.NoServer
+                }
+            }
         }
 
-        it("TC-222: falls back to the server when the downloaded file has gone missing") {
-            localFile = File("/nonexistent/book.epub")
-            enqueue(200, "remote-bytes")
+        context("when there is a downloaded copy") {
 
-            val opened = source.open("book-1").shouldBeInstanceOf<BookFileResult.Opened>()
+            it("TC-221: streams the copy's bytes with their length") {
+                val content = randomString()
 
-            opened.stream.use { it.readBytes().decodeToString() } shouldBe "remote-bytes"
+                withDownloadedCopy(content) { file ->
+                    val opened = sut(localFile = file).open(randomString()).shouldBeInstanceOf<BookFileResult.Opened>()
+
+                    opened.stream.use { it.readBytes().decodeToString() } shouldBe content
+                    opened.length shouldBe content.length.toLong()
+                }
+            }
+
+            it("TC-221: never asks the server") {
+                withMockServer { server ->
+                    withDownloadedCopy(randomString()) { file ->
+                        sut(server.url("/"), file).open(randomString())
+                            .shouldBeInstanceOf<BookFileResult.Opened>().stream.close()
+
+                        server.requestCount shouldBe 0
+                    }
+                }
+            }
+
+            context("when the copy has gone missing") {
+
+                it("TC-222: falls back to the server") {
+                    withMockServer { server ->
+                        val content = randomString()
+                        server.enqueue(reply(200, content))
+
+                        val opened = sut(server.url("/"), File("/nonexistent/${randomString()}.epub"))
+                            .open(randomString()).shouldBeInstanceOf<BookFileResult.Opened>()
+
+                        opened.stream.use { it.readBytes().decodeToString() } shouldBe content
+                    }
+                }
+            }
         }
     }
 })

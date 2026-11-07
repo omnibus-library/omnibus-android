@@ -1,91 +1,77 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.author
 
-import com.omnibus.omnibus.data.library.Creator
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.library.randomCreator
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.testing.randomLong
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 
 class MoreByAuthorTest : DescribeSpec({
+    /** [count] books with the ids 1 to [count]. */
+    fun books(count: Int) = (1..count).map { randomBook().copy(id = it.toLong()) }
 
-    fun books(count: Int) = (1..count).map { testBook(id = it.toLong()) }
+    describe("choosing the author's other books") {
+        context("when the author has more books than the shelf holds") {
+            it("#105 TC-8: takes the first 12 in the server's order") {
+                val books = books(30)
 
-    describe("moreByAuthor") {
-
-        it("#105 TC-7: shows at most 12 books") {
-            moreByAuthor(books(30), currentBookId = 999).size shouldBe 12
+                moreByAuthor(books, currentBookId = 0).map { it.uuid } shouldContainExactly books.take(12).map { it.uuid }
+            }
         }
 
-        it("#105 TC-8: takes the first 12 in the server's order") {
-            moreByAuthor(books(30), currentBookId = 999).map { it.uuid } shouldContainExactly
-                (1..12).map { "uuid-$it" }
+        context("when the current book is among them") {
+            it("#105 TC-10: leaves it out, giving its place in the limit to the next book") {
+                val books = books(13)
+
+                moreByAuthor(books, currentBookId = 2).map { it.uuid } shouldContainExactly
+                    books.filterNot { it.id == 2L }.map { it.uuid }
+            }
         }
 
-        it("#105 TC-9: leaves out the current book") {
-            moreByAuthor(books(5), currentBookId = 3).map { it.uuid } shouldContainExactly
-                listOf("uuid-1", "uuid-2", "uuid-4", "uuid-5")
-        }
+        it("#105 TC-12: describes a book for its card") {
+            val book = randomBook().copy(id = 4, title = "The Dispossessed", publishedDate = "1974-05-01")
 
-        it("#105 TC-10: the current book does not use up a place in the limit") {
-            val shown = moreByAuthor(books(13), currentBookId = 2)
-
-            shown.size shouldBe 12
-            shown.map { it.uuid } shouldContainExactly (listOf(1L) + (3L..13L)).map { "uuid-$it" }
-        }
-
-        it("#105 TC-11: an author whose only book is the current one has none to show") {
-            moreByAuthor(books(1), currentBookId = 1).shouldBeEmpty()
-            moreByAuthor(emptyList(), currentBookId = 1).shouldBeEmpty()
-        }
-
-        it("#105 TC-12: carries the title, the year and the cover identity") {
-            val book = testBook(
-                id = 4, title = "The Dispossessed", publishedDate = "1974-05-01", accent = "#c8a04a",
-                coverUrl = "/cover", creators = listOf(Creator("Ursula K. Le Guin", null, null, 7)),
-            )
-
-            val shown = moreByAuthor(listOf(book), currentBookId = 1).single()
-
-            shown.title shouldBe "The Dispossessed"
-            shown.year shouldBe "1974"
-            shown.identity.uuid shouldBe "uuid-4"
-            shown.identity.creator shouldBe "Ursula K. Le Guin"
-            shown.identity.hasCover shouldBe true
-        }
-
-        it("#105 TC-13: a book without a date has no year, and one without a title shows its filename") {
-            val shown = moreByAuthor(listOf(testBook(id = 4, title = null, filename = "x.epub")), 1).single()
-
-            shown.year shouldBe null
-            shown.title shouldBe "x.epub"
+            moreByAuthor(listOf(book), currentBookId = 1).single() shouldBe
+                AuthorShelfBook(book.uuid, book.coverIdentity(), "The Dispossessed", "1974")
         }
     }
 
-    describe("authorTargetOf") {
+    describe("finding the book's author") {
+        context("when the first creator has an id") {
+            it("#105 TC-14: is that creator, with the name trimmed") {
+                val id = randomLong()
+                val book = randomBook().copy(creators = listOf(randomCreator().copy(name = " Ursula K. Le Guin ", id = id)))
 
-        it("#105 TC-14: is the first creator when they have an id") {
-            val book = testBook(1, creators = listOf(Creator(" Ursula K. Le Guin ", "author", null, 7)))
-
-            authorTargetOf(book) shouldBe AuthorTarget(7, "Ursula K. Le Guin")
+                authorTargetOf(book) shouldBe AuthorTarget(id, "Ursula K. Le Guin")
+            }
         }
 
-        it("#105 TC-15: is null when the first creator has no id, even if a later one has") {
-            val book = testBook(
-                1,
-                creators = listOf(Creator("A", null, null, null), Creator("B", null, null, 9)),
-            )
+        context("when the first creator has no id") {
+            it("#105 TC-15: finds nobody, whatever later creators have") {
+                val book = randomBook().copy(
+                    creators = listOf(randomCreator().copy(id = null), randomCreator().copy(id = randomLong())),
+                )
 
-            authorTargetOf(book) shouldBe null
+                authorTargetOf(book).shouldBeNull()
+            }
         }
 
-        it("#105 TC-16: is null when the book has no creators") {
-            authorTargetOf(testBook(1, creators = emptyList())) shouldBe null
+        context("when the book has no creators") {
+            it("#105 TC-16: finds nobody") {
+                authorTargetOf(randomBook().copy(creators = emptyList())).shouldBeNull()
+            }
         }
 
-        it("#105 TC-17: a blank name falls back to the book's author line") {
-            authorTargetOf(testBook(1, creators = listOf(Creator("  ", null, null, 7)))) shouldBe
-                AuthorTarget(7, "Unknown author")
+        context("when the first creator's name is blank") {
+            it("#105 TC-17: falls back to the book's author line") {
+                val id = randomLong()
+                val book = randomBook().copy(creators = listOf(randomCreator().copy(name = "  ", id = id)))
+
+                authorTargetOf(book) shouldBe AuthorTarget(id, book.authorDisplay)
+            }
         }
     }
 })

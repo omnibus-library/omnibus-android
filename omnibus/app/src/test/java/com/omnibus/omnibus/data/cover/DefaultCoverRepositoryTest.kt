@@ -3,26 +3,43 @@ package com.omnibus.omnibus.data.cover
 import coil3.Image
 import coil3.memory.MemoryCache
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.cover.local.CachedCover
-import com.omnibus.omnibus.data.cover.local.FakeCoverDiskStore
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.cover.local.CoverDiskStore
+import com.omnibus.omnibus.data.cover.local.TestCoverDiskStore
+import com.omnibus.omnibus.data.cover.local.randomCachedCover
+import com.omnibus.omnibus.data.network.AuthTokenProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import io.mockk.mockk
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -32,430 +49,546 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
+import okhttp3.HttpUrl
 import okio.ByteString.Companion.encodeUtf8
-import java.io.IOException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
+
+private const val WINDOW = CoverCacheKeys.REVALIDATE_AFTER_MILLIS
+
+private fun MockWebServer.enqueueReply(code: Int, body: String = "", etag: String? = null) {
+    enqueue(MockResponse.Builder().code(code).body(body).apply { etag?.let { addHeader("ETag", it) } }.build())
+}
+
+private fun randomEtag(): String = "\"${randomString()}\""
+
+private fun newMemoryCache(): MemoryCache = MemoryCache.Builder().maxSizeBytes(1024 * 1024).build()
+
+private fun TestCoverDiskStore.seed(uuid: String, size: CoverSize, cover: CachedCover) {
+    entries[CoverCacheKeys.diskKey(uuid, size)] = cover
+}
+
+private fun TestCoverDiskStore.cached(uuid: String, size: CoverSize): CachedCover? =
+    entries[CoverCacheKeys.diskKey(uuid, size)]
+
+private fun storeWith(uuid: String, size: CoverSize, cover: CachedCover) =
+    TestCoverDiskStore().apply { seed(uuid, size, cover) }
+
+/** A cached cover exactly at the revalidation window on [time]'s clock. */
+private fun staleCover(time: TestTimeSource) = randomCachedCover().copy(storedAtMillis = time.currentMillis - WINDOW)
+
+private fun found(body: String, size: CoverSize, fromCache: Boolean) =
+    CoverImageResult.Found(body.encodeUtf8(), size, fromCache)
+
+private fun foundCached(cover: CachedCover, size: CoverSize) = CoverImageResult.Found(cover.bytes, size, fromCache = true)
+
+/** Puts an entry at [size] of the [uuid] book into [cache], and returns its key. */
+private fun MemoryCache.seed(uuid: String, size: CoverSize, nowMillis: Long): MemoryCache.Key {
+    val key = MemoryCache.Key(CoverCacheKeys.memoryKey(CoverThumbnail(uuid, size), nowMillis))
+    set(key, MemoryCache.Value(mockk<Image>(relaxed = true)))
+    return key
+}
+
+/**
+ * Fetches [uuid] at [size] while [server] holds its 200 [body] response, runs [whileInFlight] once the request has
+ * reached the server, then releases the response and returns the result.
+ */
+private suspend fun fetchHeldOpen(
+    server: MockWebServer,
+    repository: CoverRepository,
+    uuid: String,
+    size: CoverSize,
+    body: String,
+    whileInFlight: suspend () -> Unit,
+): CoverImageResult = coroutineScope {
+    val arrived = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    server.dispatcher = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            arrived.countDown()
+            release.await(10, TimeUnit.SECONDS)
+            return MockResponse.Builder().code(200).body(body).build()
+        }
+    }
+    val fetch = async(Dispatchers.IO) { repository.thumbnail(uuid, size) }
+    withContext(Dispatchers.IO) { arrived.await(10, TimeUnit.SECONDS) } shouldBe true
+    whileInFlight()
+    release.countDown()
+    fetch.await()
+}
 
 class DefaultCoverRepositoryTest : DescribeSpec({
 
-    val window = CoverCacheKeys.REVALIDATE_AFTER_MILLIS
-    val startMillis = 1_000_000_000L
+    fun sut(
+        baseUrl: HttpUrl? = null,
+        diskStore: CoverDiskStore = TestCoverDiskStore(),
+        memoryCache: MemoryCache = newMemoryCache(),
+        timeSource: TimeSource = TestTimeSource(randomLong()),
+        authTokenProvider: AuthTokenProvider = TestAuthTokenProvider(),
+    ): DefaultCoverRepository = DefaultCoverRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl),
+            authTokenProvider = authTokenProvider,
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+        diskStore = diskStore,
+        memoryCache = memoryCache,
+        timeSource = timeSource,
+    )
 
-    lateinit var server: MockWebServer
-    lateinit var diskStore: FakeCoverDiskStore
-    lateinit var memoryCache: MemoryCache
-    lateinit var tokenProvider: FakeAuthTokenProvider
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
-    var now = startMillis
-    lateinit var repository: DefaultCoverRepository
-
-    fun enqueue(code: Int, body: String = "", etag: String? = null) {
-        server.enqueue(
-            MockResponse.Builder().code(code).body(body).apply { etag?.let { addHeader("ETag", it) } }.build(),
-        )
+    suspend fun thumbnailAnswering(response: MockResponse): CoverImageResult = withMockServer { server ->
+        server.enqueue(response)
+        sut(server.url("/")).thumbnail(randomString(), randomEnum<CoverSize>())
     }
-
-    fun seed(uuid: String, size: CoverSize, body: String, etag: String?, storedAt: Long = now) {
-        diskStore.entries[CoverCacheKeys.diskKey(uuid, size)] =
-            CachedCover(body.encodeUtf8(), etag, storedAt)
-    }
-
-    fun cached(uuid: String, size: CoverSize) = diskStore.entries[CoverCacheKeys.diskKey(uuid, size)]
-
-    fun found(body: String, size: CoverSize, fromCache: Boolean) =
-        CoverImageResult.Found(body.encodeUtf8(), size, fromCache)
-
-    /**
-     * Fetches [uuid] at [size] while the server holds its 200 [body] response, runs [whileInFlight]
-     * once the request has reached the server, then releases the response and returns the result.
-     */
-    suspend fun fetchHeldOpen(uuid: String, size: CoverSize, body: String, whileInFlight: suspend () -> Unit) =
-        coroutineScope {
-            val arrived = CountDownLatch(1)
-            val release = CountDownLatch(1)
-            server.dispatcher = object : Dispatcher() {
-                override fun dispatch(request: RecordedRequest): MockResponse {
-                    arrived.countDown()
-                    release.await(10, TimeUnit.SECONDS)
-                    return MockResponse.Builder().code(200).body(body).build()
-                }
-            }
-            val fetch = async(Dispatchers.IO) { repository.thumbnail(uuid, size) }
-            withContext(Dispatchers.IO) { arrived.await(10, TimeUnit.SECONDS) } shouldBe true
-            whileInFlight()
-            release.countDown()
-            fetch.await()
-        }
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        diskStore = FakeCoverDiskStore()
-        memoryCache = MemoryCache.Builder().maxSizeBytes(1024 * 1024).build()
-        tokenProvider = FakeAuthTokenProvider(token = "secret")
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
-        now = startMillis
-        repository = DefaultCoverRepository(
-            ioDispatcher = Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = baseUrlProvider,
-                authTokenProvider = tokenProvider,
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
-            ),
-            diskStore = diskStore,
-            memoryCache = memoryCache,
-            timeSource = TimeSource { now },
-        )
+    describe("loading a thumbnail") {
+        context("when nothing is cached") {
+            it("TC-147: returns the requested size from the server") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val body = randomString()
+                    server.enqueueReply(200, body)
+
+                    sut(server.url("/")).thumbnail(uuid, size) shouldBe found(body, size, fromCache = false)
+
+                    server.takeRequest().url.encodedPath shouldBe "/api/thumbs/$uuid/${size.apiName}"
+                }
+            }
+
+            it("TC-148: stores the bytes with their validator and fetch time") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val body = randomString()
+                    val etag = randomEtag()
+                    val time = TestTimeSource(randomLong())
+                    val diskStore = TestCoverDiskStore()
+                    server.enqueueReply(200, body, etag)
+
+                    sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size)
+
+                    diskStore.cached(uuid, size) shouldBe CachedCover(body.encodeUtf8(), etag, time.currentMillis)
+                }
+            }
+
+            context("when no server is saved") {
+                it("TC-150: fails") {
+                    sut().thumbnail(randomString(), randomEnum<CoverSize>()) shouldBe CoverImageResult.Error
+                }
+            }
+
+            context("when the server errors") {
+                it("TC-151: fails") {
+                    thumbnailAnswering(reply(500)) shouldBe CoverImageResult.Error
+                }
+            }
+
+            context("when the server can't be reached") {
+                it("TC-153: fails") {
+                    sut(unreachableUrl()).thumbnail(randomString(), randomEnum<CoverSize>()) shouldBe CoverImageResult.Error
+                }
+            }
+
+            context("when the server answers 304") {
+                it("TC-175: fails") {
+                    thumbnailAnswering(reply(304)) shouldBe CoverImageResult.Error
+                }
+            }
+        }
+
+        context("when the bytes can't be cached") {
+            it("TC-154: still returns them") {
+                withMockServer { server ->
+                    val size = randomEnum<CoverSize>()
+                    val body = randomString()
+                    val diskStore = TestCoverDiskStore().apply { writeFailure = IOException("disk full") }
+                    server.enqueueReply(200, body)
+
+                    sut(server.url("/"), diskStore).thumbnail(randomString(), size) shouldBe
+                        found(body, size, fromCache = false)
+                }
+            }
+        }
+
+        context("when the cache can't be read") {
+            it("TC-176: loads from the server") {
+                withMockServer { server ->
+                    val size = randomEnum<CoverSize>()
+                    val body = randomString()
+                    val diskStore = TestCoverDiskStore().apply { readFailure = IOException("corrupt entry") }
+                    server.enqueueReply(200, body)
+
+                    sut(server.url("/"), diskStore).thumbnail(randomString(), size) shouldBe
+                        found(body, size, fromCache = false)
+                }
+            }
+        }
+
+        context("when the cache write is cancelled") {
+            it("TC-180: rethrows the cancellation") {
+                withMockServer { server ->
+                    val diskStore = TestCoverDiskStore().apply { writeFailure = CancellationException("cancelled") }
+                    server.enqueueReply(200, randomString())
+
+                    shouldThrow<CancellationException> {
+                        sut(server.url("/"), diskStore).thumbnail(randomString(), randomEnum<CoverSize>())
+                    }
+                }
+            }
+        }
+
+        context("when the requested size is missing") {
+            it("TC-155: tries the other sizes largest first, for each requested size") {
+                withMockServer { server ->
+                    val orders = listOf(
+                        CoverSize.Sm to listOf("sm", "lg", "md"),
+                        CoverSize.Md to listOf("md", "lg", "sm"),
+                        CoverSize.Lg to listOf("lg", "md", "sm"),
+                    )
+                    checkAll(Exhaustive.collection(orders)) { (requested, order) ->
+                        val uuid = randomString()
+                        repeat(3) { server.enqueueReply(404) }
+
+                        sut(server.url("/")).thumbnail(uuid, requested)
+
+                        List(3) { server.takeRequest().url.encodedPath } shouldBe
+                            order.map { "/api/thumbs/$uuid/$it" }
+                    }
+                }
+            }
+
+            it("TC-156: serves the first fall-back that exists") {
+                withMockServer { server ->
+                    val body = randomString()
+                    server.enqueueReply(404)
+                    server.enqueueReply(200, body)
+
+                    sut(server.url("/")).thumbnail(randomString(), CoverSize.Md) shouldBe
+                        found(body, CoverSize.Lg, fromCache = false)
+                }
+            }
+
+            context("when no size exists") {
+                context("when one size was stale in the cache") {
+                    it("TC-178: reports NotFound") {
+                        withMockServer { server ->
+                            val uuid = randomString()
+                            val size = randomEnum<CoverSize>()
+                            val time = TestTimeSource(randomLong())
+                            val diskStore = storeWith(uuid, size, staleCover(time))
+                            repeat(3) { server.enqueueReply(404) }
+
+                            sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
+                                CoverImageResult.NotFound
+                        }
+                    }
+                }
+            }
+
+            context("when the requested size was stale in the cache") {
+                it("TC-160: forgets it") {
+                    withMockServer { server ->
+                        val uuid = randomString()
+                        val time = TestTimeSource(randomLong())
+                        val diskStore = storeWith(uuid, CoverSize.Md, staleCover(time))
+                        server.enqueueReply(404)
+                        server.enqueueReply(200, randomString())
+
+                        sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, CoverSize.Md)
+
+                        diskStore.cached(uuid, CoverSize.Md).shouldBeNull()
+                    }
+                }
+            }
+        }
+
+        context("when the server fails for the requested size") {
+            context("when another size is cached") {
+                it("TC-159: serves the cached size") {
+                    withMockServer { server ->
+                        val uuid = randomString()
+                        val time = TestTimeSource(randomLong())
+                        val cover = randomCachedCover().copy(storedAtMillis = time.currentMillis)
+                        val diskStore = TestCoverDiskStore().apply { seed(uuid, CoverSize.Sm, cover) }
+                        server.enqueueReply(500)
+
+                        sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, CoverSize.Md) shouldBe
+                            foundCached(cover, CoverSize.Sm)
+                    }
+                }
+            }
+        }
+
+        context("when the cached copy is younger than the revalidation window") {
+            it("TC-161: serves it without asking the server, with or without a validator") {
+                withMockServer { server ->
+                    val etags = listOf(randomEtag(), null)
+                    checkAll(Exhaustive.collection(etags)) { etag ->
+                        val uuid = randomString()
+                        val size = randomEnum<CoverSize>()
+                        val time = TestTimeSource(randomLong())
+                        val cover = randomCachedCover().copy(etag = etag, storedAtMillis = time.currentMillis - (WINDOW - 1))
+                        val diskStore = storeWith(uuid, size, cover)
+                        server.dispatcher = object : Dispatcher() {
+                            override fun dispatch(request: RecordedRequest): MockResponse =
+                                MockResponse.Builder().code(200).body(randomString()).build()
+                        }
+
+                        sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
+                            foundCached(cover, size)
+                    }
+                }
+            }
+        }
+
+        context("when the cached copy has reached the revalidation window") {
+            context("when the copy has a validator") {
+                it("TC-163: revalidates with If-None-Match") {
+                    withMockServer { server ->
+                        val uuid = randomString()
+                        val size = randomEnum<CoverSize>()
+                        val etag = randomEtag()
+                        val time = TestTimeSource(randomLong())
+                        val diskStore = storeWith(uuid, size, staleCover(time).copy(etag = etag))
+                        server.enqueueReply(304)
+
+                        sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size)
+
+                        server.takeRequest().headers["If-None-Match"] shouldBe etag
+                    }
+                }
+
+                context("when the server answers 304") {
+                    it("TC-163: reuses the cached bytes") {
+                        withMockServer { server ->
+                            val uuid = randomString()
+                            val size = randomEnum<CoverSize>()
+                            val time = TestTimeSource(randomLong())
+                            val cover = staleCover(time).copy(etag = randomEtag())
+                            val diskStore = storeWith(uuid, size, cover)
+                            server.enqueueReply(304)
+
+                            sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
+                                foundCached(cover, size)
+                        }
+                    }
+
+                    it("TC-164: restarts the freshness window") {
+                        withMockServer { server ->
+                            val uuid = randomString()
+                            val size = randomEnum<CoverSize>()
+                            val time = TestTimeSource(randomLong())
+                            val cover = staleCover(time).copy(etag = randomEtag())
+                            val diskStore = storeWith(uuid, size, cover)
+                            server.enqueueReply(304)
+
+                            sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size)
+
+                            diskStore.cached(uuid, size) shouldBe cover.copy(storedAtMillis = time.currentMillis)
+                        }
+                    }
+                }
+
+                context("when the server sends a new copy") {
+                    it("TC-165: replaces the cached copy") {
+                        withMockServer { server ->
+                            val uuid = randomString()
+                            val size = randomEnum<CoverSize>()
+                            val body = randomString()
+                            val etag = randomEtag()
+                            val time = TestTimeSource(randomLong())
+                            val diskStore = storeWith(uuid, size, staleCover(time).copy(etag = randomEtag()))
+                            server.enqueueReply(200, body, etag)
+
+                            sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size)
+
+                            diskStore.cached(uuid, size) shouldBe CachedCover(body.encodeUtf8(), etag, time.currentMillis)
+                        }
+                    }
+                }
+            }
+
+            context("when the copy has no validator") {
+                it("TC-166: fetches unconditionally") {
+                    withMockServer { server ->
+                        val uuid = randomString()
+                        val size = randomEnum<CoverSize>()
+                        val time = TestTimeSource(randomLong())
+                        val diskStore = storeWith(uuid, size, staleCover(time).copy(etag = null))
+                        server.enqueueReply(200, randomString())
+
+                        sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size)
+
+                        server.takeRequest().headers["If-None-Match"].shouldBeNull()
+                    }
+                }
+            }
+
+            context("when the server can't answer") {
+                it("TC-167: serves the stale copy for a dropped connection and a server error") {
+                    withScriptedServer {
+                        val answers = listOf(dropped(), reply(503))
+                        checkAll(Exhaustive.collection(answers)) { answer ->
+                            val uuid = randomString()
+                            val size = randomEnum<CoverSize>()
+                            val time = TestTimeSource(randomLong())
+                            val cover = staleCover(time)
+                            val diskStore = storeWith(uuid, size, cover)
+                            script.answer(answer)
+
+                            sut(url, diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
+                                foundCached(cover, size)
+                        }
+                    }
+                }
+            }
+
+            context("when no server is saved") {
+                it("TC-169: serves the stale copy") {
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val time = TestTimeSource(randomLong())
+                    val cover = staleCover(time)
+                    val diskStore = storeWith(uuid, size, cover)
+
+                    sut(diskStore = diskStore, timeSource = time).thumbnail(uuid, size) shouldBe foundCached(cover, size)
+                }
+            }
+        }
     }
 
-    afterEach { server.close() }
+    describe("invalidating a book's covers") {
+        it("TC-170: drops every size of that book from the disk cache") {
+            val uuid = randomString(8..16)
+            val diskStore = TestCoverDiskStore().apply {
+                CoverSize.entries.forEach { seed(uuid, it, randomCachedCover()) }
+            }
 
-    describe("thumbnail with nothing cached") {
+            sut(diskStore = diskStore).invalidate(uuid)
 
-        it("TC-147: fetches the requested size with the bearer token and image Accept header") {
-            enqueue(200, "md-bytes", etag = "\"v1\"")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("md-bytes", CoverSize.Md, fromCache = false)
-
-            val request = server.takeRequest()
-            request.url.encodedPath shouldBe "/api/thumbs/book/md"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-            request.headers["Accept"]!!.startsWith("image/") shouldBe true
-            request.headers["If-None-Match"].shouldBeNull()
-        }
-
-        it("TC-148: stores the bytes with their validator and fetch time") {
-            enqueue(200, "md-bytes", etag = "\"v1\"")
-
-            repository.thumbnail("book", CoverSize.Md)
-
-            cached("book", CoverSize.Md) shouldBe CachedCover("md-bytes".encodeUtf8(), "\"v1\"", startMillis)
-        }
-
-        it("TC-149: stores a response without a validator as validator-less") {
-            enqueue(200, "md-bytes")
-
-            repository.thumbnail("book", CoverSize.Md)
-
-            cached("book", CoverSize.Md)!!.etag.shouldBeNull()
-        }
-
-        it("TC-150: fails when no server is saved") {
-            baseUrlProvider.baseUrl = null
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
-            server.requestCount shouldBe 0
-        }
-
-        it("TC-151: fails on a server error") {
-            enqueue(500)
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
-            server.requestCount shouldBe 1
-        }
-
-        it("TC-152: ends the session on a 401") {
-            enqueue(401)
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
-            tokenProvider.invalidateCalls shouldBe 1
-        }
-
-        it("TC-153: fails when the server can't be reached") {
-            server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
-        }
-
-        it("TC-154: still returns the bytes when they can't be cached") {
-            diskStore.writeFailure = IOException("disk full")
-            enqueue(200, "md-bytes")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("md-bytes", CoverSize.Md, fromCache = false)
-        }
-    }
-
-    describe("thumbnail when the cache misbehaves") {
-
-        it("TC-175: treats a 304 with no cached copy as a failure and stores nothing") {
-            enqueue(304)
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
-
-            server.requestCount shouldBe 1
             diskStore.entries.keys.toList().shouldBeEmpty()
         }
 
-        it("TC-176: loads from the server when the cache can't be read") {
-            diskStore.readFailure = IOException("corrupt entry")
-            enqueue(200, "md-bytes", etag = "\"v1\"")
+        it("TC-171: drops the decoded copies of every size of that book from memory") {
+            val uuid = randomString(8..16)
+            val memoryCache = newMemoryCache()
+            val keys = CoverSize.entries.map { memoryCache.seed(uuid, it, randomLong()) }
 
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("md-bytes", CoverSize.Md, fromCache = false)
+            sut(memoryCache = memoryCache).invalidate(uuid)
+
+            keys.map { memoryCache[it] } shouldBe listOf(null, null, null)
         }
 
-        it("TC-177: reports an error, rather than throwing, when the cache can't be read and the server is down") {
-            diskStore.readFailure = IOException("corrupt entry")
-            enqueue(500)
+        it("TC-171: keeps other books in memory") {
+            val memoryCache = newMemoryCache()
+            val other = memoryCache.seed(randomString(8..16), randomEnum<CoverSize>(), randomLong())
 
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.Error
+            sut(memoryCache = memoryCache).invalidate(randomString(8..16))
+
+            memoryCache[other].shouldNotBeNull()
         }
 
-        it("TC-178: reports NotFound when every size is gone, even if one was cached and stale") {
-            seed("book", CoverSize.Md, "old", etag = "\"v1\"", storedAt = now - window)
-            repeat(3) { enqueue(404) }
+        context("when a fetch is already in flight") {
+            it("TC-173: returns its bytes") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val body = randomString()
+                    val repository = sut(server.url("/"))
 
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.NotFound
+                    fetchHeldOpen(server, repository, uuid, size, body) { repository.invalidate(uuid) } shouldBe
+                        found(body, size, fromCache = false)
+                }
+            }
 
-            cached("book", CoverSize.Md).shouldBeNull()
+            it("TC-173: refuses to store them") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val diskStore = TestCoverDiskStore()
+                    val repository = sut(server.url("/"), diskStore)
+
+                    fetchHeldOpen(server, repository, uuid, size, randomString()) { repository.invalidate(uuid) }
+
+                    diskStore.cached(uuid, size).shouldBeNull()
+                }
+            }
         }
 
-        it("TC-180: rethrows cancellation from the cache write instead of swallowing it") {
-            diskStore.writeFailure = CancellationException("cancelled")
-            enqueue(200, "md-bytes")
+        context("when a disk removal fails") {
+            it("TC-205: still tries every size") {
+                val uuid = randomString()
+                val diskStore = TestCoverDiskStore().apply { removeFailure = IOException("journal locked") }
 
-            shouldThrow<CancellationException> {
-                repository.thumbnail("book", CoverSize.Md)
+                shouldNotThrowAny { sut(diskStore = diskStore).invalidate(uuid) }
+
+                diskStore.removedKeys shouldContainExactlyInAnyOrder
+                    CoverSize.entries.map { CoverCacheKeys.diskKey(uuid, it) }
+            }
+
+            it("TC-205: still clears memory") {
+                val uuid = randomString()
+                val diskStore = TestCoverDiskStore().apply { removeFailure = IOException("journal locked") }
+                val memoryCache = newMemoryCache()
+                val key = memoryCache.seed(uuid, randomEnum<CoverSize>(), randomLong())
+
+                sut(diskStore = diskStore, memoryCache = memoryCache).invalidate(uuid)
+
+                memoryCache[key].shouldBeNull()
             }
         }
     }
 
-    describe("thumbnail size fall-back") {
-
-        it("TC-155: tries the other sizes largest first when the requested one is missing") {
-            enqueue(404)
-            enqueue(404)
-            enqueue(200, "sm-bytes")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("sm-bytes", CoverSize.Sm, fromCache = false)
-
-            List(3) { server.takeRequest().url.encodedPath } shouldContainExactly
-                listOf("/api/thumbs/book/md", "/api/thumbs/book/lg", "/api/thumbs/book/sm")
-        }
-
-        it("TC-156: serves the first fall-back that exists") {
-            enqueue(404)
-            enqueue(200, "lg-bytes")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("lg-bytes", CoverSize.Lg, fromCache = false)
-            server.requestCount shouldBe 2
-        }
-
-        it("TC-157: falls back from the smallest size to the largest first") {
-            enqueue(404)
-            enqueue(404)
-            enqueue(200, "md-bytes")
-
-            repository.thumbnail("book", CoverSize.Sm)
-
-            List(3) { server.takeRequest().url.encodedPath } shouldContainExactly
-                listOf("/api/thumbs/book/sm", "/api/thumbs/book/lg", "/api/thumbs/book/md")
-        }
-
-        it("TC-158: reports NotFound when no size exists") {
-            repeat(3) { enqueue(404) }
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe CoverImageResult.NotFound
-        }
-
-        it("TC-159: serves a cached other size, without asking again, when the server is down") {
-            seed("book", CoverSize.Sm, "sm-bytes", etag = "\"s\"")
-            enqueue(500)
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("sm-bytes", CoverSize.Sm, fromCache = true)
-            server.requestCount shouldBe 1
-        }
-
-        it("TC-160: forgets a cached size the server says is gone") {
-            seed("book", CoverSize.Md, "old", etag = "\"v1\"", storedAt = now - window)
-            enqueue(404)
-            enqueue(200, "lg-bytes")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("lg-bytes", CoverSize.Lg, fromCache = false)
-
-            cached("book", CoverSize.Md).shouldBeNull()
-        }
-    }
-
-    describe("thumbnail with a cached copy") {
-
-        it("TC-161: serves a fresh copy without a request") {
-            seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - (window - 1))
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-            server.requestCount shouldBe 0
-        }
-
-        it("TC-162: serves a fresh validator-less copy without a request") {
-            seed("book", CoverSize.Md, "cached", etag = null, storedAt = now)
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-            server.requestCount shouldBe 0
-        }
-
-        describe("older than five minutes") {
-
-            it("TC-163: revalidates with If-None-Match and reuses the cached bytes on a 304") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                enqueue(304)
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-
-                val request = server.takeRequest()
-                request.headers["If-None-Match"] shouldBe "\"v1\""
-                request.headers["Authorization"] shouldBe "Bearer secret"
+    describe("clearing the covers") {
+        it("TC-174: empties the disk cache") {
+            val diskStore = TestCoverDiskStore().apply {
+                seed(randomString(), randomEnum<CoverSize>(), randomCachedCover())
             }
 
-            it("TC-164: restarts the freshness window after a 304") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                enqueue(304)
-
-                repository.thumbnail("book", CoverSize.Md)
-                repository.thumbnail("book", CoverSize.Md)
-
-                server.requestCount shouldBe 1
-                cached("book", CoverSize.Md) shouldBe CachedCover("cached".encodeUtf8(), "\"v1\"", now)
-            }
-
-            it("TC-165: replaces the copy when the server sends a new one") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                enqueue(200, "fresh", etag = "\"v2\"")
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("fresh", CoverSize.Md, fromCache = false)
-
-                cached("book", CoverSize.Md) shouldBe CachedCover("fresh".encodeUtf8(), "\"v2\"", now)
-            }
-
-            it("TC-166: fetches once, unconditionally, when the copy has no validator, and stores one") {
-                seed("book", CoverSize.Md, "cached", etag = null, storedAt = now - window)
-                enqueue(200, "fresh", etag = "\"v1\"")
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("fresh", CoverSize.Md, fromCache = false)
-
-                server.takeRequest().headers["If-None-Match"].shouldBeNull()
-                cached("book", CoverSize.Md)!!.etag shouldBe "\"v1\""
-
-                now += window
-                enqueue(304)
-                repository.thumbnail("book", CoverSize.Md)
-                server.takeRequest().headers["If-None-Match"] shouldBe "\"v1\""
-            }
-
-            it("TC-167: serves the stale copy when the server can't be reached") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-            }
-
-            it("TC-168: serves the stale copy on a server error") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                enqueue(503)
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-            }
-
-            it("TC-169: serves the stale copy when no server is saved") {
-                seed("book", CoverSize.Md, "cached", etag = "\"v1\"", storedAt = now - window)
-                baseUrlProvider.baseUrl = null
-
-                repository.thumbnail("book", CoverSize.Md) shouldBe found("cached", CoverSize.Md, fromCache = true)
-            }
-        }
-    }
-
-    describe("invalidate") {
-
-        it("TC-170: drops every size from the disk cache") {
-            CoverSize.entries.forEach { seed("book", it, "bytes", etag = "\"v\"") }
-            seed("other", CoverSize.Md, "keep", etag = "\"v\"")
-
-            repository.invalidate("book")
-
-            CoverSize.entries.forEach { cached("book", it).shouldBeNull() }
-            cached("other", CoverSize.Md).shouldNotBeNull()
-        }
-
-        it("TC-171: drops the decoded copies of every size from the memory cache") {
-            val image = mockk<Image>(relaxed = true)
-            val keys = CoverSize.entries.map {
-                MemoryCache.Key(CoverCacheKeys.memoryKey(CoverThumbnail("book", it), now))
-            }
-            val otherKey = MemoryCache.Key(CoverCacheKeys.memoryKey(CoverThumbnail("other", CoverSize.Md), now))
-            (keys + otherKey).forEach { memoryCache[it] = MemoryCache.Value(image) }
-
-            repository.invalidate("book")
-
-            keys.forEach { memoryCache[it].shouldBeNull() }
-            memoryCache[otherKey].shouldNotBeNull()
-        }
-
-        it("TC-172: refetches the cover afterwards") {
-            seed("book", CoverSize.Md, "old", etag = "\"v1\"")
-            repository.invalidate("book")
-            enqueue(200, "new", etag = "\"v2\"")
-
-            repository.thumbnail("book", CoverSize.Md) shouldBe found("new", CoverSize.Md, fromCache = false)
-        }
-
-        it("TC-173: refuses to store a fetch that was already in flight, but still returns its bytes") {
-            val result = fetchHeldOpen("book", CoverSize.Md, "superseded") { repository.invalidate("book") }
-
-            result shouldBe found("superseded", CoverSize.Md, fromCache = false)
-            cached("book", CoverSize.Md).shouldBeNull()
-        }
-
-        it("TC-205: doesn't throw when a disk removal fails, still tries every size and clears memory") {
-            CoverSize.entries.forEach { seed("book", it, "bytes", etag = "\"v\"") }
-            diskStore.removeFailure = IOException("journal locked")
-            val image = mockk<Image>(relaxed = true)
-            val keys = CoverSize.entries.map {
-                MemoryCache.Key(CoverCacheKeys.memoryKey(CoverThumbnail("book", it), now))
-            }
-            keys.forEach { memoryCache[it] = MemoryCache.Value(image) }
-
-            shouldNotThrowAny { repository.invalidate("book") }
-
-            diskStore.removedKeys shouldContainExactlyInAnyOrder
-                CoverSize.entries.map { CoverCacheKeys.diskKey("book", it) }
-            keys.forEach { memoryCache[it].shouldBeNull() }
-        }
-    }
-
-    describe("clear") {
-
-        it("TC-174: empties the disk and memory caches") {
-            seed("book", CoverSize.Md, "bytes", etag = "\"v\"")
-            val key = MemoryCache.Key("k")
-            memoryCache[key] = MemoryCache.Value(mockk<Image>(relaxed = true))
-
-            repository.clear()
+            sut(diskStore = diskStore).clear()
 
             diskStore.entries.keys.toList().shouldBeEmpty()
+        }
+
+        it("TC-174: empties the memory cache") {
+            val memoryCache = newMemoryCache()
+            val key = memoryCache.seed(randomString(), randomEnum<CoverSize>(), randomLong())
+
+            sut(memoryCache = memoryCache).clear()
+
             memoryCache[key].shouldBeNull()
         }
 
-        it("TC-206: doesn't throw when the disk clear fails, and still clears memory") {
-            seed("book", CoverSize.Md, "bytes", etag = "\"v\"")
-            diskStore.clearFailure = IOException("journal locked")
-            val key = MemoryCache.Key("k")
-            memoryCache[key] = MemoryCache.Value(mockk<Image>(relaxed = true))
+        context("when the disk clear fails") {
+            it("TC-206: still clears memory") {
+                val diskStore = TestCoverDiskStore().apply { clearFailure = IOException("journal locked") }
+                val memoryCache = newMemoryCache()
+                val key = memoryCache.seed(randomString(), randomEnum<CoverSize>(), randomLong())
 
-            shouldNotThrowAny { repository.clear() }
+                sut(diskStore = diskStore, memoryCache = memoryCache).clear()
 
-            memoryCache[key].shouldBeNull()
+                memoryCache[key].shouldBeNull()
+            }
         }
 
-        it("TC-179: refuses to store a fetch that was already in flight, but still returns its bytes") {
-            val result = fetchHeldOpen("book", CoverSize.Md, "superseded") { repository.clear() }
+        context("when a fetch is already in flight") {
+            it("TC-179: refuses to store them") {
+                withMockServer { server ->
+                    val uuid = randomString()
+                    val size = randomEnum<CoverSize>()
+                    val diskStore = TestCoverDiskStore()
+                    val repository = sut(server.url("/"), diskStore)
 
-            result shouldBe found("superseded", CoverSize.Md, fromCache = false)
-            cached("book", CoverSize.Md).shouldBeNull()
+                    fetchHeldOpen(server, repository, uuid, size, randomString()) { repository.clear() }
+
+                    diskStore.cached(uuid, size).shouldBeNull()
+                }
+            }
         }
     }
 })

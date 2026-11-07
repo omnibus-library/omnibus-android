@@ -1,929 +1,679 @@
 package com.omnibus.omnibus.data.auth
 
-import com.omnibus.omnibus.data.auth.local.FakeAuthTokenStore
+import app.cash.turbine.test
 import com.omnibus.omnibus.data.auth.local.StoredAuthTokenProvider
+import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.auth.remote.UserInfoDto
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
+import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldStartWith
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
+import io.kotest.property.exhaustive.of
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
+import okhttp3.HttpUrl
+
+private fun droppedMidBody(body: String): MockResponse =
+    MockResponse.Builder().code(200).body(body).onResponseBody(SocketEffect.CloseSocket()).build()
+
+private fun userJson(id: Long = randomLong(), extraFields: String = ""): String = """
+    {
+        "id": $id,
+        "username": "${randomString()}",
+        "is_admin": false,
+        "can_upload": true,
+        "can_edit": true,
+        "can_download": true
+        $extraFields
+    }
+"""
+
+private fun acceptedBody(token: String = randomString(), user: String = userJson()): String =
+    """{"user": $user, "token": "$token"}"""
+
+/** Every 2xx body that doesn't yield a session, by what is wrong with it. */
+private fun unusableBodies(): List<String> = listOf(
+    """{"token": "abc""",
+    "",
+    """{"user": ${userJson()}}""",
+    """{"user": ${userJson()}, "token": null}""",
+    """{"user": ${userJson()}, "token": ""}""",
+    """{"user": ${userJson()}, "token": "   "}""",
+    """{"token": "${randomString()}"}""",
+    """{"user": ${userJson()}, "token": {"value": 1}}""",
+)
+
+private fun storeHolding(token: String = randomString()) = TestAuthTokenStore(initialToken = token)
+
+private fun RecordedRequest.jsonField(name: String): String =
+    Json.parseToJsonElement(body!!.utf8()).jsonObject[name]!!.jsonPrimitive.content
 
 class DefaultAuthRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var tokenStore: FakeAuthTokenStore
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
-    lateinit var repository: DefaultAuthRepository
+    fun sut(
+        baseUrl: HttpUrl? = null,
+        tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+    ): DefaultAuthRepository = DefaultAuthRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl),
+            // The real provider, so a 401 handled by the client really clears the store.
+            authTokenProvider = StoredAuthTokenProvider(tokenStore),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+        authTokenStore = tokenStore,
+    )
 
-    fun enqueue(code: Int, body: String = "") {
-        server.enqueue(MockResponse.Builder().code(code).body(body).build())
+    suspend fun signInAnswering(
+        response: MockResponse,
+        tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+    ): AuthSignInResult = withMockServer { server ->
+        server.enqueue(response)
+        sut(server.url("/"), tokenStore).signIn(randomString(), randomString())
+    }
+
+    suspend fun registerAnswering(
+        response: MockResponse,
+        tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+    ): AuthRegisterResult = withMockServer { server ->
+        server.enqueue(response)
+        sut(server.url("/"), tokenStore).register(randomString(), randomString())
+    }
+
+    suspend fun verifyAnswering(
+        response: MockResponse,
+        tokenStore: TestAuthTokenStore = storeHolding(),
+    ): AuthSessionResult = withMockServer { server ->
+        server.enqueue(response)
+        sut(server.url("/"), tokenStore).verifySession()
     }
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
+    describe("signing in") {
+        context("when the server accepts the credentials") {
+            it("TC-1: returns Success with the token for every 2xx status") {
+                checkAll(Exhaustive.of(200, 201, 299)) { code ->
+                    val token = randomString()
 
-        tokenStore = FakeAuthTokenStore()
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
-
-        repository = DefaultAuthRepository(
-            ioDispatcher = Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = baseUrlProvider,
-                // The real provider, so a 401 handled by the client really clears the store.
-                authTokenProvider = StoredAuthTokenProvider(tokenStore),
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
-            ),
-            authTokenStore = tokenStore,
-        )
-    }
-
-    afterEach {
-        server.close()
-    }
-
-    describe("signIn") {
-
-        describe("when the server responds 2xx with a valid body") {
-
-            beforeEach { enqueue(200, VALID_RESPONSE_BODY) }
-
-            it("TC-1: returns Success with the token") {
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
+                    signInAnswering(reply(code, acceptedBody(token))) shouldBe AuthSignInResult.Success(token)
+                }
             }
 
-            it("TC-1: saves the returned token") {
-                repository.signIn(USERNAME, PASSWORD)
+            it("TC-1: stores the returned token") {
+                val token = randomString()
+                val tokenStore = TestAuthTokenStore()
 
-                tokenStore.token.first() shouldBe TOKEN
+                signInAnswering(reply(200, acceptedBody(token)), tokenStore)
+
+                tokenStore.token.first() shouldBe token
             }
 
-            it("TC-1: replaces a previously stored token") {
-                tokenStore.save("stale")
+            it("POSTs the credentials as JSON to the login path") {
+                withMockServer { server ->
+                    val username = randomString()
+                    val password = randomString()
+                    server.enqueue(reply(200, acceptedBody()))
 
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
-                tokenStore.token.first() shouldBe TOKEN
-            }
+                    sut(server.url("/")).signIn(username, password)
 
-            it("POSTs the credentials and client metadata as JSON to the login path") {
-                repository.signIn(USERNAME, PASSWORD)
-
-                val request = server.takeRequest()
-                request.method shouldBe "POST"
-                request.url.encodedPath shouldBe "/api/auth/login"
-                request.headers["Content-Type"]!! shouldStartWith "application/json"
-                request.headers["Accept"] shouldBe "application/json"
-
-                val json = Json.parseToJsonElement(request.body!!.utf8()).jsonObject
-                json["username"]!!.jsonPrimitive.content shouldBe USERNAME
-                json["password"]!!.jsonPrimitive.content shouldBe PASSWORD
-                json["client_kind"]!!.jsonPrimitive.content shouldBe "android"
+                    val request = server.takeRequest()
+                    request.method shouldBe "POST"
+                    request.url.encodedPath shouldBe "/api/auth/login"
+                    request.jsonField("username") shouldBe username
+                    request.jsonField("password") shouldBe password
+                }
             }
         }
 
-        it("TC-1: treats any 2xx as success, e.g. 201") {
-            enqueue(201, VALID_RESPONSE_BODY)
+        context("when the response carries fields the app doesn't know") {
+            it("returns Success") {
+                val token = randomString()
+                val body = """{"user": ${userJson()}, "token": "$token", "expires_at": null, "share_stats": true}"""
 
-            repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
-            tokenStore.token.first() shouldBe TOKEN
+                signInAnswering(reply(200, body)) shouldBe AuthSignInResult.Success(token)
+            }
         }
 
-        it("returns Success when the response carries fields the app doesn't know") {
-            enqueue(200, RESPONSE_BODY_WITH_UNKNOWN_FIELDS)
-
-            repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
+        context("when the server rejects the credentials") {
+            it("TC-2: returns InvalidCredentials for 401 and 403") {
+                checkAll(Exhaustive.of(401, 403)) { code ->
+                    signInAnswering(reply(code)) shouldBe AuthSignInResult.InvalidCredentials
+                }
+            }
         }
 
-        describe("when the server rejects the credentials") {
+        context("when the server is rate limiting") {
+            it("TC-3: returns TooManyAttempts") {
+                signInAnswering(reply(429)) shouldBe AuthSignInResult.TooManyAttempts
+            }
+        }
 
-            listOf(401, 403).forEach { code ->
+        context("when the server responds with any other non-2xx status") {
+            it("TC-4: returns ServerError for each status") {
+                checkAll(Exhaustive.of(400, 404, 500, 503)) { code ->
+                    signInAnswering(reply(code)) shouldBe AuthSignInResult.ServerError
+                }
+            }
+        }
 
-                it("TC-2: returns InvalidCredentials for $code without saving a token") {
-                    enqueue(code, """{"error":"nope"}""")
+        context("when the server responds 200 with a body that can't be used") {
+            it("TC-5: returns ServerError for each kind of body") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    signInAnswering(reply(200, body)) shouldBe AuthSignInResult.ServerError
+                }
+            }
 
-                    repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.InvalidCredentials
+            it("TC-5: stores no token for each kind of body") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    val tokenStore = TestAuthTokenStore()
+
+                    signInAnswering(reply(200, body), tokenStore)
+
                     tokenStore.token.first().shouldBeNull()
                 }
             }
         }
 
-        describe("when the server is rate limiting") {
-
-            it("TC-3: returns TooManyAttempts for 429 without saving a token") {
-                enqueue(429, """{"error":"slow down"}""")
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.TooManyAttempts
-                tokenStore.token.first().shouldBeNull()
+        context("when the connection drops mid-body") {
+            it("TC-5: returns ServerError") {
+                signInAnswering(droppedMidBody(acceptedBody())) shouldBe AuthSignInResult.ServerError
             }
         }
 
-        describe("when the server responds with any other non-2xx status") {
+        context("when no server is saved") {
+            it("TC-8: returns NoServer") {
+                sut().signIn(randomString(), randomString()) shouldBe AuthSignInResult.NoServer
+            }
+        }
 
-            listOf(400, 404, 500, 502, 503).forEach { code ->
+        context("when the server can't be reached") {
+            it("TC-7: returns Unreachable") {
+                sut(unreachableUrl()).signIn(randomString(), randomString()) shouldBe AuthSignInResult.Unreachable
+            }
+        }
 
-                it("TC-4: returns ServerError for $code without saving a token") {
-                    enqueue(code, """{"error":"nope"}""")
+        context("when saving the token fails") {
+            it("TC-6: returns ServerError for an I/O and an unexpected failure") {
+                checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
+                    val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
 
-                    repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.ServerError
-                    tokenStore.token.first().shouldBeNull()
+                    signInAnswering(reply(200, acceptedBody()), tokenStore) shouldBe AuthSignInResult.ServerError
                 }
             }
         }
 
-        describe("when the server responds 200 with a body that can't be used") {
+        context("when saving the token is cancelled") {
+            it("TC-9: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { saveFailure = CancellationException("cancelled") }
 
-            mapOf(
-                "malformed JSON" to """{"token": "abc""",
-                "an empty body" to "",
-                "a missing token field" to """{"user": $VALID_USER_JSON}""",
-                "a null token" to """{"user": $VALID_USER_JSON, "token": null}""",
-                "a blank token" to """{"user": $VALID_USER_JSON, "token": ""}""",
-                "a whitespace-only token" to """{"user": $VALID_USER_JSON, "token": "   "}""",
-                "a missing user field" to """{"token": "$TOKEN"}""",
-                "a token of the wrong type" to """{"user": $VALID_USER_JSON, "token": {"value": 1}}""",
-            ).forEach { (description, body) ->
-
-                it("TC-5: returns ServerError for $description without saving a token") {
-                    enqueue(200, body)
-
-                    repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.ServerError
-                    tokenStore.token.first().shouldBeNull()
-                }
-            }
-
-            it("TC-5: returns ServerError, not Unreachable, when the connection drops mid-body") {
-                server.enqueue(
-                    MockResponse.Builder()
-                        .code(200)
-                        .body(VALID_RESPONSE_BODY)
-                        .onResponseBody(SocketEffect.CloseSocket())
-                        .build(),
-                )
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when the saved server has a path prefix") {
-
-            it("POSTs beneath the prefix") {
-                baseUrlProvider.baseUrl = server.url("/omnibus")
-                enqueue(200, VALID_RESPONSE_BODY)
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Success(TOKEN)
-                server.takeRequest().url.encodedPath shouldBe "/omnibus/api/auth/login"
-            }
-        }
-
-        describe("when no server is saved") {
-
-            it("TC-8: returns NoServer without making a request") {
-                baseUrlProvider.baseUrl = null
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.NoServer
-                server.requestCount shouldBe 0
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when the server can't be reached") {
-
-            it("TC-7: returns Unreachable without saving a token") {
-                server.close()
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.Unreachable
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when saving the token fails") {
-
-            it("TC-6: returns ServerError without a token being stored") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = IOException("disk full")
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-6: returns ServerError for an unexpected runtime failure too") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = IllegalStateException("keystore unavailable")
-
-                repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when the coroutine is cancelled") {
-
-            it("TC-9: rethrows CancellationException from saving the token instead of returning a result") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = CancellationException("cancelled")
-
-                shouldThrow<CancellationException> { repository.signIn(USERNAME, PASSWORD) }
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when a token is already stored") {
-
-            listOf(401, 403).forEach { code ->
-                it("TC-14: a $code from login returns InvalidCredentials and does not clear the stored token") {
-                    tokenStore.save(TOKEN)
-                    enqueue(code)
-
-                    repository.signIn(USERNAME, PASSWORD) shouldBe AuthSignInResult.InvalidCredentials
-
-                    tokenStore.clearCalls shouldBe 0
-                    tokenStore.token.first() shouldBe TOKEN
-                }
+                shouldThrow<CancellationException> { signInAnswering(reply(200, acceptedBody()), tokenStore) }
             }
         }
     }
 
-    describe("register") {
+    describe("registering") {
+        context("when the server accepts the registration") {
+            it("TC-40: returns Success with the token for every 2xx status") {
+                checkAll(Exhaustive.of(200, 201, 299)) { code ->
+                    val token = randomString()
 
-        describe("when the server responds 2xx with a valid body") {
-
-            beforeEach { enqueue(200, VALID_RESPONSE_BODY) }
-
-            it("TC-40: returns Success with the token") {
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
+                    registerAnswering(reply(code, acceptedBody(token))) shouldBe AuthRegisterResult.Success(token)
+                }
             }
 
-            it("TC-40: saves the returned token") {
-                repository.register(USERNAME, PASSWORD)
+            it("TC-40: stores the returned token") {
+                val token = randomString()
+                val tokenStore = TestAuthTokenStore()
 
-                tokenStore.token.first() shouldBe TOKEN
+                registerAnswering(reply(200, acceptedBody(token)), tokenStore)
+
+                tokenStore.token.first() shouldBe token
             }
 
-            it("TC-40: replaces a previously stored token") {
-                tokenStore.save("stale")
+            it("TC-47: POSTs the credentials as JSON to the register path") {
+                withMockServer { server ->
+                    val username = randomString()
+                    val password = randomString()
+                    server.enqueue(reply(200, acceptedBody()))
 
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
-                tokenStore.token.first() shouldBe TOKEN
-            }
+                    sut(server.url("/")).register(username, password)
 
-            it("TC-40: does not follow registration with a sign-in request") {
-                enqueue(200, VALID_RESPONSE_BODY)
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
-
-                server.requestCount shouldBe 1
-                server.takeRequest().url.encodedPath shouldBe "/api/auth/register"
-            }
-        }
-
-        it("TC-40: treats any 2xx as success, e.g. 201") {
-            enqueue(201, VALID_RESPONSE_BODY)
-
-            repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
-            tokenStore.token.first() shouldBe TOKEN
-        }
-
-        it("returns Success when the response carries fields the app doesn't know") {
-            enqueue(200, RESPONSE_BODY_WITH_UNKNOWN_FIELDS)
-
-            repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
-        }
-
-        describe("when the username is already taken") {
-
-            it("TC-41: returns UsernameTaken for 409 without saving a token") {
-                enqueue(409, """{"error":"username taken"}""")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.UsernameTaken
-                tokenStore.token.first().shouldBeNull()
+                    val request = server.takeRequest()
+                    request.method shouldBe "POST"
+                    request.url.encodedPath shouldBe "/api/auth/register"
+                    request.jsonField("username") shouldBe username
+                    request.jsonField("password") shouldBe password
+                }
             }
         }
 
-        describe("when registration is closed") {
-
-            it("TC-42: returns RegistrationDisabled for 403 without saving a token") {
-                enqueue(403, """{"error":"registration disabled"}""")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.RegistrationDisabled
-                tokenStore.token.first().shouldBeNull()
+        context("when the username is already taken") {
+            it("TC-41: returns UsernameTaken") {
+                registerAnswering(reply(409)) shouldBe AuthRegisterResult.UsernameTaken
             }
         }
 
-        describe("when the username or password is rejected") {
-
-            it("TC-43: returns InvalidDetails for 400 without saving a token") {
-                enqueue(400, """{"error":"password"}""")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.InvalidDetails
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-43: still posts a password shorter than 10 characters") {
-                val shortPassword = "short"
-                enqueue(400, """{"error":"password"}""")
-
-                repository.register(USERNAME, shortPassword) shouldBe AuthRegisterResult.InvalidDetails
-                server.requestCount shouldBe 1
-
-                val json = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
-                json["password"]!!.jsonPrimitive.content shouldBe shortPassword
+        context("when registration is closed") {
+            it("TC-42: returns RegistrationDisabled") {
+                registerAnswering(reply(403)) shouldBe AuthRegisterResult.RegistrationDisabled
             }
         }
 
-        describe("when the server is rate limiting") {
-
-            it("TC-44: returns TooManyAttempts for 429 without saving a token") {
-                enqueue(429, """{"error":"slow down"}""")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.TooManyAttempts
-                tokenStore.token.first().shouldBeNull()
+        context("when the details are rejected") {
+            it("TC-43: returns InvalidDetails") {
+                registerAnswering(reply(400)) shouldBe AuthRegisterResult.InvalidDetails
             }
         }
 
-        describe("when the server responds with any other non-2xx status") {
+        context("when the server is rate limiting") {
+            it("TC-44: returns TooManyAttempts") {
+                registerAnswering(reply(429)) shouldBe AuthRegisterResult.TooManyAttempts
+            }
+        }
 
-            listOf(401, 404, 500, 502, 503).forEach { code ->
+        context("when the server responds with any other non-2xx status") {
+            it("TC-45: returns ServerError for each status") {
+                checkAll(Exhaustive.of(401, 404, 500, 503)) { code ->
+                    registerAnswering(reply(code)) shouldBe AuthRegisterResult.ServerError
+                }
+            }
+        }
 
-                it("TC-45: returns ServerError for $code without saving a token") {
-                    enqueue(code, """{"error":"nope"}""")
+        context("when the server responds 200 with a body that can't be used") {
+            it("TC-46: returns ServerError for each kind of body") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    registerAnswering(reply(200, body)) shouldBe AuthRegisterResult.ServerError
+                }
+            }
 
-                    repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
+            it("TC-46: stores no token for each kind of body") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    val tokenStore = TestAuthTokenStore()
+
+                    registerAnswering(reply(200, body), tokenStore)
+
                     tokenStore.token.first().shouldBeNull()
                 }
             }
         }
 
-        describe("when the server responds 200 with a body that can't be used") {
+        context("when the connection drops mid-body") {
+            it("TC-46: returns ServerError") {
+                registerAnswering(droppedMidBody(acceptedBody())) shouldBe AuthRegisterResult.ServerError
+            }
+        }
 
-            mapOf(
-                "malformed JSON" to """{"token": "abc""",
-                "an empty body" to "",
-                "a missing token field" to """{"user": $VALID_USER_JSON}""",
-                "a null token" to """{"user": $VALID_USER_JSON, "token": null}""",
-                "a blank token" to """{"user": $VALID_USER_JSON, "token": ""}""",
-                "a whitespace-only token" to """{"user": $VALID_USER_JSON, "token": "   "}""",
-                "a missing user field" to """{"token": "$TOKEN"}""",
-                "a token of the wrong type" to """{"user": $VALID_USER_JSON, "token": {"value": 1}}""",
-            ).forEach { (description, body) ->
+        context("when no server is saved") {
+            it("TC-48: returns NoServer") {
+                sut().register(randomString(), randomString()) shouldBe AuthRegisterResult.NoServer
+            }
+        }
 
-                it("TC-46: returns ServerError for $description without saving a token") {
-                    enqueue(200, body)
+        context("when the server can't be reached") {
+            it("TC-49: returns Unreachable") {
+                sut(unreachableUrl()).register(randomString(), randomString()) shouldBe AuthRegisterResult.Unreachable
+            }
+        }
 
-                    repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-                    tokenStore.token.first().shouldBeNull()
+        context("when saving the token fails") {
+            it("TC-50: returns ServerError for an I/O and an unexpected failure") {
+                checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
+                    val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
+
+                    registerAnswering(reply(200, acceptedBody()), tokenStore) shouldBe AuthRegisterResult.ServerError
                 }
             }
-
-            it("TC-46: returns ServerError, not Unreachable, when the connection drops mid-body") {
-                server.enqueue(
-                    MockResponse.Builder()
-                        .code(200)
-                        .body(VALID_RESPONSE_BODY)
-                        .onResponseBody(SocketEffect.CloseSocket())
-                        .build(),
-                )
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
         }
 
-        describe("when the saved server has a path prefix") {
+        context("when saving the token is cancelled") {
+            it("TC-51: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { saveFailure = CancellationException("cancelled") }
 
-            it("TC-47: POSTs beneath the prefix") {
-                baseUrlProvider.baseUrl = server.url("/omnibus")
-                enqueue(200, VALID_RESPONSE_BODY)
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Success(TOKEN)
-                server.takeRequest().url.encodedPath shouldBe "/omnibus/api/auth/register"
-            }
-        }
-
-        describe("when the server responds 2xx") {
-
-            beforeEach { enqueue(200, VALID_RESPONSE_BODY) }
-
-            it("TC-47: POSTs the credentials and client metadata as JSON to the register path") {
-                repository.register(USERNAME, PASSWORD)
-
-                val request = server.takeRequest()
-                request.method shouldBe "POST"
-                request.url.encodedPath shouldBe "/api/auth/register"
-                request.headers["Content-Type"]!! shouldStartWith "application/json"
-                request.headers["Accept"] shouldBe "application/json"
-
-                val json = Json.parseToJsonElement(request.body!!.utf8()).jsonObject
-                json["username"]!!.jsonPrimitive.content shouldBe USERNAME
-                json["password"]!!.jsonPrimitive.content shouldBe PASSWORD
-                json["client_kind"]!!.jsonPrimitive.content shouldBe "android"
-                json["device_name"]!!.jsonPrimitive.content shouldBe "Pixel 9"
-                json["client_version"]!!.jsonPrimitive.content shouldBe "1.2.3"
-            }
-        }
-
-        describe("when no server is saved") {
-
-            it("TC-48: returns NoServer without making a request") {
-                baseUrlProvider.baseUrl = null
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.NoServer
-                server.requestCount shouldBe 0
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-48: does not clear a stored token when no server is saved") {
-                tokenStore.save(TOKEN)
-                baseUrlProvider.baseUrl = null
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.NoServer
-
-                server.requestCount shouldBe 0
-                tokenStore.clearCalls shouldBe 0
-                tokenStore.token.first() shouldBe TOKEN
-            }
-        }
-
-        describe("when the server can't be reached") {
-
-            it("TC-49: returns Unreachable without saving a token") {
-                server.close()
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Unreachable
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when saving the token fails") {
-
-            it("TC-50: returns ServerError without a token being stored") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = IOException("disk full")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-50: returns ServerError for an unexpected runtime failure too") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = IllegalStateException("keystore unavailable")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-                tokenStore.token.first().shouldBeNull()
-            }
-        }
-
-        describe("when the coroutine is cancelled") {
-
-            it("TC-51: rethrows CancellationException from saving the token instead of returning a result") {
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = CancellationException("cancelled")
-
-                shouldThrow<CancellationException> { repository.register(USERNAME, PASSWORD) }
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-51: does not clear an existing token when saving is cancelled") {
-                tokenStore.save(TOKEN)
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = CancellationException("cancelled")
-
-                shouldThrow<CancellationException> { repository.register(USERNAME, PASSWORD) }
-                tokenStore.clearCalls shouldBe 0
-                tokenStore.token.first() shouldBe TOKEN
-            }
-        }
-
-        describe("when a token is already stored") {
-
-            listOf(
-                409 to AuthRegisterResult.UsernameTaken,
-                403 to AuthRegisterResult.RegistrationDisabled,
-                400 to AuthRegisterResult.InvalidDetails,
-                429 to AuthRegisterResult.TooManyAttempts,
-                500 to AuthRegisterResult.ServerError,
-            ).forEach { (code, expected) ->
-
-                it("TC-52: a $code returns $expected and does not clear the stored token") {
-                    tokenStore.save(TOKEN)
-                    enqueue(code, """{"error":"nope"}""")
-
-                    repository.register(USERNAME, PASSWORD) shouldBe expected
-
-                    tokenStore.clearCalls shouldBe 0
-                    tokenStore.token.first() shouldBe TOKEN
-                }
-            }
-
-            it("TC-52: an unreachable server does not clear the stored token") {
-                tokenStore.save(TOKEN)
-                server.close()
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.Unreachable
-
-                tokenStore.clearCalls shouldBe 0
-                tokenStore.token.first() shouldBe TOKEN
-            }
-
-            listOf(
-                "a blank token" to """{"user": $VALID_USER_JSON, "token": ""}""",
-                "a null token" to """{"user": $VALID_USER_JSON, "token": null}""",
-                "malformed JSON" to """{"token": "abc""",
-            ).forEach { (description, body) ->
-
-                it("TC-52: $description does not replace or clear the stored token") {
-                    tokenStore.save(TOKEN)
-                    enqueue(200, body)
-
-                    repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-
-                    tokenStore.clearCalls shouldBe 0
-                    tokenStore.token.first() shouldBe TOKEN
-                }
-            }
-
-            it("TC-52: a failed save does not clear the stored token") {
-                tokenStore.save(TOKEN)
-                enqueue(200, VALID_RESPONSE_BODY)
-                tokenStore.saveFailure = IOException("disk full")
-
-                repository.register(USERNAME, PASSWORD) shouldBe AuthRegisterResult.ServerError
-
-                tokenStore.clearCalls shouldBe 0
-                tokenStore.token.first() shouldBe TOKEN
+                shouldThrow<CancellationException> { registerAnswering(reply(200, acceptedBody()), tokenStore) }
             }
         }
     }
 
-    describe("signOut") {
+    describe("signing out") {
+        it("returns Success") {
+            sut().signOut() shouldBe AuthSignOutResult.Success
+        }
 
-        it("clears the stored token and returns Success") {
-            tokenStore.save(TOKEN)
+        it("clears the stored token") {
+            val tokenStore = storeHolding()
 
-            repository.signOut() shouldBe AuthSignOutResult.Success
+            sut(tokenStore = tokenStore).signOut()
+
             tokenStore.token.first().shouldBeNull()
         }
 
-        it("returns Failure when the token can't be cleared") {
-            tokenStore.save(TOKEN)
-            tokenStore.clearFailure = IOException("disk full")
+        context("when the token can't be cleared") {
+            it("returns Failure") {
+                val tokenStore = TestAuthTokenStore().apply { clearFailure = IOException("disk full") }
 
-            repository.signOut() shouldBe AuthSignOutResult.Failure
-            tokenStore.token.first() shouldBe TOKEN
+                sut(tokenStore = tokenStore).signOut() shouldBe AuthSignOutResult.Failure
+            }
         }
 
-        it("TC-9: rethrows CancellationException from clearing the token instead of returning Failure") {
-            tokenStore.save(TOKEN)
-            tokenStore.clearFailure = CancellationException("cancelled")
+        context("when clearing the token is cancelled") {
+            it("TC-9: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { clearFailure = CancellationException("cancelled") }
 
-            shouldThrow<CancellationException> { repository.signOut() }
+                shouldThrow<CancellationException> { sut(tokenStore = tokenStore).signOut() }
+            }
         }
     }
 
-    describe("isSignedIn") {
-
-        it("TC-18: is true when a token is stored") {
-            tokenStore.save(TOKEN)
-
-            repository.isSignedIn.first() shouldBe true
-        }
-
-        it("TC-18: is false when no token is stored") {
-            repository.isSignedIn.first() shouldBe false
-        }
-
-        listOf("", "   ").forEach { blank ->
-            it("TC-18: is false when the stored token is \"$blank\"") {
-                tokenStore.save(blank)
-
-                repository.isSignedIn.first() shouldBe false
+    describe("observing whether the user is signed in") {
+        context("when a token is stored") {
+            it("TC-18: is true") {
+                sut(tokenStore = storeHolding()).isSignedIn.first() shouldBe true
             }
         }
 
-        it("TC-19: is false, and the flow still completes, when reading the token fails") {
-            tokenStore.save(TOKEN)
-            tokenStore.readFailure = IOException("corrupt")
-
-            repository.isSignedIn.toList() shouldBe listOf(false)
+        context("when no token is stored") {
+            it("TC-18: is false") {
+                sut().isSignedIn.first() shouldBe false
+            }
         }
 
-        it("TC-20: follows the token being saved and cleared, without repeating a value") {
-            val emissions = mutableListOf<Boolean>()
-            val scope = CoroutineScope(Dispatchers.Unconfined)
-            scope.launch { repository.isSignedIn.toList(emissions) }
+        context("when the stored token is blank") {
+            it("TC-18: is false for empty and whitespace tokens") {
+                checkAll(Exhaustive.of("", "   ")) { blank ->
+                    sut(tokenStore = storeHolding(blank)).isSignedIn.first() shouldBe false
+                }
+            }
+        }
 
-            emissions shouldBe listOf(false)
+        context("when reading the token fails") {
+            it("TC-19: emits false, then completes") {
+                val tokenStore = TestAuthTokenStore().apply { readFailure = IOException("corrupt") }
 
-            tokenStore.save(TOKEN)
-            emissions shouldBe listOf(false, true)
+                sut(tokenStore = tokenStore).isSignedIn.test {
+                    awaitItem() shouldBe false
+                    awaitComplete()
+                }
+            }
+        }
 
-            tokenStore.save("rotated")
-            emissions shouldBe listOf(false, true)
+        context("when the token changes") {
+            it("TC-20: follows the token being saved then cleared") {
+                val tokenStore = TestAuthTokenStore()
 
-            tokenStore.clear()
-            emissions shouldBe listOf(false, true, false)
+                sut(tokenStore = tokenStore).isSignedIn.test {
+                    awaitItem() shouldBe false
 
-            tokenStore.save("   ")
-            emissions shouldBe listOf(false, true, false)
+                    tokenStore.save(randomString())
+                    awaitItem() shouldBe true
 
-            scope.cancel()
+                    tokenStore.clear()
+                    awaitItem() shouldBe false
+                }
+            }
+        }
+
+        context("when one token replaces another") {
+            it("TC-20: stays silent") {
+                val tokenStore = storeHolding()
+
+                sut(tokenStore = tokenStore).isSignedIn.test {
+                    awaitItem() shouldBe true
+
+                    tokenStore.save(randomString())
+
+                    expectNoEvents()
+                }
+            }
         }
     }
 
-    describe("verifySession") {
-
-        describe("when no token is stored") {
-
-            it("TC-21: returns NoSession without making a request") {
-                repository.verifySession() shouldBe AuthSessionResult.NoSession
-
-                server.requestCount shouldBe 0
-            }
-
-            it("TC-21: returns NoSession for a blank token without making a request") {
-                tokenStore.save("   ")
-
-                repository.verifySession() shouldBe AuthSessionResult.NoSession
-
-                server.requestCount shouldBe 0
-            }
-
-            it("TC-21: returns NoSession when reading the token fails with an IOException") {
-                tokenStore.save(TOKEN)
-                tokenStore.readFailure = IOException("corrupt")
-
-                repository.verifySession() shouldBe AuthSessionResult.NoSession
-
-                server.requestCount shouldBe 0
+    describe("verifying the session") {
+        context("when no token is stored") {
+            it("TC-21: returns NoSession") {
+                sut().verifySession() shouldBe AuthSessionResult.NoSession
             }
         }
 
-        describe("when no server is saved") {
-
-            it("TC-22: returns NoServer without making a request") {
-                tokenStore.save(TOKEN)
-                baseUrlProvider.baseUrl = null
-
-                repository.verifySession() shouldBe AuthSessionResult.NoServer
-
-                server.requestCount shouldBe 0
-                tokenStore.token.first() shouldBe TOKEN
+        context("when the stored token is blank") {
+            it("TC-21: returns NoSession") {
+                sut(tokenStore = storeHolding("   ")).verifySession() shouldBe AuthSessionResult.NoSession
             }
         }
 
-        describe("when the server accepts the session") {
+        context("when reading the token fails") {
+            it("TC-21: returns NoSession") {
+                val tokenStore = TestAuthTokenStore().apply { readFailure = IOException("corrupt") }
 
-            beforeEach { tokenStore.save(TOKEN) }
-
-            it("TC-23: returns Valid and keeps the token") {
-                enqueue(200, """{"id": 1}""")
-
-                repository.verifySession() shouldBe AuthSessionResult.Valid
-
-                tokenStore.token.first() shouldBe TOKEN
-            }
-
-            it("TC-23: sends GET api/auth/me with the bearer token") {
-                enqueue(200)
-
-                repository.verifySession()
-
-                val request = server.takeRequest()
-                request.method shouldBe "GET"
-                request.url.encodedPath shouldBe "/api/auth/me"
-                request.headers["Authorization"] shouldBe "Bearer $TOKEN"
-            }
-
-            it("TC-23: requests beneath a server path prefix") {
-                baseUrlProvider.baseUrl = server.url("/omnibus")
-                enqueue(200)
-
-                repository.verifySession() shouldBe AuthSessionResult.Valid
-
-                server.takeRequest().url.encodedPath shouldBe "/omnibus/api/auth/me"
-            }
-
-            it("TC-23: doesn't depend on the response body") {
-                enqueue(200, "not json")
-
-                repository.verifySession() shouldBe AuthSessionResult.Valid
+                sut(tokenStore = tokenStore).verifySession() shouldBe AuthSessionResult.NoSession
             }
         }
 
-        describe("when the server rejects the session") {
+        context("when reading the token is cancelled") {
+            it("TC-25: rethrows the cancellation") {
+                val tokenStore = TestAuthTokenStore().apply { readFailure = CancellationException("cancelled") }
 
-            it("TC-24: returns Rejected and the token is cleared, exactly once") {
-                tokenStore.save(TOKEN)
-                enqueue(401)
-
-                repository.verifySession() shouldBe AuthSessionResult.Rejected
-
-                tokenStore.token.first().shouldBeNull()
-                tokenStore.clearCalls shouldBe 1
+                shouldThrow<CancellationException> { sut(tokenStore = tokenStore).verifySession() }
             }
         }
 
-        describe("when the outcome is not a verdict on the session") {
-
-            beforeEach { tokenStore.save(TOKEN) }
-
-            it("TC-25: returns Unreachable when the server can't be reached, and keeps the token") {
-                server.close()
-
-                repository.verifySession() shouldBe AuthSessionResult.Unreachable
-
-                tokenStore.token.first() shouldBe TOKEN
-                tokenStore.clearCalls shouldBe 0
-            }
-
-            listOf(403, 404, 500, 503).forEach { code ->
-                it("TC-25: returns ServerError for $code, and keeps the token") {
-                    enqueue(code)
-
-                    repository.verifySession() shouldBe AuthSessionResult.ServerError
-
-                    tokenStore.token.first() shouldBe TOKEN
-                    tokenStore.clearCalls shouldBe 0
+        context("when a token is stored") {
+            context("when no server is saved") {
+                it("TC-22: returns NoServer") {
+                    sut(tokenStore = storeHolding()).verifySession() shouldBe AuthSessionResult.NoServer
                 }
             }
 
-            it("TC-25: rethrows CancellationException instead of returning a result") {
-                tokenStore.readFailure = CancellationException("cancelled")
+            context("when the server accepts the session") {
+                it("TC-23: returns Valid, with a body it can read or not") {
+                    checkAll(Exhaustive.of(userJson(), "not json")) { body ->
+                        verifyAnswering(reply(200, body)) shouldBe AuthSessionResult.Valid
+                    }
+                }
 
-                shouldThrow<CancellationException> { repository.verifySession() }
+                it("TC-23: sends GET api/auth/me with the bearer token") {
+                    withMockServer { server ->
+                        val token = randomString()
+                        server.enqueue(reply(200))
+
+                        sut(server.url("/"), storeHolding(token)).verifySession()
+
+                        val request = server.takeRequest()
+                        request.method shouldBe "GET"
+                        request.url.encodedPath shouldBe "/api/auth/me"
+                        request.headers["Authorization"] shouldBe "Bearer $token"
+                    }
+                }
+            }
+
+            context("when the server rejects the session") {
+                it("TC-24: returns Rejected") {
+                    verifyAnswering(reply(401)) shouldBe AuthSessionResult.Rejected
+                }
+
+                it("TC-24: clears the token") {
+                    val tokenStore = storeHolding()
+
+                    verifyAnswering(reply(401), tokenStore)
+
+                    tokenStore.token.first().shouldBeNull()
+                }
+            }
+
+            context("when the server can't be reached") {
+                it("TC-25: returns Unreachable") {
+                    sut(unreachableUrl(), storeHolding()).verifySession() shouldBe AuthSessionResult.Unreachable
+                }
+            }
+
+            context("when the server answers with a status other than 401") {
+                it("TC-25: returns ServerError for each status") {
+                    checkAll(Exhaustive.of(403, 404, 500, 503)) { code ->
+                        verifyAnswering(reply(code)) shouldBe AuthSessionResult.ServerError
+                    }
+                }
             }
         }
     }
 
-    describe("currentUser") {
+    describe("observing the current user") {
+        context("when a session check succeeds") {
+            it("TC-16: exposes the reported user with lowercase hidden formats") {
+                withMockServer { server ->
+                    val id = randomLong()
+                    server.enqueue(reply(200, userJson(id, """, "hidden_formats": ["CBZ"], "stack_series": true""")))
+                    val repository = sut(server.url("/"), storeHolding())
 
-        val userWithExtraKeys = """
-            {
-                "id": 1,
-                "username": "$USERNAME",
-                "is_admin": false,
-                "can_upload": true,
-                "can_edit": true,
-                "can_download": true,
-                "hidden_formats": ["CBZ"],
-                "stack_series": true
+                    repository.verifySession()
+
+                    repository.currentUser.first() shouldBe CurrentUser(
+                        id = id,
+                        canEdit = true,
+                        canUpload = true,
+                        canDownload = true,
+                        hiddenFormats = setOf("cbz"),
+                    )
+                }
             }
-        """
 
-        it("TC-16: exposes the user from the session check, with one /me call") {
-            tokenStore.save(TOKEN)
-            enqueue(200, userWithExtraKeys)
+            it("#93 TC-12: exposes the admin flag, the download permission and the Kindle address") {
+                withMockServer { server ->
+                    val isAdmin = randomBoolean()
+                    val canDownload = randomBoolean()
+                    val kindleEmail = "${randomString()}@kindle.com"
+                    val body = """
+                        {
+                            "id": ${randomLong()},
+                            "username": "${randomString()}",
+                            "is_admin": $isAdmin,
+                            "can_upload": ${randomBoolean()},
+                            "can_edit": ${randomBoolean()},
+                            "can_download": $canDownload,
+                            "kindle_email": "$kindleEmail"
+                        }
+                    """
+                    server.enqueue(reply(200, body))
+                    val repository = sut(server.url("/"), storeHolding())
 
-            repository.verifySession() shouldBe AuthSessionResult.Valid
+                    repository.verifySession()
 
-            repository.currentUser.first() shouldBe CurrentUser(
-                id = 1,
-                canEdit = true,
-                canUpload = true,
-                canDownload = true,
-                hiddenFormats = setOf("cbz"),
-            )
-            server.requestCount shouldBe 1
+                    val user = repository.currentUser.first()!!
+                    user.isAdmin shouldBe isAdmin
+                    user.canDownload shouldBe canDownload
+                    user.kindleEmail shouldBe kindleEmail
+                }
+            }
         }
 
-        it("TC-16: is the user from sign-in once signIn succeeds") {
-            enqueue(200, VALID_RESPONSE_BODY)
+        context("when a session check body can't be read") {
+            it("TC-16: is null") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "not json"))
+                    val repository = sut(server.url("/"), storeHolding())
 
-            repository.signIn(USERNAME, PASSWORD)
+                    repository.verifySession()
 
-            repository.currentUser.first() shouldBe CurrentUser(
-                id = 1,
-                canEdit = true,
-                canUpload = true,
-                canDownload = true,
-                hiddenFormats = emptySet(),
-            )
+                    repository.currentUser.first().shouldBeNull()
+                }
+            }
         }
 
-        it("TC-16: is null after signOut") {
-            enqueue(200, VALID_RESPONSE_BODY)
-            repository.signIn(USERNAME, PASSWORD)
+        context("when registering succeeds") {
+            it("TC-16: is the registered user") {
+                withMockServer { server ->
+                    val id = randomLong()
+                    server.enqueue(reply(200, acceptedBody(user = userJson(id))))
+                    val repository = sut(server.url("/"))
 
-            repository.signOut()
+                    repository.register(randomString(), randomString())
 
-            repository.currentUser.first().shouldBeNull()
+                    repository.currentUser.first()!!.id shouldBe id
+                }
+            }
         }
 
-        it("TC-16: is null after the session is rejected") {
-            tokenStore.save(TOKEN)
-            enqueue(200, userWithExtraKeys)
-            repository.verifySession()
-            enqueue(401)
+        context("when signing in succeeds") {
+            it("TC-16: is the signed-in user") {
+                withMockServer { server ->
+                    val id = randomLong()
+                    server.enqueue(reply(200, acceptedBody(user = userJson(id))))
+                    val repository = sut(server.url("/"))
 
-            repository.verifySession() shouldBe AuthSessionResult.Rejected
+                    repository.signIn(randomString(), randomString())
 
-            repository.currentUser.first().shouldBeNull()
-        }
+                    repository.currentUser.first()!!.id shouldBe id
+                }
+            }
 
-        it("TC-16: is null when the session check body can't be read, and the session is still Valid") {
-            tokenStore.save(TOKEN)
-            enqueue(200, "not json")
+            context("when the user signs out") {
+                it("TC-16: is null") {
+                    withMockServer { server ->
+                        server.enqueue(reply(200, acceptedBody()))
+                        val repository = sut(server.url("/"))
+                        repository.signIn(randomString(), randomString())
 
-            repository.verifySession() shouldBe AuthSessionResult.Valid
+                        repository.signOut()
 
-            repository.currentUser.first().shouldBeNull()
+                        repository.currentUser.first().shouldBeNull()
+                    }
+                }
+            }
+
+            context("when the session is rejected") {
+                it("TC-16: is null") {
+                    withMockServer { server ->
+                        server.enqueue(reply(200, acceptedBody()))
+                        server.enqueue(reply(401))
+                        val repository = sut(server.url("/"))
+                        repository.signIn(randomString(), randomString())
+
+                        repository.verifySession()
+
+                        repository.currentUser.first().shouldBeNull()
+                    }
+                }
+            }
+
+            context("when the token is cleared elsewhere") {
+                it("TC-16: is null") {
+                    withMockServer { server ->
+                        val tokenStore = TestAuthTokenStore()
+                        server.enqueue(reply(200, acceptedBody()))
+                        val repository = sut(server.url("/"), tokenStore)
+                        repository.signIn(randomString(), randomString())
+
+                        tokenStore.clear()
+
+                        repository.currentUser.first().shouldBeNull()
+                    }
+                }
+            }
         }
     }
-
-    describe("#93 toCurrentUser") {
-
-        it("#93 TC-12: maps isAdmin, canDownload and kindleEmail") {
-            val user = UserInfoDto(
-                id = 1,
-                username = USERNAME,
-                isAdmin = true,
-                canUpload = false,
-                canEdit = false,
-                canDownload = true,
-                kindleEmail = "me@kindle.com",
-            ).toCurrentUser()
-
-            user.isAdmin shouldBe true
-            user.canDownload shouldBe true
-            user.kindleEmail shouldBe "me@kindle.com"
-        }
-
-        it("#93 TC-13: new CurrentUser fields default") {
-            val user = CurrentUser(id = 1, canEdit = true, canUpload = true, hiddenFormats = emptySet())
-
-            user.isAdmin shouldBe false
-            user.canDownload shouldBe false
-            user.kindleEmail.shouldBeNull()
-
-            UserInfoDto(
-                id = 1,
-                username = USERNAME,
-                isAdmin = false,
-                canUpload = true,
-                canEdit = true,
-                canDownload = false,
-                kindleEmail = null,
-            ).toCurrentUser().kindleEmail.shouldBeNull()
-        }
-    }
-}) {
-    private companion object {
-        const val USERNAME = "hunter"
-        const val PASSWORD = "hunter2"
-        const val TOKEN = "abc123"
-
-        const val VALID_USER_JSON = """
-            {
-                "id": 1,
-                "username": "$USERNAME",
-                "is_admin": false,
-                "can_upload": true,
-                "can_edit": true,
-                "can_download": true
-            }
-        """
-
-        const val VALID_RESPONSE_BODY = """{"user": $VALID_USER_JSON, "token": "$TOKEN"}"""
-
-        const val RESPONSE_BODY_WITH_UNKNOWN_FIELDS = """
-            {
-                "user": {
-                    "id": 1,
-                    "username": "$USERNAME",
-                    "is_admin": false,
-                    "can_upload": true,
-                    "can_edit": true,
-                    "can_download": true,
-                    "share_stats": true
-                },
-                "token": "$TOKEN",
-                "expires_at": null
-            }
-        """
-    }
-}
+})

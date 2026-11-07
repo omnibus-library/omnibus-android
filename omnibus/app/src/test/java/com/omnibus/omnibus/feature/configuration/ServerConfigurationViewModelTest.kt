@@ -1,14 +1,20 @@
 package com.omnibus.omnibus.feature.configuration
 
-import com.omnibus.omnibus.data.configuration.FakeServerConfigurationRepository
+import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.configuration.ServerValidationResult
-import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
+import com.omnibus.omnibus.data.configuration.randomServerAddress
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -16,98 +22,108 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerConfigurationViewModelTest : DescribeSpec({
 
-    lateinit var repository: FakeServerConfigurationRepository
-    lateinit var collecting: CollectingScope
-
-    fun createViewModel() = ServerConfigurationViewModel(repository).also {
-        collecting.collect(it.uiState)
-    }
-
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    beforeEach {
-        repository = FakeServerConfigurationRepository()
-        collecting = CollectingScope()
-    }
+    fun sut(repository: TestServerConfigurationRepository = TestServerConfigurationRepository()) =
+        ServerConfigurationViewModel(repository).also { vm ->
+            vm.viewModelScope.launch { vm.uiState.collect {} }
+        }
 
-    afterEach { collecting.cancel() }
+    describe("the state") {
+        context("before a submission") {
+            context("when a server is saved") {
+                it("exposes the saved address to prefill the field") {
+                    val server = randomServerAddress()
 
-    describe("initial state") {
-
-        it("exposes the saved address so the field can be prefilled") {
-            repository.savedAddress.value = "http://10.0.0.2:3000"
-
-            createViewModel().uiState.value.savedConfigurationValue shouldBe "http://10.0.0.2:3000"
+                    sut(TestServerConfigurationRepository(server)).uiState.value.savedConfigurationValue shouldBe server
+                }
+            }
         }
     }
 
-    describe("submitServerUrl") {
-
-        it("is PENDING while the address is being checked") {
-            repository.validationGate = CompletableDeferred()
-            val viewModel = createViewModel()
-
-            viewModel.submitServerUrl("10.0.0.2:3000")
-
-            viewModel.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.PENDING
-            viewModel.uiState.value.submitButtonEnabled shouldBe false
-        }
-
+    describe("submitting an address") {
         it("validates the address as entered") {
-            val viewModel = createViewModel()
+            val address = randomString()
+            val repository = TestServerConfigurationRepository().apply { validationGate = CompletableDeferred() }
 
-            viewModel.submitServerUrl("10.0.0.2:3000")
+            sut(repository).submitServerUrl(address)
 
-            repository.validatedAddresses shouldBe listOf("10.0.0.2:3000")
+            repository.validatedAddresses shouldBe listOf(address)
         }
 
-        describe("when the server is found") {
+        context("while the address is being checked") {
+            it("is PENDING") {
+                val repository = TestServerConfigurationRepository()
+                repository.validationGate = CompletableDeferred()
+                val vm = sut(repository)
 
+                vm.submitServerUrl(randomString())
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.PENDING
+            }
+        }
+
+        context("when the server is found") {
             it("saves the normalized address, not the raw input") {
-                repository.validationResult = { ServerValidationResult.Success("http://10.0.0.2:3000") }
-                val viewModel = createViewModel()
+                val normalized = randomServerAddress()
+                val repository = TestServerConfigurationRepository()
+                repository.validationResult = { ServerValidationResult.Success(normalized) }
 
-                viewModel.submitServerUrl("10.0.0.2:3000/")
+                sut(repository).submitServerUrl(randomString())
 
-                repository.savedAddress.value shouldBe "http://10.0.0.2:3000"
-            }
-
-            it("becomes ACCEPTED and disables the submit button") {
-                val viewModel = createViewModel()
-
-                viewModel.submitServerUrl("http://10.0.0.2:3000")
-
-                viewModel.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.ACCEPTED
-                viewModel.uiState.value.submitButtonEnabled shouldBe false
+                repository.savedAddress.value shouldBe normalized
             }
         }
 
-        describe("when the server isn't found") {
+        context("when the address is rejected") {
+            it("saves nothing, for a missing server or a malformed address") {
+                checkAll(
+                    Exhaustive.of(ServerValidationResult.ServerNotFound, ServerValidationResult.InvalidAddressFormat),
+                ) { result ->
+                    val repository = TestServerConfigurationRepository()
+                    repository.validationResult = { result }
 
-            it("becomes NOT_ACCEPTED without saving, and allows a retry") {
-                repository.validationResult = { ServerValidationResult.ServerNotFound }
-                val viewModel = createViewModel()
+                    sut(repository).submitServerUrl(randomString())
 
-                viewModel.submitServerUrl("10.0.0.2:3000")
-
-                viewModel.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.NOT_ACCEPTED
-                viewModel.uiState.value.submitButtonEnabled shouldBe true
-                repository.savedAddress.value.shouldBeNull()
+                    repository.savedAddress.value.shouldBeNull()
+                }
             }
         }
+    }
 
-        describe("when the address is malformed") {
+    describe("the submission's status") {
+        it("maps a found server to ACCEPTED, a missing one to NOT_ACCEPTED, a malformed address to ERROR") {
+            checkAll(
+                Exhaustive.of(
+                    ServerValidationResult.Success(randomServerAddress()) to ServerConfigSubmissionStatus.ACCEPTED,
+                    ServerValidationResult.ServerNotFound to ServerConfigSubmissionStatus.NOT_ACCEPTED,
+                    ServerValidationResult.InvalidAddressFormat to ServerConfigSubmissionStatus.ERROR,
+                ),
+            ) { (result, expected) ->
+                val repository = TestServerConfigurationRepository()
+                repository.validationResult = { result }
+                val vm = sut(repository)
 
-            it("becomes ERROR without saving, and allows a retry") {
-                repository.validationResult = { ServerValidationResult.InvalidAddressFormat }
-                val viewModel = createViewModel()
+                vm.submitServerUrl(randomString())
 
-                viewModel.submitServerUrl("exa mple")
+                vm.uiState.value.submissionStatus shouldBe expected
+            }
+        }
+    }
 
-                viewModel.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.ERROR
-                viewModel.uiState.value.submitButtonEnabled shouldBe true
-                repository.savedAddress.value.shouldBeNull()
+    describe("the submit button") {
+        it("is enabled only for a status that can be submitted again") {
+            checkAll(
+                Exhaustive.of(
+                    ServerConfigSubmissionStatus.UNSUBMITTED to true,
+                    ServerConfigSubmissionStatus.PENDING to false,
+                    ServerConfigSubmissionStatus.ACCEPTED to false,
+                    ServerConfigSubmissionStatus.NOT_ACCEPTED to true,
+                    ServerConfigSubmissionStatus.ERROR to true,
+                ),
+            ) { (status, enabled) ->
+                ServerConfigUIState(submissionStatus = status).submitButtonEnabled shouldBe enabled
             }
         }
     }

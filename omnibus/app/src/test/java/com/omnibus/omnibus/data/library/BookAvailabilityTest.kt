@@ -1,59 +1,69 @@
 package com.omnibus.omnibus.data.library
 
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.reader.local.LocalBookFiles
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runTest
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 
-@OptIn(ExperimentalCoroutinesApi::class)
+private fun filesOnDisk(found: Boolean) = LocalBookFiles { if (found) File(randomString()) else null }
+
 class BookAvailabilityTest : DescribeSpec({
 
-    describe("canOpen") {
-        // (medium, a reading file is on disk, the device is online, expected)
-        val rows = listOf(
-            Quad(ProgressFormat.Reading, true, false, true),
-            Quad(ProgressFormat.Reading, false, true, true),
-            Quad(ProgressFormat.Reading, false, false, false),
-            Quad(ProgressFormat.Listening, true, false, false),
-            Quad(ProgressFormat.Listening, false, true, true),
-        )
-        rows.forEach { row ->
-            it("#22 TC-17: ${row.medium} with file ${row.fileOnDisk} and online ${row.online} is ${row.expected}") {
-                runTest {
-                    val availability = DefaultBookAvailability(
-                        UnconfinedTestDispatcher(testScheduler),
-                        fakeFiles(row.fileOnDisk),
-                        FakeConnectivityMonitor(row.online),
-                    )
+    fun sut(
+        localBookFiles: LocalBookFiles = filesOnDisk(randomBoolean()),
+        connectivity: ConnectivityMonitor = TestConnectivityMonitor(randomBoolean()),
+    ) = DefaultBookAvailability(Dispatchers.Unconfined, localBookFiles, connectivity)
 
-                    availability.canOpen("b1", row.medium) shouldBe row.expected
+    describe("deciding whether a book can open") {
+
+        context("when reading") {
+            context("when the file is on disk") {
+                it("#22 TC-17: opens, whatever the connectivity") {
+                    checkAll(Exhaustive.boolean()) { online ->
+                        sut(filesOnDisk(true), TestConnectivityMonitor(online))
+                            .canOpen(randomString(), ProgressFormat.Reading) shouldBe true
+                    }
+                }
+            }
+
+            context("when the file is not on disk") {
+                it("#22 TC-17: follows the connection") {
+                    checkAll(Exhaustive.boolean()) { online ->
+                        sut(filesOnDisk(false), TestConnectivityMonitor(online))
+                            .canOpen(randomString(), ProgressFormat.Reading) shouldBe online
+                    }
                 }
             }
         }
 
-        it("#22 TC-17: reads the connectivity at call time") {
-            runTest {
-                val monitor = FakeConnectivityMonitor(online = true)
-                val availability = DefaultBookAvailability(UnconfinedTestDispatcher(testScheduler), fakeFiles(false), monitor)
-                availability.canOpen("b1", ProgressFormat.Reading) shouldBe true
+        context("when listening") {
+            it("#22 TC-17: follows the connection, whether or not a file is on disk") {
+                checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { online, fileOnDisk ->
+                    sut(filesOnDisk(fileOnDisk), TestConnectivityMonitor(online))
+                        .canOpen(randomString(), ProgressFormat.Listening) shouldBe online
+                }
+            }
+        }
+
+        context("when the connectivity changes between calls") {
+            it("#22 TC-17: answers from the current connectivity") {
+                val monitor = TestConnectivityMonitor(online = true)
+                val availability = sut(filesOnDisk(false), monitor)
+                availability.canOpen(randomString(), randomEnum<ProgressFormat>())
 
                 monitor.isOnline.value = false
 
-                availability.canOpen("b1", ProgressFormat.Reading) shouldBe false
+                availability.canOpen(randomString(), randomEnum<ProgressFormat>()) shouldBe false
             }
         }
     }
 })
-
-private data class Quad(
-    val medium: ProgressFormat,
-    val fileOnDisk: Boolean,
-    val online: Boolean,
-    val expected: Boolean,
-)
-
-private fun fakeFiles(found: Boolean) = LocalBookFiles { if (found) File("x.epub") else null }

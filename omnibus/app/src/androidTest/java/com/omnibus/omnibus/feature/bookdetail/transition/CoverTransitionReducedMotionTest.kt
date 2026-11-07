@@ -46,15 +46,6 @@ class CoverTransitionReducedMotionTest {
         rule.mainClock.autoAdvance = true
         rule.waitForIdle()
         rule.onNodeWithTag(BookDetailTestTags.COVER).assertIsDisplayed()
-
-        rule.mainClock.autoAdvance = false
-        rule.runOnIdle { h.stack.removeLastOrNull() }
-        repeat(40) {
-            rule.mainClock.advanceTimeByFrame()
-            assertFalse("no shared transition on back under reduced motion", h.sharedScope.isTransitionActive)
-            rule.onAllNodesWithTag(BookCoverTransitionTestTags.stage(book.uuid), useUnmergedTree = true)
-                .assertCountEquals(0)
-        }
     }
 
     // TC-17

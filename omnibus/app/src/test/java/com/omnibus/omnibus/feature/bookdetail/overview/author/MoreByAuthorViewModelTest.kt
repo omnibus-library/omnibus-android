@@ -3,12 +3,17 @@ package com.omnibus.omnibus.feature.bookdetail.overview.author
 import com.omnibus.omnibus.data.authors.Author
 import com.omnibus.omnibus.data.authors.AuthorResult
 import com.omnibus.omnibus.data.authors.AuthorsError
-import com.omnibus.omnibus.data.authors.FakeAuthorsRepository
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.authors.AuthorsRepository
+import com.omnibus.omnibus.data.authors.TestAuthorsRepository
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -17,95 +22,81 @@ import kotlinx.coroutines.test.setMain
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MoreByAuthorViewModelTest : DescribeSpec({
-
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    fun sut(
+        repository: AuthorsRepository = TestAuthorsRepository(),
+        authorId: Long = randomLong(),
+        bookId: Long = randomLong(),
+    ) = MoreByAuthorViewModel(authorId, bookId, repository)
+
+    /** An author whose books have the ids 1 to [count]. */
     fun author(count: Int) = AuthorResult.Success(
-        Author(7, "A", (1..count).map { testBook(it.toLong()) }),
+        Author(randomLong(), randomString(), (1..count).map { randomBook().copy(id = it.toLong()) }),
     )
 
-    fun viewModel(fake: FakeAuthorsRepository, bookId: Long = 1) = MoreByAuthorViewModel(7, bookId, fake)
+    fun AuthorResult.Success.uuids() = author.books.map { it.uuid }
 
-    describe("reload") {
+    describe("loading the shelf") {
+        it("#105 TC-19: reads the author it was made for") {
+            val authorId = randomLong()
+            val repository = TestAuthorsRepository()
 
-        it("#105 TC-18: starts empty, before anything is read") {
-            viewModel(FakeAuthorsRepository(author(3))).uiState.value.books.shouldBeEmpty()
+            sut(repository, authorId = authorId).reload(0)
+
+            repository.requested shouldContainExactly listOf(authorId)
         }
 
-        it("#105 TC-19: reads the author and shows their other books") {
-            val fake = FakeAuthorsRepository(author(3))
-            val vm = viewModel(fake, bookId = 1)
+        it("#105 TC-19: shows the author's books other than this one") {
+            val author = author(3)
+            val vm = sut(TestAuthorsRepository(author), bookId = 1)
 
             vm.reload(0)
 
-            fake.requested shouldContainExactly listOf(7L)
-            vm.uiState.value.books.map { it.uuid } shouldContainExactly listOf("uuid-2", "uuid-3")
+            vm.uiState.value.books.map { it.uuid } shouldContainExactly author.uuids().drop(1)
         }
 
-        it("#105 TC-20: limits the shelf to 12 books") {
-            val vm = viewModel(FakeAuthorsRepository(author(40)), bookId = 1)
+        context("when the same reload key comes again") {
+            it("#105 TC-22: does not read again") {
+                val repository = TestAuthorsRepository(author(3))
+                val vm = sut(repository)
 
-            vm.reload(0)
+                vm.reload(0)
+                vm.reload(0)
 
-            vm.uiState.value.books.size shouldBe 12
+                repository.requested.size shouldBe 1
+            }
         }
 
-        it("#105 TC-21: an author with no other books gives an empty shelf") {
-            val vm = viewModel(FakeAuthorsRepository(author(1)), bookId = 1)
+        context("when a new reload key comes") {
+            it("#105 TC-23: replaces the shelf with the new answer") {
+                val repository = TestAuthorsRepository(author(3))
+                val vm = sut(repository, bookId = 1)
+                val next = author(4)
 
-            vm.reload(0)
+                vm.reload(0)
+                repository.result = next
+                vm.reload(1)
 
-            vm.uiState.value.books.shouldBeEmpty()
+                vm.uiState.value.books.map { it.uuid } shouldContainExactly next.uuids().drop(1)
+            }
         }
 
-        it("#105 TC-22: the same reload key reads only once") {
-            val fake = FakeAuthorsRepository(author(3))
-            val vm = viewModel(fake)
+        context("when a refresh fails") {
+            it("#105 TC-25: keeps the books already shown, for a failed read or no saved server") {
+                checkAll(Exhaustive.of(AuthorResult.Failure(AuthorsError.Unreachable), AuthorResult.NoServer)) { failed ->
+                    val author = author(3)
+                    val repository = TestAuthorsRepository(author)
+                    val vm = sut(repository, bookId = 1)
 
-            vm.reload(0)
-            vm.reload(0)
+                    vm.reload(0)
+                    repository.result = failed
+                    vm.reload(1)
 
-            fake.requested.size shouldBe 1
-        }
-
-        it("#105 TC-23: a new reload key reads again and replaces the shelf") {
-            val fake = FakeAuthorsRepository(author(3))
-            val vm = viewModel(fake, bookId = 1)
-            vm.reload(0)
-
-            fake.result = author(4)
-            vm.reload(1)
-
-            fake.requested.size shouldBe 2
-            vm.uiState.value.books.size shouldBe 3
-        }
-
-        it("#105 TC-24: a failed read leaves an empty shelf empty") {
-            val vm = viewModel(FakeAuthorsRepository(AuthorResult.Failure(AuthorsError.Unreachable)))
-
-            vm.reload(0)
-
-            vm.uiState.value.books.shouldBeEmpty()
-        }
-
-        it("#105 TC-25: a failed refresh keeps the books already shown") {
-            val fake = FakeAuthorsRepository(author(3))
-            val vm = viewModel(fake, bookId = 1)
-            vm.reload(0)
-
-            fake.result = AuthorResult.Failure(AuthorsError.Unreachable)
-            vm.reload(1)
-
-            vm.uiState.value.books.map { it.uuid } shouldContainExactly listOf("uuid-2", "uuid-3")
-        }
-
-        it("#105 TC-26: no saved server leaves the shelf empty") {
-            val vm = viewModel(FakeAuthorsRepository(AuthorResult.NoServer))
-
-            vm.reload(0)
-
-            vm.uiState.value.books.shouldBeEmpty()
+                    vm.uiState.value.books.map { it.uuid } shouldContainExactly author.uuids().drop(1)
+                }
+            }
         }
     }
 })

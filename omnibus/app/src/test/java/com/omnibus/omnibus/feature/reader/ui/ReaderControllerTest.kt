@@ -2,451 +2,383 @@ package com.omnibus.omnibus.feature.reader.ui
 
 import androidx.compose.runtime.saveable.SaverScope
 import com.omnibus.omnibus.data.reader.BookFileResult
-import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderSettings
-import com.omnibus.omnibus.data.reader.ReaderTheme
-import com.omnibus.omnibus.data.reader.ReaderTypeface
+import com.omnibus.omnibus.data.reader.randomReaderSettings
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.string.shouldNotContain
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
-// TC-17 and TC-18 are the existing controller cases, ported to ReaderEvent. Their bodies are unchanged;
-// only the send helper above now decodes the envelope first.
 class ReaderControllerTest : DescribeSpec({
 
-    val dark = ReaderSettings()
-    val light = ReaderSettings(theme = ReaderTheme.Light, fontSize = 24)
-
-    lateinit var page: MutableList<String>
-    lateinit var evaluate: (String) -> Unit
-
-    fun controller(startCfi: String? = null): ReaderController =
-        ReaderController(startCfi).also {
-            it.configure("book-1", dark)
-            it.attach(evaluate)
-        }
-
-    // Decodes the envelope the way the host does, so each case below drives the controller with the
-    // same events the page sends. Events the controller doesn't act on are dropped by the decode.
-    fun ReaderController.send(type: String, payload: String? = null) {
-        ReaderEvent.decode(ReaderMessage(type, payload))?.let { handle(it) }
+    fun sut(
+        page: MutableList<String> = mutableListOf(),
+        startCfi: String? = randomCfi(),
+        bookUuid: String = randomString(),
+        settings: ReaderSettings = randomReaderSettings(),
+    ) = ReaderController(startCfi).apply {
+        configure(bookUuid, settings)
+        attach { page += it }
     }
 
-    fun ReaderController.relocate(cfi: String, echo: Boolean = false) =
-        send("relocate", """{"cfi":"$cfi","echo":$echo}""")
+    fun ReaderController.hostReady() = handle(ReaderEvent.HostReady)
 
-    beforeEach {
-        page = mutableListOf()
-        evaluate = { page += it }
-    }
+    fun ReaderController.pageReady() = handle(ReaderEvent.Status("ready"))
 
-    describe("boot") {
+    fun ReaderController.relocate(cfi: String?, echo: Boolean = false, settledSeek: Int? = null) =
+        handle(ReaderEvent.Relocate(randomRelocateData().copy(cfi = cfi, echo = echo, settledSeek = settledSeek)))
 
-        // TC-18: a hostReady or status event the controller doesn't act on, and every other event type, leaves it as it was.
-        it("TC-18: ignores events it doesn't act on") {
-            val reader = controller(startCfi = "start")
-            reader.send("status", "something-else")
-            reader.send("toc", """[{"label":"A","href":"a.xhtml","level":0}]""")
-            reader.send("toggleChrome")
-            reader.send("selectionCleared")
-            reader.send("shareText", "text")
-            reader.send("turnRequest", "next")
+    /** A copy that differs in font size, whichever size this is. */
+    fun ReaderSettings.withOtherFontSize() = withFontSizeStep(if (canIncreaseFontSize) 1 else -1)
 
-            reader.status shouldBe ReaderLoadStatus.Loading
-            reader.restoreCfi shouldBe "start"
-            page.shouldBeEmpty()
+    /** The controller a rotation brings back: saved, then restored. */
+    fun ReaderController.savedAndRestored(): ReaderController =
+        ReaderControllerSaver.restore(with(ReaderControllerSaver) { SaverScope { true }.save(this@savedAndRestored) }!!)!!
+
+    describe("booting the page") {
+        it("TC-248: boots at the start position in the current settings") {
+            val page = mutableListOf<String>()
+            val uuid = randomString()
+            val settings = randomReaderSettings()
+            val cfi = randomCfi()
+            val reader = sut(page, cfi, uuid, settings)
+
+            reader.hostReady()
+
+            page shouldContainExactly listOf(ReaderScripts.boot(uuid, settings, cfi))
         }
 
-        it("TC-248: boots the page when it reports hostReady, at the start position in the current settings") {
-            val reader = controller(startCfi = "epubcfi(/6/2)")
+        context("before it knows the book") {
+            it("TC-250: does not boot") {
+                val page = mutableListOf<String>()
 
-            reader.send("hostReady")
+                ReaderController().apply { attach { page += it } }.hostReady()
 
-            page.size shouldBe 1
-            page[0] shouldContain "OmnibusReader.init('column', \"https://appassets.androidplatform.net/book/book-1.epub\""
-            page[0] shouldContain "\"cfi\":\"epubcfi(/6/2)\""
-            page[0] shouldContain "\"theme\":\"dark\""
-        }
-
-        it("TC-249: boots without a position when there is none to restore") {
-            controller().send("hostReady")
-
-            page[0] shouldNotContain "\"cfi\""
-        }
-
-        it("TC-250: does not boot a page it can't address, or before it knows the book") {
-            ReaderController().apply { attach(evaluate) }.send("hostReady")
-            ReaderController().apply { configure("book-1", dark) }.send("hostReady")
-
-            page.shouldBeEmpty()
-        }
-
-        it("TC-251: stays loading until the page reports ready, then is ready") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.status shouldBe ReaderLoadStatus.Loading
-
-            reader.send("status", "ready")
-
-            reader.status shouldBe ReaderLoadStatus.Ready
+                page.shouldBeEmpty()
+            }
         }
     }
 
-    describe("position") {
+    describe("the position to reboot at") {
+        context("with an echo") {
+            it("TC-253: stays where the reader was") {
+                val reader = sut()
+                val moved = randomCfi()
+                reader.relocate(moved)
 
-        it("TC-252: follows real reading movement") {
-            val reader = controller(startCfi = "start")
+                reader.relocate(randomCfi(), echo = true)
 
-            reader.relocate("epubcfi(/6/8)")
-
-            reader.restoreCfi shouldBe "epubcfi(/6/8)"
+                reader.restoreCfi shouldBe moved
+            }
         }
 
-        // TC-17: the echo relocate leaves restoreCfi alone, now carried as a decoded RelocateData.
-        it("TC-253: ignores an echo, such as a rotation's corrected re-pagination") {
-            val reader = controller(startCfi = "start")
-            reader.relocate("epubcfi(/6/8)")
+        context("with a relocate that carries no position") {
+            it("TC-254: stays where it was, for a null or empty cfi") {
+                val start = randomCfi()
+                val reader = sut(startCfi = start)
 
-            reader.relocate("epubcfi(/6/6)", echo = true)
+                checkAll(Exhaustive.of(null, "")) { cfi -> reader.relocate(cfi) }
 
-            reader.restoreCfi shouldBe "epubcfi(/6/8)"
-        }
-
-        it("TC-254: ignores a relocate that carries no position or can't be read") {
-            val reader = controller(startCfi = "start")
-
-            reader.send("relocate", """{"cfi":"","echo":false}""")
-            reader.send("relocate", "garbage")
-            reader.send("relocate", null)
-
-            reader.restoreCfi shouldBe "start"
+                reader.restoreCfi shouldBe start
+            }
         }
     }
 
-    describe("recovery") {
+    describe("recovering from a lost page") {
+        context("when the renderer dies") {
+            it("TC-255: reboots a replacement page at the last position in the settings in force then") {
+                val uuid = randomString()
+                val settings = randomReaderSettings()
+                val reader = sut(bookUuid = uuid, settings = settings)
+                reader.hostReady()
+                reader.pageReady()
+                val moved = randomCfi()
+                reader.relocate(moved)
+                val changed = settings.withOtherFontSize()
+                reader.configure(uuid, changed)
+                reader.onRendererGone()
+                val replacement = mutableListOf<String>()
+                reader.attach { replacement += it }
 
-        it("TC-255: reboots a replacement page at the last position in the settings in force then") {
-            val reader = controller(startCfi = "start")
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            reader.relocate("epubcfi(/6/10)")
-            reader.configure("book-1", light)
-            page.clear()
+                reader.hostReady()
 
-            reader.onRendererGone() shouldBe true
-            reader.status shouldBe ReaderLoadStatus.Loading
-            val replacement = mutableListOf<String>()
-            reader.attach { replacement += it }
-            reader.send("hostReady")
-
-            replacement.size shouldBe 1
-            replacement[0] shouldContain "\"cfi\":\"epubcfi(/6/10)\""
-            replacement[0] shouldContain "\"theme\":\"light\""
-            replacement[0] shouldContain "\"fontSize\":24"
-            page.shouldBeEmpty()
+                replacement shouldContainExactly listOf(ReaderScripts.boot(uuid, changed, moved))
+            }
         }
 
-        it("TC-256: gives up after the renderer dies repeatedly without ever painting a page") {
-            val reader = controller()
+        context("when the renderer keeps dying without painting a page") {
+            it("TC-256: gives up") {
+                val reader = sut()
 
-            repeat(3) { reader.onRendererGone() shouldBe true }
-            reader.onRendererGone() shouldBe false
+                repeat(3) { reader.onRendererGone() shouldBe true }
+                reader.onRendererGone() shouldBe false
 
-            reader.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.RendererCrashed)
+                reader.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.RendererCrashed)
+            }
         }
 
-        it("TC-257: counts only consecutive losses, so a page that painted in between starts the count over") {
-            val reader = controller()
+        context("when a page painted between losses") {
+            it("TC-257: starts the count over") {
+                val reader = sut()
+                repeat(3) { reader.onRendererGone() }
 
-            repeat(3) { reader.onRendererGone() }
-            reader.send("status", "ready")
+                reader.pageReady()
 
-            repeat(3) { reader.onRendererGone() shouldBe true }
+                repeat(3) { reader.onRendererGone() shouldBe true }
+            }
         }
 
-        it("TC-258: treats a second hostReady as a replaced page and shows loading again") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.send("status", "ready")
+        context("with a second hostReady") {
+            it("TC-258: shows loading again") {
+                val reader = sut()
+                reader.hostReady()
+                reader.pageReady()
 
-            reader.send("hostReady")
+                reader.hostReady()
 
-            reader.status shouldBe ReaderLoadStatus.Loading
-            page.count { it.startsWith("OmnibusReader.init") } shouldBe 2
+                reader.status shouldBe ReaderLoadStatus.Loading
+            }
         }
 
-        it("TC-259: a failed load is cleared for a retry") {
-            val reader = controller()
-            reader.onBookFailure(BookFileResult.NotFound)
+        context("after a failed load") {
+            context("when reset for a retry") {
+                it("TC-259: is loading") {
+                    val reader = sut()
+                    reader.onBookFailure(BookFileResult.NotFound)
 
-            reader.reset()
+                    reader.reset()
 
-            reader.status shouldBe ReaderLoadStatus.Loading
+                    reader.status shouldBe ReaderLoadStatus.Loading
+                }
+            }
         }
     }
 
-    describe("failure") {
+    describe("failing to open the book") {
+        it("TC-260: reports each way the book can fail") {
+            checkAll(
+                Exhaustive.of(
+                    BookFileResult.Unauthenticated to ReaderLoadFailure.Unauthenticated,
+                    BookFileResult.NotFound to ReaderLoadFailure.NotFound,
+                    BookFileResult.NoServer to ReaderLoadFailure.NoServer,
+                    BookFileResult.Error to ReaderLoadFailure.Unreachable,
+                ),
+            ) { (failure, reason) ->
+                val reader = sut()
 
-        it("TC-260: reports each way the book can fail to open") {
-            mapOf(
-                BookFileResult.Unauthenticated to ReaderLoadFailure.Unauthenticated,
-                BookFileResult.NotFound to ReaderLoadFailure.NotFound,
-                BookFileResult.NoServer to ReaderLoadFailure.NoServer,
-                BookFileResult.Error to ReaderLoadFailure.Unreachable,
-            ).forEach { (failure, reason) ->
-                val reader = controller()
                 reader.onBookFailure(failure)
+
                 reader.status shouldBe ReaderLoadStatus.Failed(reason)
             }
         }
 
-        it("TC-261: reports epub.js and page load failures as a render failure") {
-            val fromGlue = controller().apply { send("status", "error") }
-            val fromPage = controller().apply { onPageLoadFailed() }
+        it("TC-261: reports an epub.js error or a failed page load as a render failure") {
+            checkAll(
+                Exhaustive.of<(ReaderController) -> Unit>(
+                    { it.handle(ReaderEvent.Status("error")) },
+                    { it.onPageLoadFailed() },
+                ),
+            ) { fail ->
+                val reader = sut()
 
-            fromGlue.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.Render)
-            fromPage.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.Render)
+                fail(reader)
+
+                reader.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.Render)
+            }
         }
 
-        it("TC-262: lets the specific reason replace a generic render failure, but not the reverse") {
-            val renderFirst = controller()
-            renderFirst.send("status", "error")
+        it("TC-262: keeps the specific reason over a render failure, in either order") {
+            val renderFirst = sut()
+            renderFirst.handle(ReaderEvent.Status("error"))
             renderFirst.onBookFailure(BookFileResult.NotFound)
-            renderFirst.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)
-
-            val specificFirst = controller()
+            val specificFirst = sut()
             specificFirst.onBookFailure(BookFileResult.NotFound)
-            specificFirst.send("status", "error")
+            specificFirst.handle(ReaderEvent.Status("error"))
+
+            renderFirst.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)
             specificFirst.status shouldBe ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)
         }
 
-        it("TC-263: ignores a failure that arrives after the first page painted") {
-            val reader = controller()
-            reader.send("status", "ready")
+        context("after the first page painted") {
+            it("TC-263: stays ready") {
+                val reader = sut()
+                reader.pageReady()
 
-            reader.onBookFailure(BookFileResult.Error)
-            reader.send("status", "error")
+                reader.onBookFailure(BookFileResult.Error)
+                reader.handle(ReaderEvent.Status("error"))
 
-            reader.status shouldBe ReaderLoadStatus.Ready
-        }
-    }
-
-    describe("settings") {
-
-        it("TC-264: applies a change to a page that is showing") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            page.clear()
-
-            reader.configure("book-1", dark.copy(fontSize = 22))
-
-            page.shouldContainExactly("OmnibusReader.setFontSize(22)")
-        }
-
-        it("TC-265: applies a change made between boot and first paint once the page is ready") {
-            val reader = controller()
-            reader.send("hostReady")
-            page.clear()
-
-            reader.configure("book-1", dark.copy(fontSize = 22))
-            page.shouldBeEmpty()
-            reader.send("status", "ready")
-
-            page.shouldContainExactly("OmnibusReader.setFontSize(22)")
-        }
-
-        it("TC-266: does not resend what the page already shows") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            reader.configure("book-1", dark.copy(fontSize = 22))
-            page.clear()
-
-            reader.configure("book-1", dark.copy(fontSize = 22))
-
-            page.shouldBeEmpty()
-        }
-    }
-
-    describe("margins and reboots") {
-
-        it("a margins change runs no OmnibusReader script, and a later font-size change sends only its own setter") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            page.clear()
-
-            reader.configure("book-1", dark.copy(margins = ReaderMargins.Wide))
-            page.shouldBeEmpty()
-
-            reader.configure("book-1", dark.copy(margins = ReaderMargins.Wide, fontSize = 22))
-            page.shouldContainExactly("OmnibusReader.setFontSize(22)")
-        }
-
-        it("reboots with the latest settings, including one set between boot and first paint") {
-            val reader = controller(startCfi = "start")
-            reader.send("hostReady")
-            page.clear()
-
-            // Set between boot and first paint, so the page never saw it.
-            val latest = dark.copy(typeface = ReaderTypeface.Classic, margins = ReaderMargins.Wide)
-            reader.configure("book-1", latest)
-            reader.onRendererGone() shouldBe true
-
-            val replacement = mutableListOf<String>()
-            reader.attach { replacement += it }
-            reader.send("hostReady")
-
-            replacement.size shouldBe 1
-            replacement[0] shouldContain "\"fontFamily\":\"'EB Garamond','Noto Serif',serif\""
-            // Margins are not in init: the measure reaches a rebooted page through its page style.
-            replacement[0] shouldNotContain "maxWidth"
-        }
-    }
-
-    describe("status") {
-
-        it("TC-19: status transitions are observable in order") {
-            val reader = controller()
-            val seen = mutableListOf(reader.status)
-            fun step(action: () -> Unit) {
-                action()
-                seen += reader.status
+                reader.status shouldBe ReaderLoadStatus.Ready
             }
-
-            step { reader.send("hostReady") }
-            step { reader.send("status", "ready") }
-            step { reader.onRendererGone() }
-            step { reader.send("status", "ready") }
-            step { reader.reset() }
-            step { reader.onBookFailure(BookFileResult.NotFound) }
-
-            seen shouldBe listOf(
-                ReaderLoadStatus.Loading,
-                ReaderLoadStatus.Loading,
-                ReaderLoadStatus.Ready,
-                ReaderLoadStatus.Loading,
-                ReaderLoadStatus.Ready,
-                ReaderLoadStatus.Loading,
-                ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound),
-            )
         }
     }
 
-    describe("commands") {
+    describe("changing the settings") {
+        context("on a page that is showing") {
+            it("TC-264: applies the change") {
+                val page = mutableListOf<String>()
+                val uuid = randomString()
+                val settings = randomReaderSettings()
+                val reader = sut(page, bookUuid = uuid, settings = settings)
+                reader.hostReady()
+                reader.pageReady()
+                page.clear()
+                val changed = settings.withOtherFontSize()
 
-        it("TC-268: does nothing once the page is detached, and a stale detach leaves a newer page alone") {
-            val reader = controller()
-            val newer = mutableListOf<String>()
-            val newerEvaluate: (String) -> Unit = { newer += it }
+                reader.configure(uuid, changed)
 
-            reader.attach(newerEvaluate)
-            reader.detach(evaluate)
-            reader.next()
-            newer.shouldContainExactly("OmnibusReader.next()")
-
-            reader.detach(newerEvaluate)
-            reader.next()
-            newer.size shouldBe 1
-            page.shouldBeEmpty()
-        }
-    }
-
-    describe("start") {
-
-        it("TC-44: startAt is one-shot and survives the saver") {
-            val reader = ReaderController()
-            reader.startAt("A")
-            reader.restoreCfi shouldBe "A"
-
-            reader.relocate("epubcfi(/6/8)")
-            reader.restoreCfi shouldBe "epubcfi(/6/8)"
-            reader.startAt("A")
-            reader.restoreCfi shouldBe "epubcfi(/6/8)"
-
-            // A rotation saves and restores the controller. The restored one keeps the moved position.
-            val saved = with(ReaderControllerSaver) { SaverScope { true }.save(reader) }!!
-            val restored = ReaderControllerSaver.restore(saved)!!
-            restored.restoreCfi shouldBe "epubcfi(/6/8)"
-            restored.startAt("A")
-            restored.restoreCfi shouldBe "epubcfi(/6/8)"
-        }
-    }
-
-    describe("seek") {
-
-        /** The seek scripts the page has been sent, in order. */
-        fun seeks(): List<String> = page.filter { it.startsWith("OmnibusReader.seek(") }
-
-        it("TC-89: seek is parked until ready and clamped") {
-            val reader = controller()
-
-            reader.seek(0.5)
-            page.shouldBeEmpty()
-
-            reader.send("status", "ready")
-            page shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
-
-            page.clear()
-            reader.seek(1.7)
-            reader.seek(-1.0)
-            reader.seek(Double.NaN)
-            page shouldContainExactly listOf(ReaderScripts.seek(1.0, 2), ReaderScripts.seek(0.0, 3))
+                page shouldContainExactly ReaderScripts.settingsChange(settings, changed)
+            }
         }
 
-        it("TC-90: a pending seek is resent after a reboot until it settles") {
-            val reader = controller()
-            reader.send("hostReady")
-            reader.send("status", "ready")
-
-            reader.seek(0.5)
-            seeks() shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
-
-            // The page is replaced: the seek is sent to it once more, with the same id.
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            seeks() shouldContainExactly listOf(ReaderScripts.seek(0.5, 1), ReaderScripts.seek(0.5, 1))
-
-            // The page reports the seek settled, so a further reboot does not resend it.
-            reader.send("relocate", """{"cfi":"epubcfi(/6/8)","settledSeek":1}""")
-            reader.send("hostReady")
-            reader.send("status", "ready")
-            seeks().size shouldBe 2
-
-            // A seek still pending when the controller is saved goes to the restored controller's page.
-            reader.seek(0.7)
-            val saved = with(ReaderControllerSaver) { SaverScope { true }.save(reader) }!!
-            val restored = ReaderControllerSaver.restore(saved)!!
-            val restoredPage = mutableListOf<String>()
-            restored.attach { restoredPage += it }
-            restored.configure("book-1", dark)
-            restored.send("hostReady")
-            restored.send("status", "ready")
-            restoredPage.filter { it.startsWith("OmnibusReader.seek(") } shouldContainExactly
-                listOf(ReaderScripts.seek(0.7, 2))
-        }
-
-        it("TC-91: navigation drops the pending seek") {
-            val navigations = listOf<Pair<String, (ReaderController) -> Unit>>(
-                "next" to { it.next() },
-                "previous" to { it.previous() },
-                "display" to { it.display("chapter2.xhtml") },
-            )
-            navigations.forEach { (label, navigate) ->
-                withClue(label) {
-                    val reader = controller()
-                    reader.seek(0.5)
-                    navigate(reader)
-
-                    reader.send("hostReady")
-                    reader.send("status", "ready")
-                    seeks().shouldBeEmpty()
+        context("between boot and first paint") {
+            context("when the page is ready") {
+                it("TC-265: applies the change") {
+                    val page = mutableListOf<String>()
+                    val uuid = randomString()
+                    val settings = randomReaderSettings()
+                    val reader = sut(page, bookUuid = uuid, settings = settings)
+                    reader.hostReady()
                     page.clear()
+                    val changed = settings.withOtherFontSize()
+                    reader.configure(uuid, changed)
+                    page.shouldBeEmpty()
+
+                    reader.pageReady()
+
+                    page shouldContainExactly ReaderScripts.settingsChange(settings, changed)
+                }
+            }
+        }
+    }
+
+    describe("detaching a page") {
+        context("when a newer page has taken over") {
+            it("TC-268: leaves the newer page attached") {
+                val newer = mutableListOf<String>()
+                val staleEvaluate: (String) -> Unit = {}
+                val reader = ReaderController().apply {
+                    attach(staleEvaluate)
+                    attach { newer += it }
+                }
+
+                reader.detach(staleEvaluate)
+                reader.next()
+
+                newer shouldContainExactly listOf(ReaderScripts.NEXT)
+            }
+        }
+    }
+
+    describe("setting the opening position") {
+        it("TC-44: takes effect once") {
+            val reader = ReaderController()
+            val first = randomCfi()
+            reader.startAt(first)
+            reader.restoreCfi shouldBe first
+
+            reader.startAt(randomCfi())
+
+            reader.restoreCfi shouldBe first
+        }
+
+        context("after a rotation restored the controller") {
+            it("TC-44: keeps the moved position") {
+                val reader = ReaderController().apply { startAt(randomCfi()) }
+                val moved = randomCfi()
+                reader.relocate(moved)
+
+                val restored = reader.savedAndRestored()
+                restored.startAt(randomCfi())
+
+                restored.restoreCfi shouldBe moved
+            }
+        }
+    }
+
+    describe("seeking") {
+        context("before the page is ready") {
+            it("TC-89: parks the seek until it is") {
+                val page = mutableListOf<String>()
+                val reader = sut(page)
+
+                reader.seek(0.5)
+                page.shouldBeEmpty()
+
+                reader.pageReady()
+                page shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
+            }
+        }
+
+        context("with a fraction out of range") {
+            it("TC-89: sends only in-range fractions, for too large, too small and NaN") {
+                val page = mutableListOf<String>()
+                val reader = sut(page)
+                reader.pageReady()
+
+                reader.seek(1.7)
+                reader.seek(-1.0)
+                reader.seek(Double.NaN)
+
+                page shouldContainExactly listOf(ReaderScripts.seek(1.0, 1), ReaderScripts.seek(0.0, 2))
+            }
+        }
+
+        context("when the page is replaced") {
+            it("TC-90: resends a pending seek until it settles") {
+                val page = mutableListOf<String>()
+                val reader = sut(page)
+                val seek = ReaderScripts.seek(0.5, 1)
+                reader.hostReady()
+                reader.pageReady()
+                reader.seek(0.5)
+
+                reader.hostReady()
+                reader.pageReady()
+                page.count { it == seek } shouldBe 2
+
+                reader.relocate(randomCfi(), settledSeek = 1)
+                reader.hostReady()
+                reader.pageReady()
+                page.count { it == seek } shouldBe 2
+            }
+        }
+
+        context("after a rotation restored the controller") {
+            it("TC-90: sends a pending seek to the restored controller's page") {
+                val restoredPage = mutableListOf<String>()
+                val reader = sut()
+                reader.seek(0.7)
+
+                val restored = reader.savedAndRestored()
+                restored.attach { restoredPage += it }
+                restored.pageReady()
+
+                restoredPage shouldContainExactly listOf(ReaderScripts.seek(0.7, 1))
+            }
+        }
+
+        context("when the reader navigates first") {
+            it("TC-91: drops the pending seek, for next, previous or a display") {
+                checkAll(
+                    Exhaustive.of<(ReaderController) -> Unit>(
+                        { it.next() },
+                        { it.previous() },
+                        { it.display(randomString()) },
+                    ),
+                ) { navigate ->
+                    val page = mutableListOf<String>()
+                    val reader = sut(page)
+                    reader.seek(0.5)
+
+                    navigate(reader)
+                    reader.pageReady()
+
+                    page shouldNotContain ReaderScripts.seek(0.5, 1)
                 }
             }
         }

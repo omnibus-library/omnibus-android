@@ -12,7 +12,7 @@ import com.omnibus.omnibus.data.audiobook.playback.SourcePart
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import org.junit.After
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,16 +52,6 @@ class Media3AudioEngineTest {
         fun has(event: EngineEvent): Boolean = events.contains(event)
     }
 
-    // C2
-    @Test
-    fun connectsOnTheFirstCommand() {
-        // TC-106: awaitReady connects the controller and waits for the service's player.
-        val engine = newEngine()
-        awaitOnMain { engine.awaitReady() }
-
-        assertNotNull(bridge.player)
-    }
-
     // I-HLTH-3
     @Test
     fun reconnectsAfterTheServiceDies() {
@@ -95,12 +85,7 @@ class Media3AudioEngineTest {
             emptyMap(),
         )
         awaitOnMain { engine.setSource(unreachable) }
-        Thread.sleep(1_000)
-        assertFalse("setSource reported PausedExternally", recorder.has(EngineEvent.PausedExternally))
-
         onMain { engine.pause() }
-        Thread.sleep(500)
-        assertFalse("the engine's own pause reported PausedExternally", recorder.has(EngineEvent.PausedExternally))
 
         val outside = MediaController.Builder(
             context,
@@ -111,6 +96,11 @@ class Media3AudioEngineTest {
             awaitUntil("a pause from outside the app to report PausedExternally") {
                 recorder.has(EngineEvent.PausedExternally)
             }
+            assertEquals(
+                "only the pause from outside is external",
+                1,
+                recorder.events.count { it == EngineEvent.PausedExternally },
+            )
         } finally {
             onMain { outside.release() }
         }

@@ -1,10 +1,17 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.activity
 
-import com.omnibus.omnibus.data.household.FakeHouseholdRepository
-import com.omnibus.omnibus.data.household.HouseholdReader
+import com.omnibus.omnibus.data.household.HouseholdRepository
 import com.omnibus.omnibus.data.household.HouseholdResult
+import com.omnibus.omnibus.data.household.TestHouseholdRepository
+import com.omnibus.omnibus.data.household.randomHouseholdReader
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -13,85 +20,84 @@ import kotlinx.coroutines.test.setMain
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HouseholdActivityViewModelTest : DescribeSpec({
-
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    fun reader(id: Long, seconds: Long = 3_600L) =
-        HouseholdReader(id, "Reader $id", hasAvatar = false, seconds = seconds, sessions = 2, lastSessionAtMillis = 1_000L)
+    fun sut(repository: HouseholdRepository = TestHouseholdRepository()) =
+        HouseholdActivityViewModel(randomString(), repository)
+
+    /** A reader who has spent time in the book. */
+    fun reader() = randomHouseholdReader().copy(seconds = randomLong(1L..1_000_000L))
 
     describe("loading the household") {
-
-        it("TC-7: starts with no readers, so the section is left out") {
-            HouseholdActivityViewModel("book-1", FakeHouseholdRepository()).readers.value shouldBe emptyList()
-        }
-
         it("TC-8: lists the readers the repository returns, in order") {
-            val fake = FakeHouseholdRepository()
-            fake.results += HouseholdResult.Success(listOf(reader(2), reader(1)))
-            val vm = HouseholdActivityViewModel("book-1", fake)
+            val readers = listOf(reader(), reader())
+            val repository = TestHouseholdRepository().apply { results += HouseholdResult.Success(readers) }
+            val vm = sut(repository)
 
             vm.reload(0)
 
-            vm.readers.value shouldBe listOf(reader(2), reader(1))
-            fake.calls shouldBe listOf("book-1")
+            vm.readers.value shouldBe readers
         }
 
-        it("TC-9: a book nobody else has read shows no readers") {
-            val fake = FakeHouseholdRepository()
-            fake.results += HouseholdResult.Success(emptyList())
-            val vm = HouseholdActivityViewModel("book-1", fake)
+        context("when a reader has no time in the book") {
+            it("TC-10: leaves that reader out") {
+                val active = reader()
+                val idle = reader().copy(seconds = 0)
+                val repository = TestHouseholdRepository().apply { results += HouseholdResult.Success(listOf(idle, active)) }
+                val vm = sut(repository)
 
-            vm.reload(0)
+                vm.reload(0)
 
-            vm.readers.value shouldBe emptyList()
+                vm.readers.value shouldBe listOf(active)
+            }
         }
 
-        it("TC-10: a reader with no time in the book is not listed") {
-            val fake = FakeHouseholdRepository()
-            fake.results += HouseholdResult.Success(listOf(reader(1, seconds = 0), reader(2)))
-            val vm = HouseholdActivityViewModel("book-1", fake)
+        context("when the same reload key comes again") {
+            it("TC-11: does not load again") {
+                val repository = TestHouseholdRepository()
+                val vm = sut(repository)
 
-            vm.reload(0)
+                vm.reload(0)
+                vm.reload(0)
 
-            vm.readers.value shouldBe listOf(reader(2))
+                repository.calls.size shouldBe 1
+            }
         }
 
-        it("TC-11: loads once per reload key") {
-            val fake = FakeHouseholdRepository()
-            val vm = HouseholdActivityViewModel("book-1", fake)
+        context("when a reload does not get an answer") {
+            it("TC-12: keeps the readers already shown, whether the read failed or the book is unknown") {
+                checkAll(Exhaustive.of(HouseholdResult.Failed, HouseholdResult.NotFound)) { unanswered ->
+                    val shown = listOf(reader())
+                    val repository = TestHouseholdRepository().apply {
+                        results += HouseholdResult.Success(shown)
+                        results += unanswered
+                    }
+                    val vm = sut(repository)
 
-            vm.reload(0)
-            vm.reload(0)
-            vm.reload(1)
+                    vm.reload(0)
+                    vm.reload(1)
 
-            fake.calls shouldBe listOf("book-1", "book-1")
+                    vm.readers.value shouldBe shown
+                }
+            }
         }
 
-        it("TC-12: a failed or unknown-book answer keeps the readers already shown") {
-            val fake = FakeHouseholdRepository()
-            fake.results += HouseholdResult.Success(listOf(reader(1)))
-            fake.results += HouseholdResult.Failed
-            fake.results += HouseholdResult.NotFound
-            val vm = HouseholdActivityViewModel("book-1", fake)
+        context("when a reader has left the list") {
+            context("when the next reload arrives") {
+                it("TC-13: removes them") {
+                    val repository = TestHouseholdRepository().apply {
+                        results += HouseholdResult.Success(listOf(reader()))
+                        results += HouseholdResult.Success(emptyList())
+                    }
+                    val vm = sut(repository)
 
-            vm.reload(0)
-            vm.reload(1)
-            vm.reload(2)
+                    vm.reload(0)
+                    vm.reload(1)
 
-            vm.readers.value shouldBe listOf(reader(1))
-        }
-
-        it("TC-13: a reload replaces the list, so a reader who left it disappears") {
-            val fake = FakeHouseholdRepository()
-            fake.results += HouseholdResult.Success(listOf(reader(1)))
-            fake.results += HouseholdResult.Success(emptyList())
-            val vm = HouseholdActivityViewModel("book-1", fake)
-
-            vm.reload(0)
-            vm.reload(1)
-
-            vm.readers.value shouldBe emptyList()
+                    vm.readers.value.shouldBeEmpty()
+                }
+            }
         }
     }
 })

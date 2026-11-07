@@ -1,691 +1,536 @@
 package com.omnibus.omnibus.data.library
 
-import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.FakeClientInfo
-import com.omnibus.omnibus.data.network.FakeAuthTokenProvider
-import com.omnibus.omnibus.data.network.FakeServerBaseUrlProvider
-import com.omnibus.omnibus.data.network.OmnibusHttpClient
-import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.single
-import kotlinx.coroutines.flow.toList
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 
-class DefaultLibraryRepositoryTest : DescribeSpec({
+private const val EMPTY_BOOKS = """{"books":[]}"""
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: FakeServerBaseUrlProvider
-    lateinit var repository: DefaultLibraryRepository
+private const val SHELVES_JSON = """
+    [
+        {"id":1,"owner_user_id":7,"owner_username":"hunter","kind":"smart","name":"Empty","visibility":"private","accent":null,"book_count":0},
+        {"id":2,"owner_user_id":7,"owner_username":"hunter","kind":"manual","name":"Two","visibility":"public","accent":"#c8a04a","book_count":2},
+        {"id":3,"owner_user_id":8,"owner_username":"ann","kind":"wishlist","name":"Nine","visibility":"private","book_count":9}
+    ]
+"""
 
-    /** Paths of every request the shelf dispatcher receives, in arrival order. */
-    val requested = ConcurrentLinkedQueue<String>()
+private const val LISTENING_ITEM = """
+    [{"record": {
+        "book_uuid": "uuid-2", "format": "audio", "audio_position_seconds": 3600.5, "progress_percent": 12.0,
+        "updated_at": 1700000100, "book_file_id": 20, "total_duration_seconds": 7200.0,
+        "resolved": {"chapter_title": "Intro", "confidence": "low"}},
+      "book": {"id": 2},
+      "audio_part": 2, "audio_part_count": 4, "playback_rate": 1.25}]
+"""
 
-    fun enqueue(code: Int, body: String = "", headers: Map<String, String> = emptyMap()) {
-        server.enqueue(
-            MockResponse.Builder()
-                .code(code)
-                .body(body)
-                .apply { headers.forEach { (name, value) -> addHeader(name, value) } }
-                .build(),
-        )
-    }
+private fun booksBody(ids: List<Long>): String = """{"books":[${ids.joinToString(",") { """{"id":$it}""" }}]}"""
 
-    fun booksBody(ids: List<Long>): String =
-        """{"books":[${ids.joinToString(",") { """{"id":$it}""" }}]}"""
+private fun shelfPage(ids: List<Long>): MockResponse = reply(200, booksBody(ids))
 
-    /** Serves `/api/shelves` with [SHELVES_JSON] and each `/api/shelves/{id}/page` from [page]. */
-    fun serveShelves(page: (Long) -> MockResponse) {
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                val path = request.url.encodedPath
-                requested.add(path)
-                val shelfPage = Regex("/api/shelves/(\\d+)/page").matchEntire(path)
-                return when {
-                    path == "/api/shelves" -> MockResponse.Builder().code(200).body(SHELVES_JSON).build()
-                    shelfPage != null -> page(shelfPage.groupValues[1].toLong())
-                    else -> MockResponse.Builder().code(404).build()
-                }
+/** Serves `/api/shelves` with [SHELVES_JSON] and each `/api/shelves/{id}/page` from [page]. */
+private fun MockWebServer.serveShelves(page: (Long) -> MockResponse) {
+    dispatcher = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            val path = request.url.encodedPath
+            val shelfPage = Regex("/api/shelves/(\\d+)/page").matchEntire(path)
+            return when {
+                path == "/api/shelves" -> reply(200, SHELVES_JSON)
+                shelfPage != null -> page(shelfPage.groupValues[1].toLong())
+                else -> reply(404)
             }
         }
     }
+}
 
-    fun shelfPage(ids: List<Long>, delay: Long = 0): MockResponse =
-        MockResponse.Builder()
-            .code(200)
-            .body(booksBody(ids))
-            .apply { if (delay > 0) headersDelay(delay, TimeUnit.MILLISECONDS) }
-            .build()
+class DefaultLibraryRepositoryTest : DescribeSpec({
+
+    fun sut(server: MockWebServer? = null) = DefaultLibraryRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = testOmnibusHttpClient(server?.url("/")),
+    )
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requested.clear()
-        baseUrlProvider = FakeServerBaseUrlProvider(baseUrl = server.url("/"))
+    describe("reading a page of books") {
 
-        repository = DefaultLibraryRepository(
-            ioDispatcher = Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = baseUrlProvider,
-                authTokenProvider = FakeAuthTokenProvider(token = "secret"),
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(FakeClientInfo()),
-            ),
-        )
+        it("TC-1: asks for the ebooks in the query's order, with no cursor or filters") {
+            withMockServer { server ->
+                server.enqueue(reply(200, EMPTY_BOOKS))
+
+                sut(server).getBooksPageFlow().single()
+
+                val url = server.nextRequest().url
+                url.encodedPath shouldBe "/api/ebooks"
+                url.queryParameter("sort") shouldBe "newest_added"
+                url.queryParameter("dir") shouldBe "desc"
+                url.queryParameter("cursor").shouldBeNull()
+                url.queryParameter("formats").shouldBeNull()
+                url.queryParameter("exclude_formats").shouldBeNull()
+            }
+        }
+
+        it("TC-4: sends every sort and direction as the server's token") {
+            checkAll(
+                Exhaustive.of(
+                    LibrarySort.Title to "title",
+                    LibrarySort.Author to "author",
+                    LibrarySort.Series to "series",
+                    LibrarySort.RecentlyInteracted to "recently_interacted",
+                    LibrarySort.LastUpdated to "last_updated",
+                    LibrarySort.NewestAdded to "newest_added",
+                ),
+                Exhaustive.of(SortDirection.Asc to "asc", SortDirection.Desc to "desc"),
+            ) { (sort, sortToken), (dir, dirToken) ->
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+
+                    sut(server).getBooksPageFlow(BooksPageQuery(sort = sort, dir = dir)).single()
+
+                    val url = server.nextRequest().url
+                    (url.queryParameter("sort") to url.queryParameter("dir")) shouldBe (sortToken to dirToken)
+                }
+            }
+        }
+
+        it("TC-107: sends each category's formats verbatim, in order") {
+            checkAll(
+                Exhaustive.of(
+                    LibraryCategory.All to null,
+                    LibraryCategory.Ebooks to "epub,pdf,mobi,azw3,cbz,cbr",
+                    LibraryCategory.Audiobooks to "m4b,m4a,mp3,aac,flac,ogg,opus",
+                ),
+            ) { (category, formats) ->
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+
+                    sut(server).getBooksPageFlow(category.toQuery(randomEnum(), randomEnum())).single()
+
+                    server.nextRequest().url.queryParameter("formats") shouldBe formats
+                }
+            }
+        }
+
+        context("when given a cursor") {
+            it("TC-2: still carries the ordering, which the server requires") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+                    val cursor = randomString()
+
+                    sut(server).getBooksPageFlow(BooksPageQuery(LibrarySort.Title, SortDirection.Asc), cursor).single()
+
+                    val url = server.nextRequest().url
+                    url.queryParameter("cursor") shouldBe cursor
+                    url.queryParameter("sort") shouldBe "title"
+                    url.queryParameter("dir") shouldBe "asc"
+                }
+            }
+        }
+
+        context("when filtering by format") {
+            it("TC-3: normalizes the format filters") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+
+                    sut(server).getBooksPageFlow(
+                        BooksPageQuery(formats = setOf("EPUB", "Pdf"), excludeFormats = setOf("m4b", "epub")),
+                    ).single()
+
+                    val url = server.nextRequest().url
+                    url.queryParameter("formats") shouldBe "epub,pdf"
+                    url.queryParameter("exclude_formats") shouldBe "epub,m4b"
+                }
+            }
+        }
+
+        context("when the server sends page headers") {
+            it("TC-6: carries the paging details") {
+                withMockServer { server ->
+                    server.enqueue(
+                        MockResponse.Builder()
+                            .code(200)
+                            .body(booksBody(listOf(1)))
+                            .addHeader("X-Next-Cursor", "c2")
+                            .addHeader("X-Total-Count", "123")
+                            .addHeader("X-Hidden-Count", "4")
+                            .build(),
+                    )
+
+                    val page = sut(server).getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+
+                    page.nextCursor shouldBe "c2"
+                    page.total shouldBe 123L
+                    page.hiddenCount shouldBe 4
+                }
+            }
+        }
+
+        context("when the server sends no page headers") {
+            it("TC-7: has no paging details") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, booksBody(listOf(1))))
+
+                    val page = sut(server).getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+
+                    page.nextCursor.shouldBeNull()
+                    page.total.shouldBeNull()
+                    page.hiddenCount.shouldBeNull()
+                }
+            }
+        }
+
+        it("TC-8: maps the books, with or without the body's optional keys") {
+            checkAll(
+                Exhaustive.of(
+                    """{"path":"/x","books":[{"id":1}],"error":null,"total":5}""",
+                    """{"books":[{"id":1}]}""",
+                ),
+            ) { body ->
+                withMockServer { server ->
+                    server.enqueue(reply(200, body))
+
+                    val page = sut(server).getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
+
+                    page.books.map { it.id } shouldBe listOf(1L)
+                }
+            }
+        }
+
+        context("when the server answers an error") {
+            it("TC-25: gives the failure for every kind of answer") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple(500, "internal server error", LibraryError.Http(500, "internal server error")),
+                        Triple(500, "", LibraryError.Http(500, null)),
+                        Triple(500, "   \n ", LibraryError.Http(500, null)),
+                        Triple(400, """{"error":"bad cursor"}""", LibraryError.Http(400, "bad cursor")),
+                        Triple(422, """{"message":"bad sort"}""", LibraryError.Http(422, "bad sort")),
+                        Triple(404, """{"detail":"no such page"}""", LibraryError.Http(404, "no such page")),
+                        Triple(401, "", LibraryError.SessionExpired),
+                        Triple(200, """{"books": [""", LibraryError.UnexpectedResponse),
+                    ),
+                ) { (code, body, error) ->
+                    withMockServer { server ->
+                        server.enqueue(reply(code, body))
+
+                        sut(server).getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(error)
+                    }
+                }
+            }
+        }
+
+        context("when the error's text is longer than 300 characters") {
+            it("TC-25: truncates it to 300") {
+                withMockServer { server ->
+                    server.enqueue(reply(500, "x".repeat(400)))
+
+                    sut(server).getBooksPageFlow().single() shouldBe
+                        LibraryPageResult.Failure(LibraryError.Http(500, "x".repeat(300)))
+                }
+            }
+        }
+
+        context("when the server is unreachable") {
+            it("TC-25: gives Unreachable") {
+                withMockServer { server ->
+                    val repository = sut(server)
+                    server.close()
+
+                    repository.getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(LibraryError.Unreachable)
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("TC-26: gives NoServer") {
+                sut().getBooksPageFlow().single() shouldBe LibraryPageResult.NoServer
+            }
+        }
     }
 
-    afterEach { server.close() }
+    describe("reading the recent progress") {
 
-    describe("getBooksPageFlow") {
+        it("TC-9: asks for the recent progress") {
+            withMockServer { server ->
+                server.enqueue(reply(200, "[]"))
 
-        describe("request parameters") {
+                sut(server).getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(emptyList())
 
-            it("TC-1: first page sends limit, sort and dir, and no cursor or filters") {
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow().single()
-
-                val request = server.takeRequest()
-                request.method shouldBe "GET"
-                request.url.encodedPath shouldBe "/api/ebooks"
-                request.url.queryParameter("limit") shouldBe "60"
-                request.url.queryParameter("sort") shouldBe "newest_added"
-                request.url.queryParameter("dir") shouldBe "desc"
-                request.url.queryParameter("cursor").shouldBeNull()
-                request.url.queryParameter("formats").shouldBeNull()
-                request.url.queryParameter("exclude_formats").shouldBeNull()
-            }
-
-            it("TC-2: a cursor request still carries sort, dir and limit") {
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow(
-                    BooksPageQuery(sort = LibrarySort.Title, dir = SortDirection.Asc),
-                    cursor = "c1",
-                ).single()
-
-                val request = server.takeRequest()
-                request.url.queryParameter("cursor") shouldBe "c1"
-                request.url.queryParameter("sort") shouldBe "title"
-                request.url.queryParameter("dir") shouldBe "asc"
-                request.url.queryParameter("limit") shouldBe "60"
-            }
-
-            it("TC-3: formats are lowercase and comma-separated, exclude_formats is sorted") {
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow(
-                    BooksPageQuery(formats = setOf("EPUB", "Pdf"), excludeFormats = setOf("m4b", "epub")),
-                ).single()
-
-                val request = server.takeRequest()
-                request.url.queryParameter("formats") shouldBe "epub,pdf"
-                request.url.queryParameter("exclude_formats") shouldBe "epub,m4b"
-            }
-
-            it("TC-3: both filter params are absent when the sets are empty") {
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow(BooksPageQuery(formats = emptySet(), excludeFormats = emptySet())).single()
-
-                val request = server.takeRequest()
-                request.url.queryParameter("formats").shouldBeNull()
-                request.url.queryParameter("exclude_formats").shouldBeNull()
-            }
-
-            it("TC-4: every sort and direction is sent as its api name") {
-                LibrarySort.entries.forEach { _ -> enqueue(200, EMPTY_BOOKS) }
-                SortDirection.entries.forEach { _ -> enqueue(200, EMPTY_BOOKS) }
-
-                LibrarySort.entries.forEach { sort -> repository.getBooksPageFlow(BooksPageQuery(sort = sort)).single() }
-                SortDirection.entries.forEach { dir -> repository.getBooksPageFlow(BooksPageQuery(dir = dir)).single() }
-
-                LibrarySort.entries.map { _ -> server.takeRequest().url.queryParameter("sort") } shouldBe
-                    LibrarySort.entries.map { it.apiName }
-                SortDirection.entries.map { _ -> server.takeRequest().url.queryParameter("dir") } shouldBe
-                    SortDirection.entries.map { it.apiName }
-            }
-
-            it("TC-5: sends the bearer token and JSON accept header") {
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow().single()
-
-                val request = server.takeRequest()
-                request.headers["Authorization"] shouldBe "Bearer secret"
-                request.headers["Accept"] shouldBe "application/json"
-            }
-
-            it("TC-5: resolves beneath a server path prefix") {
-                baseUrlProvider.baseUrl = server.url("/omnibus")
-                enqueue(200, EMPTY_BOOKS)
-
-                repository.getBooksPageFlow().single()
-
-                server.takeRequest().url.encodedPath shouldBe "/omnibus/api/ebooks"
+                server.nextRequest().url.encodedPath shouldBe "/api/progress/recent"
             }
         }
 
-        describe("page headers") {
+        context("when an item is a reading position") {
+            it("TC-10: maps its record") {
+                withMockServer { server ->
+                    server.enqueue(
+                        reply(
+                            200,
+                            """
+                            [{"record": {
+                                "book_uuid": "uuid-1", "format": "epub", "epub_cfi": "epubcfi(/6/4)",
+                                "progress_percent": 42.5, "updated_at": 1700000000, "client_updated_at": 1700000001,
+                                "book_file_id": 10,
+                                "resolved": {"chapter_ordinal": 3, "chapters_total": 12, "chapter_title": "Chapter Three",
+                                             "percent_through_book": 25.0, "confidence": "high"}},
+                              "book": {"id": 1}}]
+                            """,
+                        ),
+                    )
 
-            it("TC-6: carries the next cursor, total and hidden count from the headers") {
-                enqueue(
-                    200,
-                    booksBody(listOf(1)),
-                    mapOf("X-Next-Cursor" to "c2", "X-Total-Count" to "123", "X-Hidden-Count" to "4"),
-                )
+                    val point = sut(server).getRecentProgressFlow().single()
+                        .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
 
-                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
-
-                page.nextCursor shouldBe "c2"
-                page.total shouldBe 123L
-                page.hiddenCount shouldBe 4
-            }
-
-            it("TC-7: a last page without the headers gives null cursor, total and hidden count") {
-                enqueue(200, booksBody(listOf(1)))
-
-                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
-
-                page.nextCursor.shouldBeNull()
-                page.total.shouldBeNull()
-                page.hiddenCount.shouldBeNull()
-            }
-        }
-
-        describe("body decoding") {
-
-            it("TC-8: decodes a body with every optional key and maps the books") {
-                enqueue(200, """{"path":"/x","books":[{"id":1,"title":"A"}],"error":null,"total":5}""")
-
-                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
-
-                page.books.map { it.title } shouldBe listOf("A")
-            }
-
-            it("TC-8: decodes a minimal body") {
-                enqueue(200, """{"books":[{"id":2}]}""")
-
-                val page = repository.getBooksPageFlow().single().shouldBeTypeOf<LibraryPageResult.Success>().page
-
-                page.books.map { it.id } shouldBe listOf(2L)
+                    point.record shouldBe ProgressRecord(
+                        bookUuid = "uuid-1",
+                        format = ProgressFormat.Reading,
+                        epubCfi = "epubcfi(/6/4)",
+                        audioPositionSeconds = null,
+                        progressPercent = 42.5,
+                        updatedAt = 1700000000,
+                        clientUpdatedAt = 1700000001,
+                        bookFileId = 10,
+                        totalDurationSeconds = null,
+                        resolved = ResolvedPosition(3, 12, "Chapter Three", 25.0, PositionConfidence.High),
+                    )
+                }
             }
         }
 
-        describe("failures") {
+        context("when an item is a listening position") {
+            it("TC-10: maps its record") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, LISTENING_ITEM))
 
-            listOf(
-                Triple(500, "internal server error", LibraryError.Http(500, "internal server error")),
-                Triple(500, "", LibraryError.Http(500, null)),
-                Triple(500, "   \n ", LibraryError.Http(500, null)),
-                Triple(400, """{"error":"bad cursor"}""", LibraryError.Http(400, "bad cursor")),
-                Triple(422, """{"message":"bad sort"}""", LibraryError.Http(422, "bad sort")),
-                Triple(404, """{"detail":"no such page"}""", LibraryError.Http(404, "no such page")),
-                Triple(401, "", LibraryError.SessionExpired),
-                Triple(200, """{"books": [""", LibraryError.UnexpectedResponse),
-            ).forEach { (code, body, error) ->
+                    val point = sut(server).getRecentProgressFlow().single()
+                        .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
 
-                it("TC-25: HTTP $code with body '$body' gives Failure($error) and does not throw") {
-                    enqueue(code, body)
-
-                    repository.getBooksPageFlow().single() shouldBe LibraryPageResult.Failure(error)
+                    point.record shouldBe ProgressRecord(
+                        bookUuid = "uuid-2",
+                        format = ProgressFormat.Listening,
+                        epubCfi = null,
+                        audioPositionSeconds = 3600.5,
+                        progressPercent = 12.0,
+                        updatedAt = 1700000100,
+                        clientUpdatedAt = null,
+                        bookFileId = 20,
+                        totalDurationSeconds = 7200.0,
+                        resolved = ResolvedPosition(null, null, "Intro", null, PositionConfidence.Low),
+                    )
                 }
             }
 
-            it("TC-25: a plain-text body longer than 300 characters is truncated to 300") {
-                enqueue(500, "x".repeat(400))
+            it("TC-10: carries the listening details") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, LISTENING_ITEM))
 
-                repository.getBooksPageFlow().single() shouldBe
-                    LibraryPageResult.Failure(LibraryError.Http(500, "x".repeat(300)))
-            }
+                    val point = sut(server).getRecentProgressFlow().single()
+                        .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
 
-            it("TC-25: an unreachable server gives Failure(Unreachable)") {
-                server.close()
-
-                repository.getBooksPageFlow().single() shouldBe
-                    LibraryPageResult.Failure(LibraryError.Unreachable)
-            }
-        }
-
-        describe("no server") {
-
-            it("TC-26: returns NoServer without making a request") {
-                baseUrlProvider.baseUrl = null
-
-                repository.getBooksPageFlow().single() shouldBe LibraryPageResult.NoServer
-
-                server.requestCount shouldBe 0
+                    point.audioPart shouldBe 2
+                    point.audioPartCount shouldBe 4
+                    point.playbackRate shouldBe 1.25
+                }
             }
         }
-    }
 
-    describe("getRecentProgressFlow") {
-
-        it("TC-9: GET api/progress/recent with limit=5") {
-            enqueue(200, "[]")
-
-            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(emptyList())
-
-            val request = server.takeRequest()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/progress/recent"
-            request.url.queryParameter("limit") shouldBe "5"
-        }
-
-        it("TC-10: decodes a reading item and a listening item into the domain model") {
-            enqueue(
-                200,
-                """
-                [
-                    {
-                        "record": {
-                            "book_uuid": "uuid-1",
-                            "format": "epub",
-                            "epub_cfi": "epubcfi(/6/4)",
-                            "progress_percent": 42.5,
-                            "updated_at": 1700000000,
-                            "client_updated_at": 1700000001,
-                            "book_file_id": 10,
-                            "resolved": {
-                                "chapter_ordinal": 3,
-                                "chapters_total": 12,
-                                "chapter_title": "Chapter Three",
-                                "percent_through_book": 25.0,
-                                "confidence": "high"
-                            }
-                        },
-                        "book": {"id": 1, "unique_identifier": "uuid-1", "title": "Dune", "filename": "dune.epub", "formats": ["epub"]}
-                    },
-                    {
-                        "record": {
-                            "book_uuid": "uuid-2",
-                            "format": "audio",
-                            "audio_position_seconds": 3600.5,
-                            "progress_percent": 12.0,
-                            "updated_at": 1700000100,
-                            "book_file_id": 20,
-                            "total_duration_seconds": 7200.0,
-                            "resolved": {"chapter_title": "Intro", "confidence": "low"}
-                        },
-                        "book": {"id": 2, "unique_identifier": "uuid-2", "title": "Audio", "formats": ["m4b"]},
-                        "audio_part": 2,
-                        "audio_part_count": 4,
-                        "playback_rate": 1.25
-                    }
-                ]
-                """,
-            )
-
-            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(
-                listOf(
-                    ResumePoint(
-                        record = ProgressRecord(
-                            bookUuid = "uuid-1",
-                            format = ProgressFormat.Reading,
-                            epubCfi = "epubcfi(/6/4)",
-                            audioPositionSeconds = null,
-                            progressPercent = 42.5,
-                            updatedAt = 1700000000,
-                            clientUpdatedAt = 1700000001,
-                            bookFileId = 10,
-                            totalDurationSeconds = null,
-                            resolved = ResolvedPosition(
-                                chapterOrdinal = 3,
-                                chaptersTotal = 12,
-                                chapterTitle = "Chapter Three",
-                                percentThroughBook = 25.0,
-                                confidence = PositionConfidence.High,
-                            ),
+        context("when an item has only the required fields") {
+            it("TC-11: reads the rest as empty, ignoring unknown keys") {
+                withMockServer { server ->
+                    server.enqueue(
+                        reply(
+                            200,
+                            """[{"record":{"book_uuid":"uuid-3","format":"epub","updated_at":5,"future_key":"x"},"book":{"id":3,"novel_key":true}}]""",
                         ),
-                        book = testBook(
-                            1,
-                            title = "Dune",
-                            creators = emptyList(),
-                            formats = listOf("epub"),
-                            uniqueIdentifier = "uuid-1",
-                            filename = "dune.epub",
-                        ),
+                    )
+
+                    val point = sut(server).getRecentProgressFlow().single()
+                        .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
+
+                    point shouldBe ResumePoint(
+                        record = ProgressRecord("uuid-3", ProgressFormat.Reading, null, null, null, 5, null, null, null, null),
+                        book = point.book,
                         audioPart = null,
                         audioPartCount = null,
                         playbackRate = null,
-                    ),
-                    ResumePoint(
-                        record = ProgressRecord(
-                            bookUuid = "uuid-2",
-                            format = ProgressFormat.Listening,
-                            epubCfi = null,
-                            audioPositionSeconds = 3600.5,
-                            progressPercent = 12.0,
-                            updatedAt = 1700000100,
-                            clientUpdatedAt = null,
-                            bookFileId = 20,
-                            totalDurationSeconds = 7200.0,
-                            resolved = ResolvedPosition(
-                                chapterOrdinal = null,
-                                chaptersTotal = null,
-                                chapterTitle = "Intro",
-                                percentThroughBook = null,
-                                confidence = PositionConfidence.Low,
-                            ),
-                        ),
-                        book = testBook(
-                            2,
-                            title = "Audio",
-                            creators = emptyList(),
-                            formats = listOf("m4b"),
-                            uniqueIdentifier = "uuid-2",
-                            filename = "",
-                        ),
-                        audioPart = 2,
-                        audioPartCount = 4,
-                        playbackRate = 1.25,
-                    ),
-                ),
-            )
-        }
-
-        it("TC-11: an item with only required fields decodes with nulls and ignores unknown keys") {
-            enqueue(
-                200,
-                """[{"record":{"book_uuid":"uuid-3","format":"epub","updated_at":5,"future_key":"x"},"book":{"id":3,"novel_key":true}}]""",
-            )
-
-            val point = repository.getRecentProgressFlow().single()
-                .shouldBeTypeOf<RecentProgressResult.Success>().points.single()
-
-            point.record shouldBe ProgressRecord(
-                bookUuid = "uuid-3",
-                format = ProgressFormat.Reading,
-                epubCfi = null,
-                audioPositionSeconds = null,
-                progressPercent = null,
-                updatedAt = 5,
-                clientUpdatedAt = null,
-                bookFileId = null,
-                totalDurationSeconds = null,
-                resolved = null,
-            )
-            point.audioPart.shouldBeNull()
-            point.audioPartCount.shouldBeNull()
-            point.playbackRate.shouldBeNull()
-        }
-
-        it("TC-27: a 500 gives Failure(Http) carrying the body as serverMessage") {
-            enqueue(500, "internal server error")
-
-            repository.getRecentProgressFlow().single() shouldBe
-                RecentProgressResult.Failure(LibraryError.Http(500, "internal server error"))
-        }
-
-        it("TC-27: a malformed 200 body gives Failure(UnexpectedResponse)") {
-            enqueue(200, "{")
-
-            repository.getRecentProgressFlow().single() shouldBe
-                RecentProgressResult.Failure(LibraryError.UnexpectedResponse)
-        }
-
-        it("TC-27: an unreachable server gives Failure(Unreachable)") {
-            server.close()
-
-            repository.getRecentProgressFlow().single() shouldBe
-                RecentProgressResult.Failure(LibraryError.Unreachable)
-        }
-
-        it("TC-26: returns NoServer without making a request") {
-            baseUrlProvider.baseUrl = null
-
-            repository.getRecentProgressFlow().single() shouldBe RecentProgressResult.NoServer
-
-            server.requestCount shouldBe 0
-        }
-    }
-
-    describe("getShelfPreviewsFlow") {
-
-        it("TC-12: fetches pages only for shelves with books, keeping at most four covers in order") {
-            serveShelves { id -> shelfPage(if (id == 2L) listOf(20, 21) else (30L..38L).toList()) }
-
-            val previews = repository.getShelfPreviewsFlow().single()
-                .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
-
-            previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
-            previews.map { preview -> preview.covers.map { it.id } } shouldBe
-                listOf(emptyList(), listOf(20L, 21L), listOf(30L, 31L, 32L, 33L))
-            requested.toList() shouldContainExactlyInAnyOrder
-                listOf("/api/shelves", "/api/shelves/2/page", "/api/shelves/3/page")
-        }
-
-        it("TC-13: keeps the server's shelf order when a page answers late, and decodes shelf fields") {
-            serveShelves { id -> if (id == 2L) shelfPage(listOf(20), delay = 300) else shelfPage(listOf(30)) }
-
-            val previews = repository.getShelfPreviewsFlow().single()
-                .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
-
-            previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
-            previews[1].shelf shouldBe Shelf(
-                id = 2,
-                ownerUserId = 7,
-                ownerUsername = "hunter",
-                kind = ShelfKind.Manual,
-                name = "Two",
-                visibility = ShelfVisibility.Public,
-                accent = "#c8a04a",
-                bookCount = 2,
-            )
-            previews[2].shelf.kind shouldBe ShelfKind.Wishlist
-            previews[2].shelf.visibility shouldBe ShelfVisibility.Private
-        }
-
-        it("TC-14: a failed shelf page gives that shelf no covers and leaves the others intact") {
-            serveShelves { id ->
-                if (id == 2L) {
-                    MockResponse.Builder().code(500).body("boom").build()
-                } else {
-                    shelfPage((30L..38L).toList())
+                    )
                 }
             }
-
-            val previews = repository.getShelfPreviewsFlow().single()
-                .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
-
-            previews.map { it.shelf.id } shouldBe listOf(1L, 2L, 3L)
-            previews[1].covers.shouldBeEmpty()
-            previews[2].covers.map { it.id } shouldBe listOf(30L, 31L, 32L, 33L)
         }
 
-        it("TC-15: a failed shelf list gives Failure(Http) with the server message and no exception") {
-            enqueue(500, "internal server error")
+        context("when an item's format is unknown") {
+            it("drops the item") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, """[{"record":{"book_uuid":"u","format":"kobo"},"book":{"id":3}}]"""))
 
-            repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure(LibraryError.Http(500, "internal server error"))
-        }
-
-        it("TC-27: a 401 gives Failure(SessionExpired)") {
-            enqueue(401)
-
-            repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure(LibraryError.SessionExpired)
-        }
-
-        it("TC-27: a malformed shelf list gives Failure(UnexpectedResponse)") {
-            enqueue(200, "[{")
-
-            repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure(LibraryError.UnexpectedResponse)
-        }
-
-        it("TC-27: an unreachable server gives Failure(Unreachable)") {
-            server.close()
-
-            repository.getShelfPreviewsFlow().single() shouldBe
-                ShelfPreviewsResult.Failure(LibraryError.Unreachable)
-        }
-
-        it("TC-26: returns NoServer without making a request") {
-            baseUrlProvider.baseUrl = null
-
-            repository.getShelfPreviewsFlow().single() shouldBe ShelfPreviewsResult.NoServer
-
-            server.requestCount shouldBe 0
-        }
-    }
-
-    describe("category formats on the wire") {
-
-        it("TC-107: Ebooks sends the ebook formats verbatim and in order") {
-            enqueue(200, EMPTY_BOOKS)
-
-            repository.getBooksPageFlow(LibraryCategory.Ebooks.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
-                .single()
-
-            server.takeRequest().url.queryParameter("formats") shouldBe "epub,pdf,mobi,azw3,cbz,cbr"
-        }
-
-        it("TC-107: Audiobooks sends the audio formats verbatim and in order") {
-            enqueue(200, EMPTY_BOOKS)
-
-            repository.getBooksPageFlow(LibraryCategory.Audiobooks.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
-                .single()
-
-            server.takeRequest().url.queryParameter("formats") shouldBe "m4b,m4a,mp3,aac,flac,ogg,opus"
-        }
-
-        it("TC-107: All sends no formats param") {
-            enqueue(200, EMPTY_BOOKS)
-
-            repository.getBooksPageFlow(LibraryCategory.All.toQuery(LibrarySort.NewestAdded, SortDirection.Desc))
-                .single()
-
-            server.takeRequest().url.queryParameter("formats").shouldBeNull()
-        }
-    }
-
-    describe("getBookFlow") {
-
-        it("TC-44: returns the book from a realistic body and sends the bearer token to its path") {
-            enqueue(
-                200,
-                """
-                {
-                  "id": 42,
-                  "unique_identifier": "a1b2c3",
-                  "filename": "dune.epub",
-                  "title": "Dune",
-                  "creators": [{"name": "Frank Herbert", "role": "author", "file_as": "Herbert, Frank", "id": 7}],
-                  "cover_url": "/api/ebooks/a1b2c3/cover",
-                  "accent": "#c8a04a",
-                  "formats": ["epub", "pdf"],
-                  "series": "Dune",
-                  "series_index": "1",
-                  "has_physical": false,
-                  "added_at": "2026-01-02T03:04:05Z",
-                  "last_interacted_at": null,
-                  "book_files": [
-                    {"id": 9, "format": "Epub", "filename": "dune.epub", "ordinal": 0, "label": null, "size_bytes": 1024, "etag": null}
-                  ],
-                  "a_field_added_later": {"nested": true}
+                    sut(server).getRecentProgressFlow().single() shouldBe RecentProgressResult.Success(emptyList())
                 }
-                """.trimIndent(),
-            )
-
-            repository.getBookFlow("a1b2c3").single() shouldBe BookResult.Success(
-                Book(
-                    id = 42,
-                    uniqueIdentifier = "a1b2c3",
-                    filename = "dune.epub",
-                    title = "Dune",
-                    creators = listOf(Creator("Frank Herbert", "author", "Herbert, Frank", 7)),
-                    coverUrl = "/api/ebooks/a1b2c3/cover",
-                    accent = "#c8a04a",
-                    formats = listOf("epub", "pdf"),
-                    series = "Dune",
-                    seriesIndex = "1",
-                    hasPhysical = false,
-                    addedAt = "2026-01-02T03:04:05Z",
-                    lastInteractedAt = null,
-                    bookFiles = listOf(
-                        BookFile(id = 9, format = "Epub", filename = "dune.epub", ordinal = 0, label = null, sizeBytes = 1024, etag = null),
-                    ),
-                ),
-            )
-
-            val request = server.takeRequest()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/ebooks/a1b2c3"
-            request.headers["Authorization"] shouldBe "Bearer secret"
+            }
         }
 
-        it("TC-45: a 404 gives NotFound, not Failure(Http)") {
-            enqueue(404, """{"error":"no such book"}""")
+        context("when the read fails") {
+            it("TC-27: gives the failure") {
+                withMockServer { server ->
+                    server.enqueue(reply(500, "internal server error"))
 
-            repository.getBookFlow("missing").single() shouldBe BookResult.NotFound
+                    sut(server).getRecentProgressFlow().single() shouldBe
+                        RecentProgressResult.Failure(LibraryError.Http(500, "internal server error"))
+                }
+            }
         }
 
-        it("TC-46: returns NoServer without making a request") {
-            baseUrlProvider.baseUrl = null
-
-            repository.getBookFlow("a1b2c3").single() shouldBe BookResult.NoServer
-
-            server.requestCount shouldBe 0
+        context("when no server is saved") {
+            it("TC-26: gives NoServer") {
+                sut().getRecentProgressFlow().single() shouldBe RecentProgressResult.NoServer
+            }
         }
+    }
 
-        val dropped = MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build()
+    describe("reading the shelf previews") {
 
-        listOf(
-            Triple({ enqueue(500, "boom") }, "HTTP 500", BookResult.Failure(LibraryError.Http(500, "boom"))),
-            Triple({ enqueue(401, "") }, "HTTP 401", BookResult.Failure(LibraryError.SessionExpired)),
-            Triple({ enqueue(200, """{"id": """) }, "a malformed body", BookResult.Failure(LibraryError.UnexpectedResponse)),
-            Triple({ server.enqueue(dropped) }, "a dropped connection", BookResult.Failure(LibraryError.Unreachable)),
-        ).forEach { (enqueueFailure, case, expected) ->
-            it("TC-47: $case gives $expected and does not throw") {
-                enqueueFailure()
+        it("TC-12: keeps the server's shelf order, with at most four covers each") {
+            withMockServer { server ->
+                server.serveShelves { id -> shelfPage(if (id == 2L) listOf(20, 21) else (30L..38L).toList()) }
 
-                repository.getBookFlow("a1b2c3").single() shouldBe expected
+                val previews = sut(server).getShelfPreviewsFlow().single()
+                    .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
+
+                previews.map { it.shelf.id to it.covers.map { book -> book.id } } shouldBe listOf(
+                    1L to emptyList(),
+                    2L to listOf(20L, 21L),
+                    3L to listOf(30L, 31L, 32L, 33L),
+                )
             }
         }
 
-        it("TC-48: a uuid with characters that need encoding is one path segment") {
-            enqueue(200, """{"id": 1}""")
+        it("TC-13: maps each shelf's fields") {
+            withMockServer { server ->
+                server.serveShelves { shelfPage(emptyList()) }
 
-            repository.getBookFlow("a b/c").single()
+                val previews = sut(server).getShelfPreviewsFlow().single()
+                    .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
 
-            val request = server.takeRequest()
-            request.url.encodedPath shouldBe "/api/ebooks/a%20b%2Fc"
-            request.url.encodedPathSegments.size shouldBe 3
+                previews.map { it.shelf } shouldBe listOf(
+                    Shelf(1, 7, "hunter", ShelfKind.Smart, "Empty", ShelfVisibility.Private, null, 0),
+                    Shelf(2, 7, "hunter", ShelfKind.Manual, "Two", ShelfVisibility.Public, "#c8a04a", 2),
+                    Shelf(3, 8, "ann", ShelfKind.Wishlist, "Nine", ShelfVisibility.Private, null, 9),
+                )
+            }
         }
 
-        it("TC-48: a blank uuid is NotFound and makes no request") {
-            repository.getBookFlow("   ").single() shouldBe BookResult.NotFound
+        context("when a shelf's page fails") {
+            it("TC-14: gives only that shelf no covers") {
+                withMockServer { server ->
+                    server.serveShelves { id -> if (id == 2L) reply(500, "boom") else shelfPage(listOf(30)) }
 
-            server.requestCount shouldBe 0
+                    val previews = sut(server).getShelfPreviewsFlow().single()
+                        .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
+
+                    previews.map { preview -> preview.covers.map { it.id } } shouldBe listOf(emptyList(), emptyList(), listOf(30L))
+                }
+            }
+        }
+
+        context("when the shelf list fails") {
+            it("TC-15: gives the failure") {
+                withMockServer { server ->
+                    server.enqueue(reply(500, "internal server error"))
+
+                    sut(server).getShelfPreviewsFlow().single() shouldBe
+                        ShelfPreviewsResult.Failure(LibraryError.Http(500, "internal server error"))
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("TC-26: gives NoServer") {
+                sut().getShelfPreviewsFlow().single() shouldBe ShelfPreviewsResult.NoServer
+            }
         }
     }
-}) {
-    private companion object {
-        const val EMPTY_BOOKS = """{"books":[]}"""
 
-        const val SHELVES_JSON = """
-            [
-                {"id":1,"owner_user_id":7,"owner_username":"hunter","kind":"smart","name":"Empty","visibility":"private","accent":null,"book_count":0},
-                {"id":2,"owner_user_id":7,"owner_username":"hunter","kind":"manual","name":"Two","visibility":"public","accent":"#c8a04a","book_count":2},
-                {"id":3,"owner_user_id":8,"owner_username":"ann","kind":"wishlist","name":"Nine","visibility":"private","book_count":9}
-            ]
-        """
+    describe("reading one book") {
+
+        it("TC-44: gives the book") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"id": 42, "title": "Dune"}"""))
+
+                val book = sut(server).getBookFlow(randomString()).single().shouldBeTypeOf<BookResult.Success>().book
+
+                book.title shouldBe "Dune"
+            }
+        }
+
+        it("TC-48: asks for the uuid as one encoded path segment") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"id": 1}"""))
+
+                sut(server).getBookFlow("a b/c").single()
+
+                server.nextRequest().url.encodedPath shouldBe "/api/ebooks/a%20b%2Fc"
+            }
+        }
+
+        context("when the server answers 404") {
+            it("TC-45: gives NotFound") {
+                withMockServer { server ->
+                    server.enqueue(reply(404, """{"error":"no such book"}"""))
+
+                    sut(server).getBookFlow(randomString()).single() shouldBe BookResult.NotFound
+                }
+            }
+        }
+
+        context("when the server answers another error") {
+            it("TC-47: gives the failure") {
+                withMockServer { server ->
+                    server.enqueue(reply(500, "boom"))
+
+                    sut(server).getBookFlow(randomString()).single() shouldBe
+                        BookResult.Failure(LibraryError.Http(500, "boom"))
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("TC-46: gives NoServer") {
+                sut().getBookFlow(randomString()).single() shouldBe BookResult.NoServer
+            }
+        }
+
+        context("when the uuid is blank") {
+            it("TC-48: gives NotFound") {
+                withMockServer { server ->
+                    sut(server).getBookFlow("   ").single() shouldBe BookResult.NotFound
+                }
+            }
+
+            it("TC-48: sends no request") {
+                withMockServer { server ->
+                    sut(server).getBookFlow("   ").single()
+
+                    server.requestCount shouldBe 0
+                }
+            }
+        }
     }
-}
+})

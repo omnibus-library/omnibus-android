@@ -3,20 +3,21 @@ package com.omnibus.omnibus.data.audiobook.playback
 import com.omnibus.omnibus.data.audiobook.AudiobookManifest
 import com.omnibus.omnibus.data.audiobook.AudiobookManifestResult
 import com.omnibus.omnibus.data.audiobook.AudiobookRepository
-import com.omnibus.omnibus.data.audiobook.FakeAudiobookRepository
-import com.omnibus.omnibus.data.audiobook.remote.FakeRecentListeningSource
+import com.omnibus.omnibus.data.audiobook.TestAudiobookRepository
+import com.omnibus.omnibus.data.audiobook.remote.TestRecentListeningSource
 import com.omnibus.omnibus.data.library.BookFile
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.Creator
-import com.omnibus.omnibus.data.library.FakeBookAvailability
-import com.omnibus.omnibus.data.library.FakeLibraryRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.ProgressRecord
 import com.omnibus.omnibus.data.library.ResumePoint
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.testing.randomBoolean
 import io.kotest.matchers.shouldBe
 import java.util.Optional
 import kotlinx.coroutines.CompletableDeferred
@@ -36,8 +37,9 @@ import io.kotest.assertions.withClue
  * A [DefaultAudiobookController] built the way Hilt builds it, with every fake behind it, on one virtual clock. The
  * `DefaultAudiobookController*Test` specs share it.
  *
- * It starts with "book-1" answering from the library and the repository, so a load succeeds unless a test changes an
- * answer first. Pass [order] to log the engine commands, the reads and the resume calls into one list, in the order they
+ * It starts with nothing staged: [stageBook] makes "book-1" answer from the library and the repository, and
+ * [loadAndSettle] does that first. The book is [multiPartManifest]: 3000 s long, with chapters starting at 0, 700 and
+ * 1900 s. Pass [order] to log the engine commands, the reads and the resume calls into one list, in the order they
  * happen. Call [close] when the spec's test is done.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -47,18 +49,18 @@ class ControllerRig(
     rateStore: PlaybackRateStore? = null,
     sleepTimer: SleepTimer? = null,
     listeners: Set<PlaybackListener> = emptySet(),
-    online: Boolean = true,
+    online: Boolean = randomBoolean(),
     order: MutableList<String>? = null,
 ) {
     val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val engine = FakeAudioEngine()
-    val repository = FakeAudiobookRepository()
-    val library = FakeLibraryRepository()
-    val recent = FakeRecentListeningSource()
-    val availability = FakeBookAvailability()
-    val artwork = FakeCoverArtworkSource()
-    val connectivity = FakeConnectivityMonitor(online)
-    val background = FakeAppBackgroundSignal()
+    val engine = TestAudioEngine()
+    val repository = TestAudiobookRepository()
+    val library = TestLibraryRepository()
+    val recent = TestRecentListeningSource()
+    val availability = TestBookAvailability()
+    val artwork = TestCoverArtworkSource()
+    val connectivity = TestConnectivityMonitor(online)
+    val background = TestAppBackgroundSignal()
 
     private val wiredEngine: AudioEngine = order?.let { LoggingEngine(engine, it) } ?: engine
     private val reads: AudiobookRepository = order?.let { repository.logging(it) } ?: repository
@@ -82,18 +84,23 @@ class ControllerRig(
     )
 
     init {
-        library.bookResult = BookResult.Success(
-            testBook(
+        // Starts the controller's collectors, so they see what a test emits next.
+        scheduler.runCurrent()
+    }
+
+    /** Makes "book-1" answer from the library and the repository, keeping any answer the test has already set. */
+    fun stageBook() {
+        library.bookResult = library.bookResult ?: BookResult.Success(
+            randomBook().copy(
                 id = 1,
                 title = "The Book",
                 creators = listOf(Creator("An Author", null, null, null)),
                 formats = listOf("m4b"),
                 uniqueIdentifier = "book-1",
+                bookFiles = emptyList(),
             ),
         )
-        repository.result = AudiobookManifestResult.Success(multiPartManifest())
-        // Starts the controller's collectors, so they see what a test emits next.
-        scheduler.runCurrent()
+        repository.result = repository.result ?: AudiobookManifestResult.Success(multiPartManifest())
     }
 
     /** Runs whatever is due now, without moving the clock. */
@@ -105,13 +112,14 @@ class ControllerRig(
         scheduler.runCurrent()
     }
 
-    /** Starts a load and lets it run until it waits on something the test controls. */
+    /** Stages the book, starts a load and lets it run until it waits on something the test controls. */
     fun loadAndSettle(
         bookUuid: String = "book-1",
         bookFileId: Long? = null,
         positionSeconds: Double? = null,
         autoplay: Boolean = true,
     ) {
+        stageBook()
         controller.load(bookUuid, bookFileId, positionSeconds, autoplay)
         settle()
     }
@@ -129,33 +137,20 @@ class ControllerRig(
 class ScriptedResolver(
     private val savedFileId: Long? = null,
     private val settleAnswer: CompletableDeferred<Double?> = answering(null),
-    private val order: MutableList<String>? = null,
 ) : ResumeStartResolver {
 
     /** The `(bookUuid, explicitFileId, explicitPositionSeconds)` of each [begin], in call order. */
     val begins = mutableListOf<Triple<String, Long?, Double?>>()
 
-    /** The pending each [begin] returned, in call order. The controller's calls go to it through a logging wrapper. */
-    val pendings = mutableListOf<FakePendingResume>()
+    /** The pending each [begin] returned, in call order. */
+    val pendings = mutableListOf<TestPendingResume>()
 
     override fun begin(bookUuid: String, explicitFileId: Long?, explicitPositionSeconds: Double?): PendingResume {
         begins += Triple(bookUuid, explicitFileId, explicitPositionSeconds)
-        order?.add("begin")
-        val fake = FakePendingResume().also {
+        return TestPendingResume().also {
             it.savedFileId = savedFileId
             it.settleAnswer = settleAnswer
-        }
-        pendings += fake
-        return object : PendingResume by fake {
-            override suspend fun settle(loadedFileId: Long, durationSeconds: Double): Double? {
-                order?.add("settle")
-                return fake.settle(loadedFileId, durationSeconds)
-            }
-
-            override fun cancel() {
-                order?.add("cancel")
-                fake.cancel()
-            }
+            pendings += it
         }
     }
 }
@@ -232,11 +227,10 @@ fun resumePoint(
     bookUuid: String,
     bookFileId: Long?,
     position: Double?,
-    format: ProgressFormat = ProgressFormat.Listening,
 ): ResumePoint = ResumePoint(
     record = ProgressRecord(
         bookUuid = bookUuid,
-        format = format,
+        format = ProgressFormat.Listening,
         epubCfi = null,
         audioPositionSeconds = position,
         progressPercent = null,
@@ -246,7 +240,7 @@ fun resumePoint(
         totalDurationSeconds = null,
         resolved = null,
     ),
-    book = testBook(id = 1, uniqueIdentifier = bookUuid),
+    book = randomBook().copy(id = 1, uniqueIdentifier = bookUuid),
     audioPart = null,
     audioPartCount = null,
     playbackRate = null,
@@ -270,7 +264,7 @@ fun hlsManifest(): AudiobookManifest.Hls = AudiobookManifest.Hls(
 )
 
 /** Records every engine command into [order], then forwards it to [inner]. */
-private class LoggingEngine(private val inner: FakeAudioEngine, private val order: MutableList<String>) :
+private class LoggingEngine(private val inner: TestAudioEngine, private val order: MutableList<String>) :
     AudioEngine by inner {
 
     override suspend fun awaitReady() {

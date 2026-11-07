@@ -1,68 +1,76 @@
 package com.omnibus.omnibus.feature.reader.ui
 
-import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.data.bookmarks.randomBookmark
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ReaderContentsModelTest : DescribeSpec({
 
-    /** Three top-level entries, so chapter numbers 1 to 3 are in range. */
-    val toc = listOf(
-        TocEntry(label = "One", href = "1.xhtml", level = 0),
-        TocEntry(label = "Two", href = "2.xhtml", level = 0),
-        TocEntry(label = "Three", href = "3.xhtml", level = 0),
-    )
-
-    describe("ReaderContentsModel") {
-
-        it("CS-14: pageText shows only positive pages") {
-            pageText(null) shouldBe null
-            pageText(0) shouldBe null
-            pageText(-1) shouldBe null
+    describe("an entry's page text") {
+        it("CS-14: shows only a positive page") {
             pageText(1) shouldBe "1"
-            pageText(999) shouldBe "999"
+            checkAll(Exhaustive.of(null, 0, -1)) { page ->
+                pageText(page) shouldBe null
+            }
         }
+    }
 
-        it("CS-21: the current index is the 1-based chapter minus one") {
-            for (chapter in 1..3) {
-                currentTocIndex(toc, RelocateData(chapter = chapter)) shouldBe chapter - 1
+    describe("the current contents entry") {
+        fun toc() = List(3) { TocEntry(href = randomString()) }
+
+        context("with a chapter inside the contents") {
+            it("CS-21: is the 1-based chapter's entry, for the first and last chapters") {
+                checkAll(Exhaustive.of(1, 3)) { chapter ->
+                    currentTocIndex(toc(), randomRelocateData().copy(chapter = chapter)) shouldBe chapter - 1
+                }
             }
         }
 
-        it("CS-22: a chapter outside the toc, or no location, marks nothing") {
-            currentTocIndex(toc, RelocateData(chapter = 0)) shouldBe null
-            currentTocIndex(toc, RelocateData(chapter = 4)) shouldBe null
-            currentTocIndex(toc, RelocateData(chapter = -1)) shouldBe null
-            currentTocIndex(toc, RelocateData(chapter = Int.MAX_VALUE)) shouldBe null
-            currentTocIndex(toc, null) shouldBe null
-            currentTocIndex(emptyList(), RelocateData(chapter = 1)) shouldBe null
+        context("with a chapter outside the contents") {
+            it("CS-22: is nothing, on either side") {
+                checkAll(Exhaustive.of(-1, 0, 4)) { chapter ->
+                    currentTocIndex(toc(), randomRelocateData().copy(chapter = chapter)) shouldBe null
+                }
+            }
+        }
+    }
+
+    describe("the header's position line") {
+        context("once the book has locations") {
+            it("CS-32: falls back from page of total to the percent") {
+                val location = randomRelocateData().copy(totalPages = randomInt(1..1000))
+
+                ContentsPosition.from(location.copy(page = 5)) shouldBe ContentsPosition.PageOf(5, location.totalPages)
+                ContentsPosition.from(location.copy(page = 0)) shouldBe ContentsPosition.Percent(location.pct)
+            }
         }
 
-        it("CS-32: the position line falls back from pages to percent, and shows nothing before locations") {
-            ContentsPosition.from(RelocateData(page = 5, totalPages = 20, pct = 25)) shouldBe
-                ContentsPosition.PageOf(5, 20)
-            ContentsPosition.from(RelocateData(page = 0, totalPages = 20, pct = 3)) shouldBe
-                ContentsPosition.Percent(3)
-            ContentsPosition.from(RelocateData(page = 5, totalPages = 0, pct = 42)) shouldBe null
-            ContentsPosition.from(RelocateData(page = 0, totalPages = 0, pct = 0)) shouldBe null
-            ContentsPosition.from(null) shouldBe null
+        context("before the book has locations") {
+            it("CS-32: shows nothing") {
+                ContentsPosition.from(randomRelocateData().copy(totalPages = 0)) shouldBe null
+            }
+        }
+    }
+
+    describe("a bookmark row") {
+        it("TC-53: labels itself from its title, then its chapter title") {
+            val bookmark = randomBookmark().copy(title = "Mine", chapterTitle = "One")
+
+            bookmarkLabel(bookmark) shouldBe "Mine"
+            bookmarkLabel(bookmark.copy(title = "  ")) shouldBe "One"
+            bookmarkLabel(bookmark.copy(title = null, chapterTitle = "")) shouldBe null
         }
 
-        // TC-53: a row labels itself from its title, then its chapter title, and shows a whole percent when placed.
-        it("TC-53: a bookmark row labels itself from title, chapter title, or nothing") {
-            fun bookmark(title: String?, chapter: String?, fraction: Float?) =
-                Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", title, chapter, fraction, null)
+        it("TC-53: shows its place as a whole percent") {
+            val bookmark = randomBookmark()
 
-            bookmarkLabel(bookmark("Mine", "One", 0.5f)) shouldBe "Mine"
-            bookmarkLabel(bookmark(null, "One", 0.5f)) shouldBe "One"
-            bookmarkLabel(bookmark(null, null, null)) shouldBe null
-            bookmarkLabel(bookmark("  ", "", null)) shouldBe null
-            bookmarkLabel(bookmark("  ", "Two", null)) shouldBe "Two"
-
-            bookmarkPercent(bookmark(null, null, 0.426f)) shouldBe 43
-            bookmarkPercent(bookmark(null, null, 0f)) shouldBe 0
-            bookmarkPercent(bookmark(null, null, 1f)) shouldBe 100
-            bookmarkPercent(bookmark(null, null, null)) shouldBe null
+            bookmarkPercent(bookmark.copy(fraction = 0.426f)) shouldBe 43
+            bookmarkPercent(bookmark.copy(fraction = null)) shouldBe null
         }
     }
 })

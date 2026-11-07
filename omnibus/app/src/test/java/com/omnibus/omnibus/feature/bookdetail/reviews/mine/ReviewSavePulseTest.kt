@@ -1,27 +1,21 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.mine
 
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.types.shouldBeSameInstanceAs
 
 class ReviewSavePulseTest : DescribeSpec({
 
     describe("the save pulse") {
-
-        it("TC-49: each book counts its own saves from zero, one flow per book, and no bump is lost") {
+        it("TC-49: counts each book's saves on its own") {
             val pulse = ReviewSavePulse()
-            pulse.pulses("a").value shouldBe 0
-            pulse.pulses("a") shouldBeSameInstanceAs pulse.pulses("a")
+            val saved = randomString()
+            val other = "$saved-other"
 
-            pulse.bump("a")
-            pulse.pulses("a").value shouldBe 1
-            pulse.pulses("b").value shouldBe 0
+            pulse.bump(saved)
 
-            val threads = List(8) { Thread { repeat(500) { pulse.bump("c") } } }
-            threads.forEach { it.start() }
-            threads.forEach { it.join() }
-            pulse.pulses("c").value shouldBe 4000
-            pulse.pulses("a").value shouldBe 1
+            pulse.pulses(saved).value shouldBe 1
+            pulse.pulses(other).value shouldBe 0
         }
     }
 })

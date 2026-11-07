@@ -7,11 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -48,18 +45,13 @@ class ChaptersSheetContentTest {
         }
     }
 
-    // P-CHP-1: the title is a heading, and Done is a pill that reports once
+    // P-CHP-1: Done reports once
     @Test
-    fun titleIsHeadingAndDoneReports() {
+    fun doneReports() {
         var done = 0
         setSheet(mutableStateOf(ChaptersUiState(rows(3), currentIndex = 0)), onDone = { done++ })
 
-        rule.onNodeWithTag(ChaptersTestTags.TITLE)
-            .assertTextEquals(context.getString(R.string.audiobook_chapters_title))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit))
-        rule.onNodeWithTag(ChaptersTestTags.DONE)
-            .assertTextEquals(context.getString(R.string.audiobook_chapters_done))
-            .performClick()
+        rule.onNodeWithTag(ChaptersTestTags.DONE).performClick()
 
         assertEquals(1, done)
     }

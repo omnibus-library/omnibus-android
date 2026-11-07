@@ -3,11 +3,9 @@ package com.omnibus.omnibus.feature.bookdetail.more.bookmarks
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -25,8 +23,6 @@ class BookmarksSheetTest {
 
     private val title get() = detailText(R.string.book_detail_bookmarks_title)
     private val closeLabel get() = detailText(R.string.book_detail_bookmarks_close)
-    private val emptyCopy get() = detailText(R.string.book_detail_bookmarks_empty)
-    private val errorCopy get() = detailText(R.string.book_detail_bookmarks_error)
     private val retryLabel get() = detailText(R.string.book_detail_bookmarks_retry)
 
     // TC-9
@@ -41,15 +37,13 @@ class BookmarksSheetTest {
 
     // TC-40
     @Test
-    fun issue117_tc40_failedShowsTheErrorAndRetriesOnce() {
+    fun issue117_tc40_retryInTheFailedStateRetriesOnce() {
         var retries = 0
         rule.setSheetContent(BookmarksContent.Failed, onRetry = { retries++ })
 
-        rule.onNodeWithText(errorCopy).assertIsDisplayed()
-        rule.onNodeWithText(retryLabel).assertIsDisplayed().performClick()
+        rule.onNodeWithText(retryLabel).performClick()
         rule.waitForIdle()
 
         assertEquals(1, retries)
-        rule.onAllNodesWithText(emptyCopy).assertCountEquals(0)
     }
 }

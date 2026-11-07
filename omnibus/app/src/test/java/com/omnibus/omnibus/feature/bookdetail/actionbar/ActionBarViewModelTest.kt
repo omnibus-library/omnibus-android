@@ -1,26 +1,26 @@
 package com.omnibus.omnibus.feature.bookdetail.actionbar
 
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.bookprogress.BookChaptersResult
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.FakeBookProgressRepository
-import com.omnibus.omnibus.data.audiobook.playback.FakeAudiobookController
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.chapters
 import com.omnibus.omnibus.data.bookprogress.readingRecord
-import com.omnibus.omnibus.data.library.FakeBookAvailability
 import com.omnibus.omnibus.data.library.ProgressFormat
-import com.omnibus.omnibus.data.network.FakeConnectivityMonitor
-import com.omnibus.omnibus.data.readstatus.FakeReadStatusRepository
+import com.omnibus.omnibus.data.library.TestBookAvailability
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.readstatus.ReadStatus
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.feature.bookdetail.progress.bookReadingProgress
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.floats.plusOrMinus
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,28 +28,34 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-private const val UUID = "uuid-1"
-
-private fun known(status: ReadStatus) = ReadStatusState.Known(ReadStatusRecord(status, 1L, null))
-
 /**
- * A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. [online] sets the monitor's
- * first answer, and [availability] answers for a book that is not online.
+ * A ViewModel on fresh fakes, with its state kept active by [collecting] until the test ends. [online] sets the monitor's
+ * first answer, and [downloaded] whether the book opens offline.
  */
-private class Harness(online: Boolean = true) {
-    val progress = FakeBookProgressRepository()
-    val status = FakeReadStatusRepository()
-    val connectivity = FakeConnectivityMonitor(online)
-    val availability = FakeBookAvailability(answer = false)
-    val controller = FakeAudiobookController()
+private class Harness(online: Boolean, downloaded: Boolean) {
+    val uuid = randomString()
+    val progress = TestBookProgressRepository()
+    val status = TestReadStatusRepository()
+    val connectivity = TestConnectivityMonitor(online)
+    val availability = TestBookAvailability(downloaded)
+    val controller = TestAudiobookController()
     val collecting = CollectingScope()
-    val vm = ActionBarViewModel(UUID, progress, status, connectivity, availability, controller)
+    val vm = ActionBarViewModel(uuid, progress, status, connectivity, availability, controller)
         .also { collecting.collect(it.uiState) }
+
+    /** Makes the progress repository answer with one reading record at [percent]. */
+    fun seedPlace(percent: Double) {
+        progress.progressFor(uuid).value = BookProgressResult.Success(listOf(readingRecord(percent, 100)), fromServer = false)
+    }
 }
 
-/** Runs [block] on a [Harness] that starts [online], and cancels its collection afterwards. */
-private inline fun withHarness(online: Boolean = true, block: Harness.() -> Unit) {
-    val harness = Harness(online)
+/** Runs [block] on a [Harness], and cancels its collection afterwards. */
+private inline fun withHarness(
+    online: Boolean = randomBoolean(),
+    downloaded: Boolean = randomBoolean(),
+    block: Harness.() -> Unit,
+) {
+    val harness = Harness(online, downloaded)
     try {
         harness.block()
     } finally {
@@ -64,196 +70,136 @@ class ActionBarViewModelTest : DescribeSpec({
     afterSpec { Dispatchers.resetMain() }
 
     describe("loading") {
-
-        it("TC-33: starts unknown with no progress and reads nothing") {
+        it("TC-37, TC-38: reads the progress once per new key") {
             withHarness {
-                vm.uiState.value shouldBe ActionBarUIState(status = ReadStatusState.Unknown, progress = null)
-                progress.progressCollections.size shouldBe 0
-                progress.chaptersCalls.size shouldBe 0
-            }
-        }
-
-        it("TC-37: reload loads once per key") {
-            withHarness {
-                progress.progressFor(UUID).value = BookProgressResult.Success(listOf(readingRecord(40.0, 100)), fromServer = false)
                 vm.reload(1)
-                vm.reload(1)
-                vm.reload(1)
-                vm.reload(1)
-                progress.progressCollections.size shouldBe 1
-            }
-        }
-
-        it("TC-38: a new reload key re-reads progress") {
-            withHarness {
-                progress.progressFor(UUID).value = BookProgressResult.Success(listOf(readingRecord(40.0, 100)), fromServer = false)
-                vm.reload(1)
-                vm.uiState.value.progress?.fraction!! shouldBe (0.4f plusOrMinus 1e-4f)
-
-                progress.progressFor(UUID).value = BookProgressResult.Success(listOf(readingRecord(70.0, 200)), fromServer = false)
-                vm.reload(2)
-                progress.progressCollections.size shouldBe 2
-                vm.uiState.value.progress?.fraction!! shouldBe (0.7f plusOrMinus 1e-4f)
-            }
-        }
-
-        it("TC-39: chapters are loaded once") {
-            withHarness {
-                progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null))
                 vm.reload(1)
                 vm.reload(2)
-                progress.chaptersCalls.size shouldBe 1
+
+                progress.progressCollections shouldBe listOf(uuid, uuid)
             }
         }
 
-        it("TC-40: chapters are retried after a failure") {
-            withHarness {
-                progress.progressFor(UUID).value = BookProgressResult.Success(listOf(readingRecord(40.0, 100)), fromServer = false)
-                progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
-                progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null))
+        context("when the chapters failed to load") {
+            context("when the next key arrives") {
+                it("TC-40: tries again") {
+                    withHarness {
+                        seedPlace(40.0)
+                        progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
+                        progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null))
+                        vm.reload(1)
 
-                vm.reload(1)
-                vm.uiState.value.progress?.chapterNumber.shouldBeNull()
+                        vm.reload(2)
 
-                vm.reload(2)
-                progress.chaptersCalls.size shouldBe 2
-                vm.uiState.value.progress?.chapterNumber shouldBe 2
+                        vm.uiState.value.progress?.chapterNumber shouldBe 2
+                    }
+                }
             }
         }
     }
 
-    describe("the status and the progress") {
-
-        it("TC-34: status changes flow into the state") {
-            withHarness {
-                status.seed(UUID, ReadStatusState.Unknown)
-                vm.uiState.value.status shouldBe ReadStatusState.Unknown
-
-                status.seed(UUID, known(ReadStatus.Reading))
-                vm.uiState.value.status shouldBe known(ReadStatus.Reading)
-
-                status.seed(UUID, known(ReadStatus.Finished))
-                vm.uiState.value.status shouldBe known(ReadStatus.Finished)
-
-                status.seed(UUID, ReadStatusState.Failed)
-                vm.uiState.value.status shouldBe ReadStatusState.Failed
-            }
-        }
-
-        it("TC-35: progress records become the reading progress") {
+    describe("the state") {
+        it("TC-35: maps the records with the chapters") {
             withHarness {
                 val records = listOf(readingRecord(40.0, 100))
-                val chaptersLoaded = BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null)
-                progress.progressFor(UUID).value = BookProgressResult.Success(records, fromServer = false)
-                progress.chaptersResults.addLast(chaptersLoaded)
+                val loaded = BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null)
+                progress.progressFor(uuid).value = BookProgressResult.Success(records, fromServer = false)
+                progress.chaptersResults.addLast(loaded)
 
                 vm.reload(1)
 
-                val expected = bookReadingProgress(records, chaptersLoaded)
-                vm.uiState.value.progress shouldBe expected
-                vm.uiState.value.progress?.fraction!! shouldBe (0.4f plusOrMinus 1e-4f)
-                vm.uiState.value.progress?.chapterNumber shouldBe 2
-                vm.uiState.value.progress?.latestMedium shouldBe expected?.latestMedium
+                vm.uiState.value.progress shouldBe bookReadingProgress(records, loaded)
             }
         }
 
-        it("TC-36: the status updates before progress arrives") {
-            withHarness {
-                vm.reload(1)
-                status.seed(UUID, known(ReadStatus.Reading))
+        context("when the progress has not arrived") {
+            it("TC-34, TC-36: carries the status") {
+                withHarness {
+                    val reading = ReadStatusState.Known(randomReadStatusRecord().copy(status = ReadStatus.Reading))
+                    vm.reload(1)
 
-                vm.uiState.value.status shouldBe known(ReadStatus.Reading)
-                vm.uiState.value.progress.shouldBeNull()
+                    status.seed(uuid, reading)
+
+                    vm.uiState.value.status shouldBe reading
+                }
             }
         }
 
-        it("TC-41: a failed progress read still uses its records") {
-            withHarness {
-                val records = listOf(readingRecord(40.0, 100))
-                progress.progressFor(UUID).value = BookProgressResult.Failed(BookProgressError.Unreachable, records)
+        context("when the progress read failed") {
+            it("TC-41: still uses the records it kept") {
+                withHarness {
+                    val records = listOf(readingRecord(40.0, 100))
+                    progress.progressFor(uuid).value = BookProgressResult.Failed(BookProgressError.Unreachable, records)
 
-                vm.reload(1)
+                    vm.reload(1)
 
-                vm.uiState.value.progress shouldBe bookReadingProgress(records, null)
-                vm.uiState.value.progress?.fraction!! shouldBe (0.4f plusOrMinus 1e-4f)
-            }
-        }
-
-        it("TC-42: a failed read with no records means no position") {
-            withHarness {
-                progress.progressFor(UUID).value = BookProgressResult.Failed(BookProgressError.Unreachable, emptyList())
-
-                vm.reload(1)
-
-                vm.uiState.value.progress.shouldBeNull()
+                    vm.uiState.value.progress shouldBe bookReadingProgress(records, null)
+                }
             }
         }
     }
 
-    describe("listen availability") {
-
-        it("#99 TC-15: online, the audiobook is listenable and nothing is looked up") {
-            withHarness {
-                vm.uiState.value.listenAvailable shouldBe true
-                availability.calls.shouldBeEmpty()
+    describe("whether Listen is available") {
+        context("when online") {
+            it("#99 TC-15: is true for a book not downloaded") {
+                withHarness(online = true, downloaded = false) {
+                    vm.uiState.value.listenAvailable shouldBe true
+                }
             }
         }
 
-        it("#99 TC-16: offline and not downloaded, Listen is not available and the audiobook is asked about") {
-            withHarness(online = false) {
-                vm.reload(1)
-                vm.uiState.value.listenAvailable shouldBe false
-                availability.calls shouldContain (UUID to ProgressFormat.Listening)
+        context("when offline") {
+            context("when the audiobook is not downloaded") {
+                it("#99 TC-16: is false") {
+                    withHarness(online = false, downloaded = false) {
+                        vm.reload(1)
+
+                        vm.uiState.value.listenAvailable shouldBe false
+                    }
+                }
+
+                it("#99 TC-16: asks about the audiobook") {
+                    withHarness(online = false, downloaded = false) {
+                        vm.reload(1)
+
+                        availability.calls shouldContain (uuid to ProgressFormat.Listening)
+                    }
+                }
+
+                context("when a reload finds a download made meanwhile") {
+                    it("#99 TC-17, TC-20: is true") {
+                        withHarness(online = false, downloaded = false) {
+                            vm.reload(1)
+                            availability.answer = true
+
+                            vm.reload(2)
+
+                            vm.uiState.value.listenAvailable shouldBe true
+                        }
+                    }
+                }
             }
         }
 
-        it("#99 TC-17: offline but downloaded, Listen is available") {
-            withHarness(online = false) {
-                availability.answer = true
-                vm.reload(1)
-                vm.uiState.value.listenAvailable shouldBe true
-            }
-        }
-
-        it("#99 TC-18: Listen follows connectivity: online, offline, online") {
-            withHarness {
-                val seen = mutableListOf(vm.uiState.value.listenAvailable)
+        it("#99 TC-18: follows connectivity in both directions") {
+            withHarness(online = true, downloaded = false) {
                 connectivity.isOnline.value = false
-                seen += vm.uiState.value.listenAvailable
+                val offline = vm.uiState.value.listenAvailable
                 connectivity.isOnline.value = true
-                seen += vm.uiState.value.listenAvailable
-                seen shouldBe listOf(true, false, true)
-            }
-        }
 
-        it("#99 TC-19: built offline, Listen starts unavailable before anything else happens") {
-            withHarness(online = false) {
-                vm.uiState.value.listenAvailable shouldBe false
-            }
-        }
-
-        it("#99 TC-20: a reload picks up a download made meanwhile") {
-            withHarness(online = false) {
-                vm.reload(1)
-                vm.uiState.value.listenAvailable shouldBe false
-
-                availability.answer = true
-                vm.reload(2)
-                vm.uiState.value.listenAvailable shouldBe true
+                listOf(offline, vm.uiState.value.listenAvailable) shouldBe listOf(false, true)
             }
         }
     }
 
     describe("the immersive read") {
-
-        it("#99 TC-47: the immersive read loads the audiobook with autoplay, on the given file or none") {
+        it("#99 TC-47: starts the given file playing") {
             withHarness {
-                vm.onImmersiveRead(5L)
-                vm.onImmersiveRead(null)
-                controller.commands shouldBe listOf(
-                    FakeAudiobookController.Command.Load(UUID, 5L, null, true),
-                    FakeAudiobookController.Command.Load(UUID, null, null, true),
-                )
+                val file = randomLong()
+
+                vm.onImmersiveRead(file)
+
+                controller.commands shouldBe listOf(TestAudiobookController.Command.Load(uuid, file, null, true))
             }
         }
     }

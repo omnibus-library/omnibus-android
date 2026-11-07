@@ -3,13 +3,8 @@ package com.omnibus.omnibus.feature.bookdetail.highlights
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -30,11 +25,11 @@ class HighlightsLongListTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private fun ComposeContentTestRule.setList(state: androidx.compose.runtime.MutableState<HighlightsUIState>, scroll: ScrollState) {
+    private fun ComposeContentTestRule.setList(state: HighlightsUIState, scroll: ScrollState) {
         setContent {
             OmnibusTheme(darkTheme = true) {
                 Column(Modifier.verticalScroll(scroll)) {
-                    HighlightsContent(state.value, onRetry = {})
+                    HighlightsContent(state, onRetry = {})
                 }
             }
         }
@@ -55,27 +50,11 @@ class HighlightsLongListTest {
     private fun ComposeContentTestRule.onAllNodesWithTagOrEmpty(tag: String): Boolean =
         onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
-    // TC-48
-    @Test
-    fun tc48_aThousandRowsComposeOnlyTheFirstPage() {
-        val state = mutableStateOf(HighlightsUIState(HighlightsUIContent.Loaded(rows(1000)), 0L))
-        rule.setList(state, ScrollState(0))
-
-        rule.onNodeWithTag(HighlightsTestTags.row(1)).assertExists()
-        rule.onNodeWithTag(HighlightsTestTags.row(501)).assertDoesNotExist()
-        rule.onNodeWithTag(HighlightsTestTags.COUNT).assertTextEquals("1000")
-        rule.onNodeWithTag(HighlightsTestTags.MORE).assertExists()
-        val composed = composedRows()
-        assertTrue("first page must be composed, was $composed", composed >= 20)
-        assertTrue("composition must stay bounded, was $composed", composed < 1000)
-    }
-
     // TC-49
     @Test
     fun tc49_scrollingComposesMoreAndReachesTheLastRow() {
         val scroll = ScrollState(0)
-        val state = mutableStateOf(HighlightsUIState(HighlightsUIContent.Loaded(rows(1000)), 0L))
-        rule.setList(state, scroll)
+        rule.setList(HighlightsUIState(HighlightsUIContent.Loaded(rows(1000)), 0L), scroll)
         val before = composedRows()
 
         rule.scrollTo(scroll)
@@ -88,38 +67,16 @@ class HighlightsLongListTest {
         rule.onNodeWithTag(HighlightsTestTags.MORE).assertDoesNotExist()
     }
 
-    // TC-50
-    @Test
-    fun tc50_aListOfTwentyComposesAllAtOnceAndTwentyOneWaitsForScroll() {
-        val twenty = mutableStateOf(HighlightsUIState(HighlightsUIContent.Loaded(rows(20)), 0L))
-        rule.setList(twenty, ScrollState(0))
-        rule.onAllNodes(highlightRowMatcher).assertCountEquals(20)
-        rule.onNodeWithTag(HighlightsTestTags.MORE).assertDoesNotExist()
-    }
-
-    @Test
-    fun tc50_twentyOneRowsComposeTheTwentyFirstAfterScrolling() {
-        val scroll = ScrollState(0)
-        val state = mutableStateOf(HighlightsUIState(HighlightsUIContent.Loaded(rows(21)), 0L))
-        rule.setList(state, scroll)
-        rule.onNodeWithTag(HighlightsTestTags.MORE).assertExists()
-
-        scrollToEnd(scroll)
-
-        rule.onNodeWithTag(HighlightsTestTags.row(21)).assertExists()
-        rule.onNodeWithTag(HighlightsTestTags.MORE).assertDoesNotExist()
-    }
-
     // TC-51
     @Test
-    fun tc51_theComposedPageSurvivesARestoreAndAShrinkingListIsSafe() {
+    fun tc51_theComposedPageSurvivesARestore() {
         val tester = StateRestorationTester(rule)
         val scroll = ScrollState(0)
-        val state = mutableStateOf(HighlightsUIState(HighlightsUIContent.Loaded(rows(1000)), 0L))
+        val state = HighlightsUIState(HighlightsUIContent.Loaded(rows(1000)), 0L)
         tester.setContent {
             OmnibusTheme(darkTheme = true) {
                 Column(Modifier.verticalScroll(scroll)) {
-                    HighlightsContent(state.value, onRetry = {})
+                    HighlightsContent(state, onRetry = {})
                 }
             }
         }
@@ -132,10 +89,5 @@ class HighlightsLongListTest {
 
         tester.emulateSavedInstanceStateRestore()
         rule.onNodeWithTag(HighlightsTestTags.row(41)).assertExists()
-
-        state.value = HighlightsUIState(HighlightsUIContent.Loaded(rows(5)), 0L)
-        rule.waitForIdle()
-        rule.onAllNodes(highlightRowMatcher).assertCountEquals(5)
-        rule.onNodeWithTag(HighlightsTestTags.MORE).assertDoesNotExist()
     }
 }

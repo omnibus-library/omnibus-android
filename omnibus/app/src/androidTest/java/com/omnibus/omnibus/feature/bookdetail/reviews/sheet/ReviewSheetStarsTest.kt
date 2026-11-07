@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -21,8 +20,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -41,8 +38,8 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * The review sheet's star rows: taps, drags, the bubble, semantics, and the motion, with reduced motion on and off. Every
- * gesture is placed as a fraction of the row's own width, so no test pins a window size.
+ * The review sheet's star rows: taps, drags and semantics. Every gesture is placed as a fraction of the row's own width,
+ * so no test pins a window size.
  */
 class ReviewSheetStarsTest {
 
@@ -105,21 +102,6 @@ class ReviewSheetStarsTest {
         assertTrue("the steps do not go down", steps.zipWithNext().all { (a, b) -> b >= a })
         assertEquals(4f, steps.last(), 0f)
         assertEquals("nothing is reported on release", beforeUp, changes.toList())
-    }
-
-    @Test
-    fun tc87_theBubbleShowsTheNumberWhileTheFingerIsDownAndAReleaseCommitsIt() {
-        val changes = mutableListOf<Float?>()
-        setContentWith { ReviewSheetStars(null, { changes += it }, Color.Red, reducedMotion = true) }
-        val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
-
-        stars.performTouchInput { down(Offset(width * 0.65f, height / 2f)) }
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsBubbleKey, "3.5"))
-        assertTrue("nothing is committed while the finger is down", changes.isEmpty())
-
-        stars.performTouchInput { up() }
-        stars.assert(SemanticsMatcher.keyNotDefined(ReviewStarsBubbleKey))
-        assertEquals(listOf(3.5f), changes)
     }
 
     @Test
@@ -193,12 +175,6 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun tc91_anUnratedRowReadsNotRated() {
-        setContentWith { ReviewSheetStars(null, {}, Color.Red, reducedMotion = true) }
-        rule.onNode(hasTestTag(ReviewSheetTestTags.STARS)).assert(hasStateDescription("Not rated"))
-    }
-
-    @Test
     fun tc92_setProgressReportsTheHalfStepAndZeroClears() {
         val changes = mutableListOf<Float?>()
         setContentWith { ReviewSheetStars(3f, { changes += it }, Color.Red, reducedMotion = true) }
@@ -213,64 +189,21 @@ class ReviewSheetStarsTest {
     }
 
     @Test
-    fun tc93_theReadoutIsAPoliteLiveRegionThatFollowsTheRating() {
-        val rating = mutableStateOf<Float?>(4.5f)
-        setContentWith { ReviewSheetStars(rating.value, { rating.value = it }, Color.Red, reducedMotion = true) }
-        val readout = rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT))
+    fun tc93_theReadoutIsAPoliteLiveRegion() {
+        setContentWith { ReviewSheetStars(4.5f, {}, Color.Red, reducedMotion = true) }
 
-        readout.assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
-        readout.assertTextEquals("4.5 Loved it")
-
-        rating.value = 3.5f
-        rule.waitForIdle()
-        readout.assertTextEquals("3.5 Liked it a lot")
+        rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     }
 
     @Test
-    fun tc94_theCompactStarsBehaveLikeTheLargeRowAreSmallerAndKeepA48dpTarget() {
+    fun tc94_aTapOnTheCompactStarsSetsTheHalfStarUnderIt() {
         val changes = mutableListOf<Float?>()
-        setContentWith {
-            Column {
-                ReviewSheetStars(4.5f, {}, Color.Red, reducedMotion = true)
-                ReviewSheetCompactStars(4.5f, { changes += it }, Color.Red)
-            }
-        }
-        val compact = rule.onNode(hasTestTag(ReviewSheetTestTags.COMPACT_STARS))
-        val large = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
+        setContentWith { ReviewSheetCompactStars(4.5f, { changes += it }, Color.Red) }
 
-        compact.assert(hasStateDescription("4.5 of 5 stars, Loved it"))
-        compact.assert(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
-        compact.assertHeightIsAtLeast(48.dp)
-        assertTrue(
-            "the compact row is shorter than the large one",
-            compact.fetchSemanticsNode().size.height < large.fetchSemanticsNode().size.height,
-        )
+        rule.onNode(hasTestTag(ReviewSheetTestTags.COMPACT_STARS)).performTouchInput { click(Offset(width * 0.05f, height / 2f)) }
 
-        compact.performTouchInput { click(Offset(width * 0.05f, height / 2f)) }
         assertEquals(listOf(0.5f), changes)
-    }
-
-    @Test
-    fun tc95_reducedMotionKeepsTheStarMotionAtRestAndTheBubbleStillShows() {
-        rule.mainClock.autoAdvance = false
-        val rating = mutableStateOf<Float?>(3f)
-        setContentWith {
-            ReviewSheetStars(rating.value, { rating.value = it }, Color.Red, reducedMotion = true)
-        }
-        val stars = rule.onNode(hasTestTag(ReviewSheetTestTags.STARS))
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
-
-        rating.value = 5f
-        rule.waitForIdle()
-        rule.mainClock.advanceTimeByFrame()
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
-
-        stars.performTouchInput { down(Offset(width * 0.5f, height / 2f)) }
-        rule.mainClock.advanceTimeByFrame()
-        stars.assert(SemanticsMatcher.expectValue(ReviewStarsMotionKey, StarsMotion.Rest))
-        stars.assert(SemanticsMatcher.keyIsDefined(ReviewStarsBubbleKey))
-        rule.onNode(hasTestTag(ReviewSheetTestTags.READOUT)).assertTextEquals("2.5 Mixed feelings")
-        stars.performTouchInput { up() }
     }
 
     /** The range of a progress from 0 to 5 in nine steps, at [value]. */

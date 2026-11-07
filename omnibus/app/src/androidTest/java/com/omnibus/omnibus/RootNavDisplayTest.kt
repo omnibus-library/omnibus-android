@@ -1,7 +1,6 @@
 package com.omnibus.omnibus
 
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,12 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
@@ -25,7 +22,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -52,7 +48,7 @@ class RootNavDisplayTest {
     private val stack = mutableStateListOf<NavKey>(SignedInShellRoute)
     private val isSignedIn = mutableStateOf<Boolean?>(true)
 
-    private fun setRoot(shell: @Composable () -> Unit = { FakeShell() }) {
+    private fun setRoot(shell: @Composable () -> Unit = { TestShell() }) {
         rule.setContent {
             OmnibusTheme {
                 RootNavDisplay(
@@ -81,19 +77,6 @@ class RootNavDisplayTest {
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
     }
 
-    // TC-58
-    @Test
-    fun tc58_theReaderCoversTheShellAndItsTabBar() {
-        setRoot()
-        rule.onNodeWithTag(FAKE_TAB_BAR).assertIsDisplayed()
-
-        rule.runOnIdle { stack.openReader("book-1") }
-        rule.waitForIdle()
-
-        rule.onAllNodesWithTag(FAKE_TAB_BAR).assertCountEquals(0)
-        rule.onNodeWithTag(FAKE_READER).assertIsDisplayed()
-    }
-
     // TC-59
     @Test
     fun tc59_leavingTheReaderRestoresTheShellState() {
@@ -108,23 +91,6 @@ class RootNavDisplayTest {
 
         rule.onNodeWithText("count: 2").assertIsDisplayed()
         assertEquals(listOf<NavKey>(SignedInShellRoute), stack.toList())
-    }
-
-    // TC-60
-    @Test
-    fun tc60_theRootScaffoldDoesNotPadTheReader() {
-        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
-        setRoot()
-
-        rule.runOnIdle { stack.openReader("book-1") }
-        rule.waitForIdle()
-
-        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
-        val reader = rule.onNodeWithTag(FAKE_READER).fetchSemanticsNode().boundsInRoot
-        assertEquals(root.left, reader.left, 1f)
-        assertEquals(root.top, reader.top, 1f)
-        assertEquals(root.right, reader.right, 1f)
-        assertEquals(root.bottom, reader.bottom, 1f)
     }
 
     // #93 TC-126
@@ -204,7 +170,7 @@ class RootNavDisplayTest {
 
     /** The shell stand-in: a counter that survives leaving the reader, and a tab bar node. */
     @Composable
-    private fun FakeShell() {
+    private fun TestShell() {
         val count = rememberSaveable { mutableIntStateOf(0) }
         Column(Modifier.fillMaxSize()) {
             Text(

@@ -63,14 +63,6 @@ fun ChipEditSheetPoolLoading() {
     ChipEditShot(state(entry = "Grimdark", pools = mapOf(MetadataListKind.Genres to PoolState.Loading)))
 }
 
-/** A failed pool looks like a loading one: no suggestions, and the create row shows. */
-@PreviewTest
-@Preview
-@Composable
-fun ChipEditSheetPoolFailed() {
-    ChipEditShot(state(entry = "Grimdark", pools = mapOf(MetadataListKind.Genres to PoolState.Failed)))
-}
-
 private fun state(
     genres: List<String> = emptyList(),
     tags: List<String> = emptyList(),

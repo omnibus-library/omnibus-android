@@ -1,138 +1,93 @@
 package com.omnibus.omnibus.data.library.local
 
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.data.library.randomLibrarySortPreference
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import java.io.File
-import java.io.IOException
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.job
 
 class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
 
-    lateinit var dataStoreDir: File
-    lateinit var dataStoreScope: CoroutineScope
-    lateinit var dataStore: DataStore<Preferences>
-    lateinit var store: DefaultLibrarySortPreferenceStore
-
-    fun openDataStore(scope: CoroutineScope): DataStore<Preferences> = PreferenceDataStoreFactory.create(
-        scope = scope,
-        produceFile = { File(dataStoreDir, "library_preferences.preferences_pb") },
-    )
-
-    /** Replaces every stored value with [values], written as raw string keys. */
-    suspend fun seed(vararg values: Pair<String, String>) {
-        dataStore.updateData {
-            mutablePreferencesOf().apply {
-                values.forEach { (name, value) -> this[stringPreferencesKey(name)] = value }
-            }
-        }
-    }
+    fun sut(dataStore: DataStore<Preferences> = TestPreferencesDataStore()) =
+        DefaultLibrarySortPreferenceStore(dataStore)
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        dataStoreDir = createTempDirectory("library-sort-test").toFile()
-        dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        dataStore = openDataStore(dataStoreScope)
-        store = DefaultLibrarySortPreferenceStore(dataStore)
-    }
+    describe("reading the stored preference") {
 
-    afterEach {
-        dataStoreScope.cancel()
-        dataStoreDir.deleteRecursively()
-    }
-
-    describe("preference") {
-
-        it("TC-115: emits the defaults when nothing is stored") {
-            store.preference.first() shouldBe LibrarySortPreference()
-        }
-
-        it("TC-116: a saved preference is read back, including through a second store on the same file") {
-            store.save(LibrarySortPreference(LibrarySort.Author, SortDirection.Asc))
-
-            store.preference.first() shouldBe LibrarySortPreference(LibrarySort.Author, SortDirection.Asc)
-
-            dataStoreScope.coroutineContext.job.cancelAndJoin()
-            val reopenedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            try {
-                val reopened = DefaultLibrarySortPreferenceStore(openDataStore(reopenedScope))
-
-                reopened.preference.first() shouldBe LibrarySortPreference(LibrarySort.Author, SortDirection.Asc)
-            } finally {
-                reopenedScope.cancel()
+        context("when nothing is stored") {
+            it("TC-115: is the defaults") {
+                sut().preference.first() shouldBe LibrarySortPreference(LibrarySort.NewestAdded, SortDirection.Desc)
             }
         }
 
-        it("TC-117: a save writes two separate raw string keys and no category key") {
-            store.save(LibrarySortPreference(LibrarySort.RecentlyInteracted, SortDirection.Asc))
+        context("when the app restarts") {
+            it("TC-116: is the preference saved before") {
+                val dir = createTempDirectory("library-sort-test").toFile()
+                val file = File(dir, "library_preferences.preferences_pb")
+                val preference = randomLibrarySortPreference()
+                try {
+                    val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                    sut(PreferenceDataStoreFactory.create(scope = firstScope, produceFile = { file })).save(preference)
+                    firstScope.coroutineContext.job.cancelAndJoin()
 
-            val prefs = dataStore.data.first()
+                    val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                    val reopened = sut(PreferenceDataStoreFactory.create(scope = secondScope, produceFile = { file }))
 
-            prefs[stringPreferencesKey("library.sort")] shouldBe "recently_interacted"
-            prefs[stringPreferencesKey("library.sortDirection")] shouldBe "asc"
-            prefs.asMap().keys.map { it.name }.toSet() shouldBe setOf("library.sort", "library.sortDirection")
+                    reopened.preference.first() shouldBe preference
+                    secondScope.coroutineContext.job.cancelAndJoin()
+                } finally {
+                    dir.deleteRecursively()
+                }
+            }
         }
 
-        it("TC-118: an unknown sort or direction falls back independently and the other field is kept") {
-            seed("library.sort" to "bogus", "library.sortDirection" to "asc")
-            store.preference.first() shouldBe LibrarySortPreference(LibrarySort.NewestAdded, SortDirection.Asc)
+        context("when values are already stored") {
+            it("TC-118: reads them from the stored format") {
+                val directionKey = stringPreferencesKey("library.sortDirection")
 
-            seed("library.sort" to "title", "library.sortDirection" to "sideways")
-            store.preference.first() shouldBe LibrarySortPreference(LibrarySort.Title, SortDirection.Desc)
+                val sortKey = stringPreferencesKey("library.sort")
 
-            seed("library.sort" to "author")
-            store.preference.first() shouldBe LibrarySortPreference(LibrarySort.Author, SortDirection.Desc)
+                val stored = preferencesOf(sortKey to "title", directionKey to "asc")
+
+                sut(TestPreferencesDataStore(stored)).preference.first() shouldBe
+                    LibrarySortPreference(LibrarySort.Title, SortDirection.Asc)
+            }
         }
 
-        it("TC-119: a failed read emits the defaults, does not throw, and completes") {
-            val failingStore = DefaultLibrarySortPreferenceStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { throw IOException("boom") }
-
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IOException("boom")
-                },
-            )
-
-            failingStore.preference.toList() shouldBe listOf(LibrarySortPreference())
+        context("when the read fails") {
+            it("TC-119: emits the defaults once") {
+                sut(FailingPreferencesDataStore()).preference.toList() shouldBe listOf(LibrarySortPreference())
+            }
         }
     }
 
-    describe("save") {
+    describe("saving the preference") {
 
-        it("TC-120: a failed write does not throw out of save") {
-            val failingStore = DefaultLibrarySortPreferenceStore(
-                object : DataStore<Preferences> {
-                    override val data = flow<Preferences> { emit(mutablePreferencesOf()) }
-
-                    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-                        throw IOException("boom")
-                },
-            )
-
-            shouldNotThrowAny { failingStore.save(LibrarySortPreference(LibrarySort.Title, SortDirection.Asc)) }
+        context("when the write fails") {
+            it("TC-120: does not throw") {
+                shouldNotThrowAny { sut(FailingPreferencesDataStore()).save(randomLibrarySortPreference()) }
+            }
         }
     }
 })

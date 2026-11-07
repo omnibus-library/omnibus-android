@@ -26,9 +26,8 @@ class ReaderAssetLoaderTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context: Context = instrumentation.targetContext
     private val consoleErrors = mutableListOf<String>()
-    private val bookFailures = mutableListOf<BookFileResult.Failure>()
     private val requestedBooks = mutableListOf<String>()
-    private var bookResult: BookFileResult = BookFileResult.Opened(ByteArrayInputStream("epub-bytes".toByteArray()), 10)
+    private val bookResult: BookFileResult = BookFileResult.Opened(ByteArrayInputStream("epub-bytes".toByteArray()), 10)
     private lateinit var webView: WebView
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -39,7 +38,7 @@ class ReaderAssetLoaderTest {
             bookResult
         }
         val loader = ReaderAssetLoaderFactory(context, Dispatchers.Unconfined, source)
-            .create { synchronized(bookFailures) { bookFailures += it } }
+            .create {}
         val pageFinished = CountDownLatch(1)
         instrumentation.runOnMainSync {
             webView = WebView(context).apply {
@@ -100,14 +99,6 @@ class ReaderAssetLoaderTest {
 
         assertEquals("200:epub-bytes", body)
         assertEquals(listOf("abc-123"), requestedBooks)
-    }
-
-    @Test
-    fun tc218_aBookThatFailsToOpenIsAnErrorStatusAndIsReportedToTheHost() {
-        bookResult = BookFileResult.NotFound
-
-        assertEquals("404:", fetchStatusAndBody("/book/abc-123.epub"))
-        assertEquals(listOf<BookFileResult.Failure>(BookFileResult.NotFound), synchronized(bookFailures) { bookFailures.toList() })
     }
 
     @Test

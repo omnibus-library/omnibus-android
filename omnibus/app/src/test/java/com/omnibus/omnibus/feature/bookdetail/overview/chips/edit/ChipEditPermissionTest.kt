@@ -1,28 +1,32 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.chips.edit
 
-import com.omnibus.omnibus.data.auth.CurrentUser
+import com.omnibus.omnibus.data.auth.randomCurrentUser
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ChipEditPermissionTest : DescribeSpec({
-
-    fun user(canEdit: Boolean, isAdmin: Boolean) =
-        CurrentUser(id = 1, canEdit = canEdit, canUpload = false, hiddenFormats = emptySet(), isAdmin = isAdmin)
-
-    describe("canEditChips") {
-
-        it("TC-1: is false for null and for a user with neither flag") {
-            canEditChips(null) shouldBe false
-            canEditChips(user(canEdit = false, isAdmin = false)) shouldBe false
+    describe("who may edit chips") {
+        context("when nobody is signed in") {
+            it("TC-1: refuses") {
+                canEditChips(null) shouldBe false
+            }
         }
 
-        it("TC-2: is true for canEdit alone and for isAdmin alone") {
-            canEditChips(user(canEdit = true, isAdmin = false)) shouldBe true
-            canEditChips(user(canEdit = false, isAdmin = true)) shouldBe true
+        context("when the user may not edit") {
+            it("TC-1: refuses") {
+                canEditChips(randomCurrentUser().copy(canEdit = false, isAdmin = false)) shouldBe false
+            }
         }
 
-        it("TC-3: is true when both flags are set") {
-            canEditChips(user(canEdit = true, isAdmin = true)) shouldBe true
+        context("when the user has an editing role") {
+            it("TC-2: allows it for an editor, an administrator or someone who is both") {
+                checkAll(Exhaustive.of(true to false, false to true, true to true)) { (canEdit, isAdmin) ->
+                    canEditChips(randomCurrentUser().copy(canEdit = canEdit, isAdmin = isAdmin)) shouldBe true
+                }
+            }
         }
     }
 })

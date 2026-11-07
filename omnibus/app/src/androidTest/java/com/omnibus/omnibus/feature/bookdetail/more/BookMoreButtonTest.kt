@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.more
 
 import androidx.compose.material3.Text
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -16,10 +15,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
@@ -27,8 +24,6 @@ import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfSheetTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -39,20 +34,13 @@ class BookMoreButtonTest {
 
     // TC-1
     @Test
-    fun issue116_tc1_moreButtonIsA44dpSquareButton() {
-        rule.setMoreButton(listOf(FakeEntry("Row")))
+    fun issue116_tc1_moreButtonIsALabelledButton() {
+        rule.setMoreButton(listOf(TestEntry("Row")))
 
-        val button = rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON)
-        button.assertIsDisplayed()
-        button.assert(hasContentDescription(detailText(R.string.book_detail_more)))
-        button.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-        button.assertHasClickAction()
-
-        val bounds = button.bounds()
-        val minimum = with(rule.density) { 44.dp.toPx() }
-        assertTrue("width ${bounds.width}", bounds.width >= minimum - 1f)
-        assertTrue("height ${bounds.height}", bounds.height >= minimum - 1f)
-        assertEquals(bounds.width, bounds.height, 1f)
+        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON)
+            .assert(hasContentDescription(detailText(R.string.book_detail_more)))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assertHasClickAction()
     }
 
     // TC-67
@@ -61,7 +49,7 @@ class BookMoreButtonTest {
         val tester = StateRestorationTester(rule)
         tester.setContent {
             OmnibusTheme(darkTheme = true) {
-                BookMoreButtonContent(testSectionContext(), listOf(FakeEntry("Row")))
+                BookMoreButtonContent(testSectionContext(), listOf(TestEntry("Row")))
             }
         }
         rule.onAllNodesWithTag(BookMoreTestTags.MENU).assertCountEquals(0)
@@ -78,7 +66,7 @@ class BookMoreButtonTest {
     fun issue116_tc71_entriesAreActivatedOnceTheMenuHasOpened() {
         rule.setMoreButton(
             listOf(
-                FakeEntry(
+                TestEntry(
                     label = "Row",
                     overlay = { Text("activated=${LocalMoreMenuActivated.current}") },
                 ),
