@@ -1,74 +1,86 @@
 package com.omnibus.omnibus.data.quotecard.remote
 
 import com.omnibus.omnibus.data.quotecard.CoverPair
+import com.omnibus.omnibus.data.quotecard.json
+import com.omnibus.omnibus.data.quotecard.paletteJson
+import com.omnibus.omnibus.data.quotecard.randomCoverPair
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 
 /** The pairs [json] decodes to. */
-private fun pairsOf(json: String): List<CoverPair> =
-    CoverPaletteResponseDto.fromJsonString(json).toDomain()
+private fun pairsOf(json: String): List<CoverPair> = CoverPaletteResponseDto.fromJsonString(json).toDomain()
 
-private fun pair(from: String, to: String, ink: String) = """{"from":"$from","to":"$to","ink":"$ink"}"""
+private fun entry(from: String, to: String, ink: String) = """{"from":"$from","to":"$to","ink":"$ink"}"""
 
 class CoverPaletteResponseDtoTest : DescribeSpec({
 
-    describe("CoverPaletteResponseDto.toDomain") {
+    describe("reading a palette") {
+        it("returns the pairs in the server's order") {
+            val pairs = List(3) { randomCoverPair() }
 
-        it("maps the pairs in server order, light ink and dark ink") {
-            val json = """{"pairs":[
-                ${pair("#5d1f1c", "#c01a1a", "light")},
-                ${pair("#1e1b1b", "#ab2527", "light")},
-                ${pair("#efe4e6", "#d5c2c9", "dark")}
-            ]}"""
-
-            pairsOf(json) shouldBe listOf(
-                CoverPair(0xFF5D1F1C.toInt(), 0xFFC01A1A.toInt(), lightInk = true),
-                CoverPair(0xFF1E1B1B.toInt(), 0xFFAB2527.toInt(), lightInk = true),
-                CoverPair(0xFFEFE4E6.toInt(), 0xFFD5C2C9.toInt(), lightInk = false),
-            )
+            pairsOf(paletteJson(pairs)) shouldBe pairs
         }
 
-        it("reads upper-case hex digits") {
-            pairsOf("""{"pairs":[${pair("#5D1F1C", "#C01A1A", "dark")}]}""") shouldBe
-                listOf(CoverPair(0xFF5D1F1C.toInt(), 0xFFC01A1A.toInt(), lightInk = false))
+        it("reads light ink as light ink") {
+            val pair = randomCoverPair().copy(lightInk = true)
+
+            pairsOf(paletteJson(listOf(pair))).single().lightInk shouldBe true
         }
 
-        listOf(
-            "a shorthand colour" to pair("#5d1", "#c01a1a", "light"),
-            "a colour with no hash" to pair("5d1f1c", "#c01a1a", "light"),
-            "a colour with an alpha pair" to pair("#5d1f1cff", "#c01a1a", "light"),
-            "a colour that isn't hex" to pair("#5d1f1c", "#gggggg", "light"),
-            "an empty colour" to pair("", "#c01a1a", "light"),
-            "an ink that is neither light nor dark" to pair("#5d1f1c", "#c01a1a", "grey"),
-            "an empty ink" to pair("#5d1f1c", "#c01a1a", ""),
-        ).forEach { (why, malformed) ->
-            it("drops a pair with $why and keeps the rest") {
-                val kept = pair("#112233", "#445566", "light")
+        it("reads dark ink as dark ink") {
+            val pair = randomCoverPair().copy(lightInk = false)
 
-                pairsOf("""{"pairs":[$malformed,$kept]}""") shouldBe
-                    listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true))
+            pairsOf(paletteJson(listOf(pair))).single().lightInk shouldBe false
+        }
+
+        context("when the hex digits are upper case") {
+            it("reads the colours the same") {
+                pairsOf("""{"pairs":[${entry("#5D1F1C", "#C01A1A", "light")}]}""") shouldBe
+                    listOf(CoverPair(0xFF5D1F1C.toInt(), 0xFFC01A1A.toInt(), lightInk = true))
             }
         }
 
-        it("keeps a valid pair beside one whose field has the wrong JSON type") {
-            pairsOf("""{"pairs":[{"from":5,"to":"#445566","ink":"light"},${pair("#112233", "#445566", "dark")}]}""") shouldBe
-                listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = false))
+        listOf(
+            "a shorthand colour" to entry("#5d1", "#c01a1a", "light"),
+            "a colour with no hash" to entry("5d1f1c", "#c01a1a", "light"),
+            "a colour with an alpha pair" to entry("#5d1f1cff", "#c01a1a", "light"),
+            "a colour that isn't hex" to entry("#5d1f1c", "#gggggg", "light"),
+            "an empty colour" to entry("", "#c01a1a", "light"),
+            "an ink that is neither light nor dark" to entry("#5d1f1c", "#c01a1a", "grey"),
+            "an empty ink" to entry("#5d1f1c", "#c01a1a", ""),
+            "a field of the wrong JSON type" to """{"from":5,"to":"#445566","ink":"light"}""",
+            "a field missing" to """{"from":"#112233","ink":"light"}""",
+            "a null entry" to "null",
+            "an entry that isn't an object" to "\"nope\"",
+        ).forEach { (malformed, entryJson) ->
+            context("when a pair has $malformed") {
+                it("keeps only the valid pair beside it") {
+                    val valid = randomCoverPair()
+
+                    pairsOf("""{"pairs":[$entryJson,${valid.json()}]}""") shouldBe listOf(valid)
+                }
+            }
         }
 
-        it("keeps a valid pair beside a null entry and a non-object entry") {
-            pairsOf("""{"pairs":[null,"nope",${pair("#112233", "#445566", "dark")}]}""") shouldBe
-                listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = false))
+        context("when the body has no pairs key") {
+            it("returns none") {
+                pairsOf("{}").shouldBeEmpty()
+            }
         }
 
-        it("drops a pair with a field missing") {
-            pairsOf("""{"pairs":[{"from":"#112233","ink":"light"}]}""") shouldBe emptyList()
+        context("when the pairs are empty") {
+            it("returns none") {
+                pairsOf("""{"pairs":[]}""").shouldBeEmpty()
+            }
         }
 
-        it("reads a body with no pairs as none, and ignores unknown keys") {
-            pairsOf("""{}""") shouldBe emptyList()
-            pairsOf("""{"pairs":[],"generated":"today"}""") shouldBe emptyList()
-            pairsOf("""{"pairs":[{"from":"#112233","to":"#445566","ink":"dark","name":"Wing"}],"v":2}""") shouldBe
-                listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = false))
+        context("when the body has keys the app doesn't know") {
+            it("reads the pairs regardless") {
+                val pair = randomCoverPair()
+
+                pairsOf("""{"pairs":[${pair.json()}],"v":2}""") shouldBe listOf(pair)
+            }
         }
     }
 })

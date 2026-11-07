@@ -1,48 +1,71 @@
 package com.omnibus.omnibus.feature.quotecard
 
-import com.omnibus.omnibus.data.quotecard.CoverPair
-import com.omnibus.omnibus.data.quotecard.FakeQuoteCardRepository
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import com.omnibus.omnibus.ui.theme.Oklch
+import app.cash.turbine.test
+import com.omnibus.omnibus.data.quotecard.QuoteCardRepository
+import com.omnibus.omnibus.data.quotecard.TestQuoteCardRepository
+import com.omnibus.omnibus.data.quotecard.randomCoverPair
+import com.omnibus.omnibus.data.quotecard.randomOpaqueArgb
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomOf
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.floats.shouldBeGreaterThan
-import io.kotest.matchers.floats.shouldBeLessThan
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.toCollection
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-private const val PASSAGE = "It was the best of times."
+/** The two ways to ask for the card, which guard and fail alike. */
+private enum class ExportRequest {
+    Share {
+        override fun QuoteCardViewModel.request(capture: suspend () -> ByteArray) = onShareRequested(capture)
+    },
+    Copy {
+        override fun QuoteCardViewModel.request(capture: suspend () -> ByteArray) = onCopyRequested(capture)
+    };
 
-/** A ViewModel with its fake, and the effects it has emitted so far collected into [effects]. */
-private class Harness(coverPairs: List<CoverPair>) {
-    val repository = FakeQuoteCardRepository().also { it.coverPairs = coverPairs }
-    val vm = QuoteCardViewModel("book-1", PASSAGE, repository)
-    val effects = mutableListOf<QuoteCardEffect>()
-    private val scope = CoroutineScope(Job() + Dispatchers.Main).also { scope ->
-        scope.launch { vm.effects.toCollection(effects) }
-    }
-
-    fun close() = scope.cancel()
+    abstract fun QuoteCardViewModel.request(capture: suspend () -> ByteArray)
 }
 
-private inline fun withHarness(coverPairs: List<CoverPair> = emptyList(), block: Harness.() -> Unit) {
-    val harness = Harness(coverPairs)
-    try {
-        harness.block()
-    } finally {
-        harness.close()
+private fun otherArgb(argb: Int): Int = generateSequence { randomOpaqueArgb() }.first { it != argb }
+
+private fun randomPng(): ByteArray = randomString().toByteArray()
+
+private fun randomFile(): File = File(randomString())
+
+private fun randomSolid(): QuoteBackground = QuoteBackground.Wash(randomEnum<QuoteWash>())
+
+private fun randomGradient(): QuoteBackground = QuoteBackground.Preset(randomEnum<QuoteGradientPreset>())
+
+private fun randomFill(): QuoteFill = QuoteFill(
+    from = Color(randomOpaqueArgb()),
+    to = Color(randomOpaqueArgb()),
+    angle = randomOf(listOf(0, 45, 90, 135, 180, 225, 270, 315)),
+    ink = Color.White,
+)
+
+/** Starts a share of [png] that the repository holds in its save until the returned gate opens. */
+private fun QuoteCardViewModel.shareHeldInSave(
+    repository: TestQuoteCardRepository,
+    png: ByteArray = randomPng(),
+): CompletableDeferred<Unit> {
+    val gate = CompletableDeferred<Unit>()
+    repository.onSave = {
+        gate.await()
+        randomFile()
     }
+    onShareRequested { png }
+    return gate
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -51,337 +74,518 @@ class QuoteCardViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    describe("QuoteCardViewModel") {
+    fun sut(
+        bookUuid: String = randomString(),
+        passage: String = randomString(),
+        repository: QuoteCardRepository = TestQuoteCardRepository(),
+    ) = QuoteCardViewModel(bookUuid, passage, repository)
 
-        describe("initial state") {
-            it("opens on the book's own colour, Serif, M, upright, Square, with the passage and not exporting") {
-                withHarness {
-                    vm.uiState.value shouldBe QuoteCardUIState(
-                        passage = PASSAGE,
-                        background = QuoteBackground.Book,
-                        typeface = QuoteTypeface.Serif,
-                        size = QuoteSize.M,
-                        bold = false,
-                        italic = false,
-                        shape = QuoteShape.Square,
-                        exporting = false,
-                    )
+    describe("opening the sheet") {
+        it("shows the passage") {
+            val passage = randomString()
+
+            sut(passage = passage).uiState.value.passage shouldBe passage
+        }
+
+        it("starts on the book's own colour") {
+            sut().uiState.value.background shouldBe QuoteBackground.Book
+        }
+
+        it("starts in Serif") {
+            sut().uiState.value.typeface shouldBe QuoteTypeface.Serif
+        }
+
+        it("starts at size M") {
+            sut().uiState.value.size shouldBe QuoteSize.M
+        }
+
+        it("starts upright") {
+            sut().uiState.value.let { it.bold || it.italic } shouldBe false
+        }
+
+        it("starts on the Square shape") {
+            sut().uiState.value.shape shouldBe QuoteShape.Square
+        }
+
+        it("starts not exporting") {
+            sut().uiState.value.exporting shouldBe false
+        }
+    }
+
+    describe("the cover's gradient pairs") {
+        context("when the server offers pairs") {
+            it("shows them") {
+                val pairs = List(2) { randomCoverPair() }
+                val repository = TestQuoteCardRepository().apply { coverPairs = pairs }
+
+                sut(repository = repository).uiState.value.coverPairs shouldBe pairs
+            }
+
+            it("asks for the book's pairs once") {
+                val uuid = randomString()
+                val repository = TestQuoteCardRepository().apply { coverPairs = listOf(randomCoverPair()) }
+
+                sut(bookUuid = uuid, repository = repository)
+
+                repository.coverPairCalls shouldBe listOf(uuid)
+            }
+        }
+
+        context("when the server offers none") {
+            it("shows no pairs") {
+                val repository = TestQuoteCardRepository().apply { coverPairs = emptyList() }
+
+                sut(repository = repository).uiState.value.coverPairs.shouldBeEmpty()
+            }
+        }
+    }
+
+    describe("choosing a kind of background") {
+        context("when the cover offers pairs") {
+            context("when Gradient is chosen") {
+                it("applies the cover's first pair") {
+                    val pairs = List(2) { randomCoverPair() }
+                    val vm = sut(repository = TestQuoteCardRepository().apply { coverPairs = pairs })
+
+                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
+
+                    vm.uiState.value.background shouldBe QuoteBackground.Cover(pairs.first())
                 }
             }
         }
 
-        describe("cover pairs") {
-            it("fetches the book's pairs once on creation and shows them") {
-                val pairs = listOf(CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true))
+        context("when the cover offers no pairs") {
+            context("when Gradient is chosen") {
+                it("applies the first preset") {
+                    val vm = sut(repository = TestQuoteCardRepository().apply { coverPairs = emptyList() })
 
-                withHarness(coverPairs = pairs) {
-                    vm.uiState.value.coverPairs shouldBe pairs
-                    repository.coverPairCalls shouldBe listOf("book-1")
-                }
-            }
+                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
 
-            it("leaves the state at its default when the server offers none") {
-                withHarness {
-                    vm.uiState.value.coverPairs shouldBe emptyList()
-                    vm.uiState.value shouldBe QuoteCardUIState(passage = PASSAGE)
+                    vm.uiState.value.background shouldBe QuoteBackground.Preset(QuoteGradientPreset.entries.first())
                 }
             }
         }
 
-        describe("onKindChosen") {
-            val pair = CoverPair(0xFF112233.toInt(), 0xFF445566.toInt(), lightInk = true)
-
-            it("applies the first cover pair when Gradient is chosen and the cover offers pairs") {
-                withHarness(coverPairs = listOf(pair, pair.copy(lightInk = false))) {
-                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
-
-                    vm.uiState.value.background shouldBe QuoteBackground.Cover(pair)
-                }
-            }
-
-            it("applies Ember when Gradient is chosen and the cover offers no pairs") {
-                withHarness {
-                    vm.onKindChosen(QuoteBackgroundKind.Gradient)
-
-                    vm.uiState.value.background shouldBe QuoteBackground.Preset(QuoteGradientPreset.Ember)
-                }
-            }
-
-            it("applies the book's colour when Solid is chosen from a gradient") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.Preset(QuoteGradientPreset.Dawn))
+        context("when the card is on a gradient") {
+            context("when Solid is chosen") {
+                it("applies the book's colour") {
+                    val vm = sut()
+                    vm.onBackgroundChosen(randomGradient())
 
                     vm.onKindChosen(QuoteBackgroundKind.Solid)
 
                     vm.uiState.value.background shouldBe QuoteBackground.Book
                 }
             }
+        }
 
-            it("keeps the background when the current kind is chosen again") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Moss))
+        context("when the kind chosen is the one showing") {
+            it("keeps the background") {
+                val vm = sut()
+                val wash = randomSolid()
+                vm.onBackgroundChosen(wash)
 
-                    vm.onKindChosen(QuoteBackgroundKind.Solid)
+                vm.onKindChosen(QuoteBackgroundKind.Solid)
 
-                    vm.uiState.value.background shouldBe QuoteBackground.Wash(QuoteWash.Moss)
-                }
+                vm.uiState.value.background shouldBe wash
+            }
+        }
+    }
+
+    describe("choosing a background") {
+        it("shows the one chosen") {
+            val vm = sut()
+            val background = randomSolid()
+
+            vm.onBackgroundChosen(background)
+
+            vm.uiState.value.background shouldBe background
+        }
+
+        it("leaves the other choices alone") {
+            val vm = sut()
+            val before = vm.uiState.value
+
+            vm.onBackgroundChosen(randomSolid())
+
+            vm.uiState.value.copy(background = before.background) shouldBe before
+        }
+    }
+
+    describe("choosing a typeface") {
+        it("changes only the typeface") {
+            val vm = sut()
+            val before = vm.uiState.value
+            val other = randomOf(QuoteTypeface.entries - before.typeface)
+
+            vm.onTypefaceChosen(other)
+
+            vm.uiState.value shouldBe before.copy(typeface = other)
+        }
+    }
+
+    describe("choosing a size") {
+        it("changes only the size") {
+            val vm = sut()
+            val before = vm.uiState.value
+            val other = randomOf(QuoteSize.entries - before.size)
+
+            vm.onSizeChosen(other)
+
+            vm.uiState.value shouldBe before.copy(size = other)
+        }
+    }
+
+    describe("choosing a shape") {
+        it("changes only the shape") {
+            val vm = sut()
+            val before = vm.uiState.value
+            val other = randomOf(QuoteShape.entries - before.shape)
+
+            vm.onShapeChosen(other)
+
+            vm.uiState.value shouldBe before.copy(shape = other)
+        }
+    }
+
+    describe("toggling bold") {
+        it("turns bold on") {
+            val vm = sut()
+            val before = vm.uiState.value
+
+            vm.onBoldToggled()
+
+            vm.uiState.value shouldBe before.copy(bold = true)
+        }
+
+        context("when bold is on") {
+            it("turns it off") {
+                val vm = sut()
+                val before = vm.uiState.value
+                vm.onBoldToggled()
+
+                vm.onBoldToggled()
+
+                vm.uiState.value shouldBe before
+            }
+        }
+    }
+
+    describe("toggling italic") {
+        it("turns italic on") {
+            val vm = sut()
+            val before = vm.uiState.value
+
+            vm.onItalicToggled()
+
+            vm.uiState.value shouldBe before.copy(italic = true)
+        }
+
+        context("when bold is on") {
+            it("changes only italic") {
+                val vm = sut()
+                vm.onBoldToggled()
+                val before = vm.uiState.value
+
+                vm.onItalicToggled()
+
+                vm.uiState.value shouldBe before.copy(italic = true)
+            }
+        }
+    }
+
+    describe("choosing a custom colour") {
+        context("when the card is on a solid") {
+            it("seeds a custom solid from the colour showing") {
+                val vm = sut()
+                vm.onBackgroundChosen(randomSolid())
+                val fill = randomFill()
+
+                vm.onCustomChosen(fill)
+
+                vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(fill.from.toArgb())
             }
         }
 
-        describe("onBackgroundChosen") {
-            it("sets the background and leaves the other choices alone") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Rose))
+        context("when the card is on a gradient") {
+            it("seeds a custom gradient from the stops and angle showing") {
+                val vm = sut()
+                vm.onBackgroundChosen(randomGradient())
+                val fill = randomFill()
 
-                    vm.uiState.value shouldBe QuoteCardUIState(
-                        passage = PASSAGE,
-                        background = QuoteBackground.Wash(QuoteWash.Rose),
-                    )
-                }
+                vm.onCustomChosen(fill)
+
+                vm.uiState.value.background shouldBe
+                    QuoteBackground.CustomGradient(fill.from.toArgb(), fill.to.toArgb(), fill.angle)
             }
         }
 
-        describe("type and shape intents") {
-            val defaults = QuoteCardUIState(passage = PASSAGE)
+        context("when a custom colour is already being edited") {
+            it("keeps it") {
+                val vm = sut()
+                val editing = randomOf(
+                    listOf(
+                        QuoteBackground.CustomSolid(randomOpaqueArgb()),
+                        QuoteBackground.CustomGradient(randomOpaqueArgb(), randomOpaqueArgb(), 90),
+                    ),
+                )
+                vm.onBackgroundChosen(editing)
 
-            it("onTypefaceChosen sets only the typeface") {
-                withHarness {
-                    vm.onTypefaceChosen(QuoteTypeface.Mono)
+                vm.onCustomChosen(randomFill())
 
-                    vm.uiState.value shouldBe defaults.copy(typeface = QuoteTypeface.Mono)
-                }
+                vm.uiState.value.background shouldBe editing
             }
+        }
+    }
 
-            it("onSizeChosen sets only the size") {
-                withHarness {
-                    vm.onSizeChosen(QuoteSize.L)
+    describe("moving a colour slider") {
+        context("when the background is a custom solid") {
+            it("sets its colour") {
+                val vm = sut()
+                val old = randomOpaqueArgb()
+                val new = otherArgb(old)
+                vm.onBackgroundChosen(QuoteBackground.CustomSolid(old))
 
-                    vm.uiState.value shouldBe defaults.copy(size = QuoteSize.L)
-                }
-            }
+                vm.onCustomColorChanged(new)
 
-            it("onBoldToggled flips only bold, and back") {
-                withHarness {
-                    vm.onBoldToggled()
-                    vm.uiState.value shouldBe defaults.copy(bold = true)
-
-                    vm.onBoldToggled()
-                    vm.uiState.value shouldBe defaults
-                }
-            }
-
-            it("onItalicToggled flips only italic, independent of bold") {
-                withHarness {
-                    vm.onBoldToggled()
-                    vm.onItalicToggled()
-
-                    vm.uiState.value shouldBe defaults.copy(bold = true, italic = true)
-                }
-            }
-
-            it("onShapeChosen sets only the shape") {
-                withHarness {
-                    vm.onShapeChosen(QuoteShape.Story)
-
-                    vm.uiState.value shouldBe defaults.copy(shape = QuoteShape.Story)
-                }
+                vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(new)
             }
         }
 
-        describe("custom colours") {
-            val book = Oklch(0.5, 0.1, 30.0)
-            val ember = QuoteBackground.Preset(QuoteGradientPreset.Ember)
+        context("when the background is a custom gradient") {
+            context("when its first stop is being edited") {
+                it("sets the first stop") {
+                    val vm = sut()
+                    val gradient = QuoteBackground.CustomGradient(randomOpaqueArgb(), randomOpaqueArgb(), 90)
+                    val new = otherArgb(gradient.fromArgb)
+                    vm.onBackgroundChosen(gradient)
 
-            it("onCustomChosen seeds a custom solid from the current solid's base colour") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.Wash(QuoteWash.Moss))
-                    val fill = vm.uiState.value.background.fill(book)
+                    vm.onCustomColorChanged(new)
 
-                    vm.onCustomChosen(fill)
-
-                    vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(fill.from.toArgb())
+                    vm.uiState.value.background shouldBe gradient.copy(fromArgb = new)
                 }
             }
 
-            it("onCustomChosen seeds a custom gradient from the current gradient's stops and angle") {
-                withHarness {
-                    vm.onBackgroundChosen(ember)
-
-                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
-
-                    vm.uiState.value.background shouldBe
-                        QuoteBackground.CustomGradient(0xFF7A1F16.toInt(), 0xFFA24C16.toInt(), 135)
-                }
-            }
-
-            it("onCustomChosen keeps a custom colour already being edited") {
-                withHarness {
-                    val custom = QuoteBackground.CustomGradient(0xFF102030.toInt(), 0xFF304050.toInt(), 270)
-                    vm.onBackgroundChosen(custom)
-
-                    vm.onCustomChosen(custom.fill(book))
-
-                    vm.uiState.value.background shouldBe custom
-                }
-            }
-
-            it("onCustomColorChanged sets a custom solid's colour") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.CustomSolid(0xFF112233.toInt()))
-
-                    vm.onCustomColorChanged(0xFF445566.toInt())
-
-                    vm.uiState.value.background shouldBe QuoteBackground.CustomSolid(0xFF445566.toInt())
-                }
-            }
-
-            it("onCustomColorChanged sets only the active stop of a custom gradient") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.CustomGradient(0xFF112233.toInt(), 0xFF445566.toInt(), 90))
-
-                    vm.onCustomColorChanged(0xFFAAAAAA.toInt())
+            context("when its second stop is being edited") {
+                it("sets the second stop") {
+                    val vm = sut()
+                    val gradient = QuoteBackground.CustomGradient(randomOpaqueArgb(), randomOpaqueArgb(), 90)
+                    val new = otherArgb(gradient.toArgb)
+                    vm.onBackgroundChosen(gradient)
                     vm.onStopFocused(GradientStop.To)
-                    vm.onCustomColorChanged(0xFFBBBBBB.toInt())
 
-                    vm.uiState.value.activeStop shouldBe GradientStop.To
-                    vm.uiState.value.background shouldBe
-                        QuoteBackground.CustomGradient(0xFFAAAAAA.toInt(), 0xFFBBBBBB.toInt(), 90)
-                }
-            }
+                    vm.onCustomColorChanged(new)
 
-            it("onCustomColorChanged does nothing when the background isn't custom") {
-                withHarness {
-                    vm.onBackgroundChosen(ember)
-
-                    vm.onCustomColorChanged(0xFFFFFFFF.toInt())
-
-                    vm.uiState.value.background shouldBe ember
-                }
-            }
-
-            it("onDirectionRotated turns a custom gradient 45 degrees at a time and wraps at 360") {
-                withHarness {
-                    vm.onBackgroundChosen(QuoteBackground.CustomGradient(0xFF112233.toInt(), 0xFF445566.toInt(), 315))
-
-                    vm.onDirectionRotated()
-                    (vm.uiState.value.background as QuoteBackground.CustomGradient).angle shouldBe 0
-
-                    vm.onDirectionRotated()
-                    (vm.uiState.value.background as QuoteBackground.CustomGradient).angle shouldBe 45
-                }
-            }
-
-            it("onDirectionRotated does nothing for a background without a direction of its own") {
-                withHarness {
-                    vm.onDirectionRotated()
-
-                    vm.uiState.value.background shouldBe QuoteBackground.Book
-                }
-            }
-
-            it("flips a custom gradient's ink to dark when a stop is dragged to near-white") {
-                withHarness {
-                    vm.onBackgroundChosen(ember)
-                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
-                    vm.uiState.value.background.fill(book).ink shouldBe LightInk
-
-                    vm.onCustomColorChanged(0xFFFAF8F4.toInt())
-
-                    vm.uiState.value.background.fill(book).ink shouldBe DarkInk
-                }
-            }
-
-            it("flips a custom solid's ink to dark when it is dragged to near-white") {
-                withHarness {
-                    vm.onCustomChosen(vm.uiState.value.background.fill(book))
-                    vm.uiState.value.background.fill(book).ink.luminance() shouldBeGreaterThan 0.5f
-
-                    vm.onCustomColorChanged(0xFFFAF8F4.toInt())
-
-                    vm.uiState.value.background.fill(book).ink.luminance() shouldBeLessThan 0.1f
+                    vm.uiState.value.background shouldBe gradient.copy(toArgb = new)
                 }
             }
         }
 
-        describe("onShareRequested") {
-            it("captures the card, saves the bytes, emits Share with the file, and is not exporting afterwards") {
-                withHarness {
-                    val file = File("saved/omnibus-quote.png")
-                    repository.saveResult = file
+        context("when the background isn't custom") {
+            it("leaves it as it was") {
+                val vm = sut()
+                val background = randomOf(listOf(QuoteBackground.Book, randomSolid(), randomGradient()))
+                vm.onBackgroundChosen(background)
 
-                    vm.onShareRequested { byteArrayOf(1, 2, 3) }
+                vm.onCustomColorChanged(randomOpaqueArgb())
 
-                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1, 2, 3))
-                    effects shouldBe listOf(QuoteCardEffect.Share(file))
-                    vm.uiState.value.exporting shouldBe false
+                vm.uiState.value.background shouldBe background
+            }
+        }
+    }
+
+    describe("choosing the stop to edit") {
+        it("makes it the stop the sliders edit") {
+            val vm = sut()
+
+            vm.onStopFocused(GradientStop.To)
+
+            vm.uiState.value.activeStop shouldBe GradientStop.To
+        }
+    }
+
+    describe("turning a gradient's direction") {
+        context("when the background is a custom gradient") {
+            it("turns it 45 degrees clockwise, wrapping at 360, from every multiple of 45") {
+                checkAll(Exhaustive.collection((0 until 360 step 45).toList())) { angle ->
+                    val vm = sut()
+                    vm.onBackgroundChosen(QuoteBackground.CustomGradient(randomOpaqueArgb(), randomOpaqueArgb(), angle))
+
+                    vm.onDirectionRotated()
+
+                    (vm.uiState.value.background as QuoteBackground.CustomGradient).angle shouldBe (angle + 45) % 360
                 }
             }
+        }
 
-            it("is exporting from the request, and ignores a second request without capturing again") {
-                withHarness {
+        context("when the background has no direction of its own") {
+            it("leaves it as it was") {
+                val vm = sut()
+                val background = randomOf(listOf(QuoteBackground.Book, randomSolid(), QuoteBackground.CustomSolid(randomOpaqueArgb())))
+                vm.onBackgroundChosen(background)
+
+                vm.onDirectionRotated()
+
+                vm.uiState.value.background shouldBe background
+            }
+        }
+    }
+
+    describe("sharing the card") {
+        context("when the card saves") {
+            it("saves the bytes the capture produced") {
+                val repository = TestQuoteCardRepository().apply { onSave = { randomFile() } }
+                val png = randomPng()
+
+                sut(repository = repository).onShareRequested { png }
+
+                repository.saved.map { it.toList() } shouldBe listOf(png.toList())
+            }
+
+            it("emits Share with the saved file") {
+                val file = randomFile()
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { file } })
+
+                vm.onShareRequested { randomPng() }
+
+                vm.effects.test { awaitItem() shouldBe QuoteCardEffect.Share(file) }
+            }
+
+            it("stops exporting") {
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { randomFile() } })
+
+                vm.onShareRequested { randomPng() }
+
+                vm.uiState.value.exporting shouldBe false
+            }
+        }
+
+        context("when the card can't be saved") {
+            it("emits nothing") {
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { null } })
+
+                vm.onShareRequested { randomPng() }
+
+                vm.effects.test { expectNoEvents() }
+            }
+
+            it("stops exporting") {
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { null } })
+
+                vm.onShareRequested { randomPng() }
+
+                vm.uiState.value.exporting shouldBe false
+            }
+        }
+
+        context("when the capture fails") {
+            it("saves nothing") {
+                val repository = TestQuoteCardRepository()
+
+                sut(repository = repository).onShareRequested { error(randomString()) }
+
+                repository.saved.shouldBeEmpty()
+            }
+
+            it("emits nothing") {
+                val vm = sut()
+
+                vm.onShareRequested { error(randomString()) }
+
+                vm.effects.test { expectNoEvents() }
+            }
+
+            it("stops exporting") {
+                val vm = sut()
+
+                vm.onShareRequested { error(randomString()) }
+
+                vm.uiState.value.exporting shouldBe false
+            }
+        }
+
+        context("when the card is still being captured") {
+            it("is exporting") {
+                val vm = sut()
+                val gate = CompletableDeferred<Unit>()
+
+                vm.onShareRequested {
+                    gate.await()
+                    randomPng()
+                }
+
+                vm.uiState.value.exporting shouldBe true
+                gate.complete(Unit)
+            }
+
+            it("doesn't capture again for a second request, share or copy") {
+                checkAll(Exhaustive.collection(ExportRequest.entries)) { second ->
+                    val vm = sut()
                     val gate = CompletableDeferred<Unit>()
                     var captures = 0
+                    vm.onShareRequested {
+                        captures++
+                        gate.await()
+                        randomPng()
+                    }
 
-                    vm.onShareRequested { captures++; gate.await(); byteArrayOf(1) }
-                    vm.uiState.value.exporting shouldBe true
-                    vm.onShareRequested { captures++; byteArrayOf(2) }
-                    vm.onCopyRequested { captures++; byteArrayOf(3) }
+                    with(second) { vm.request { captures++; randomPng() } }
                     gate.complete(Unit)
 
                     captures shouldBe 1
-                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1))
-                    effects.size shouldBe 1
-                    vm.uiState.value.exporting shouldBe false
-                }
-            }
-
-            it("ignores a second request while the save is in flight") {
-                withHarness {
-                    val gate = CompletableDeferred<Unit>().also { repository.saveGate = it }
-
-                    vm.onShareRequested { byteArrayOf(1) }
-                    vm.onCopyRequested { byteArrayOf(3) }
-                    gate.complete(Unit)
-
-                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(1))
-                    effects.size shouldBe 1
-                }
-            }
-
-            it("emits nothing and stops exporting when the card can't be saved") {
-                withHarness {
-                    repository.saveResult = null
-
-                    vm.onShareRequested { byteArrayOf(1) }
-
-                    effects shouldBe emptyList()
-                    vm.uiState.value.exporting shouldBe false
-                }
-            }
-
-            it("emits nothing, saves nothing and stops exporting when the capture fails") {
-                withHarness {
-                    vm.onShareRequested { error("the layer was released") }
-
-                    effects shouldBe emptyList()
-                    repository.saved shouldBe emptyList()
-                    vm.uiState.value.exporting shouldBe false
                 }
             }
         }
 
-        describe("onCopyRequested") {
-            it("captures the card, saves the bytes and emits Copy with the file") {
-                withHarness {
-                    val file = File("saved/omnibus-quote.png")
-                    repository.saveResult = file
+        context("when the card is still being saved") {
+            it("saves only the first card for a second request, share or copy") {
+                checkAll(Exhaustive.collection(ExportRequest.entries)) { second ->
+                    val repository = TestQuoteCardRepository()
+                    val vm = sut(repository = repository)
+                    val first = randomPng()
+                    val gate = vm.shareHeldInSave(repository, first)
 
-                    vm.onCopyRequested { byteArrayOf(9) }
+                    with(second) { vm.request { randomPng() } }
+                    gate.complete(Unit)
 
-                    repository.saved.map { it.toList() } shouldBe listOf(listOf<Byte>(9))
-                    effects shouldBe listOf(QuoteCardEffect.Copy(file))
-                    vm.uiState.value.exporting shouldBe false
+                    repository.saved.map { it.toList() } shouldBe listOf(first.toList())
                 }
+            }
+
+            it("emits only the first card's effect for a second request") {
+                val repository = TestQuoteCardRepository()
+                val vm = sut(repository = repository)
+                val gate = vm.shareHeldInSave(repository)
+
+                vm.onCopyRequested { randomPng() }
+                gate.complete(Unit)
+
+                vm.effects.test {
+                    awaitItem().shouldBeInstanceOf<QuoteCardEffect.Share>()
+                    expectNoEvents()
+                }
+            }
+        }
+    }
+
+    describe("copying the card") {
+        context("when the card saves") {
+            it("saves the bytes the capture produced") {
+                val repository = TestQuoteCardRepository().apply { onSave = { randomFile() } }
+                val png = randomPng()
+
+                sut(repository = repository).onCopyRequested { png }
+
+                repository.saved.map { it.toList() } shouldBe listOf(png.toList())
+            }
+
+            it("emits Copy with the saved file") {
+                val file = randomFile()
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { file } })
+
+                vm.onCopyRequested { randomPng() }
+
+                vm.effects.test { awaitItem() shouldBe QuoteCardEffect.Copy(file) }
             }
         }
     }
