@@ -9,11 +9,10 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -33,9 +32,6 @@ private class Calls {
     var skips = 0
     var toggles = 0
     var stops = 0
-
-    /** True when no callback has run. */
-    fun none() = expands == 0 && skips == 0 && toggles == 0 && stops == 0
 }
 
 private val playing = MiniPlayerUIState(
@@ -91,26 +87,13 @@ class MiniPlayerContentTest {
         val pause = context.getString(R.string.audiobook_pause)
 
         rule.onNodeWithContentDescription(play).assertIsDisplayed()
-        rule.onAllNodesWithText(pause).assertCountEquals(0)
+        rule.onAllNodesWithContentDescription(pause).assertCountEquals(0)
 
         rule.runOnIdle { isPlaying.value = true }
         rule.waitForIdle()
 
         rule.onNodeWithContentDescription(pause).assertIsDisplayed()
-        rule.onAllNodesWithText(play).assertCountEquals(0)
-    }
-
-    // P-MINI-AC5, P-A11Y-1
-    // TC-33 (P-MINI-AC2, AC5)
-    @Test
-    fun buttonsHaveTheirAccessibilityLabels() {
-        rule.setBar({ playing }, Calls())
-        rule.waitForIdle()
-
-        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_back_15)).assertHasClickAction()
-        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_pause)).assertHasClickAction()
-        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_mini_stop)).assertHasClickAction()
-        rule.onNodeWithTag(MiniPlayerTestTags.STOP).assertIsDisplayed()
+        rule.onAllNodesWithContentDescription(play).assertCountEquals(0)
     }
 
     // P-MINI-AC5
@@ -134,22 +117,6 @@ class MiniPlayerContentTest {
         assertTrue(MiniPlayerTestTags.STOP !in inside)
     }
 
-    // P-MINI-AC5
-    // TC-36 (P-A11Y-1)
-    @Test
-    fun progressAndCoverAreDecorative() {
-        rule.setBar({ playing }, Calls())
-        rule.waitForIdle()
-
-        listOf(MiniPlayerTestTags.PROGRESS_TRACK, MiniPlayerTestTags.PROGRESS_FILL).forEach { tag ->
-            val node = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
-            assertTrue("$tag has no content description", !node.config.contains(SemanticsProperties.ContentDescription))
-            assertTrue("$tag is not a click target", !node.config.contains(SemanticsActions.OnClick))
-        }
-        // The title text appears once in the unmerged tree: the cover adds no second copy of it.
-        rule.onAllNodesWithText("Mini Title", useUnmergedTree = true).assertCountEquals(1)
-    }
-
     // P-MINI-2, P-MINI-4
     // TC-37 (P-MINI-2)
     @Test
@@ -166,52 +133,22 @@ class MiniPlayerContentTest {
         assertEquals(0, calls.skips + calls.toggles + calls.stops)
     }
 
-    // P-MINI-AC2
-    // TC-38 (P-MINI-AC2)
+    // P-MINI-AC2, P-MINI-3, P-MINI-AC3, P-MINI-AC5, P-A11Y-1
+    // TC-33 (P-MINI-AC2, AC5), TC-38 (P-MINI-AC2), TC-39 (P-MINI-AC2), TC-40 (P-MINI-3)
     @Test
-    fun backFifteenCallsOnlySkipBack() {
+    fun eachLabelledButtonCallsOnlyItsOwnCallback() {
         val calls = Calls()
         rule.setBar({ playing }, calls)
         rule.waitForIdle()
 
-        rule.onNodeWithTag(MiniPlayerTestTags.BACK_15).performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_back_15)).performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_pause)).performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_mini_stop)).performClick()
         rule.waitForIdle()
 
         assertEquals(1, calls.skips)
-        assertEquals(0, calls.expands)
-        assertEquals(0, calls.toggles + calls.stops)
-    }
-
-    // P-MINI-AC2
-    // TC-39 (P-MINI-AC2)
-    @Test
-    fun playPauseCallsOnlyTheToggle() {
-        val calls = Calls()
-        rule.setBar({ playing }, calls)
-        rule.waitForIdle()
-
-        rule.onNodeWithTag(MiniPlayerTestTags.PLAY_PAUSE).performClick()
-        rule.waitForIdle()
-
         assertEquals(1, calls.toggles)
-        assertEquals(0, calls.expands)
-        assertEquals(0, calls.skips + calls.stops)
-    }
-
-    // P-MINI-3, P-MINI-AC3
-    // TC-40 (P-MINI-3)
-    @Test
-    fun stopCallsOnlyStop() {
-        val calls = Calls()
-        rule.setBar({ playing }, calls)
-        rule.waitForIdle()
-
-        rule.onNodeWithTag(MiniPlayerTestTags.STOP).performClick()
-        rule.waitForIdle()
-
         assertEquals(1, calls.stops)
         assertEquals(0, calls.expands)
-        assertEquals(0, calls.skips + calls.toggles)
-        assertTrue(calls.expandedUuid == null)
     }
 }

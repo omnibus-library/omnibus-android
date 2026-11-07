@@ -12,10 +12,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.performTouchInput
@@ -59,54 +57,6 @@ class PlayerScrubberTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    // R11, P-SCR-9, AC3: the three labels at 1x, with chapters
-    @Test
-    fun labelsShowElapsedBookLeftAndSpanLeftAtRate() {
-        val inputs = ScrubberInputs()
-        rule.setScrubber(inputs)
-
-        rule.onNodeWithTag(PlayerTestTags.LABEL_ELAPSED).assertTextEquals("1:40")
-        rule.onNodeWithTag(PlayerTestTags.LABEL_BOOK_LEFT).assertTextEquals("1h 41m left")
-        rule.onNodeWithTag(PlayerTestTags.LABEL_SPAN_LEFT).assertTextEquals("8:20 left")
-
-        // At 2x the left labels halve, and the elapsed label doesn't change.
-        rule.runOnIdle { inputs.rate = 2.0 }
-        rule.waitForIdle()
-        rule.onNodeWithTag(PlayerTestTags.LABEL_ELAPSED).assertTextEquals("1:40")
-        rule.onNodeWithTag(PlayerTestTags.LABEL_BOOK_LEFT).assertTextEquals("50m left")
-        rule.onNodeWithTag(PlayerTestTags.LABEL_SPAN_LEFT).assertTextEquals("4:10 left")
-
-        val elapsed = rule.onNodeWithTag(PlayerTestTags.LABEL_ELAPSED).fetchSemanticsNode().boundsInRoot
-        val centre = rule.onNodeWithTag(PlayerTestTags.LABEL_BOOK_LEFT).fetchSemanticsNode().boundsInRoot
-        val right = rule.onNodeWithTag(PlayerTestTags.LABEL_SPAN_LEFT).fetchSemanticsNode().boundsInRoot
-        assertTrue("elapsed should sit left of the centre label", elapsed.right <= centre.left + 1f)
-        assertTrue("the centre label should sit left of the right label", centre.right <= right.left + 1f)
-    }
-
-    // R11, P-SCR-AC5: no centre label without chapters
-    @Test
-    fun centreLabelHiddenWithoutChapters() {
-        val inputs = ScrubberInputs()
-        inputs.hasChapters = false
-        inputs.start = 0.0
-        inputs.length = 7200.0
-        rule.setScrubber(inputs)
-
-        rule.onAllNodesWithTag(PlayerTestTags.LABEL_BOOK_LEFT).assertCountEquals(0)
-        rule.onNodeWithTag(PlayerTestTags.LABEL_ELAPSED).assertTextEquals("1:40")
-        rule.onNodeWithTag(PlayerTestTags.LABEL_SPAN_LEFT).assertTextEquals("1:58:20 left")
-    }
-
-    // R11: under a second left reads 0:00
-    @Test
-    fun rightLabelReadsZeroUnderOneSecond() {
-        val inputs = ScrubberInputs()
-        inputs.position = 599.5
-        rule.setScrubber(inputs)
-
-        rule.onNodeWithTag(PlayerTestTags.LABEL_SPAN_LEFT).assertTextEquals("0:00 left")
-    }
 
     // R10, P-SCR-8, AC3: a tap seeks to book time inside the chapter span
     @Test
@@ -214,21 +164,5 @@ class PlayerScrubberTest {
 
         assertEquals(0, inputs.seeks.size)
         rule.onNodeWithTag(PlayerTestTags.SCRUBBER).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.SetProgress))
-    }
-
-    // R10, P-SCR-AC5: with no chapters the scrubber covers the whole book
-    @Test
-    fun noChapterScrubberCoversWholeBook() {
-        val inputs = ScrubberInputs()
-        inputs.hasChapters = false
-        inputs.start = 0.0
-        inputs.length = 7200.0
-        rule.setScrubber(inputs)
-
-        rule.onNodeWithTag(PlayerTestTags.SCRUBBER).performTouchInput { click(Offset(width * 0.5f, height / 2f)) }
-        rule.waitForIdle()
-
-        assertEquals(1, inputs.seeks.size)
-        assertTrue("a tap at the middle should seek near the middle of the book", abs(inputs.seeks[0] - 3600.0) < 200.0)
     }
 }

@@ -2,8 +2,6 @@ package com.omnibus.omnibus.feature.audiobook.bookmarks
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -14,9 +12,6 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /** The sheet tests' "now": 2025-11-02 12:00 UTC, so a 2025 date reads as "October 28" with no year. */
 const val SHEET_NOW = 1_762_084_800_000L
-
-/** The date every sample bookmark is dated, as Book Detail's sheet prints it at [SHEET_NOW]. */
-const val SAMPLE_DATE = "October 28"
 
 /** The ribbon colour the sheet tests pass in. */
 val TestRibbon = Color(0xFFB8864A)
@@ -41,12 +36,9 @@ fun bookmark(
 /** The rows for [bookmarks], built by the player's rules. */
 fun rowsOf(vararg bookmarks: Bookmark): List<BookmarkRowModel> = playerBookmarkRows("u", bookmarks.toList())
 
-/**
- * Renders [PlayerBookmarksSheetContent] over [content] inside the dark theme, filling the window. A test can change
- * [content] between frames.
- */
-fun ComposeContentTestRule.setSheetHost(
-    content: State<BookmarksContent>,
+/** Renders [PlayerBookmarksSheetContent] over a fixed [content] inside the dark theme, filling the window. */
+fun ComposeContentTestRule.setSheetContent(
+    content: BookmarksContent,
     onRetry: () -> Unit = {},
     onClose: () -> Unit = {},
     onChosen: (BookmarkRowModel) -> Unit = {},
@@ -56,7 +48,7 @@ fun ComposeContentTestRule.setSheetHost(
         OmnibusTheme(darkTheme = true) {
             Box(Modifier.fillMaxSize()) {
                 PlayerBookmarksSheetContent(
-                    content = content.value,
+                    content = content,
                     nowMillis = SHEET_NOW,
                     ribbonColor = TestRibbon,
                     onRetry = onRetry,
@@ -68,12 +60,3 @@ fun ComposeContentTestRule.setSheetHost(
         }
     }
 }
-
-/** Renders the sheet over a fixed [content]. */
-fun ComposeContentTestRule.setSheetContent(
-    content: BookmarksContent,
-    onRetry: () -> Unit = {},
-    onClose: () -> Unit = {},
-    onChosen: (BookmarkRowModel) -> Unit = {},
-    onRemove: (BookmarkRowModel) -> Unit = {},
-) = setSheetHost(mutableStateOf(content), onRetry, onClose, onChosen, onRemove)

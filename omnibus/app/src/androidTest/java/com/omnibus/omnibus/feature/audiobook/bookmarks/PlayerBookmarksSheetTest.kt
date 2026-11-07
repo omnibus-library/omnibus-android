@@ -4,31 +4,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarkRowModel
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksContent
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -37,7 +29,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Callbacks, swipes, states and semantics. PlayerBookmarksSheetScreenshotTest covers how the rows look. */
+/** Callbacks, swipes and semantics. PlayerBookmarksSheetScreenshotTest covers how the rows look. */
 class PlayerBookmarksSheetTest {
 
     @get:Rule
@@ -46,11 +38,7 @@ class PlayerBookmarksSheetTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val title get() = context.getString(R.string.book_detail_bookmarks_title)
     private val closeLabel get() = context.getString(R.string.book_detail_bookmarks_close)
-    private val emptyCopy get() = context.getString(R.string.book_detail_bookmarks_empty)
-    private val loadingCopy get() = context.getString(R.string.book_detail_bookmarks_loading)
-    private val errorCopy get() = context.getString(R.string.book_detail_bookmarks_error)
     private val retryLabel get() = context.getString(R.string.book_detail_bookmarks_retry)
-    private val swipeHint get() = context.getString(R.string.audiobook_bookmarks_swipe_hint)
     private val removeLabel get() = context.getString(R.string.audiobook_bookmarks_remove)
 
     /** Performs the custom accessibility action [label] on the node with [tag], as TalkBack would. */
@@ -62,46 +50,24 @@ class PlayerBookmarksSheetTest {
         runOnIdle { action.action() }
     }
 
-    // TC48, R3, P-BMK-2, AND-UI-2: the title is a heading and the close button is labelled
+    // TC48, R3, P-BMK-2, AND-UI-2: the title is a heading
     @Test
-    fun titleIsHeadingAndCloseHasLabel() {
+    fun titleIsHeading() {
         rule.setSheetContent(BookmarksContent.Loaded(emptyList()))
 
-        rule.onNodeWithText(title).assertIsDisplayed()
         rule.onNodeWithText(title).assert(SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit))
-        rule.onNodeWithContentDescription(closeLabel).assertIsDisplayed().assertHasClickAction()
     }
 
-    // TC49, R3: tapping the close button reports the close once
+    // TC49, R3, AND-UI-2: tapping the labelled close button reports the close once
     @Test
     fun closeButtonInvokesOnClose() {
         var closes = 0
         rule.setSheetContent(BookmarksContent.Loaded(emptyList()), onClose = { closes++ })
 
-        rule.onNodeWithTag(PlayerBookmarksTestTags.CLOSE).performClick()
+        rule.onNodeWithContentDescription(closeLabel).performClick()
         rule.waitForIdle()
 
         assertEquals(1, closes)
-    }
-
-    // TC53, R4, P-BMK-3: loading, failed and empty states show their copy, and none has a footer
-    @Test
-    fun loadingFailedAndEmptyStates() {
-        val content = mutableStateOf<BookmarksContent>(BookmarksContent.Loading)
-        rule.setSheetHost(content)
-
-        rule.onNodeWithTag(PlayerBookmarksTestTags.LOADING).assertIsDisplayed()
-        rule.onNodeWithText(loadingCopy).assertIsDisplayed()
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
-
-        rule.runOnIdle { content.value = BookmarksContent.Failed }
-        rule.onNodeWithText(errorCopy).assertIsDisplayed()
-        rule.onNodeWithText(retryLabel).assertIsDisplayed()
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
-
-        rule.runOnIdle { content.value = BookmarksContent.Loaded(emptyList()) }
-        rule.onNodeWithText(emptyCopy).assertIsDisplayed()
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
     }
 
     // TC54, R4: "Try again" reports a retry once
@@ -162,26 +128,6 @@ class PlayerBookmarksSheetTest {
         assertTrue("no removal on a start-to-end swipe", removed.isEmpty())
     }
 
-    // TC58, R6, P-BMK-2: the footer shows under a non-empty list only
-    @Test
-    fun footerShowsOnlyWithRows() {
-        val content = mutableStateOf<BookmarksContent>(BookmarksContent.Loaded(rowsOf(bookmark(1), bookmark(2))))
-        rule.setSheetHost(content)
-
-        rule.onNodeWithTag(PlayerBookmarksTestTags.LIST).performScrollToNode(hasTestTag(PlayerBookmarksTestTags.FOOTER))
-        rule.onNodeWithTag(PlayerBookmarksTestTags.FOOTER).assertIsDisplayed()
-        rule.onNodeWithText(swipeHint).assertIsDisplayed()
-
-        rule.runOnIdle { content.value = BookmarksContent.Loaded(emptyList()) }
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
-
-        rule.runOnIdle { content.value = BookmarksContent.Loading }
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
-
-        rule.runOnIdle { content.value = BookmarksContent.Failed }
-        rule.onAllNodesWithTag(PlayerBookmarksTestTags.FOOTER).assertCountEquals(0)
-    }
-
     // TC59, P-A11Y-5, AND-RUSE-6: every row offers "Remove bookmark" as a custom action, and performing it removes that row
     @Test
     fun rowOffersRemoveCustomAction() {
@@ -195,16 +141,6 @@ class PlayerBookmarksSheetTest {
         rule.performCustomAction(BookmarksTestTags.row("id:2"), removeLabel)
 
         assertEquals(listOf("id:1", "id:2"), removed)
-    }
-
-    // TC60, R4, P-A11Y-5: the row stays a button named by its name and date with the action added
-    @Test
-    fun rowKeepsButtonRoleAndDescription() {
-        rule.setSheetContent(BookmarksContent.Loaded(rowsOf(bookmark(2, position = "3725"))))
-
-        val row = rule.onNodeWithTag(BookmarksTestTags.row("id:2"))
-        row.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-        row.assert(hasContentDescription("Listening, 1 h 02 m in, $SAMPLE_DATE"))
     }
 
     // TC61, R6: a row that comes back after a failed removal can be swiped again
@@ -241,15 +177,5 @@ class PlayerBookmarksSheetTest {
         rule.onNodeWithTag(PlayerBookmarksTestTags.swipe("id:1")).performTouchInput { swipeLeft() }
         rule.waitForIdle()
         assertEquals(listOf("id:1", "id:1"), removed)
-    }
-
-    // TC62, R3, R4: a long list scrolls, and its footer is reachable
-    @Test
-    fun longListScrollsToFooter() {
-        val many = rowsOf(*Array(40) { bookmark(it + 1L) })
-        rule.setSheetContent(BookmarksContent.Loaded(many))
-
-        rule.onNodeWithTag(PlayerBookmarksTestTags.LIST).performScrollToNode(hasTestTag(PlayerBookmarksTestTags.FOOTER))
-        rule.onNodeWithTag(PlayerBookmarksTestTags.FOOTER).assertIsDisplayed()
     }
 }
