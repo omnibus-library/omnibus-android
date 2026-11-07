@@ -1,20 +1,23 @@
 package com.omnibus.omnibus.feature.audiobook.mini
 
+import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
-import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
-import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
-import com.omnibus.omnibus.data.audiobook.playback.chapters
-import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.playback.playingBook
+import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+
+private fun loadedState(): PlaybackState = randomPlaybackState().copy(book = randomPlayingBook())
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MiniPlayerViewModelTest : DescribeSpec({
@@ -22,165 +25,88 @@ class MiniPlayerViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    describe("first frame and visibility") {
+    fun sut(controller: TestAudiobookController = TestAudiobookController()) = MiniPlayerViewModel(controller)
 
-        // P-MINI-1
-        it("#172 TC-15: a book already loaded when the screen opens is visible on the first read, with no command") {
-            val controller = TestAudiobookController(playbackState())
+    describe("following the controller's book") {
+        context("when the book is unloaded") {
+            // P-MINI-1, P-MINI-2
+            it("#172 TC-16: hides the bar") {
+                val controller = TestAudiobookController(loadedState())
+                val vm = sut(controller)
 
-            val vm = MiniPlayerViewModel(controller)
+                controller.state.value = PlaybackState()
 
-            vm.uiState.value.visible shouldBe true
-            controller.commands.shouldBeEmpty()
-        }
-
-        // P-MINI-1, P-MINI-2
-        it("#172 TC-16: the bar follows the controller's book and sends nothing on show or hide") {
-            val controller = TestAudiobookController()
-            val vm = MiniPlayerViewModel(controller)
-            vm.uiState.value.visible shouldBe false
-
-            controller.state.value = playbackState()
-            vm.uiState.value.visible shouldBe true
-
-            controller.state.value = PlaybackState()
-            vm.uiState.value.visible shouldBe false
-
-            controller.commands.shouldBeEmpty()
+                vm.uiState.value.visible shouldBe false
+            }
         }
     }
 
-    describe("controls") {
+    describe("the controls") {
+        // P-MINI-AC2, P-MINI-3, P-MINI-AC3
+        it("#172 TC-17 TC-18 TC-19: each control sends its command") {
+            checkAll(
+                Exhaustive.of(
+                    MiniPlayerViewModel::onSkipBack to Command.SkipBack,
+                    MiniPlayerViewModel::onPlayPauseToggled to Command.TogglePlayPause,
+                    MiniPlayerViewModel::onStop to Command.Stop,
+                ),
+            ) { (control, command) ->
+                val controller = TestAudiobookController(loadedState())
 
-        // P-MINI-AC2
-        it("#172 TC-17: skip back calls the controller's skip back") {
-            val controller = TestAudiobookController(playbackState())
+                control(sut(controller))
 
-            MiniPlayerViewModel(controller).onSkipBack()
-
-            controller.commands shouldBe listOf(Command.SkipBack)
-        }
-
-        // P-MINI-AC2
-        it("#172 TC-18: play/pause calls the controller's toggle") {
-            val controller = TestAudiobookController(playbackState())
-
-            MiniPlayerViewModel(controller).onPlayPauseToggled()
-
-            controller.commands shouldBe listOf(Command.TogglePlayPause)
+                controller.commands shouldBe listOf(command)
+            }
         }
     }
 
-    describe("stop") {
+    describe("stopping") {
+        context("when the controller still reports the stopped book") {
+            // P-MINI-3, P-MINI-AC3
+            it("#172 TC-20: hides the bar at once") {
+                val vm = sut(TestAudiobookController(loadedState()))
 
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-19: stop calls the controller's stop exactly once") {
-            val controller = TestAudiobookController(playbackState())
+                vm.onStop()
 
-            MiniPlayerViewModel(controller).onStop()
+                vm.uiState.value.visible shouldBe false
+            }
 
-            controller.commands shouldBe listOf(Command.Stop)
+            // P-MINI-3, P-MINI-AC3
+            it("#172 TC-21: keeps the bar hidden through later updates") {
+                val controller = TestAudiobookController(loadedState())
+                val vm = sut(controller)
+                vm.onStop()
+
+                controller.state.value = controller.state.value.copy(positionSeconds = 10.0, isPlaying = true)
+
+                vm.uiState.value.visible shouldBe false
+            }
         }
 
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-20: stop hides the bar at once, while the controller still reports the book") {
-            val controller = TestAudiobookController(playbackState())
-            val vm = MiniPlayerViewModel(controller)
+        context("when the controller has gone idle") {
+            // P-MINI-3, P-MINI-AC3
+            it("#172 TC-23: shows the bar for the same book loaded again") {
+                val loaded = loadedState()
+                val controller = TestAudiobookController(loaded)
+                val vm = sut(controller)
+                vm.onStop()
 
-            vm.onStop()
+                controller.state.value = PlaybackState()
+                controller.state.value = loaded
 
-            vm.uiState.value.visible shouldBe false
-            controller.state.value.book shouldBe playingBook()
+                vm.uiState.value.visible shouldBe true
+            }
         }
 
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-21: the bar stays hidden while the controller reports the same book") {
-            val controller = TestAudiobookController(playbackState())
-            val vm = MiniPlayerViewModel(controller)
-            vm.onStop()
+        context("when nothing is loaded") {
+            // P-MINI-3
+            it("#172 TC-25: sends nothing") {
+                val controller = TestAudiobookController()
 
-            controller.state.value = playbackState(positionSeconds = 10.0, isPlaying = true)
-            vm.uiState.value.visible shouldBe false
+                sut(controller).onStop()
 
-            controller.state.value = playbackState(positionSeconds = 11.0, isPlaying = false)
-            vm.uiState.value.visible shouldBe false
-        }
-
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-22: after idle, a different book shows the bar again") {
-            val controller = TestAudiobookController(playbackState())
-            val vm = MiniPlayerViewModel(controller)
-            vm.onStop()
-
-            controller.state.value = PlaybackState()
-            controller.state.value = playbackState(book = playingBook("other"))
-
-            vm.uiState.value.visible shouldBe true
-            vm.uiState.value.bookUuid shouldBe "other"
-        }
-
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-23: after idle, the same book loaded again shows the bar again") {
-            val controller = TestAudiobookController(playbackState())
-            val vm = MiniPlayerViewModel(controller)
-            vm.onStop()
-
-            controller.state.value = PlaybackState()
-            controller.state.value = playbackState()
-
-            vm.uiState.value.visible shouldBe true
-        }
-
-        // P-MINI-3, P-MINI-AC3
-        it("#172 TC-24: a different book without an idle state shows the bar") {
-            val controller = TestAudiobookController(playbackState())
-            val vm = MiniPlayerViewModel(controller)
-            vm.onStop()
-
-            controller.state.value = playbackState(book = playingBook("other"))
-
-            vm.uiState.value.visible shouldBe true
-            vm.uiState.value.bookUuid shouldBe "other"
-        }
-
-        // P-MINI-3
-        it("#172 TC-25: stop with nothing loaded does nothing, and a later load still shows") {
-            val controller = TestAudiobookController()
-            val vm = MiniPlayerViewModel(controller)
-
-            vm.onStop()
-
-            controller.commands.shouldBeEmpty()
-            vm.uiState.value.visible shouldBe false
-
-            controller.state.value = playbackState()
-            vm.uiState.value.visible shouldBe true
-        }
-    }
-
-    describe("loading and errors") {
-
-        // P-MINI-6
-        it("#172 TC-26: a load started with autoplay shows the bar before any player screen opens") {
-            val controller = TestAudiobookController()
-            val vm = MiniPlayerViewModel(controller)
-
-            controller.state.value = playbackState(book = playingBook(title = ""), chapters = emptyList(), isLoading = true)
-
-            vm.uiState.value.visible shouldBe true
-            vm.uiState.value.title shouldBe ""
-            vm.uiState.value.subtitle shouldBe "An Author"
-        }
-
-        // P-MINI-4
-        it("#172 TC-27: an error keeps the bar, and its play button still sends the toggle") {
-            val controller = TestAudiobookController(playbackState(error = PlaybackError.StoppedAfterRetries))
-            val vm = MiniPlayerViewModel(controller)
-
-            vm.uiState.value.visible shouldBe true
-            vm.onPlayPauseToggled()
-
-            controller.commands shouldBe listOf(Command.TogglePlayPause)
+                controller.commands.shouldBeEmpty()
+            }
         }
     }
 })

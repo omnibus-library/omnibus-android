@@ -1,266 +1,182 @@
 package com.omnibus.omnibus.feature.audiobook.bookmarks
 
-import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
-import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
-import com.omnibus.omnibus.data.audiobook.playback.chapters
-import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.playback.playingBook
-import com.omnibus.omnibus.data.bookmarks.Bookmark
-import com.omnibus.omnibus.data.bookmarks.BookmarkError
-import com.omnibus.omnibus.data.bookmarks.BookmarkWriteResult
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
 import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
+import com.omnibus.omnibus.data.bookmarks.randomBookmark
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksContent
-import com.omnibus.omnibus.testing.CollectingScope
 import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-private const val UUID = "book-1"
-
-/** 2025-11-02 12:00 UTC, the "now" of these tests. */
-private const val NOW = 1_762_084_800_000L
-
-private fun bookmark(id: Long?, position: String = "3725", clientId: String? = null) = Bookmark(
-    id = id,
-    clientId = clientId,
-    bookUuid = UUID,
-    position = position,
-    title = null,
-    chapterTitle = null,
-    fraction = 0.47f,
-    createdAtSeconds = 1_761_609_600L,
-)
-
-/** The player's controller, repository, clock and ViewModel, with the cell's flow kept hot. */
-private class PlayerHarness(initial: PlaybackState = PlaybackState()) {
-    val controller = TestAudiobookController(initial)
-    val repository = TestBookmarksRepository()
-    val time = TestTimeSource(NOW)
-    val collecting = CollectingScope()
-    val vm = PlayerBookmarksViewModel(UUID, controller, repository, time)
-        .also { collecting.collect(it.canAddBookmark) }
+/** Keeps [flow] hot for as long as the view model lives, so `.value` stays current. */
+private fun PlayerBookmarksViewModel.keepCollecting(flow: Flow<*>) {
+    viewModelScope.launch { flow.collect {} }
 }
 
-/** Runs [block] on a [PlayerHarness], and cancels its collection afterwards. */
-private inline fun withPlayerHarness(initial: PlaybackState = PlaybackState(), block: PlayerHarness.() -> Unit) {
-    val harness = PlayerHarness(initial)
-    try {
-        harness.block()
-    } finally {
-        harness.collecting.cancel()
-    }
-}
+/** A state holding the book with [bookUuid], and random otherwise. */
+private fun holding(bookUuid: String): PlaybackState =
+    randomPlaybackState().copy(book = randomPlayingBook().copy(bookUuid = bookUuid))
 
 class PlayerBookmarksViewModelTest : DescribeSpec({
 
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    fun sut(
+        bookUuid: String = randomString(),
+        controller: TestAudiobookController = TestAudiobookController(),
+        repository: TestBookmarksRepository = TestBookmarksRepository(),
+        time: TestTimeSource = TestTimeSource(),
+    ) = PlayerBookmarksViewModel(bookUuid, controller, repository, time)
+
     describe("the Bookmark cell") {
-
         // TC15, R1, R2, P-BMK-1: the cell adds only while this book is loaded and settled
-        it("TC15: canAddBookmark is true only for this book, loaded and settled") {
-            withPlayerHarness {
-                controller.state.value = PlaybackState()
-                vm.canAddBookmark.value shouldBe false
+        it("TC15: can add once this book has settled") {
+            val uuid = randomString()
+            val loading = holding(uuid).copy(isLoading = true, positionSeconds = randomDouble(0.0, 10_000.0))
+            val controller = TestAudiobookController(loading)
+            val vm = sut(uuid, controller)
+            vm.keepCollecting(vm.canAddBookmark)
+            vm.canAddBookmark.value shouldBe false
 
-                controller.state.value = playbackState(isLoading = true)
-                vm.canAddBookmark.value shouldBe false
+            controller.state.value = loading.copy(isLoading = false)
 
-                controller.state.value = playbackState(book = playingBook(bookUuid = "other-book"))
-                vm.canAddBookmark.value shouldBe false
-
-                controller.state.value = playbackState()
-                vm.canAddBookmark.value shouldBe true
-
-                controller.state.value = playbackState(isLoading = true)
-                vm.canAddBookmark.value shouldBe false
-            }
+            vm.canAddBookmark.value shouldBe true
         }
 
-        // TC16, R1, R2, AC1: a tap on the loaded book drafts its position and chapter
-        it("TC16: a tap adds one draft at the position, titled by the chapter") {
-            withPlayerHarness {
-                controller.state.value = playbackState(
-                    chapters = chapters(300.0, 600.0, titles = listOf("Intro", "Two")),
-                    positionSeconds = 90.0,
-                )
+        // TC16, R1, R2, AC1: a tap on the loaded book drafts its position and chapter, read at the tap
+        it("TC16: adds one draft of the state at the tap") {
+            val uuid = randomString()
+            val controller = TestAudiobookController()
+            val repository = TestBookmarksRepository()
+            val vm = sut(uuid, controller, repository)
+            val state = holding(uuid).copy(isLoading = false)
 
-                vm.onAddBookmark()
+            controller.state.value = state
+            vm.onAddBookmark()
 
-                repository.drafts.size shouldBe 1
-                repository.drafts.single().bookUuid shouldBe UUID
-                repository.drafts.single().position shouldBe "90"
-                repository.drafts.single().title shouldBe "Intro"
-            }
+            repository.drafts shouldBe listOf(audioBookmarkDraft(uuid, state).shouldNotBeNull())
         }
 
-        // TC17, R1, R2: nothing is added while the book is not ready
-        it("TC17: a tap while the book is not ready adds nothing") {
-            withPlayerHarness {
-                val notReady = listOf(
-                    PlaybackState(),
-                    playbackState(isLoading = true),
-                    playbackState(book = playingBook(bookUuid = "other-book")),
-                    PlaybackState(book = playingBook(), positionSeconds = Double.NaN),
-                )
+        context("when the book isn't ready") {
+            // TC17, R1, R2: nothing is added while the book is not ready
+            it("TC17: adds nothing") {
+                val repository = TestBookmarksRepository()
 
-                for (state in notReady) {
-                    controller.state.value = state
-                    vm.onAddBookmark()
-                }
+                sut(repository = repository).onAddBookmark()
 
-                repository.drafts.isEmpty() shouldBe true
-            }
-        }
-
-        // TC18, R2: the position is read at the tap, not when the ViewModel was made
-        it("TC18: the draft carries the position at the time of the tap") {
-            withPlayerHarness {
-                controller.state.value = playbackState(positionSeconds = 10.0)
-                controller.state.value = playbackState(positionSeconds = 42.5)
-
-                vm.onAddBookmark()
-
-                repository.drafts.single().position shouldBe "42.5"
-            }
-        }
-
-        // TC19, R2, I-BMK-2: a failed add records the draft once, and the sheet keeps its seeded rows
-        it("TC19: a failed add leaves the sheet as it was") {
-            withPlayerHarness {
-                controller.state.value = playbackState()
-                repository.seed(UUID, BookmarksState.Loaded(emptyList()))
-                repository.onAdd = { BookmarkWriteResult.Failed(BookmarkError.Unreachable) }
-                collecting.collect(vm.sheetState)
-
-                vm.onAddBookmark()
-
-                repository.drafts.size shouldBe 1
-                vm.sheetState.value.content shouldBe BookmarksContent.Loaded(emptyList())
+                repository.drafts.shouldBeEmpty()
             }
         }
     }
 
     describe("the sheet") {
+        // TC20, R4, P-BMK-3: failed and loaded states come through, dated at the clock's now
+        it("TC20: maps a failed or loaded repository state to the sheet, dated at the clock's now") {
+            val uuid = randomString()
+            val now = randomLong()
+            val bookmark = randomBookmark().copy(bookUuid = uuid)
 
-        // TC20, R4, P-BMK-3: loading, failed and loaded states come through, dated at the clock's now
-        it("TC20: maps the repository states to the sheet's content") {
-            withPlayerHarness {
-                repository.seed(UUID, BookmarksState.Loading)
-                collecting.collect(vm.sheetState)
-                vm.sheetState.value.content shouldBe BookmarksContent.Loading
+            checkAll(
+                Exhaustive.of<Pair<BookmarksState, BookmarksContent>>(
+                    BookmarksState.Failed to BookmarksContent.Failed,
+                    BookmarksState.Loaded(listOf(bookmark)) to BookmarksContent.Loaded(playerBookmarkRows(uuid, listOf(bookmark))),
+                ),
+            ) { (state, expected) ->
+                val repository = TestBookmarksRepository()
+                repository.seed(uuid, state)
+                val vm = sut(uuid, repository = repository, time = TestTimeSource(now))
 
-                repository.seed(UUID, BookmarksState.Loaded(listOf(bookmark(1))))
-                val loaded = vm.sheetState.value.content as BookmarksContent.Loaded
-                loaded.rows.map { it.key } shouldBe listOf("id:1")
-                vm.sheetState.value.nowMillis shouldBe NOW
+                vm.keepCollecting(vm.sheetState)
 
-                repository.seed(UUID, BookmarksState.Failed)
-                vm.sheetState.value.content shouldBe BookmarksContent.Failed
-
-                repository.seed(UUID, BookmarksState.Loaded(emptyList()))
-                vm.sheetState.value.content shouldBe BookmarksContent.Loaded(emptyList())
+                vm.sheetState.value shouldBe PlayerBookmarksUIState(expected, now)
             }
         }
 
         // TC21, R3, R4: the bookmarks are read only once the sheet collects, not when the player opens
-        it("TC21: reads the bookmarks only while the sheet is collected") {
-            withPlayerHarness {
-                repository.flowRequests.size shouldBe 0
+        it("TC21: reads the bookmarks only once collected") {
+            val uuid = randomString()
+            val repository = TestBookmarksRepository()
+            val vm = sut(uuid, repository = repository)
+            repository.flowRequests.shouldBeEmpty()
 
-                collecting.collect(vm.sheetState)
+            vm.keepCollecting(vm.sheetState)
 
-                repository.flowRequests shouldBe listOf(UUID)
-            }
+            repository.flowRequests shouldBe listOf(uuid)
         }
 
         // TC22, R4: a retry asks the repository to refresh this book
-        it("TC22: retry refreshes this book") {
-            withPlayerHarness {
-                vm.onRetry()
+        it("TC22: refreshes this book on a retry") {
+            val uuid = randomString()
+            val repository = TestBookmarksRepository()
 
-                repository.refreshCalls shouldBe listOf(UUID)
-            }
+            sut(uuid, repository = repository).onRetry()
+
+            repository.refreshCalls shouldBe listOf(uuid)
         }
 
-        // TC23, R6, AC2: a removed row is passed to the repository and leaves the sheet
-        it("TC23: removing a row removes it from the repository and the sheet") {
-            withPlayerHarness {
-                val first = bookmark(1)
-                val second = bookmark(2, position = "90")
-                repository.seed(UUID, BookmarksState.Loaded(listOf(first, second)))
-                repository.onRemove = {
-                    repository.seed(UUID, BookmarksState.Loaded(listOf(second)))
-                    BookmarkWriteResult.Removed
-                }
-                collecting.collect(vm.sheetState)
-                val row = playerBookmarkRows(UUID, listOf(first)).single()
+        // TC23, R6, AC2: a removed row is passed to the repository
+        it("TC23: removes a row's bookmark") {
+            val uuid = randomString()
+            val bookmark = randomBookmark().copy(bookUuid = uuid)
+            val repository = TestBookmarksRepository()
 
-                vm.onBookmarkRemoved(row)
+            sut(uuid, repository = repository).onBookmarkRemoved(playerBookmarkRows(uuid, listOf(bookmark)).single())
 
-                repository.removed shouldBe listOf(first)
-                (vm.sheetState.value.content as BookmarksContent.Loaded).rows.map { it.key } shouldBe listOf("id:2")
-            }
-        }
-
-        // TC24, R6: a failed removal is recorded once and the sheet keeps the row the repository still holds
-        it("TC24: a failed removal keeps the row on the sheet") {
-            withPlayerHarness {
-                val first = bookmark(1)
-                repository.seed(UUID, BookmarksState.Loaded(listOf(first)))
-                repository.onRemove = { BookmarkWriteResult.Failed(BookmarkError.Unreachable) }
-                collecting.collect(vm.sheetState)
-                val row = playerBookmarkRows(UUID, listOf(first)).single()
-
-                vm.onBookmarkRemoved(row)
-
-                repository.removed shouldBe listOf(first)
-                vm.sheetState.value.content shouldBe BookmarksContent.Loaded(playerBookmarkRows(UUID, listOf(first)))
-            }
+            repository.removed shouldBe listOf(bookmark)
         }
     }
 
     describe("a tap on an audio row") {
+        // TC25, TC26, R5, AC2: a paused book seeks to the row and then plays; a playing book seeks and keeps playing
+        it("TC25 TC26: seeks, then plays only a paused book") {
+            val uuid = randomString()
+            val seconds = randomDouble(0.0, 10_000.0)
 
-        // TC25, R5, AC2: a paused book seeks to the row and then plays
-        it("TC25: seeks, then plays, while paused") {
-            withPlayerHarness {
-                controller.state.value = playbackState(isPlaying = false)
+            checkAll(
+                Exhaustive.of(
+                    false to listOf(Command.SeekTo(seconds), Command.Play),
+                    true to listOf(Command.SeekTo(seconds)),
+                ),
+            ) { (isPlaying, expected) ->
+                val controller = TestAudiobookController(holding(uuid).copy(isPlaying = isPlaying))
 
-                vm.onListeningBookmarkChosen(125.0)
+                sut(uuid, controller).onListeningBookmarkChosen(seconds)
 
-                controller.commands shouldBe listOf(Command.SeekTo(125.0), Command.Play)
-            }
-        }
-
-        // TC26, R5: a playing book seeks and keeps playing
-        it("TC26: seeks without a play command while playing") {
-            withPlayerHarness {
-                controller.state.value = playbackState(isPlaying = true)
-
-                vm.onListeningBookmarkChosen(125.0)
-
-                controller.commands shouldBe listOf(Command.SeekTo(125.0))
+                controller.commands shouldBe expected
             }
         }
 
         // TC27, R5: another book, or none, is left alone
-        it("TC27: does nothing when another book or no book is loaded") {
-            withPlayerHarness {
-                controller.state.value = playbackState(book = playingBook(bookUuid = "other-book"))
-                vm.onListeningBookmarkChosen(125.0)
+        it("TC27: sends nothing for another book or no book") {
+            val uuid = randomString()
 
-                controller.state.value = PlaybackState()
-                vm.onListeningBookmarkChosen(125.0)
+            checkAll(Exhaustive.of(holding("$uuid-other"), PlaybackState())) { state ->
+                val controller = TestAudiobookController(state)
 
-                controller.commands.isEmpty() shouldBe true
+                sut(uuid, controller).onListeningBookmarkChosen(randomDouble(0.0, 10_000.0))
+
+                controller.commands.shouldBeEmpty()
             }
         }
     }

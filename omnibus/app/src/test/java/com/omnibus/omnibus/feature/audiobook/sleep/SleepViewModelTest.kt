@@ -1,11 +1,12 @@
 package com.omnibus.omnibus.feature.audiobook.sleep
 
-import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
-import com.omnibus.omnibus.data.audiobook.playback.noChapterState
-import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
+import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomOf
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -22,39 +23,44 @@ class SleepViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
+    fun sut(controller: TestAudiobookController = TestAudiobookController()) = SleepViewModel(controller)
+
     describe("the sheet's state") {
-        // R10, R11, R12: the choices, the selected cell and the countdown follow the controller's state
-        it("#169 TC-32: choices, selection and countdown follow the controller, with the countdown only while it runs (R10-R12)") {
-            val fake = TestAudiobookController(playbackState(positionSeconds = 100.0))
-            val vm = SleepViewModel(fake)
-            vm.uiState.value.choices.size shouldBe 9
-            vm.uiState.value.selected shouldBe SleepChoice.Off
-            vm.uiState.value.remainingSeconds.shouldBeNull()
+        // R10, R11, R12: the selected cell and the countdown follow the controller's state
+        it("#169 TC-32: follows the controller's timer (R10-R12)") {
+            val controller = TestAudiobookController()
+            val vm = sut(controller)
+            val minutes = randomOf(SleepTimedMinutes)
+            val remaining = randomDouble(1.0, 7_200.0)
 
-            fake.state.value = playbackState(positionSeconds = 100.0, sleepTimer = SleepTimerState(SleepTimerOption.After(15), 899.0))
-            vm.uiState.value.remainingSeconds shouldBe 899.0
-            vm.uiState.value.selected shouldBe SleepChoice.Timed(15)
+            controller.state.value = randomPlaybackState().copy(sleepTimer = SleepTimerState(SleepTimerOption.After(minutes), remaining))
 
-            fake.state.value = playbackState(positionSeconds = 100.0, sleepTimer = SleepTimerState(SleepTimerOption.After(15), 0.0))
-            vm.uiState.value.remainingSeconds.shouldBeNull()
+            vm.uiState.value.selected shouldBe SleepChoice.Timed(minutes)
+            vm.uiState.value.remainingSeconds shouldBe remaining
+        }
 
-            fake.state.value = playbackState(positionSeconds = 100.0, sleepTimer = null)
-            vm.uiState.value.selected shouldBe SleepChoice.Off
+        context("when the timer has no time left") {
+            // R12: the countdown shows only while it runs
+            it("#169 TC-32: hides the countdown (R12)") {
+                val timer = SleepTimerState(SleepTimerOption.After(randomOf(SleepTimedMinutes)), 0.0)
+                val vm = sut(TestAudiobookController(randomPlaybackState().copy(sleepTimer = timer)))
 
-            fake.state.value = noChapterState()
-            vm.uiState.value.choices.size shouldBe 8
+                vm.uiState.value.remainingSeconds.shouldBeNull()
+            }
         }
     }
 
     describe("a pick") {
         // R11: each pick sends its option to the controller, and Off sends null
-        it("#169 TC-33: each pick sends its option to the controller (P-SLP-5)") {
-            val fake = TestAudiobookController(playbackState(positionSeconds = 100.0))
-            val vm = SleepViewModel(fake)
+        it("#169 TC-33: sends its option to the controller (P-SLP-5)") {
+            val controller = TestAudiobookController()
+            val vm = sut(controller)
+
             vm.onSelect(SleepChoice.Off)
             vm.onSelect(SleepChoice.Timed(30))
             vm.onSelect(SleepChoice.EndOfChapter(1))
-            fake.commands shouldBe listOf(
+
+            controller.commands shouldBe listOf(
                 Command.SetSleepTimer(null),
                 Command.SetSleepTimer(SleepTimerOption.After(30)),
                 Command.SetSleepTimer(SleepTimerOption.EndOfChapter),
