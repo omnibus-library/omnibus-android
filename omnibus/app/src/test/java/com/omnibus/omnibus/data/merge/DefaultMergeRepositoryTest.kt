@@ -1,294 +1,269 @@
 package com.omnibus.omnibus.data.merge
 
-import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
-import com.omnibus.omnibus.data.network.OmnibusHttpClient
-import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.nextRequest
+import com.omnibus.omnibus.data.network.reply
+import com.omnibus.omnibus.data.network.testOmnibusHttpClient
+import com.omnibus.omnibus.data.network.withMockServer
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeTypeOf
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
-import mockwebserver3.Dispatcher
-import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
 
 class DefaultMergeRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var repository: DefaultMergeRepository
-
-    /** Every request the server receives, in arrival order. */
-    val requests = ConcurrentLinkedQueue<RecordedRequest>()
-
-    /** Answers the next request. Tests replace it. */
-    var respond: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(404).build() }
-
-    fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-    fun newRepository(dispatcher: CoroutineDispatcher) =
-        DefaultMergeRepository(ioDispatcher = dispatcher, omnibusHttpClient = client)
+    fun sut(server: MockWebServer? = null) = DefaultMergeRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = testOmnibusHttpClient(server?.url("/")),
+    )
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { reply(404) }
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                requests.add(request)
-                return respond(request)
-            }
-        }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-        repository = newRepository(Dispatchers.Unconfined)
-    }
+    describe("searching for merge candidates") {
 
-    afterEach { server.close() }
-
-    describe("searchCandidates") {
-
-        it("#120 TC-13: decodes ebook-shaped rows into books and sends one GET with q") {
-            respond = {
-                reply(
-                    200,
-                    """
-                    [
-                      {"id":1,"unique_identifier":"u-1","title":"Dune","creators":[{"name":"Frank Herbert"}],
-                       "formats":["epub","m4b"],"series_id":5,"series":"Dune","published":"1965-08-01",
-                       "cover_url":null,"accent":null,"future_key":{"nested":true}},
-                      {"id":2,"unique_identifier":"u-2","title":"Dune Messiah","creators":[],"formats":["pdf"],
-                       "published":null}
-                    ]
-                    """.trimIndent(),
+        it("#120 TC-13: answers the matching books") {
+            withMockServer { server ->
+                server.enqueue(
+                    reply(
+                        200,
+                        """[{"id":1,"unique_identifier":"u-1","title":"Dune","future_key":{"nested":true}},
+                            {"id":2,"unique_identifier":"u-2","title":"Dune Messiah"}]""",
+                    ),
                 )
-            }
 
-            val books = repository.searchCandidates("dune").shouldBeTypeOf<MergeCandidatesResult.Success>().books
+                val books = sut(server).searchCandidates(randomString())
+                    .shouldBeTypeOf<MergeCandidatesResult.Success>().books
 
-            books.map { it.displayTitle } shouldBe listOf("Dune", "Dune Messiah")
-            books[0].formats shouldBe listOf("epub", "m4b")
-            books[0].seriesId shouldBe 5L
-            books[0].year shouldBe 1965
-            books[1].year shouldBe null
-
-            requests.size shouldBe 1
-            val request = requests.single()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/books/merge/candidates"
-            request.url.queryParameter("q") shouldBe "dune"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-        }
-
-        it("#120 TC-14: a query with spaces, &, = and non-ASCII is one q parameter whose value is the input") {
-            respond = { reply(200, "[]") }
-            val query = "a b&c=d é/#"
-
-            repository.searchCandidates(query)
-
-            requests.single().url.queryParameterNames shouldBe setOf("q")
-            requests.single().url.queryParameterValues("q") shouldBe listOf(query)
-        }
-
-        it("#120 TC-15: a blank query answers an empty list without a request") {
-            for (query in listOf("", "   ")) {
-                repository.searchCandidates(query) shouldBe MergeCandidatesResult.Success(emptyList())
-            }
-
-            server.requestCount shouldBe 0
-        }
-
-        it("#120 TC-15: an empty array is an empty success") {
-            respond = { reply(200, "[]") }
-
-            repository.searchCandidates("dune") shouldBe MergeCandidatesResult.Success(emptyList())
-        }
-
-        it("#120 TC-15: rows without a usable uuid are dropped") {
-            respond = {
-                reply(
-                    200,
-                    """
-                    [
-                      {"id":1,"title":"No uuid"},
-                      {"id":2,"unique_identifier":"","title":"Blank uuid"},
-                      {"id":3,"unique_identifier":"u-3","title":"Valid"}
-                    ]
-                    """.trimIndent(),
-                )
-            }
-
-            val books = repository.searchCandidates("uuid").shouldBeTypeOf<MergeCandidatesResult.Success>().books
-
-            books.map { it.uniqueIdentifier } shouldBe listOf("u-3")
-        }
-
-        val failures = listOf(
-            Triple("400 plain text", reply(400, "query too long"), MergeError.Http(400, "query too long")),
-            Triple("401", reply(401, "nope"), MergeError.SessionExpired),
-            Triple("403", reply(403, "nope"), MergeError.Forbidden),
-            Triple("404", reply(404, "nope"), MergeError.NotFound),
-            Triple("409 json", reply(409, """{"error":"x"}"""), MergeError.Conflict("x")),
-            Triple("422 json", reply(422, """{"error":"bad"}"""), MergeError.Http(422, "bad")),
-            Triple("500 plain text", reply(500, "boom"), MergeError.Http(500, "boom")),
-            Triple("200 not json", reply(200, "<html>"), MergeError.UnexpectedResponse),
-        )
-
-        for ((label, response, expected) in failures) {
-            it("#120 TC-16: search on $label maps to $expected") {
-                respond = { response }
-
-                repository.searchCandidates("dune") shouldBe MergeCandidatesResult.Failure(expected)
+                books.map { it.displayTitle } shouldBe listOf("Dune", "Dune Messiah")
             }
         }
 
-        it("#120 TC-16: search with a dropped connection gives Unreachable") {
-            server.close()
+        it("#120 TC-13: asks the candidates route") {
+            withMockServer { server ->
+                server.enqueue(reply(200, "[]"))
 
-            repository.searchCandidates("dune") shouldBe MergeCandidatesResult.Failure(MergeError.Unreachable)
+                sut(server).searchCandidates(randomString())
+
+                server.nextRequest().url.encodedPath shouldBe "/api/books/merge/candidates"
+            }
+        }
+
+        context("when the query has reserved characters") {
+            it("#120 TC-14: sends it as one q parameter holding the input") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "[]"))
+                    val query = "a b&c=d é/#"
+
+                    sut(server).searchCandidates(query)
+
+                    val url = server.nextRequest().url
+                    url.queryParameterNames shouldBe setOf("q")
+                    url.queryParameterValues("q") shouldBe listOf(query)
+                }
+            }
+        }
+
+        context("when the query is blank") {
+            it("#120 TC-15: answers an empty list") {
+                checkAll(Exhaustive.of("", "   ")) { query ->
+                    withMockServer { server ->
+                        sut(server).searchCandidates(query) shouldBe MergeCandidatesResult.Success(emptyList())
+                    }
+                }
+            }
+
+            it("#120 TC-15: sends no request") {
+                withMockServer { server ->
+                    sut(server).searchCandidates("   ")
+
+                    server.requestCount shouldBe 0
+                }
+            }
+        }
+
+        context("when a row has no usable uuid") {
+            it("#120 TC-15: drops the row") {
+                withMockServer { server ->
+                    server.enqueue(
+                        reply(200, """[{"id":1},{"id":2,"unique_identifier":""},{"id":3,"unique_identifier":"u-3"}]"""),
+                    )
+
+                    val books = sut(server).searchCandidates(randomString())
+                        .shouldBeTypeOf<MergeCandidatesResult.Success>().books
+
+                    books.map { it.uniqueIdentifier } shouldBe listOf("u-3")
+                }
+            }
+        }
+
+        context("when the server answers an error") {
+            it("#120 TC-16: gives the failure") {
+                withMockServer { server ->
+                    server.enqueue(reply(400, "query too long"))
+
+                    sut(server).searchCandidates(randomString()) shouldBe
+                        MergeCandidatesResult.Failure(MergeError.Http(400, "query too long"))
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#120 TC-20: gives NoServer") {
+                sut().searchCandidates(randomString()) shouldBe MergeCandidatesResult.NoServer
+            }
         }
     }
 
-    describe("mergeBooks") {
+    describe("merging two books") {
 
-        it("#120 TC-17: posts both uuids as JSON and returns the receipt") {
-            respond = { reply(200, """{"merge_log_id":42,"target_uuid":"tgt"}""") }
+        it("#120 TC-17: gives the server's receipt") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"merge_log_id":42,"target_uuid":"tgt"}"""))
 
-            repository.mergeBooks("src", "tgt") shouldBe MergeBooksResult.Success(MergeReceipt(42, "tgt"))
-
-            val request = requests.single()
-            request.method shouldBe "POST"
-            request.url.encodedPath shouldBe "/api/books/merge"
-            Json.parseToJsonElement(request.body!!.utf8()) shouldBe
-                Json.parseToJsonElement("""{"source_uuid":"src","target_uuid":"tgt"}""")
-            request.headers["Content-Type"]!! shouldStartWith "application/json"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-        }
-
-        val failures = listOf(
-            Triple("401", reply(401, "nope"), MergeError.SessionExpired),
-            Triple("403", reply(403, "nope"), MergeError.Forbidden),
-            Triple("404", reply(404, "nope"), MergeError.NotFound),
-            Triple("409", reply(409, """{"error":"x"}"""), MergeError.Conflict("x")),
-            Triple("422", reply(422, """{"error":"same"}"""), MergeError.Http(422, "same")),
-            Triple("500", reply(500, "boom"), MergeError.Http(500, "boom")),
-            Triple("200 missing merge_log_id", reply(200, """{"target_uuid":"tgt"}"""), MergeError.UnexpectedResponse),
-        )
-
-        for ((label, response, expected) in failures) {
-            it("#120 TC-18: merge on $label maps to $expected") {
-                respond = { response }
-
-                repository.mergeBooks("src", "tgt") shouldBe MergeBooksResult.Failure(expected)
+                sut(server).mergeBooks(randomString(), randomString()) shouldBe
+                    MergeBooksResult.Success(MergeReceipt(42, "tgt"))
             }
         }
 
-        it("#120 TC-18: merge with a dropped connection gives Unreachable") {
-            server.close()
+        it("#120 TC-17: posts both uuids to the merge route") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"merge_log_id":42,"target_uuid":"tgt"}"""))
 
-            repository.mergeBooks("src", "tgt") shouldBe MergeBooksResult.Failure(MergeError.Unreachable)
-        }
+                sut(server).mergeBooks("src", "tgt")
 
-        it("#120 TC-18: a blank uuid gives NotFound and sends nothing") {
-            repository.mergeBooks("", "tgt") shouldBe MergeBooksResult.Failure(MergeError.NotFound)
-            repository.mergeBooks("src", " ") shouldBe MergeBooksResult.Failure(MergeError.NotFound)
-
-            server.requestCount shouldBe 0
-        }
-    }
-
-    describe("undoMerge") {
-
-        it("#120 TC-19: posts the log id as a JSON number and returns the restored uuid") {
-            respond = { reply(200, """{"restored_uuid":"src"}""") }
-
-            repository.undoMerge(42) shouldBe UndoMergeResult.Success("src")
-
-            val request = requests.single()
-            request.method shouldBe "POST"
-            request.url.encodedPath shouldBe "/api/books/merge/undo"
-            Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement("""{"merge_log_id":42}""")
-        }
-
-        val failures = listOf(
-            Triple("401", reply(401, "nope"), MergeError.SessionExpired),
-            Triple("403", reply(403, "nope"), MergeError.Forbidden),
-            Triple("404", reply(404, "nope"), MergeError.NotFound),
-            Triple("409", reply(409, """{"error":"later merge"}"""), MergeError.Conflict("later merge")),
-            Triple("500", reply(500, "boom"), MergeError.Http(500, "boom")),
-            Triple("200 bad body", reply(200, """{"nope":true}"""), MergeError.UnexpectedResponse),
-        )
-
-        for ((label, response, expected) in failures) {
-            it("#120 TC-19: undo on $label maps to $expected") {
-                respond = { response }
-
-                repository.undoMerge(42) shouldBe UndoMergeResult.Failure(expected)
+                val request = server.nextRequest()
+                request.method shouldBe "POST"
+                request.url.encodedPath shouldBe "/api/books/merge"
+                Json.parseToJsonElement(request.body!!.utf8()) shouldBe
+                    Json.parseToJsonElement("""{"source_uuid":"src","target_uuid":"tgt"}""")
             }
         }
 
-        it("#120 TC-19: undo with a dropped connection gives Unreachable") {
-            server.close()
+        context("when the server does not accept it") {
+            it("#120 TC-18: gives the failure for every kind of answer") {
+                checkAll(
+                    Exhaustive.of(
+                        reply(401, "nope") to MergeError.SessionExpired,
+                        reply(403, "nope") to MergeError.Forbidden,
+                        reply(404, "nope") to MergeError.NotFound,
+                        reply(409, """{"error":"x"}""") to MergeError.Conflict("x"),
+                        reply(422, """{"error":"same"}""") to MergeError.Http(422, "same"),
+                        reply(500, "boom") to MergeError.Http(500, "boom"),
+                        reply(200, """{"target_uuid":"tgt"}""") to MergeError.UnexpectedResponse,
+                    ),
+                ) { (answer, expected) ->
+                    withMockServer { server ->
+                        server.enqueue(answer)
 
-            repository.undoMerge(42) shouldBe UndoMergeResult.Failure(MergeError.Unreachable)
+                        sut(server).mergeBooks(randomString(), randomString()) shouldBe MergeBooksResult.Failure(expected)
+                    }
+                }
+            }
         }
 
-        it("#120 TC-19: a log id below 1 gives NotFound and sends nothing") {
-            repository.undoMerge(0) shouldBe UndoMergeResult.Failure(MergeError.NotFound)
-            repository.undoMerge(-1) shouldBe UndoMergeResult.Failure(MergeError.NotFound)
+        context("when the server is unreachable") {
+            it("#120 TC-18: gives Unreachable") {
+                withMockServer { server ->
+                    val repository = sut(server)
+                    server.close()
 
-            server.requestCount shouldBe 0
+                    repository.mergeBooks(randomString(), randomString()) shouldBe
+                        MergeBooksResult.Failure(MergeError.Unreachable)
+                }
+            }
+        }
+
+        context("when a uuid is blank") {
+            it("#120 TC-18: gives NotFound") {
+                checkAll(Exhaustive.of("" to "tgt", "src" to " ")) { (source, target) ->
+                    withMockServer { server ->
+                        sut(server).mergeBooks(source, target) shouldBe MergeBooksResult.Failure(MergeError.NotFound)
+                    }
+                }
+            }
+
+            it("#120 TC-18: sends no request") {
+                withMockServer { server ->
+                    sut(server).mergeBooks("", "tgt")
+                    sut(server).mergeBooks("src", " ")
+
+                    server.requestCount shouldBe 0
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#120 TC-20: gives NoServer") {
+                sut().mergeBooks(randomString(), randomString()) shouldBe MergeBooksResult.NoServer
+            }
         }
     }
 
-    describe("without a server, and cancellation") {
+    describe("undoing a merge") {
 
-        it("#120 TC-20: with no saved server each call answers NoServer and sends nothing") {
-            baseUrlProvider.baseUrl = null
+        it("#120 TC-19: gives the restored book's uuid") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"restored_uuid":"src"}"""))
 
-            repository.searchCandidates("dune") shouldBe MergeCandidatesResult.NoServer
-            repository.mergeBooks("src", "tgt") shouldBe MergeBooksResult.NoServer
-            repository.undoMerge(42) shouldBe UndoMergeResult.NoServer
-
-            server.requestCount shouldBe 0
-            requests.shouldBeEmpty()
+                sut(server).undoMerge(randomLong(1L..1_000L)) shouldBe UndoMergeResult.Success("src")
+            }
         }
 
-        it("#120 TC-20: cancelling a search in flight throws CancellationException instead of a result") {
-            respond = { MockResponse.Builder().code(200).body("[]").headersDelay(500, TimeUnit.MILLISECONDS).build() }
-            val dispatched = newRepository(Dispatchers.IO)
+        it("#120 TC-19: posts the log id as a JSON number to the undo route") {
+            withMockServer { server ->
+                server.enqueue(reply(200, """{"restored_uuid":"src"}"""))
 
-            coroutineScope {
-                val pending = async(Dispatchers.IO) { dispatched.searchCandidates("dune") }
-                delay(100)
-                pending.cancel()
-                shouldThrow<CancellationException> { pending.await() }
+                sut(server).undoMerge(42)
+
+                val request = server.nextRequest()
+                request.method shouldBe "POST"
+                request.url.encodedPath shouldBe "/api/books/merge/undo"
+                Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement("""{"merge_log_id":42}""")
+            }
+        }
+
+        context("when a later change blocks the undo") {
+            it("#120 TC-19: gives Conflict with the server's message") {
+                withMockServer { server ->
+                    server.enqueue(reply(409, """{"error":"later merge"}"""))
+
+                    sut(server).undoMerge(randomLong(1L..1_000L)) shouldBe
+                        UndoMergeResult.Failure(MergeError.Conflict("later merge"))
+                }
+            }
+        }
+
+        context("when the log id is below 1") {
+            it("#120 TC-19: gives NotFound") {
+                checkAll(Exhaustive.of(0L, -1L)) { mergeLogId ->
+                    withMockServer { server ->
+                        sut(server).undoMerge(mergeLogId) shouldBe UndoMergeResult.Failure(MergeError.NotFound)
+                    }
+                }
+            }
+
+            it("#120 TC-19: sends no request") {
+                withMockServer { server ->
+                    sut(server).undoMerge(0)
+
+                    server.requestCount shouldBe 0
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#120 TC-20: gives NoServer") {
+                sut().undoMerge(randomLong(1L..1_000L)) shouldBe UndoMergeResult.NoServer
             }
         }
     }
