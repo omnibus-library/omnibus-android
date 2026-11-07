@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -168,6 +169,7 @@ internal fun BookDetailScreenContent(
     // One context per (book, accent, reloadKey, tabs); callbacks go through rememberUpdatedState so the context never
     // changes on recomposition or scroll.
     val tabState = if (content != null) rememberBookDetailTabController(scrollState, reducedMotion, panelScrollState) else null
+    val handoff = rememberSaveable(saver = BookDetailScrollHandoff.Saver) { BookDetailScrollHandoff() }
     val context: BookDetailSectionContext? = content?.let { c ->
         val accent = rememberBookAccent(c.book)
         val tabs = checkNotNull(tabState)
@@ -213,6 +215,9 @@ internal fun BookDetailScreenContent(
         val twoPane = split != null
         val underBar = split?.let { stageUnderBar(it.leading) } ?: true
         val coverScale = if (split != null) stageCoverScale(viewportHeight - statusTop, underBar) else 1f
+        if (tabState != null) {
+            BookDetailScrollHandoffEffect(handoff, twoPane, tabState, scrollState, panelScrollState)
+        }
 
         when (val screen = uiState.screen) {
             BookDetailScreenState.Loading -> LoadingStateView(
