@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.feature.bookdetail.tabs
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -13,14 +15,20 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -32,14 +40,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.TextAutoSize
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
+import com.omnibus.omnibus.feature.bookdetail.stage.HaloWarmCore
 import com.omnibus.omnibus.feature.bookdetail.ui.TOP_BAR_FILL_ALPHA
+import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
  * The tab strip under the stage. It scrolls with the page until it reaches [pinTop] (the bar's bottom), then stays
  * there, drawn over the panel on a bar-coloured ground. The pin is a layer translation read at draw time, so scrolling
- * never recomposes the strip.
+ * recomposes the strip only when it pins or unpins.
  *
  * @param ribbonColor The fill of the bookmark that hangs from the selected tab.
  */
@@ -58,6 +68,19 @@ internal fun BookTabStrip(
         val top = state.stripTopPx
         if (top < 0) 0 else stripPinOffsetPx(scrollState.value, top, state.pinTopPx)
     }
+
+    // Recomposes only when the boolean flips, not on every scroll pixel.
+    val density = LocalDensity.current
+    val pinned by remember(scrollState, state, density) {
+        derivedStateOf {
+            tabsPinned(scrollState.value, state.stripTopPx, state.pinTopPx, with(density) { TabPinSlack.roundToPx() })
+        }
+    }
+    val pinProgress by animateFloatAsState(
+        targetValue = if (pinned) 1f else 0f,
+        animationSpec = if (reducedMotion) snap<Float>() else Motion.snap<Float>(),
+        label = "tab-pin",
+    )
 
     Box(
         modifier
@@ -80,6 +103,7 @@ internal fun BookTabStrip(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .then(if (isSelected) Modifier.pinnedGlow(ribbonColor) { pinProgress } else Modifier)
                         .selectable(
                             selected = isSelected,
                             role = Role.Tab,
@@ -105,7 +129,7 @@ internal fun BookTabStrip(
                 }
             }
         }
-        BookTabRibbon(state, ribbonColor, reducedMotion)
+        BookTabRibbon(state, ribbonColor, reducedMotion, pinProgress = { pinProgress })
     }
 }
 
@@ -115,4 +139,30 @@ private fun BookDetailTab.labelRes(): Int = when (this) {
     BookDetailTab.Reviews -> R.string.book_detail_tabs_reviews
     BookDetailTab.Highlights -> R.string.book_detail_tabs_highlights
     BookDetailTab.Files -> R.string.book_detail_tabs_files
+}
+
+/**
+ * The pinned tab's light: the cover halo's warm core and the ribbon's colour falling off, sized to the cell. It fades
+ * in with [progress] as the ribbon retracts, is skipped at 0, and only draws, so it takes no touches.
+ */
+private fun Modifier.pinnedGlow(ribbonColor: Color, progress: () -> Float): Modifier = drawBehind {
+    val alpha = progress().coerceIn(0f, 1f)
+    if (alpha == 0f) return@drawBehind
+    val centre = Offset(size.width / 2f, size.height / 2f)
+    val radius = size.height / 2f
+    scale(scaleX = size.width / size.height, scaleY = 1f, pivot = centre) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                0f to HaloWarmCore,
+                0.38f to ribbonColor.copy(alpha = 0.42f),
+                0.72f to ribbonColor.copy(alpha = 0.1f),
+                1f to Color.Transparent,
+                center = centre,
+                radius = radius,
+            ),
+            radius = radius,
+            center = centre,
+            alpha = alpha,
+        )
+    }
 }

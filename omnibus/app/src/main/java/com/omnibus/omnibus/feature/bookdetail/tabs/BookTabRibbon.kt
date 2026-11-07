@@ -36,7 +36,7 @@ import kotlin.math.roundToInt
 internal val RibbonWidth = 20.dp
 
 /** The bookmark ribbon's height, including its notch. */
-internal val RibbonHeight = 38.dp
+internal val RibbonHeight = 28.dp
 
 /** Where the ribbon's notch apex sits, as a fraction of its height (iOS `RibbonShape`). */
 internal const val RIBBON_NOTCH_FRACTION = 38f / 46f
@@ -85,15 +85,18 @@ internal val RibbonShape = GenericShape { size, _ ->
 /**
  * The bookmark hanging from the selected tab. It slides to the new tab and swings once, away from the way the
  * selection moved. It never takes touches and is hidden from accessibility. Reduced motion snaps it into place
- * without the swing.
+ * without the swing. It retracts into the strip as [pinProgress] goes from 0 to 1, since a pinned strip rides under the
+ * bar where the ribbon would cover the page.
  *
  * @param color The fill, the book's accent.
+ * @param pinProgress 0 while the strip rests, 1 once it is pinned. Read in the graphics layer, so it never recomposes.
  */
 @Composable
 internal fun BookTabRibbon(
     state: BookDetailTabState,
     color: Color,
     reducedMotion: Boolean,
+    pinProgress: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     val index = animateFloatAsState(
@@ -134,6 +137,10 @@ internal fun BookTabRibbon(
             .graphicsLayer {
                 rotationZ = swing.value
                 transformOrigin = TransformOrigin(0.5f, 0f)
+                // A spring can overshoot its target; a negative scale would flip the ribbon.
+                val retracted = (1f - pinProgress()).coerceIn(0f, 1f)
+                scaleY = retracted
+                alpha = retracted
             }
             .shadow(2.dp, RibbonShape, clip = false)
             .testTag(BookDetailTabsTestTags.RIBBON)
