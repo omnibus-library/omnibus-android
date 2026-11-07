@@ -679,15 +679,13 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                 }
             }
 
-            context("when the connection drops") {
+            context("when the server is gone") {
                 it("TC-23: reports the server as unreachable") {
                     withServer {
                         val uuid = randomString()
                         val repository = sut(url)
                         load(repository, uuid, reviewsBody())
-                        // OkHttp retries a dropped connection once, so both attempts have to drop.
-                        script.answer("PATCH", dropped())
-                        script.answer("PATCH", dropped())
+                        server.close()
 
                         repository.updateMyReview(uuid, ratingPatch(randomRating())) shouldBe
                             ReviewWriteResult.Failed(ReviewError.Unreachable)
