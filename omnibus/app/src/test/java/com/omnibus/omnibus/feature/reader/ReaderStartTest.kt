@@ -1,39 +1,46 @@
 package com.omnibus.omnibus.feature.reader
 
-import io.kotest.assertions.withClue
+import com.omnibus.omnibus.feature.reader.ui.randomCfi
+import com.omnibus.omnibus.testing.randomInt
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ReaderStartTest : DescribeSpec({
 
-    describe("ReaderStart.AtCfi") {
+    describe("resolving where a position opens") {
+        context("with its own EPUB cfi") {
+            it("TC-62: opens at that cfi over a derived cfi or percent") {
+                val cfi = randomCfi()
 
-        it("#117 TC-52: at cfi start carries the cfi") {
-            ReaderStart.AtCfi("epubcfi(/6/8)").cfi shouldBe "epubcfi(/6/8)"
-            readerStartOf("epubcfi(/6/8)", null, null) shouldBe ReaderStart.AtCfi("epubcfi(/6/8)")
+                readerStartOf(cfi, randomCfi(), randomInt(1..100)) shouldBe ReaderStart.AtCfi(cfi)
+            }
         }
-    }
 
-    describe("readerStartOf") {
+        context("with a percent but no own EPUB cfi") {
+            context("with a derived EPUB cfi") {
+                it("TC-62: boots at the derived cfi") {
+                    val derived = randomCfi()
 
-        it("TC-62: a stored or server position resolves to its start") {
-            val rows = listOf(
-                // Own CFI wins, even with a derived CFI and a percent.
-                Triple(Triple("epubcfi(/6/8)", "epubcfi(/6/9)", 57), ReaderStart.AtCfi("epubcfi(/6/8)"), "own cfi"),
-                // A percent-only record boots at the derived CFI.
-                Triple(Triple(null, "epubcfi(/6/9)", 57), ReaderStart.AtPercent(0.57, "epubcfi(/6/9)"), "derived cfi"),
-                Triple(Triple(null, null, 57), ReaderStart.AtPercent(0.57, null), "percent only"),
-                // A derived value that is not an EPUB CFI is not a boot point.
-                Triple(Triple(null, "pdf-page:9", 57), ReaderStart.AtPercent(0.57, null), "non-cfi derived"),
-                Triple(Triple(null, null, 0), ReaderStart.Beginning, "zero percent"),
-                Triple(Triple(null, null, null), ReaderStart.Beginning, "nothing"),
-                // A non-CFI anchor with a percent opens near the percent.
-                Triple(Triple("pdf-page:3", null, 40), ReaderStart.AtPercent(0.4, null), "non-cfi anchor"),
-            )
-            rows.forEach { (input, expected, label) ->
-                val (cfi, derived, percent) = input
-                withClue("$label: cfi=$cfi derived=$derived percent=$percent") {
-                    readerStartOf(cfi, derived, percent) shouldBe expected
+                    readerStartOf(null, derived, 57) shouldBe ReaderStart.AtPercent(0.57, derived)
+                }
+            }
+
+            context("without a derived EPUB cfi") {
+                it("TC-62: opens near the percent, for no anchor or a non-cfi one") {
+                    checkAll(Exhaustive.of(null, "pdf-page:3")) { anchor ->
+                        readerStartOf(anchor, anchor, 40) shouldBe ReaderStart.AtPercent(0.4, null)
+                    }
+                }
+            }
+        }
+
+        context("without a cfi or a positive percent") {
+            it("TC-62: opens at the beginning, for a zero or missing percent") {
+                checkAll(Exhaustive.of(null, 0)) { percent ->
+                    readerStartOf(null, null, percent) shouldBe ReaderStart.Beginning
                 }
             }
         }
