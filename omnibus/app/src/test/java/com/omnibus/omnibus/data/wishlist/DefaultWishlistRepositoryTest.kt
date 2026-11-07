@@ -1,29 +1,33 @@
 package com.omnibus.omnibus.data.wishlist
 
+import app.cash.turbine.test
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
-import java.util.concurrent.CopyOnWriteArrayList
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -34,32 +38,22 @@ import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
-private const val UUID = "book-1"
-
-/** `added_at` in the server's examples, in seconds and in millis. */
-private const val SECONDS_ADDED = 1_700_000_000L
-private const val MILLIS_ADDED = 1_700_000_000_000L
-
-/** A wishlist entry body as the server writes it. A null argument leaves its field out. */
-private fun entryBody(source: String? = "scan", addedAt: Long? = SECONDS_ADDED, id: Long = 7L): String {
-    val fields = listOfNotNull(
-        "\"id\":$id",
-        "\"user_id\":1",
-        "\"book_uuid\":\"$UUID\"",
-        addedAt?.let { "\"added_at\":$it" },
-        source?.let { "\"source\":\"$it\"" },
-    )
-    return fields.joinToString(prefix = "{", postfix = "}", separator = ",")
-}
-
-/** The state for the entry [entryBody] returns with its defaults. */
-private fun presentDefault(): WishlistState = WishlistState.Present(
-    WishlistEntry(id = 7L, addedAtMillis = MILLIS_ADDED, source = WishlistSource.Scan),
-)
+/** This entry as the server writes it, with its time in seconds. */
+private fun WishlistEntry.toBody(): String = listOfNotNull(
+    "\"id\":$id",
+    addedAtMillis?.let { "\"added_at\":${it / 1_000L}" },
+    source?.let { "\"source\":\"${it.name.lowercase()}\"" },
+).joinToString(prefix = "{", postfix = "}", separator = ",")
 
 private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
-private fun disconnect(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
+private fun reply(entry: WishlistEntry): MockResponse = reply(200, entry.toBody())
+
+/** A successful removal's answer. */
+private fun removed(): MockResponse = reply(200, """{"book_deleted":${randomBoolean()}}""")
+
+/** A connection dropped before any response, which the client reports as an IOException. */
+private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 /**
  * Answers requests from a script, per HTTP method, in order. A step can hold its response until the test releases
@@ -83,358 +77,451 @@ private class ScriptedDispatcher : Dispatcher() {
     }
 }
 
-/** Collects a book's flow in the background, recording every emission in order. */
-private class Observed(repository: WishlistRepository, uuid: String, scope: CoroutineScope) {
-    val states = CopyOnWriteArrayList<WishlistState>()
-    private val job: Job = scope.launch { repository.getWishlistFlow(uuid).collect { states += it } }
+/** A running server that answers from [script], and [scope], a place for work that outlives one call. */
+private class TestServer(val server: MockWebServer, val script: ScriptedDispatcher, val scope: CoroutineScope) {
 
-    /** Waits until the latest emission is [expected]. */
-    suspend fun awaitLast(expected: WishlistState) {
-        withTimeout(5_000) {
-            while (states.lastOrNull() != expected) delay(10)
-        }
-    }
-
-    fun stop() = job.cancel()
-}
-
-class DefaultWishlistRepositoryTest : DescribeSpec({
-
-    lateinit var server: MockWebServer
-    lateinit var script: ScriptedDispatcher
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    val scopes = mutableListOf<CoroutineScope>()
-
-    /** A new scope that is cancelled after the test. */
-    fun newScope(dispatcher: CoroutineDispatcher): CoroutineScope =
-        CoroutineScope(SupervisorJob() + dispatcher).also { scopes += it }
-
-    /**
-     * A repository for the test server, or for no server when [baseUrlProvider] has none. [held] runs HTTP on real
-     * threads, which lets a test hold a request open. Otherwise everything runs unconfined on the calling thread.
-     */
-    fun repositoryFor(held: Boolean = false): DefaultWishlistRepository {
-        val scope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined)
-        return DefaultWishlistRepository(
-            ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = baseUrlProvider,
-                authTokenProvider = TestAuthTokenProvider(token = "secret"),
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-            ),
-            applicationScope = scope,
-        )
-    }
+    val url: HttpUrl get() = server.url("/")
 
     /** Waits for the next request the server received, in arrival order. */
     fun nextRequest(): RecordedRequest =
         checkNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
+}
+
+/** Runs [test] against a new [TestServer], and closes it afterwards. */
+private suspend fun withServer(test: suspend TestServer.() -> Unit) {
+    val script = ScriptedDispatcher()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    MockWebServer().use { server ->
+        server.dispatcher = script
+        server.start()
+        try {
+            TestServer(server, script, scope).test()
+        } finally {
+            scope.cancel()
+        }
+    }
+}
+
+class DefaultWishlistRepositoryTest : DescribeSpec({
+
+    // By default everything runs unconfined on the calling thread, so the state has settled when a call returns.
+    fun sut(
+        baseUrl: HttpUrl? = null,
+        applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+    ): DefaultWishlistRepository = DefaultWishlistRepository(
+        ioDispatcher = ioDispatcher,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+        applicationScope = applicationScope,
+    )
+
+    /** A [sut] that runs HTTP on real threads, which lets a test hold a request open. */
+    fun TestServer.threadedSut(): DefaultWishlistRepository = sut(url, scope, Dispatchers.IO)
+
+    /** Reads [entry] for [uuid], so the book is on the wishlist, and takes that request from the server's queue. */
+    suspend fun TestServer.load(repository: WishlistRepository, uuid: String, entry: WishlistEntry) {
+        script.answer("GET", reply(entry))
+        repository.refresh(uuid)
+        nextRequest()
+    }
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        script = ScriptedDispatcher()
-        server = MockWebServer().apply {
-            dispatcher = script
-            start()
-        }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-    }
-
-    afterEach {
-        scopes.forEach { it.cancel() }
-        scopes.clear()
-        server.close()
-    }
-
     describe("reading the wishlist entry") {
 
-        it("#119 TC-1: a present entry maps its id, added_at seconds to millis and source, with one GET") {
-            val repository = repositoryFor(held = true)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, entryBody()), gate)
-            val observed = Observed(repository, UUID, newScope(Dispatchers.Default))
+        context("when nothing is known") {
 
-            nextRequest()
-            observed.awaitLast(WishlistState.Unknown)
-            gate.countDown()
-            observed.awaitLast(presentDefault())
+            it("#119 TC-1: emits Unknown, then the server's answer") {
+                withServer {
+                    val entry = randomWishlistEntry()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(entry), gate)
 
-            observed.states shouldBe listOf(WishlistState.Unknown, presentDefault())
-            server.requestCount shouldBe 1
+                    threadedSut().getWishlistFlow(randomString()).test {
+                        awaitItem() shouldBe WishlistState.Unknown
+                        gate.countDown()
+                        awaitItem() shouldBe WishlistState.Present(entry)
+                    }
+                }
+            }
         }
 
-        it("#119 TC-2: a null body means the book is not on the wishlist") {
-            script.answer("GET", reply(200, "null"))
+        context("when the server's answer is null") {
 
-            repositoryFor().getWishlistFlow(UUID).first() shouldBe WishlistState.Absent
+            it("#119 TC-2: is Absent") {
+                withServer {
+                    script.answer("GET", reply(200, "null"))
+
+                    sut(url).getWishlistFlow(randomString()).first() shouldBe WishlistState.Absent
+                }
+            }
         }
 
-        it("#119 TC-3: source tokens map ignoring case, unknown and missing sources give null, and a missing added_at gives null") {
-            val repository = repositoryFor()
-            val cases = listOf(
-                entryBody(source = "detail") to WishlistSource.Detail,
-                entryBody(source = "manual") to WishlistSource.Manual,
-                entryBody(source = "search") to WishlistSource.Search,
-                entryBody(source = "SCAN") to WishlistSource.Scan,
-                entryBody(source = "hardcover") to null,
-                entryBody(source = null) to null,
-            )
-            for ((body, source) in cases) {
-                script.answer("GET", reply(200, body))
-                repository.refresh(UUID)
-                repository.getWishlistFlow(UUID).first() shouldBe
-                    WishlistState.Present(WishlistEntry(7L, MILLIS_ADDED, source))
+        it("#119 TC-3: reads a source token regardless of its case, leaving any other as no source") {
+            withServer {
+                val entry = randomWishlistEntry()
+
+                checkAll(
+                    Exhaustive.of(
+                        "\"detail\"" to WishlistSource.Detail,
+                        "\"manual\"" to WishlistSource.Manual,
+                        "\"search\"" to WishlistSource.Search,
+                        "\"scan\"" to WishlistSource.Scan,
+                        "\"SCAN\"" to WishlistSource.Scan,
+                        "\"hardcover\"" to null,
+                    ),
+                ) { (token, source) ->
+                    val body = entry.copy(source = null).toBody().replaceFirst("{", """{"source":$token,""")
+                    script.answer("GET", reply(200, body))
+
+                    sut(url).getWishlistFlow(randomString()).first() shouldBe
+                        WishlistState.Present(entry.copy(source = source))
+                }
+            }
+        }
+
+        it("#119 TC-3: maps the time from seconds to milliseconds, leaving a missing one as none") {
+            withServer {
+                checkAll(
+                    Exhaustive.of(
+                        randomWishlistEntry().copy(addedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L),
+                        randomWishlistEntry().copy(addedAtMillis = null),
+                    ),
+                ) { entry ->
+                    script.answer("GET", reply(entry))
+
+                    sut(url).getWishlistFlow(randomString()).first() shouldBe WishlistState.Present(entry)
+                }
+            }
+        }
+
+        it("#119 TC-4: is Failed regardless of how the read goes wrong") {
+            withServer {
+                checkAll(
+                    Exhaustive.of(
+                        reply(401),
+                        reply(404),
+                        reply(500),
+                        dropped(),
+                        reply(200, "not json"),
+                        reply(200, "[1,2]"),
+                    ),
+                ) { failure ->
+                    script.answer("GET", failure)
+
+                    sut(url).getWishlistFlow(randomString()).first() shouldBe WishlistState.Failed
+                }
+            }
+        }
+
+        context("when no server is saved") {
+
+            it("#119 TC-4: is Failed") {
+                sut().getWishlistFlow(randomString()).first() shouldBe WishlistState.Failed
+            }
+        }
+
+        context("when the uuid is blank") {
+
+            it("#119 TC-5: is Failed without asking the server, regardless of the blank") {
+                withServer {
+                    checkAll(Exhaustive.of("", "   ")) { uuid ->
+                        sut(url).getWishlistFlow(uuid).first() shouldBe WishlistState.Failed
+
+                        server.requestCount shouldBe 0
+                    }
+                }
+            }
+        }
+
+        it("#119 TC-6: asks for the book with its uuid as one encoded path segment") {
+            withServer {
+                script.answer("GET", reply(randomWishlistEntry()))
+
+                sut(url).refresh("book one")
+
+                val request = nextRequest()
+                request.method shouldBe "GET"
+                request.url.encodedPath shouldBe "/api/physical/book%20one/wishlist"
+            }
+        }
+
+        context("when a read is in flight") {
+
+            it("#119 TC-7, TC-9: shares it with another caller") {
+                withServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(randomWishlistEntry()), gate)
+                    val repository = threadedSut()
+
+                    val first = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.refresh(uuid) }
+                    nextRequest()
+                    val second = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.refresh(uuid) }
+                    gate.countDown()
+                    listOf(first, second).awaitAll()
+
+                    server.requestCount shouldBe 1
+                }
+            }
+        }
+
+        context("when the entry is known") {
+
+            it("#119 TC-7: reads nothing more from the server for a new collector") {
+                withServer {
+                    val uuid = randomString()
+                    val repository = sut(url)
+                    load(repository, uuid, randomWishlistEntry())
+
+                    repository.getWishlistFlow(uuid).first()
+
+                    server.requestCount shouldBe 1
+                }
             }
 
-            script.answer("GET", reply(200, entryBody(addedAt = null)))
-            repository.refresh(UUID)
-            repository.getWishlistFlow(UUID).first() shouldBe
-                WishlistState.Present(WishlistEntry(7L, addedAtMillis = null, source = WishlistSource.Scan))
-        }
+            it("#119 TC-9: takes the new answer on a refresh") {
+                withServer {
+                    val uuid = randomString()
+                    val repository = sut(url)
+                    load(repository, uuid, randomWishlistEntry())
+                    script.answer("GET", reply(200, "null"))
 
-        it("#119 TC-4: every failed read ends Failed, and nothing is thrown from the flow or refresh") {
-            val failures = listOf(
-                reply(401),
-                reply(404),
-                reply(500),
-                disconnect(),
-                reply(200, "not json"),
-                reply(200, "[1,2]"),
-            )
-            for (failure in failures) {
-                script.answer("GET", failure)
-                val repository = repositoryFor()
+                    repository.refresh(uuid)
 
-                repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Failed
-                repository.refresh(UUID)
+                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Absent
+                }
             }
 
-            baseUrlProvider.baseUrl = null
-            val before = server.requestCount
-            repositoryFor().getWishlistFlow(UUID).first() shouldBe WishlistState.Failed
-            server.requestCount shouldBe before
-            baseUrlProvider.baseUrl = server.url("/")
+            context("when a refresh fails") {
+
+                it("#119 TC-9: keeps it") {
+                    withServer {
+                        val uuid = randomString()
+                        val entry = randomWishlistEntry()
+                        val repository = sut(url)
+                        load(repository, uuid, entry)
+                        script.answer("GET", reply(500))
+
+                        repository.refresh(uuid)
+
+                        repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Present(entry)
+                    }
+                }
+            }
         }
 
-        it("#119 TC-5: a blank or whitespace uuid is Failed with no request") {
-            val before = server.requestCount
-            val repository = repositoryFor()
+        context("when the last read failed") {
 
-            repository.getWishlistFlow("").first() shouldBe WishlistState.Failed
-            repository.getWishlistFlow("   ").first() shouldBe WishlistState.Failed
-            repository.refresh("")
-            server.requestCount shouldBe before
+            it("#119 TC-8: reads again for a new collector") {
+                withServer {
+                    val uuid = randomString()
+                    val entry = randomWishlistEntry()
+                    val repository = sut(url)
+                    script.answer("GET", reply(500))
+                    repository.refresh(uuid)
+                    script.answer("GET", reply(entry))
+
+                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Present(entry)
+                }
+            }
         }
 
-        it("#119 TC-6: GET and DELETE use the encoded uuid segment, the wishlist suffix and the bearer token") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, entryBody()))
-            repository.refresh("book one")
+        context("when the collector is cancelled") {
 
-            val get = nextRequest()
-            get.method shouldBe "GET"
-            get.url.encodedPath shouldBe "/api/physical/book%20one/wishlist"
-            get.headers["Authorization"] shouldBe "Bearer secret"
+            it("#119 TC-15: lets the read finish") {
+                withServer {
+                    val uuid = randomString()
+                    val entry = randomWishlistEntry()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(entry), gate)
+                    val repository = threadedSut()
 
-            script.answer("DELETE", reply(200, "{\"book_deleted\":false}"))
-            repository.removeFromWishlist("book one") shouldBe WishlistRemovalResult.Removed(bookDeleted = false)
+                    val collector = scope.launch { repository.getWishlistFlow(uuid).collect {} }
+                    nextRequest()
+                    collector.cancelAndJoin()
+                    gate.countDown()
 
-            val delete = nextRequest()
-            delete.method shouldBe "DELETE"
-            delete.url.encodedPath shouldBe "/api/physical/book%20one/wishlist"
-            delete.headers["Authorization"] shouldBe "Bearer secret"
+                    withTimeout(5_000) { repository.getWishlistFlow(uuid).first { it == WishlistState.Present(entry) } }
+                    server.requestCount shouldBe 1
+                }
+            }
+        }
+    }
+
+    describe("the state held right now") {
+
+        context("when nothing has been read") {
+
+            it("is Unknown without asking the server") {
+                withServer {
+                    sut(url).cachedState(randomString()) shouldBe WishlistState.Unknown
+
+                    server.requestCount shouldBe 0
+                }
+            }
         }
 
-        it("#119 TC-7: two collectors share one GET while it is in flight, and a late collector reads the cached value") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, entryBody()), gate)
-            val first = Observed(repository, UUID, scope)
-            nextRequest()
-            val second = Observed(repository, UUID, scope)
-            second.awaitLast(WishlistState.Unknown)
-            gate.countDown()
-            first.awaitLast(presentDefault())
-            second.awaitLast(presentDefault())
+        context("when an entry has been read") {
 
-            val late = Observed(repository, UUID, newScope(Dispatchers.Default))
-            late.awaitLast(presentDefault())
-            server.requestCount shouldBe 1
-        }
+            it("is that entry") {
+                withServer {
+                    val uuid = randomString()
+                    val entry = randomWishlistEntry()
+                    val repository = sut(url)
+                    load(repository, uuid, entry)
 
-        it("#119 TC-8: collecting after a Failed answer starts a new GET, which can succeed") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(500))
-            repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Failed
-
-            script.answer("GET", reply(200, entryBody()))
-            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
-            server.requestCount shouldBe 2
-        }
-
-        it("#119 TC-9: refresh updates the state, joins a refresh in flight, and a failed refresh keeps the known answer") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, entryBody()))
-            repository.refresh(UUID)
-            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
-
-            script.answer("GET", reply(200, "null"))
-            repository.refresh(UUID)
-            repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Absent
-
-            nextRequest() // the Present read above
-            nextRequest() // the null read above
-
-            val held = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, entryBody()), gate)
-            val before = server.requestCount
-            val first = scope.async { held.refresh(UUID) }
-            nextRequest()
-            val second = scope.async { held.refresh(UUID) }
-            delay(200) // give the second refresh time to join the GET in flight before it completes
-            gate.countDown()
-            first.await()
-            second.await()
-            server.requestCount shouldBe before + 1
-            held.getWishlistFlow(UUID).first() shouldBe presentDefault()
-
-            script.answer("GET", reply(500))
-            held.refresh(UUID)
-            held.getWishlistFlow(UUID).first() shouldBe presentDefault()
+                    repository.cachedState(uuid) shouldBe WishlistState.Present(entry)
+                }
+            }
         }
     }
 
     describe("removing from the wishlist") {
 
-        it("#119 TC-10: a DELETE returning book_deleted true removes the entry from a Present state") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, entryBody()))
-            repository.refresh(UUID)
-            val before = server.requestCount
+        it("#119 TC-6: sends a DELETE with the uuid as one encoded path segment") {
+            withServer {
+                script.answer("DELETE", removed())
 
-            script.answer("DELETE", reply(200, "{\"book_deleted\":true}"))
-            repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Removed(bookDeleted = true)
+                sut(url).removeFromWishlist("book one")
 
-            repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Absent
-            server.requestCount shouldBe before + 1
-        }
-
-        it("#119 TC-11: book_deleted false and a body without the field both read as Removed(false)") {
-            listOf("{\"book_deleted\":false}", "{}").forEach { body ->
-                val repository = repositoryFor()
-                script.answer("GET", reply(200, entryBody()))
-                repository.refresh(UUID)
-
-                script.answer("DELETE", reply(200, body))
-                repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Removed(bookDeleted = false)
-                repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Absent
+                val request = nextRequest()
+                request.method shouldBe "DELETE"
+                request.url.encodedPath shouldBe "/api/physical/book%20one/wishlist"
             }
         }
 
-        it("#119 TC-12: every failed DELETE maps to its error, leaves the state Present, and throws nothing") {
-            val failures = listOf(
-                reply(401) to WishlistError.SessionExpired,
-                reply(404) to WishlistError.BookNotFound,
-                reply(500) to WishlistError.Http(500),
-                disconnect() to WishlistError.Unreachable,
-                reply(200, "not json") to WishlistError.UnexpectedResponse,
-            )
-            for ((failure, error) in failures) {
-                val repository = repositoryFor()
-                script.answer("GET", reply(200, entryBody()))
-                repository.refresh(UUID)
+        it("#119 TC-10, TC-11: reads whether the book was deleted, defaulting to not") {
+            withServer {
+                checkAll(
+                    Exhaustive.of(
+                        """{"book_deleted":true}""" to true,
+                        """{"book_deleted":false}""" to false,
+                        "{}" to false,
+                    ),
+                ) { (body, bookDeleted) ->
+                    script.answer("DELETE", reply(200, body))
 
-                script.answer("DELETE", failure)
-                repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Failed(error)
-                repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
+                    sut(url).removeFromWishlist(randomString()) shouldBe WishlistRemovalResult.Removed(bookDeleted)
+                }
+            }
+        }
+
+        context("when the removal succeeds") {
+
+            it("#119 TC-10: moves the state to Absent") {
+                withServer {
+                    val uuid = randomString()
+                    val repository = sut(url)
+                    load(repository, uuid, randomWishlistEntry())
+                    script.answer("DELETE", removed())
+
+                    repository.removeFromWishlist(uuid)
+
+                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Absent
+                }
+            }
+        }
+
+        context("when the removal fails") {
+
+            it("#119 TC-12: reports each failure as its own error") {
+                withServer {
+                    checkAll(
+                        Exhaustive.of(
+                            reply(401) to WishlistError.SessionExpired,
+                            reply(404) to WishlistError.BookNotFound,
+                            reply(500) to WishlistError.Http(500),
+                            dropped() to WishlistError.Unreachable,
+                            reply(200, "not json") to WishlistError.UnexpectedResponse,
+                        ),
+                    ) { (failure, error) ->
+                        script.answer("DELETE", failure)
+
+                        sut(url).removeFromWishlist(randomString()) shouldBe WishlistRemovalResult.Failed(error)
+                    }
+                }
             }
 
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, entryBody()))
-            repository.refresh(UUID)
-            baseUrlProvider.baseUrl = null
-            repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Failed(WishlistError.NoServer)
-            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
-            baseUrlProvider.baseUrl = server.url("/")
+            it("#119 TC-12: leaves the entry in place") {
+                withServer {
+                    val uuid = randomString()
+                    val entry = randomWishlistEntry()
+                    val repository = sut(url)
+                    load(repository, uuid, entry)
+                    script.answer("DELETE", reply(500))
+
+                    repository.removeFromWishlist(uuid)
+
+                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Present(entry)
+                }
+            }
         }
 
-        it("#119 TC-13: a GET answered after a removal does not bring the entry back") {
-            val repository = repositoryFor(held = true)
-            val getGate = CountDownLatch(1)
-            script.answer("GET", reply(200, entryBody()), getGate)
-            val observed = Observed(repository, UUID, newScope(Dispatchers.Default))
-            nextRequest()
-            observed.awaitLast(WishlistState.Unknown)
+        context("when no server is saved") {
 
-            script.answer("DELETE", reply(200, "{\"book_deleted\":false}"))
-            repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Removed(bookDeleted = false)
-            observed.awaitLast(WishlistState.Absent)
-
-            // Releases the stale GET. The refresh joins it if it is still in flight, and otherwise reads the book as absent.
-            script.answer("GET", reply(200, "null"))
-            getGate.countDown()
-            repository.refresh(UUID)
-
-            observed.states shouldBe listOf(WishlistState.Unknown, WishlistState.Absent)
-            repository.getWishlistFlow(UUID).first() shouldBe WishlistState.Absent
+            it("#119 TC-12: fails with NoServer") {
+                sut().removeFromWishlist(randomString()) shouldBe WishlistRemovalResult.Failed(WishlistError.NoServer)
+            }
         }
 
-        it("#119 TC-14: a removal the caller cancels still completes in the application scope") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, entryBody()))
-            repository.refresh(UUID)
-            nextRequest() // the read above, so the next request is the DELETE
+        context("when the uuid is blank") {
 
-            val gate = CountDownLatch(1)
-            script.answer("DELETE", reply(200, "{\"book_deleted\":false}"), gate)
-            val observed = Observed(repository, UUID, newScope(Dispatchers.Default))
-            observed.awaitLast(presentDefault())
-            val caller = newScope(Dispatchers.Default).launch { repository.removeFromWishlist(UUID) }
-            nextRequest()
-            caller.cancelAndJoin()
-            gate.countDown()
+            it("fails with BookNotFound without asking the server") {
+                withServer {
+                    sut(url).removeFromWishlist(" ") shouldBe WishlistRemovalResult.Failed(WishlistError.BookNotFound)
 
-            observed.awaitLast(WishlistState.Absent)
+                    server.requestCount shouldBe 0
+                }
+            }
         }
 
-        it("#119 TC-15: cancelling a collector leaves the GET to finish and cache its value") {
-            val repository = repositoryFor(held = true)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, entryBody()), gate)
-            val collectorScope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, collectorScope)
-            nextRequest()
-            observed.awaitLast(WishlistState.Unknown)
-            observed.stop()
+        context("when a read started before the removal") {
 
-            gate.countDown()
-            Observed(repository, UUID, newScope(Dispatchers.Default)).awaitLast(presentDefault())
-            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
-            server.requestCount shouldBe 1
-            observed.states shouldNotContain presentDefault()
-            observed.states shouldContainExactly listOf(WishlistState.Unknown)
+            it("#119 TC-13: does not bring the entry back") {
+                withServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(randomWishlistEntry()), gate)
+                    script.answer("DELETE", removed())
+                    val repository = threadedSut()
+
+                    val read = scope.async { repository.refresh(uuid) }
+                    nextRequest()
+                    repository.removeFromWishlist(uuid)
+                    gate.countDown()
+                    read.await()
+
+                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Absent
+                }
+            }
         }
 
-        it("cachedState reads the current state with no request, through Unknown, Present and Absent") {
-            val repository = repositoryFor()
-            repository.cachedState(UUID) shouldBe WishlistState.Unknown
-            server.requestCount shouldBe 0
+        context("when the caller is cancelled") {
 
-            script.answer("GET", reply(200, entryBody()))
-            repository.getWishlistFlow(UUID).first() shouldBe presentDefault()
-            repository.cachedState(UUID) shouldBe presentDefault()
+            it("#119 TC-14: lets the removal finish") {
+                withServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    load(repository, uuid, randomWishlistEntry())
+                    script.answer("DELETE", removed(), gate)
 
-            script.answer("DELETE", reply(200, "{\"book_deleted\":false}"))
-            repository.removeFromWishlist(UUID) shouldBe WishlistRemovalResult.Removed(bookDeleted = false)
-            repository.cachedState(UUID) shouldBe WishlistState.Absent
-            server.requestCount shouldBe 2
+                    val caller = scope.launch { repository.removeFromWishlist(uuid) }
+                    nextRequest()
+                    caller.cancelAndJoin()
+                    gate.countDown()
+
+                    withTimeout(5_000) { repository.getWishlistFlow(uuid).first { it == WishlistState.Absent } }
+                }
+            }
         }
     }
 })

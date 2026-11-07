@@ -2,378 +2,414 @@ package com.omnibus.omnibus.data.shelves
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.library.ShelfKind
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldHaveLength
 import io.kotest.matchers.types.shouldBeTypeOf
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
+import okhttp3.HttpUrl
+
+private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
+
+/** This shelf as the server writes it. */
+private fun ShelfSummary.toJson(): String =
+    """{"id":$id,"owner_user_id":$ownerUserId,"kind":"${kind.name.lowercase()}","name":"$name",""" +
+        """"book_count":$bookCount,"cover_uuids":[${coverUuids.joinToString(",") { "\"$it\"" }}]}"""
+
+/** Answers by exact path, and a 404 for any other. */
+private fun routes(routes: Map<String, MockResponse>): Dispatcher = object : Dispatcher() {
+    override fun dispatch(request: RecordedRequest): MockResponse = routes[request.url.encodedPath] ?: reply(404)
+}
+
+/** The three reads behind one book's shelves, each answering an empty list. */
+private fun healthyRoutes(uuid: String): Map<String, MockResponse> = mapOf(
+    "/api/shelves" to reply(200, "[]"),
+    "/api/shelves/containing/$uuid" to reply(200, "[]"),
+    "/api/shelves/containing/$uuid/smart" to reply(200, "[]"),
+)
+
+/** A running server, closed afterwards. */
+private suspend fun withServer(test: suspend (MockWebServer) -> Unit) {
+    MockWebServer().use { server ->
+        server.start()
+        test(server)
+    }
+}
+
+/** A base URL with nothing listening on it. */
+private fun closedServerUrl(): HttpUrl = MockWebServer().use { server ->
+    server.start()
+    server.url("/")
+}
+
+private val add: suspend DefaultShelvesRepository.(String) -> ShelfWriteResult = { addBook(randomLong(), it) }
+
+private val remove: suspend DefaultShelvesRepository.(String) -> ShelfWriteResult = { removeBook(randomLong(), it) }
 
 class DefaultShelvesRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var repository: DefaultShelvesRepository
-
-    /** Every request the server receives, in arrival order. */
-    val requests = ConcurrentLinkedQueue<RecordedRequest>()
-
-    /** Answers the next request. Tests replace it. */
-    var respond: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(404).build() }
-
-    /** Answers by exact path. A path not in [routes] gets a 404. */
-    fun route(routes: Map<String, () -> MockResponse>) {
-        respond = { request -> routes[request.url.encodedPath]?.invoke() ?: MockResponse.Builder().code(404).build() }
-    }
-
-    fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-    fun newRepository(dispatcher: CoroutineDispatcher) =
-        DefaultShelvesRepository(ioDispatcher = dispatcher, omnibusHttpClient = client)
-
-    /** Every endpoint answering normally: the shelves, no membership, and a matching smart shelf. */
-    val healthy: Map<String, () -> MockResponse> = mapOf(
-        SHELVES to { json(200, SHELVES_JSON) },
-        MEMBER to { json(200, "[2]") },
-        SMART to { json(200, "[5]") },
+    fun sut(baseUrl: HttpUrl? = null): DefaultShelvesRepository = DefaultShelvesRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
     )
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { MockResponse.Builder().code(404).build() }
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                requests.add(request)
-                return respond(request)
+    describe("reading a book's shelves") {
+
+        it("#116 TC-18: combines the three reads") {
+            withServer { server ->
+                val uuid = randomString()
+                val shelves = listOf(randomShelfSummary(), randomShelfSummary())
+                val member = randomLong()
+                val smart = randomLong()
+                server.dispatcher = routes(
+                    mapOf(
+                        "/api/shelves" to reply(200, shelves.joinToString(",", "[", "]") { it.toJson() }),
+                        "/api/shelves/containing/$uuid" to reply(200, "[$member]"),
+                        "/api/shelves/containing/$uuid/smart" to reply(200, "[$smart]"),
+                    ),
+                )
+
+                sut(server.url("/")).getBookShelves(uuid) shouldBe
+                    BookShelvesResult.Success(BookShelves(shelves, setOf(member), setOf(smart)))
             }
         }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-        repository = newRepository(Dispatchers.Unconfined)
-    }
 
-    afterEach { server.close() }
+        it("#116 TC-19: leaves out a shelf of a kind it does not know") {
+            withServer { server ->
+                val uuid = randomString()
+                val shelf = randomShelfSummary()
+                val unknownKind = randomShelfSummary().toJson().replace(Regex(""""kind":"\w+""""), """"kind":"series"""")
+                server.dispatcher = routes(healthyRoutes(uuid) + ("/api/shelves" to reply(200, "[$unknownKind,${shelf.toJson()}]")))
 
-    describe("getBookShelves") {
+                val result = sut(server.url("/")).getBookShelves(uuid).shouldBeTypeOf<BookShelvesResult.Success>()
 
-        it("#116 TC-18: decodes shelves, membership and matching smart shelves") {
-            route(healthy)
-
-            repository.getBookShelves(BOOK) shouldBe BookShelvesResult.Success(
-                BookShelves(
-                    shelves = listOf(
-                        ShelfSummary(1, 7, ShelfKind.Smart, "Old books", 14, listOf("c1", "c2")),
-                        ShelfSummary(2, 7, ShelfKind.Manual, "Favourites", 9, listOf("a1", "b2", "c3", "d4")),
-                        ShelfSummary(3, 8, ShelfKind.Manual, "Ann's", 2, emptyList()),
-                        ShelfSummary(4, 7, ShelfKind.Wishlist, "Wish", 3, emptyList()),
-                        ShelfSummary(5, 7, ShelfKind.Smart, "Recent", 6, listOf("e5")),
-                    ),
-                    memberShelfIds = setOf(2L),
-                    matchingSmartShelfIds = setOf(5),
-                ),
-            )
-
-            requests.size shouldBe 3
-            requests.map { it.method }.toSet() shouldBe setOf("GET")
-            requests.map { it.url.encodedPath }.toSet() shouldBe setOf(SHELVES, MEMBER, SMART)
-            requests.forEach { it.headers["Authorization"] shouldBe "Bearer secret" }
+                result.shelves.shelves shouldBe listOf(shelf)
+            }
         }
 
-        it("#116 TC-19: tolerates missing cover_uuids, unknown kinds and extra keys") {
-            route(
-                healthy + (
-                    SHELVES to {
-                        json(
-                            200,
-                            """
-                            [
-                              {"id":1,"owner_user_id":7,"kind":"manual","name":"No covers","book_count":0,
-                               "owner_username":"hunter","visibility":"public","accent":"#c8a04a"},
-                              {"id":2,"owner_user_id":7,"kind":"series","name":"Unknown kind","book_count":4,"cover_uuids":["x"]},
-                              {"id":3,"owner_user_id":7,"kind":"manual","name":"Kept","book_count":1,
-                               "cover_uuids":["y"],"future_key":{"nested":true}}
-                            ]
-                            """.trimIndent(),
-                        )
+        it("#116 TC-19: tolerates a missing cover list along with unknown keys") {
+            withServer { server ->
+                val uuid = randomString()
+                val shelf = randomShelfSummary().copy(coverUuids = emptyList())
+                val sparse = """{"id":${shelf.id},"owner_user_id":${shelf.ownerUserId},"kind":"${shelf.kind.name.lowercase()}",""" +
+                    """"name":"${shelf.name}","book_count":${shelf.bookCount},"future_key":{"nested":true}}"""
+                server.dispatcher = routes(healthyRoutes(uuid) + ("/api/shelves" to reply(200, "[$sparse]")))
+
+                val result = sut(server.url("/")).getBookShelves(uuid).shouldBeTypeOf<BookShelvesResult.Success>()
+
+                result.shelves.shelves shouldBe listOf(shelf)
+            }
+        }
+
+        it("#116 TC-20: fails regardless of which required read goes wrong, or how") {
+            withServer { server ->
+                val uuid = randomString()
+
+                checkAll(
+                    Exhaustive.of("/api/shelves", "/api/shelves/containing/$uuid"),
+                    Exhaustive.of(
+                        reply(401) to ShelvesError.SessionExpired,
+                        reply(500, "boom") to ShelvesError.Http(500, "boom"),
+                        reply(200, "not json") to ShelvesError.UnexpectedResponse,
+                    ),
+                ) { path, (response, error) ->
+                    server.dispatcher = routes(healthyRoutes(uuid) + (path to response))
+
+                    sut(server.url("/")).getBookShelves(uuid) shouldBe BookShelvesResult.Failure(error)
+                }
+            }
+        }
+
+        context("when the server cannot be reached") {
+
+            it("#116 TC-20: reports Unreachable") {
+                sut(closedServerUrl()).getBookShelves(randomString()) shouldBe
+                    BookShelvesResult.Failure(ShelvesError.Unreachable)
+            }
+        }
+
+        it("#116 TC-21: degrades to no smart shelves regardless of how the smart read goes wrong") {
+            withServer { server ->
+                val uuid = randomString()
+                val member = randomLong()
+
+                checkAll(Exhaustive.of(reply(500, "boom"), reply(404), reply(200, "not json"))) { smart ->
+                    server.dispatcher = routes(
+                        healthyRoutes(uuid) + mapOf(
+                            "/api/shelves/containing/$uuid" to reply(200, "[$member]"),
+                            "/api/shelves/containing/$uuid/smart" to smart,
+                        ),
+                    )
+
+                    sut(server.url("/")).getBookShelves(uuid) shouldBe
+                        BookShelvesResult.Success(BookShelves(emptyList(), setOf(member), emptySet()))
+                }
+            }
+        }
+
+        context("when the uuid is blank") {
+
+            it("#116 TC-22: reports NotFound without asking the server, regardless of the blank") {
+                withServer { server ->
+                    checkAll(Exhaustive.of("", "   ")) { uuid ->
+                        sut(server.url("/")).getBookShelves(uuid) shouldBe BookShelvesResult.Failure(ShelvesError.NotFound)
+
+                        server.requestCount shouldBe 0
                     }
-                    ),
-            )
-
-            val shelves = repository.getBookShelves(BOOK).shouldBeTypeOf<BookShelvesResult.Success>().shelves
-            shelves.shelves shouldBe listOf(
-                ShelfSummary(1, 7, ShelfKind.Manual, "No covers", 0, emptyList()),
-                ShelfSummary(3, 7, ShelfKind.Manual, "Kept", 1, listOf("y")),
-            )
-        }
-
-        it("#116 TC-19: an empty list is a success with no shelves") {
-            route(healthy + (SHELVES to { json(200, "[]") }))
-
-            val shelves = repository.getBookShelves(BOOK).shouldBeTypeOf<BookShelvesResult.Success>().shelves
-            shelves.shelves shouldBe emptyList()
-            shelves.memberShelfIds shouldBe setOf(2L)
-        }
-
-        val failures: List<Triple<String, () -> MockResponse, ShelvesError>> = listOf(
-            Triple("HTTP 401", { json(401, "") }, ShelvesError.SessionExpired),
-            Triple("HTTP 500 with a plain body", { json(500, "boom") }, ShelvesError.Http(500, "boom")),
-            Triple("a body that is not JSON", { json(200, "not json") }, ShelvesError.UnexpectedResponse),
-        )
-
-        for (path in listOf(SHELVES, MEMBER)) {
-            failures.forEach { (case, response, error) ->
-                it("#116 TC-20: $case on $path gives $error") {
-                    route(healthy + (path to response))
-
-                    repository.getBookShelves(BOOK) shouldBe BookShelvesResult.Failure(error)
                 }
             }
+        }
 
-            // A socket dropped by a dispatched response is not reliable, so the server is closed instead.
-            it("#116 TC-20: a dropped connection on $path gives Unreachable") {
-                server.close()
+        it("#116 TC-22: encodes an unsafe uuid as one path segment") {
+            withServer { server ->
+                val uuid = "a/../b c"
+                server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse = reply(200, "[]")
+                }
 
-                repository.getBookShelves(BOOK) shouldBe BookShelvesResult.Failure(ShelvesError.Unreachable)
+                sut(server.url("/")).getBookShelves(uuid)
+
+                val paths = List(3) { server.takeRequest().url.encodedPath }
+                paths.toSet() shouldBe setOf(
+                    "/api/shelves",
+                    "/api/shelves/containing/a%2F..%2Fb%20c",
+                    "/api/shelves/containing/a%2F..%2Fb%20c/smart",
+                )
             }
         }
 
-        listOf(
-            "HTTP 500" to { json(500, "boom") },
-            "HTTP 404" to { json(404, "") },
-            "a body that is not JSON" to { json(200, "not json") },
-        ).forEach { (case, response) ->
-            it("#116 TC-21: $case on the smart read degrades to no smart shelves") {
-                route(healthy + (SMART to response))
+        context("when no server is saved") {
 
-                val result = repository.getBookShelves(BOOK).shouldBeTypeOf<BookShelvesResult.Success>().shelves
-                result.matchingSmartShelfIds shouldBe emptySet()
-                result.memberShelfIds shouldBe setOf(2L)
-                result.shelves.size shouldBe 5
+            it("#116 TC-22: reports NoServer") {
+                sut().getBookShelves(randomString()) shouldBe BookShelvesResult.NoServer
             }
-        }
-
-        it("#116 TC-22: a blank uuid is NotFound and sends nothing") {
-            listOf("", "   ").forEach { blank ->
-                repository.getBookShelves(blank) shouldBe BookShelvesResult.Failure(ShelvesError.NotFound)
-            }
-
-            server.requestCount shouldBe 0
-        }
-
-        it("#116 TC-22: a uuid with a slash, dots and a space is one encoded path segment") {
-            respond = { json(200, "[]") }
-
-            repository.getBookShelves(PATH_UNSAFE_UUID)
-
-            val member = requests.single { it.url.encodedPathSegments.size == 4 }
-            member.url.encodedPathSegments.last() shouldBe "a%2F..%2Fb%20c"
-            member.url.pathSegments.last() shouldBe PATH_UNSAFE_UUID
         }
     }
 
-    describe("no server") {
+    describe("reading a shelf's rules") {
 
-        it("#116 TC-22: with no saved server every call gives NoServer and sends nothing") {
-            baseUrlProvider.baseUrl = null
-
-            repository.getBookShelves(BOOK) shouldBe BookShelvesResult.NoServer
-            repository.getShelfRules(2) shouldBe ShelfRulesResult.NoServer
-            repository.addBook(2, BOOK) shouldBe ShelfWriteResult.NoServer
-            repository.removeBook(2, BOOK) shouldBe ShelfWriteResult.NoServer
-
-            server.requestCount shouldBe 0
-        }
-    }
-
-    describe("getShelfRules") {
-
-        it("#116 TC-23: decodes rules and tolerates unknown tokens") {
-            route(
-                mapOf(
-                    "/api/shelves/5" to {
-                        json(
-                            200,
-                            """
-                            {"id":5,"name":"Old","kind":"smart","description":"x","match_mode":"any",
-                             "rules":[{"field":"year","op":"gte","value":"1901"},
-                                      {"field":"mood","op":"is","value":"x"},
-                                      {"field":"tag","op":"blink","value":"y"}],
-                             "unexpected":true}
-                            """.trimIndent(),
-                        )
-                    },
-                ),
-            )
-
-            repository.getShelfRules(5) shouldBe ShelfRulesResult.Success(
-                ShelfRules(
-                    matchMode = ShelfMatchMode.Any,
-                    rules = listOf(
-                        ShelfRule(ShelfRuleField.Year, ShelfRuleOp.Gte, "1901"),
-                        ShelfRule(null, ShelfRuleOp.Is, "x"),
-                        ShelfRule(ShelfRuleField.Tag, null, "y"),
+        it("#116 TC-23: keeps a rule with a token it does not know, leaving that token empty") {
+            withServer { server ->
+                val shelf = randomLong()
+                server.enqueue(
+                    reply(
+                        200,
+                        """
+                        {"match_mode":"any","unexpected":true,
+                         "rules":[{"field":"year","op":"gte","value":"1901"},
+                                  {"field":"mood","op":"is","value":"x"},
+                                  {"field":"tag","op":"blink","value":"y"}]}
+                        """.trimIndent(),
                     ),
-                ),
-            )
-            requests.single().url.encodedPath shouldBe "/api/shelves/5"
-        }
+                )
 
-        it("#116 TC-23: match_mode all maps to All and a missing one to null") {
-            respond = { request ->
-                json(200, if (request.url.encodedPath.endsWith("/5")) """{"match_mode":"all","rules":[]}""" else """{"rules":[]}""")
-            }
-
-            repository.getShelfRules(5) shouldBe ShelfRulesResult.Success(ShelfRules(ShelfMatchMode.All, emptyList()))
-            repository.getShelfRules(6) shouldBe ShelfRulesResult.Success(ShelfRules(null, emptyList()))
-        }
-
-        listOf(
-            "HTTP 404" to ({ json(404, "") } to ShelvesError.NotFound),
-            "HTTP 401" to ({ json(401, "") } to ShelvesError.SessionExpired),
-            "a body that is not JSON" to ({ json(200, "not json") } to ShelvesError.UnexpectedResponse),
-        ).forEach { (case, pair) ->
-            val (response, error) = pair
-            it("#116 TC-23: $case gives $error") {
-                route(mapOf("/api/shelves/5" to response))
-
-                repository.getShelfRules(5) shouldBe ShelfRulesResult.Failure(error)
+                sut(server.url("/")).getShelfRules(shelf) shouldBe ShelfRulesResult.Success(
+                    ShelfRules(
+                        matchMode = ShelfMatchMode.Any,
+                        rules = listOf(
+                            ShelfRule(ShelfRuleField.Year, ShelfRuleOp.Gte, "1901"),
+                            ShelfRule(null, ShelfRuleOp.Is, "x"),
+                            ShelfRule(ShelfRuleField.Tag, null, "y"),
+                        ),
+                    ),
+                )
+                server.takeRequest().url.encodedPath shouldBe "/api/shelves/$shelf"
             }
         }
-    }
 
-    describe("addBook") {
+        it("#116 TC-23: reads the match mode, defaulting to none") {
+            withServer { server ->
+                checkAll(
+                    Exhaustive.of(
+                        """{"match_mode":"all"}""" to ShelfMatchMode.All,
+                        """{"match_mode":"any"}""" to ShelfMatchMode.Any,
+                        "{}" to null,
+                    ),
+                ) { (body, mode) ->
+                    server.enqueue(reply(200, body))
 
-        it("#116 TC-24: posts book_uuids and accepts 204") {
-            respond = { MockResponse.Builder().code(204).build() }
-
-            repository.addBook(2, BOOK) shouldBe ShelfWriteResult.Success
-
-            val request = requests.single()
-            request.method shouldBe "POST"
-            request.url.encodedPath shouldBe "/api/shelves/2/books"
-            request.body?.utf8() shouldBe """{"book_uuids":["a1b2c3"]}"""
-            request.headers["Content-Type"] shouldBe "application/json; charset=utf-8"
-        }
-
-        it("#116 TC-24: a 200 reply is a success too") {
-            respond = { json(200, "") }
-
-            repository.addBook(2, BOOK) shouldBe ShelfWriteResult.Success
-        }
-    }
-
-    describe("removeBook") {
-
-        it("#116 TC-25: deletes the book path and accepts 204") {
-            respond = { MockResponse.Builder().code(204).build() }
-
-            repository.removeBook(2, BOOK) shouldBe ShelfWriteResult.Success
-
-            val request = requests.single()
-            request.method shouldBe "DELETE"
-            request.url.encodedPath shouldBe "/api/shelves/2/books/a1b2c3"
-            (request.body?.utf8() ?: "") shouldBe ""
-        }
-    }
-
-    describe("writes") {
-
-        val writeFailures: List<Triple<String, () -> MockResponse, ShelvesError>> = listOf(
-            Triple("HTTP 401", { json(401, "") }, ShelvesError.SessionExpired),
-            Triple("HTTP 403", { json(403, "") }, ShelvesError.Forbidden),
-            Triple("HTTP 404", { json(404, "") }, ShelvesError.NotFound),
-            Triple("HTTP 422 with a message", { json(422, """{"error":"bad shelf"}""") }, ShelvesError.Http(422, "bad shelf")),
-            Triple("HTTP 500 without a message", { json(500, "") }, ShelvesError.Http(500, null)),
-        )
-
-        for (call in listOf("add", "remove")) {
-            suspend fun write(): ShelfWriteResult =
-                if (call == "add") repository.addBook(2, BOOK) else repository.removeBook(2, BOOK)
-
-            writeFailures.forEach { (case, response, error) ->
-                it("#116 TC-26: $call with $case gives $error") {
-                    respond = { response() }
-
-                    write() shouldBe ShelfWriteResult.Failure(error)
+                    sut(server.url("/")).getShelfRules(randomLong()) shouldBe
+                        ShelfRulesResult.Success(ShelfRules(mode, emptyList()))
                 }
             }
+        }
 
-            it("#116 TC-26: $call with no saved server gives NoServer") {
-                baseUrlProvider.baseUrl = null
+        it("#116 TC-23: reports each failure as its own error") {
+            withServer { server ->
+                checkAll(
+                    Exhaustive.of(
+                        reply(404) to ShelvesError.NotFound,
+                        reply(401) to ShelvesError.SessionExpired,
+                        reply(200, "not json") to ShelvesError.UnexpectedResponse,
+                    ),
+                ) { (response, error) ->
+                    server.enqueue(response)
 
-                write() shouldBe ShelfWriteResult.NoServer
-            }
-
-            it("#116 TC-26: $call with a dropped connection gives Unreachable") {
-                server.close()
-
-                write() shouldBe ShelfWriteResult.Failure(ShelvesError.Unreachable)
-            }
-
-            it("#116 TC-26: $call with a blank uuid gives NotFound and sends nothing") {
-                val result = if (call == "add") repository.addBook(2, " ") else repository.removeBook(2, " ")
-
-                result shouldBe ShelfWriteResult.Failure(ShelvesError.NotFound)
-                server.requestCount shouldBe 0
+                    sut(server.url("/")).getShelfRules(randomLong()) shouldBe ShelfRulesResult.Failure(error)
+                }
             }
         }
 
-        it("#116 TC-26: cancelling an in-flight write throws CancellationException instead of a result") {
-            respond = { MockResponse.Builder().code(204).headersDelay(500, TimeUnit.MILLISECONDS).build() }
-            val dispatched = newRepository(Dispatchers.IO)
+        context("when no server is saved") {
 
-            coroutineScope {
-                val pending = async(Dispatchers.IO) { dispatched.addBook(2, BOOK) }
-                delay(100)
-                pending.cancel()
-                shouldThrow<CancellationException> { pending.await() }
+            it("#116 TC-22: reports NoServer") {
+                sut().getShelfRules(randomLong()) shouldBe ShelfRulesResult.NoServer
             }
         }
     }
-}) {
-    private companion object {
-        const val BOOK = "a1b2c3"
-        const val PATH_UNSAFE_UUID = "a/../b c"
-        const val SHELVES = "/api/shelves"
-        const val MEMBER = "/api/shelves/containing/a1b2c3"
-        const val SMART = "/api/shelves/containing/a1b2c3/smart"
 
-        const val SHELVES_JSON = """
-            [
-                {"id":1,"owner_user_id":7,"owner_username":"hunter","kind":"smart","name":"Old books","visibility":"private","accent":null,"book_count":14,"cover_uuids":["c1","c2"]},
-                {"id":2,"owner_user_id":7,"owner_username":"hunter","kind":"manual","name":"Favourites","visibility":"public","accent":"#c8a04a","book_count":9,"cover_uuids":["a1","b2","c3","d4"]},
-                {"id":3,"owner_user_id":8,"owner_username":"ann","kind":"manual","name":"Ann's","visibility":"private","book_count":2,"cover_uuids":[]},
-                {"id":4,"owner_user_id":7,"owner_username":"hunter","kind":"wishlist","name":"Wish","visibility":"private","book_count":3},
-                {"id":5,"owner_user_id":7,"owner_username":"hunter","kind":"smart","name":"Recent","visibility":"private","book_count":6,"cover_uuids":["e5"]}
-            ]
-        """
+    describe("adding a book to a shelf") {
+
+        it("#116 TC-24: posts the book's uuid to the shelf") {
+            withServer { server ->
+                val shelf = randomLong()
+                val uuid = randomString()
+                server.enqueue(reply(204))
+
+                sut(server.url("/")).addBook(shelf, uuid)
+
+                val request = server.takeRequest()
+                request.method shouldBe "POST"
+                request.url.encodedPath shouldBe "/api/shelves/$shelf/books"
+                request.headers["Content-Type"] shouldBe "application/json; charset=utf-8"
+                request.body?.utf8() shouldBe """{"book_uuids":["$uuid"]}"""
+            }
+        }
+
+        it("#116 TC-24: succeeds regardless of which 2xx the server answers") {
+            withServer { server ->
+                checkAll(Exhaustive.of(200, 204)) { code ->
+                    server.enqueue(reply(code))
+
+                    sut(server.url("/")).addBook(randomLong(), randomString()) shouldBe ShelfWriteResult.Success
+                }
+            }
+        }
     }
-}
+
+    describe("removing a book from a shelf") {
+
+        it("#116 TC-25: deletes the book from the shelf") {
+            withServer { server ->
+                val shelf = randomLong()
+                val uuid = randomString()
+                server.enqueue(reply(204))
+
+                sut(server.url("/")).removeBook(shelf, uuid) shouldBe ShelfWriteResult.Success
+
+                val request = server.takeRequest()
+                request.method shouldBe "DELETE"
+                request.url.encodedPath shouldBe "/api/shelves/$shelf/books/$uuid"
+            }
+        }
+    }
+
+    describe("writing to a shelf") {
+
+        it("#116 TC-26: reports each failure status as its own error, regardless of the write") {
+            withServer { server ->
+                checkAll(
+                    Exhaustive.of(add, remove),
+                    Exhaustive.of(
+                        reply(401) to ShelvesError.SessionExpired,
+                        reply(403) to ShelvesError.Forbidden,
+                        reply(404) to ShelvesError.NotFound,
+                        reply(422, """{"error":"bad shelf"}""") to ShelvesError.Http(422, "bad shelf"),
+                        reply(500) to ShelvesError.Http(500, null),
+                    ),
+                ) { write, (response, error) ->
+                    server.enqueue(response)
+
+                    sut(server.url("/")).write(randomString()) shouldBe ShelfWriteResult.Failure(error)
+                }
+            }
+        }
+
+        it("#116 TC-26: reads the server's message from whichever key or plain text it used") {
+            withServer { server ->
+                val message = randomString()
+
+                checkAll(
+                    Exhaustive.of(
+                        """{"message":"$message"}""",
+                        """{"detail":"$message"}""",
+                        "  $message  ",
+                    ),
+                ) { body ->
+                    server.enqueue(reply(500, body))
+
+                    sut(server.url("/")).addBook(randomLong(), randomString()) shouldBe
+                        ShelfWriteResult.Failure(ShelvesError.Http(500, message))
+                }
+            }
+        }
+
+        it("#116 TC-26: caps a long plain-text message") {
+            withServer { server ->
+                server.enqueue(reply(500, "x".repeat(1_000)))
+
+                val result = sut(server.url("/")).addBook(randomLong(), randomString())
+                    .shouldBeTypeOf<ShelfWriteResult.Failure>()
+
+                result.error.shouldBeTypeOf<ShelvesError.Http>().serverMessage!! shouldHaveLength 300
+            }
+        }
+
+        context("when no server is saved") {
+
+            it("#116 TC-22, TC-26: reports NoServer regardless of the write") {
+                checkAll(Exhaustive.of(add, remove)) { write ->
+                    sut().write(randomString()) shouldBe ShelfWriteResult.NoServer
+                }
+            }
+        }
+
+        context("when the server cannot be reached") {
+
+            it("#116 TC-26: reports Unreachable regardless of the write") {
+                val closed = closedServerUrl()
+
+                checkAll(Exhaustive.of(add, remove)) { write ->
+                    sut(closed).write(randomString()) shouldBe ShelfWriteResult.Failure(ShelvesError.Unreachable)
+                }
+            }
+        }
+
+        context("when the uuid is blank") {
+
+            it("#116 TC-26: reports NotFound without asking the server, regardless of the write") {
+                withServer { server ->
+                    checkAll(Exhaustive.of(add, remove)) { write ->
+                        sut(server.url("/")).write(" ") shouldBe ShelfWriteResult.Failure(ShelvesError.NotFound)
+
+                        server.requestCount shouldBe 0
+                    }
+                }
+            }
+        }
+    }
+})

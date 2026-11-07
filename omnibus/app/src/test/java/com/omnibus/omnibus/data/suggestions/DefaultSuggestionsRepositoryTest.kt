@@ -2,347 +2,300 @@ package com.omnibus.omnibus.data.suggestions
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
-import kotlin.coroutines.cancellation.CancellationException
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
+import okhttp3.HttpUrl
 import okio.Buffer
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
+
+private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
+
+/** A 200 cover response carrying [bytes]. */
+private fun coverReply(bytes: ByteArray): MockResponse.Builder =
+    MockResponse.Builder().code(200).body(Buffer().write(bytes))
+
+/** This suggestion as the server writes it, with an extra key the app does not read. */
+private fun BookSuggestion.toJson(): String =
+    """{"hardcover_id":$hardcoverId,"hardcover_url":"$hardcoverUrl","title":"$title","author":"$author",""" +
+        """"cover_url":${coverPath?.let { "\"$it\"" } ?: "null"},"list_count":4}"""
+
+/** A path the app accepts as a suggestion cover. */
+private fun randomCoverPath(): String = "/api/suggestions/${randomString()}/${randomInt()}/cover"
+
+/** A base URL with nothing listening on it. */
+private fun closedServerUrl(): HttpUrl = MockWebServer().use { server ->
+    server.start()
+    server.url("/")
+}
+
+/** A running server, closed afterwards. */
+private suspend fun withServer(test: suspend (MockWebServer) -> Unit) {
+    MockWebServer().use { server ->
+        server.start()
+        test(server)
+    }
+}
 
 class DefaultSuggestionsRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var repository: DefaultSuggestionsRepository
-    val requests = ConcurrentLinkedQueue<RecordedRequest>()
-    var respond: () -> MockResponse = { MockResponse.Builder().code(404).build() }
-
-    fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
+    fun sut(baseUrl: HttpUrl? = null): DefaultSuggestionsRepository = DefaultSuggestionsRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+    )
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { MockResponse.Builder().code(404).build() }
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                requests.add(request)
-                return respond()
+    describe("reading a book's suggestions") {
+
+        context("when the server is ready") {
+
+            it("#106 TC-1: gives the items in the server's order") {
+                withServer { server ->
+                    val items = listOf(randomBookSuggestion(), randomBookSuggestion())
+                    val body = items.joinToString(",", """{"status":"ready","items":[""", "]}") { it.toJson() }
+                    server.enqueue(reply(200, body))
+
+                    sut(server.url("/")).getSuggestions(randomString()) shouldBe
+                        SuggestionsResult.Success(SuggestionsAnswer.Ready(items))
+                }
+            }
+
+            it("#106 TC-2: fills in the fields an item leaves out") {
+                withServer { server ->
+                    val url = randomString()
+                    server.enqueue(reply(200, """{"status":"ready","items":[{"hardcover_url":"$url"}]}"""))
+
+                    sut(server.url("/")).getSuggestions(randomString()) shouldBe SuggestionsResult.Success(
+                        SuggestionsAnswer.Ready(listOf(BookSuggestion(0, url, "", "", null))),
+                    )
+                }
+            }
+
+            it("#106 TC-4: is an empty answer regardless of how the items are absent") {
+                withServer { server ->
+                    checkAll(Exhaustive.of("""{"status":"ready","items":[]}""", """{"status":"ready"}""")) { body ->
+                        server.enqueue(reply(200, body))
+
+                        sut(server.url("/")).getSuggestions(randomString()) shouldBe
+                            SuggestionsResult.Success(SuggestionsAnswer.Ready(emptyList()))
+                    }
+                }
             }
         }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-        repository = DefaultSuggestionsRepository(ioDispatcher = Dispatchers.Unconfined, omnibusHttpClient = client)
-    }
 
-    afterEach { server.close() }
-
-    describe("getSuggestions") {
-
-        it("#106 TC-1: a ready body decodes its items in order, mapping cover_url to coverPath") {
-            respond = { json(200, READY_JSON) }
-
-            val answer = repository.getSuggestions("uuid-1").shouldBeTypeOf<SuggestionsResult.Success>().answer
-
-            answer shouldBe SuggestionsAnswer.Ready(
-                listOf(
-                    BookSuggestion(
-                        hardcoverId = 11,
-                        hardcoverUrl = "https://hardcover.app/books/first",
-                        title = "The Dispossessed",
-                        author = "Ursula K. Le Guin",
-                        coverPath = "/api/suggestions/uuid-1/1/cover",
+        it("#106 TC-3: reads each status the server can still answer with") {
+            withServer { server ->
+                checkAll(
+                    Exhaustive.of(
+                        "pending" to SuggestionsAnswer.Pending,
+                        "unavailable" to SuggestionsAnswer.Unavailable,
+                        "not_configured" to SuggestionsAnswer.NotConfigured,
                     ),
-                    BookSuggestion(
-                        hardcoverId = 12,
-                        hardcoverUrl = "https://hardcover.app/books/second",
-                        title = "Piranesi",
-                        author = "Susanna Clarke",
-                        coverPath = null,
+                ) { (status, answer) ->
+                    server.enqueue(reply(200, """{"status":"$status"}"""))
+
+                    sut(server.url("/")).getSuggestions(randomString()) shouldBe SuggestionsResult.Success(answer)
+                }
+            }
+        }
+
+        it("#106 TC-5, TC-6: asks for the book with its uuid as one encoded path segment") {
+            withServer { server ->
+                server.enqueue(reply(200, """{"status":"pending"}"""))
+
+                sut(server.url("/")).getSuggestions("a/b c")
+
+                val request = server.takeRequest()
+                request.method shouldBe "GET"
+                request.url.encodedPath shouldBe "/api/ebooks/a%2Fb%20c/suggestions"
+            }
+        }
+
+        it("#106 TC-7, TC-8: reports UnexpectedResponse regardless of how the body is unreadable") {
+            withServer { server ->
+                checkAll(Exhaustive.of("""{"status":"archived"}""", """{"items":[]}""", "<html>", "[]")) { body ->
+                    server.enqueue(reply(200, body))
+
+                    sut(server.url("/")).getSuggestions(randomString()) shouldBe
+                        SuggestionsResult.Failure(SuggestionsError.UnexpectedResponse)
+                }
+            }
+        }
+
+        it("#106 TC-9: reports each failure status as its own error") {
+            withServer { server ->
+                checkAll(
+                    Exhaustive.of(
+                        401 to SuggestionsError.SessionExpired,
+                        404 to SuggestionsError.Http(404),
+                        500 to SuggestionsError.Http(500),
                     ),
-                ),
-            )
-        }
+                ) { (code, error) ->
+                    server.enqueue(reply(code))
 
-        it("#106 TC-2: a null or missing cover_url and missing fields decode to defaults") {
-            respond = {
-                json(
-                    200,
-                    """
-                    {"status": "ready", "items": [
-                      {"hardcover_id": 5, "hardcover_url": "https://hardcover.app/books/a", "title": "A", "author": "B", "cover_url": null},
-                      {"hardcover_url": "https://hardcover.app/books/c"}
-                    ]}
-                    """,
-                )
-            }
-
-            val answer = repository.getSuggestions("uuid-1").shouldBeTypeOf<SuggestionsResult.Success>().answer
-
-            val items = answer.shouldBeTypeOf<SuggestionsAnswer.Ready>().items
-            items[0].coverPath shouldBe null
-            items[1] shouldBe BookSuggestion(
-                hardcoverId = 0,
-                hardcoverUrl = "https://hardcover.app/books/c",
-                title = "",
-                author = "",
-                coverPath = null,
-            )
-        }
-
-        listOf(
-            "pending" to SuggestionsAnswer.Pending,
-            "unavailable" to SuggestionsAnswer.Unavailable,
-            "not_configured" to SuggestionsAnswer.NotConfigured,
-        ).forEach { (status, answer) ->
-            it("#106 TC-3: status $status decodes to $answer") {
-                respond = { json(200, """{"status": "$status"}""") }
-
-                repository.getSuggestions("uuid-1") shouldBe SuggestionsResult.Success(answer)
+                    sut(server.url("/")).getSuggestions(randomString()) shouldBe SuggestionsResult.Failure(error)
+                }
             }
         }
 
-        listOf(
-            "an empty items array" to """{"status": "ready", "items": []}""",
-            "no items key" to """{"status": "ready"}""",
-        ).forEach { (name, body) ->
-            it("#106 TC-4: a ready body with $name gives an empty Ready") {
-                respond = { json(200, body) }
+        context("when the server cannot be reached") {
 
-                repository.getSuggestions("uuid-1") shouldBe
-                    SuggestionsResult.Success(SuggestionsAnswer.Ready(emptyList()))
+            it("#106 TC-10: reports Unreachable") {
+                sut(closedServerUrl()).getSuggestions(randomString()) shouldBe
+                    SuggestionsResult.Failure(SuggestionsError.Unreachable)
             }
         }
 
-        it("#106 TC-5: reads api/ebooks/{uuid}/suggestions with a GET and the bearer token") {
-            respond = { json(200, """{"status": "pending"}""") }
+        context("when no server is saved") {
 
-            repository.getSuggestions("uuid-1")
-
-            val request = requests.single()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/ebooks/uuid-1/suggestions"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-        }
-
-        it("#106 TC-6: the book uuid is encoded as a single path segment") {
-            respond = { json(200, """{"status": "pending"}""") }
-
-            repository.getSuggestions("a/b c")
-
-            requests.single().url.encodedPath shouldBe "/api/ebooks/a%2Fb%20c/suggestions"
-        }
-
-        it("#106 TC-7: an unknown or missing status gives UnexpectedResponse") {
-            respond = { json(200, """{"status": "archived"}""") }
-            repository.getSuggestions("uuid-1") shouldBe
-                SuggestionsResult.Failure(SuggestionsError.UnexpectedResponse)
-
-            respond = { json(200, """{"items": []}""") }
-            repository.getSuggestions("uuid-1") shouldBe
-                SuggestionsResult.Failure(SuggestionsError.UnexpectedResponse)
-        }
-
-        listOf(
-            "malformed JSON" to "<html>",
-            "a non-object body" to "[]",
-        ).forEach { (name, body) ->
-            it("#106 TC-8: a body that does not decode gives UnexpectedResponse, for $name") {
-                respond = { json(200, body) }
-
-                repository.getSuggestions("uuid-1") shouldBe
-                    SuggestionsResult.Failure(SuggestionsError.UnexpectedResponse)
-            }
-        }
-
-        listOf(
-            401 to SuggestionsError.SessionExpired,
-            500 to SuggestionsError.Http(500),
-            404 to SuggestionsError.Http(404),
-        ).forEach { (code, error) ->
-            it("#106 TC-9: HTTP $code gives $error") {
-                respond = { json(code, "") }
-
-                repository.getSuggestions("uuid-1") shouldBe SuggestionsResult.Failure(error)
-            }
-        }
-
-        it("#106 TC-10: an unreachable server gives Unreachable") {
-            // A socket dropped by a dispatched response is not reliable, so the server is closed instead.
-            server.close()
-
-            repository.getSuggestions("uuid-1") shouldBe SuggestionsResult.Failure(SuggestionsError.Unreachable)
-        }
-
-        it("#106 TC-11: with no saved server getSuggestions gives NoServer and sends nothing") {
-            baseUrlProvider.baseUrl = null
-
-            repository.getSuggestions("uuid-1") shouldBe SuggestionsResult.NoServer
-            requests.size shouldBe 0
-        }
-
-        it("#106 TC-12: cancelling an in-flight read throws CancellationException") {
-            respond = { json(200, """{"status": "pending"}""").newBuilder().headersDelay(500, TimeUnit.MILLISECONDS).build() }
-            val dispatched = DefaultSuggestionsRepository(ioDispatcher = Dispatchers.IO, omnibusHttpClient = client)
-
-            coroutineScope {
-                val inFlight = async(Dispatchers.IO) { dispatched.getSuggestions("uuid-1") }
-                delay(100)
-                inFlight.cancel()
-                shouldThrow<CancellationException> { inFlight.await() }
+            it("#106 TC-11: reports NoServer") {
+                sut().getSuggestions(randomString()) shouldBe SuggestionsResult.NoServer
             }
         }
     }
 
-    describe("getCover") {
+    describe("reading a suggestion's cover") {
 
-        it("#106 TC-13: getCover strips the leading slash and sends the bearer token") {
-            respond = { MockResponse.Builder().code(200).body(Buffer().write(byteArrayOf(1, 2, 3))).build() }
+        it("#106 TC-13: asks for the same path regardless of a leading slash") {
+            withServer { server ->
+                val path = randomCoverPath()
 
-            repository.getCover("/api/suggestions/u1/3/cover")
+                checkAll(Exhaustive.of(path, path.removePrefix("/"))) { asked ->
+                    server.enqueue(coverReply(ByteArray(1)).build())
 
-            val request = requests.single()
-            request.url.encodedPath shouldBe "/api/suggestions/u1/3/cover"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-            repository.getCover("api/suggestions/u1/3/cover")
-            requests.last().url.encodedPath shouldBe "/api/suggestions/u1/3/cover"
-            requests.none { it.url.encodedPath.contains("//") } shouldBe true
-        }
+                    sut(server.url("/")).getCover(asked)
 
-        it("#106 TC-14: getCover keeps the base-URL prefix of a proxied server") {
-            baseUrlProvider.baseUrl = server.url("/omnibus/")
-            respond = { MockResponse.Builder().code(200).body(Buffer().write(byteArrayOf(1))).build() }
-
-            repository.getCover("/api/suggestions/u/1/cover")
-
-            requests.single().url.encodedPath shouldBe "/omnibus/api/suggestions/u/1/cover"
-        }
-
-        it("#106 TC-15: a 200 cover gives the bytes and the mime type") {
-            respond = {
-                MockResponse.Builder()
-                    .code(200)
-                    .body(Buffer().write(byteArrayOf(1, 2, 3)))
-                    .addHeader("Content-Type", "image/jpeg")
-                    .build()
-            }
-
-            val found = repository.getCover("/api/suggestions/u/1/cover")
-                .shouldBeTypeOf<SuggestionCoverResult.Found>()
-
-            found.bytes.toList() shouldBe listOf<Byte>(1, 2, 3)
-            found.mimeType shouldBe "image/jpeg"
-        }
-
-        it("#106 TC-15: a 200 cover with no Content-Type gives a null mime type") {
-            respond = {
-                MockResponse.Builder()
-                    .code(200)
-                    .body(Buffer().write(byteArrayOf(1, 2, 3)))
-                    .removeHeader("Content-Type")
-                    .build()
-            }
-
-            val found = repository.getCover("/api/suggestions/u/1/cover")
-                .shouldBeTypeOf<SuggestionCoverResult.Found>()
-
-            found.mimeType shouldBe null
-        }
-
-        it("#106 TC-16: a 404 cover gives NotFound") {
-            respond = { json(404, "") }
-
-            repository.getCover("/api/suggestions/u/1/cover") shouldBe SuggestionCoverResult.NotFound
-        }
-
-        it("#106 TC-17: a 500, an unreachable server or no saved server gives a cover Failure") {
-            respond = { json(500, "boom") }
-            repository.getCover("/api/suggestions/u/1/cover") shouldBe SuggestionCoverResult.Failure
-
-            server.close()
-            repository.getCover("/api/suggestions/u/1/cover") shouldBe SuggestionCoverResult.Failure
-
-            baseUrlProvider.baseUrl = null
-            requests.clear()
-            repository.getCover("/api/suggestions/u/1/cover") shouldBe SuggestionCoverResult.Failure
-            requests.size shouldBe 0
-        }
-
-        listOf(
-            "https://evil/x",
-            "/api/../x",
-            "/api/suggestions/../1/cover",
-            "/api/suggestions/./1/cover",
-            "/api/other",
-            "/api/suggestions/u/x/cover",
-            "/api/suggestions/u/1/cover?x=1",
-            "/api/suggestions/%2E%2E/1/cover",
-            "/api/suggestions/%2e/1/cover",
-            "/api/suggestions/a\\b/1/cover",
-            "//evil.example/api/suggestions/u/1/cover",
-            "",
-        ).forEach { path ->
-            it("#106 TC-18: the invalid cover path $path gives NotFound without a request") {
-                repository.getCover(path) shouldBe SuggestionCoverResult.NotFound
-
-                requests.size shouldBe 0
+                    server.takeRequest().url.encodedPath shouldBe path
+                }
             }
         }
 
-        it("#106 TC-19: cancelling an in-flight cover read throws CancellationException") {
-            respond = {
-                MockResponse.Builder()
-                    .code(200)
-                    .body(Buffer().write(byteArrayOf(1)))
-                    .headersDelay(500, TimeUnit.MILLISECONDS)
-                    .build()
-            }
-            val dispatched = DefaultSuggestionsRepository(ioDispatcher = Dispatchers.IO, omnibusHttpClient = client)
+        context("when the server sits behind a path prefix") {
 
-            coroutineScope {
-                val inFlight = async(Dispatchers.IO) { dispatched.getCover("/api/suggestions/u/1/cover") }
-                delay(100)
-                inFlight.cancel()
-                shouldThrow<CancellationException> { inFlight.await() }
+            it("#106 TC-14: keeps the prefix") {
+                withServer { server ->
+                    val path = randomCoverPath()
+                    server.enqueue(coverReply(ByteArray(1)).build())
+
+                    sut(server.url("/omnibus/")).getCover(path)
+
+                    server.takeRequest().url.encodedPath shouldBe "/omnibus$path"
+                }
+            }
+        }
+
+        context("when the server has the cover") {
+
+            it("#106 TC-15: gives the cover") {
+                withServer { server ->
+                    val bytes = randomString().encodeToByteArray()
+                    val type = "image/${randomString()}"
+                    server.enqueue(coverReply(bytes).addHeader("Content-Type", type).build())
+
+                    val found = sut(server.url("/")).getCover(randomCoverPath()).shouldBeTypeOf<SuggestionCoverResult.Found>()
+
+                    found.bytes.toList() shouldBe bytes.toList()
+                    found.mimeType shouldBe type
+                }
+            }
+
+            context("when the server names no type") {
+
+                it("#106 TC-15: gives no type") {
+                    withServer { server ->
+                        server.enqueue(coverReply(ByteArray(1)).removeHeader("Content-Type").build())
+
+                        val found = sut(server.url("/")).getCover(randomCoverPath()).shouldBeTypeOf<SuggestionCoverResult.Found>()
+
+                        found.mimeType shouldBe null
+                    }
+                }
+            }
+        }
+
+        context("when the server has no such cover") {
+
+            it("#106 TC-16: reports NotFound") {
+                withServer { server ->
+                    server.enqueue(reply(404))
+
+                    sut(server.url("/")).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.NotFound
+                }
+            }
+        }
+
+        context("when the server fails") {
+
+            it("#106 TC-17: reports Failure") {
+                withServer { server ->
+                    server.enqueue(reply(500))
+
+                    sut(server.url("/")).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
+                }
+            }
+        }
+
+        context("when the server cannot be reached") {
+
+            it("#106 TC-17: reports Failure") {
+                sut(closedServerUrl()).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
+            }
+        }
+
+        context("when no server is saved") {
+
+            it("#106 TC-17: reports Failure") {
+                sut().getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
+            }
+        }
+
+        context("when the path is not a suggestion cover") {
+
+            it("#106 TC-18: reports NotFound without asking the server, regardless of the path") {
+                withServer { server ->
+                    checkAll(
+                        Exhaustive.of(
+                            "https://evil/x",
+                            "/api/../x",
+                            "/api/suggestions/../1/cover",
+                            "/api/suggestions/./1/cover",
+                            "/api/other",
+                            "/api/suggestions/u/x/cover",
+                            "/api/suggestions/u/1/cover?x=1",
+                            "/api/suggestions/%2E%2E/1/cover",
+                            "/api/suggestions/%2e/1/cover",
+                            "/api/suggestions/a\\b/1/cover",
+                            "//evil.example/api/suggestions/u/1/cover",
+                            "",
+                        ),
+                    ) { path ->
+                        sut(server.url("/")).getCover(path) shouldBe SuggestionCoverResult.NotFound
+
+                        server.requestCount shouldBe 0
+                    }
+                }
             }
         }
     }
 })
-
-private const val READY_JSON = """
-{
-  "status": "ready",
-  "items": [
-    {"hardcover_id": 11, "hardcover_url": "https://hardcover.app/books/first", "title": "The Dispossessed",
-     "author": "Ursula K. Le Guin", "cover_url": "/api/suggestions/uuid-1/1/cover", "list_count": 4},
-    {"hardcover_id": 12, "hardcover_url": "https://hardcover.app/books/second", "title": "Piranesi",
-     "author": "Susanna Clarke"}
-  ]
-}
-"""
