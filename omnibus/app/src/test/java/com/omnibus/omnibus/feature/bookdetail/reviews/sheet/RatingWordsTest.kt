@@ -1,14 +1,15 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.sheet
 
-import com.omnibus.omnibus.feature.bookdetail.reviews.halfStarRound
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class RatingWordsTest : DescribeSpec({
 
-    describe("ratingWord") {
-
-        it("TC-21: each of the ten half steps has its word") {
+    describe("the word for a rating") {
+        it("TC-21: is its own for each of the ten half steps") {
             (1..10).map { ratingWord(it / 2f) } shouldBe listOf(
                 RatingWord.NotForMe,
                 RatingWord.DidntWork,
@@ -23,21 +24,20 @@ class RatingWordsTest : DescribeSpec({
             )
         }
 
-        it("TC-22: null, zero and negative ratings have no word") {
-            ratingWord(null) shouldBe null
-            ratingWord(0f) shouldBe null
-            ratingWord(-1f) shouldBe null
-        }
-
-        it("TC-23: off-grid values round to a half star before the word is chosen") {
-            ratingWord(4.3f) shouldBe ratingWord(halfStarRound(4.3f))
-            ratingWord(4.3f) shouldBe RatingWord.LovedIt
-            ratingWord(4.74f) shouldBe ratingWord(halfStarRound(4.74f))
-            ratingWord(4.74f) shouldBe RatingWord.LovedIt
-            ratingWord(0.2f) shouldBe ratingWord(halfStarRound(0.2f))
-            ratingWord(0.2f) shouldBe null
-            ratingWord(5.4f) shouldBe ratingWord(halfStarRound(5.4f))
-            ratingWord(5.4f) shouldBe RatingWord.AFavorite
+        it("TC-22, TC-23: rounds each off-grid value to a half star first, with none below half a star") {
+            checkAll(
+                Exhaustive.of(
+                    4.3f to RatingWord.LovedIt,
+                    4.74f to RatingWord.LovedIt,
+                    5.4f to RatingWord.AFavorite,
+                    0.2f to null,
+                    0f to null,
+                    -1f to null,
+                    null to null,
+                ),
+            ) { (rating, word) ->
+                ratingWord(rating) shouldBe word
+            }
         }
     }
 })

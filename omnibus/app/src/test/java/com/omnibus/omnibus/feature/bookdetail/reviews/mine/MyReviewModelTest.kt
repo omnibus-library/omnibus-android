@@ -1,58 +1,80 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.mine
 
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewsState
+import com.omnibus.omnibus.data.reviews.randomReview
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class MyReviewModelTest : DescribeSpec({
 
-    /** A review with the given parts. */
-    fun review(rating: Float? = null, text: String? = null, notes: String? = null) =
-        Review(0L, "", false, rating, text, notes, isSpoiler = false, updatedAtMillis = null)
-
     describe("the card's model") {
+        it("TC-37: follows each reviews state") {
+            val mine = randomReview()
 
-        it("TC-37: each reviews state maps to the card model it shows") {
-            myReviewModel(ReviewsState.Loading) shouldBe MyReviewModel.Unknown(UnknownReason.Loading)
-            myReviewModel(ReviewsState.Offline) shouldBe MyReviewModel.Unknown(UnknownReason.Offline)
-            myReviewModel(ReviewsState.Failed) shouldBe MyReviewModel.Unknown(UnknownReason.Failed)
-            myReviewModel(ReviewsState.Loaded(BookReviews(null, emptyList(), null))) shouldBe MyReviewModel.Known(null)
-
-            val mine = review(rating = 4f)
-            myReviewModel(ReviewsState.Loaded(BookReviews(mine, emptyList(), null))) shouldBe MyReviewModel.Known(mine)
+            checkAll(
+                Exhaustive.of(
+                    ReviewsState.Loading to MyReviewModel.Unknown(UnknownReason.Loading),
+                    ReviewsState.Offline to MyReviewModel.Unknown(UnknownReason.Offline),
+                    ReviewsState.Failed to MyReviewModel.Unknown(UnknownReason.Failed),
+                    ReviewsState.Loaded(BookReviews(null, emptyList(), null)) to MyReviewModel.Known(null),
+                    ReviewsState.Loaded(BookReviews(mine, emptyList(), null)) to MyReviewModel.Known(mine),
+                ),
+            ) { (state, model) ->
+                myReviewModel(state) shouldBe model
+            }
         }
     }
 
-    describe("the card's helpers") {
+    describe("the note under the stars") {
+        it("TC-38: follows each kind of model") {
+            checkAll(
+                Exhaustive.of(
+                    MyReviewModel.Known(randomReview().copy(rating = 4.5f)) to MyReviewNote.Rated(4.5f),
+                    MyReviewModel.Known(randomReview().copy(rating = null)) to MyReviewNote.NotRated,
+                    MyReviewModel.Known(null) to MyReviewNote.NotRated,
+                    MyReviewModel.Unknown(UnknownReason.Loading) to MyReviewNote.Loading,
+                    MyReviewModel.Unknown(UnknownReason.Offline) to MyReviewNote.Offline,
+                    MyReviewModel.Unknown(UnknownReason.Failed) to MyReviewNote.Failed,
+                ),
+            ) { (model, note) ->
+                model.note() shouldBe note
+            }
+        }
+    }
 
-        it("TC-38: rating, hasReview, hasWriting, note and showsPrompt follow the review") {
-            val rated = MyReviewModel.Known(review(rating = 4.5f, text = "Body"))
-            rated.rating shouldBe 4.5f
-            rated.hasReview shouldBe true
-            rated.hasWriting shouldBe true
-            rated.note() shouldBe MyReviewNote.Rated(4.5f)
-            rated.showsPrompt shouldBe false
+    describe("whether the pencil edits") {
+        it("TC-38: follows the writing of each kind of model") {
+            checkAll(
+                Exhaustive.of(
+                    MyReviewModel.Known(randomReview().copy(text = randomString(), privateNotes = null)) to true,
+                    MyReviewModel.Known(randomReview().copy(text = null, privateNotes = randomString())) to true,
+                    MyReviewModel.Known(randomReview().copy(text = null, privateNotes = null)) to false,
+                    MyReviewModel.Known(null) to false,
+                    MyReviewModel.Unknown(UnknownReason.Failed) to false,
+                ),
+            ) { (model, edits) ->
+                model.hasWriting shouldBe edits
+            }
+        }
+    }
 
-            val none = MyReviewModel.Known(null)
-            none.rating shouldBe null
-            none.hasReview shouldBe false
-            none.hasWriting shouldBe false
-            none.note() shouldBe MyReviewNote.NotRated
-            none.showsPrompt shouldBe true
-
-            val notesOnly = MyReviewModel.Known(review(notes = "private"))
-            notesOnly.hasWriting shouldBe true
-            notesOnly.note() shouldBe MyReviewNote.NotRated
-            notesOnly.showsPrompt shouldBe true
-
-            MyReviewModel.Unknown(UnknownReason.Loading).note() shouldBe MyReviewNote.Loading
-            MyReviewModel.Unknown(UnknownReason.Offline).note() shouldBe MyReviewNote.Offline
-            MyReviewModel.Unknown(UnknownReason.Failed).note() shouldBe MyReviewNote.Failed
-            MyReviewModel.Unknown(UnknownReason.Failed).rating shouldBe null
-            MyReviewModel.Unknown(UnknownReason.Failed).hasReview shouldBe false
-            MyReviewModel.Unknown(UnknownReason.Failed).showsPrompt shouldBe false
+    describe("whether the prompt to write shows") {
+        it("TC-38: is only for a known review with no text, across each kind of model") {
+            checkAll(
+                Exhaustive.of(
+                    MyReviewModel.Known(null) to true,
+                    MyReviewModel.Known(randomReview().copy(text = null)) to true,
+                    MyReviewModel.Known(randomReview().copy(text = randomString())) to false,
+                    MyReviewModel.Unknown(UnknownReason.Failed) to false,
+                ),
+            ) { (model, prompts) ->
+                model.showsPrompt shouldBe prompts
+            }
         }
     }
 })

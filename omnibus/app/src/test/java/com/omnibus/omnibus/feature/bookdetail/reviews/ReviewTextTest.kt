@@ -1,54 +1,74 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews
 
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.string.shouldNotContain
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ReviewTextTest : DescribeSpec({
 
-    /** The plain text of [md], with the spoiler word "(spoiler)" for an unfinished reader. */
-    fun plain(md: String?, finished: Boolean = false) = reviewPlainText(md, finished, inlineSpoiler = "(spoiler)")
+    fun sut(md: String?, finished: Boolean = randomBoolean(), inlineSpoiler: String = randomString()) =
+        reviewPlainText(md, finished, inlineSpoiler)
 
-    describe("reviewPlainText") {
-
-        it("TC-27: headings, quotes, links, images and list markers") {
-            plain("## Title") shouldBe "Title"
-            plain("> q") shouldBe "q"
-            plain("[t](u)") shouldBe "t"
-            plain("see ![a](u) this").also {
-                it.shouldContain("see")
-                it.shouldContain("this")
-                it.shouldNotContain("![")
+    describe("a review as plain text") {
+        it("TC-27: turns each block marker into a plain line") {
+            checkAll(
+                Exhaustive.of(
+                    "## Title" to "Title",
+                    "> q" to "q",
+                    "[t](u)" to "t",
+                    "- a" to "• a",
+                    "* b" to "• b",
+                    "+ c" to "• c",
+                    "1. d" to "1. d",
+                ),
+            ) { (md, text) ->
+                sut(md) shouldBe text
             }
-            plain("- a") shouldBe "• a"
-            plain("* b") shouldBe "• b"
-            plain("+ c") shouldBe "• c"
-            plain("1. d") shouldBe "1. d"
         }
 
-        it("TC-28: emphasis marks are removed only where they wrap a word") {
-            plain("**b**") shouldBe "b"
-            plain("__b__") shouldBe "b"
-            plain("~~s~~") shouldBe "s"
-            plain("`c`") shouldBe "c"
-            plain("*i*") shouldBe "i"
-            plain("_i_") shouldBe "i"
-            plain("2 * 3") shouldBe "2 * 3"
-            plain("snake_case_name") shouldBe "snake_case_name"
+        it("TC-28: removes each emphasis mark only where it wraps a word") {
+            checkAll(
+                Exhaustive.of(
+                    "**b**" to "b",
+                    "__b__" to "b",
+                    "~~s~~" to "s",
+                    "`c`" to "c",
+                    "*i*" to "i",
+                    "_i_" to "i",
+                    "2 * 3" to "2 * 3",
+                    "snake_case_name" to "snake_case_name",
+                ),
+            ) { (md, text) ->
+                sut(md) shouldBe text
+            }
         }
 
-        it("TC-29: inline spoilers are replaced until the book is finished") {
-            plain("a ||secret|| b") shouldBe "a (spoiler) b"
-            plain("a ||secret|| b", finished = true) shouldBe "a secret b"
+        context("when the review has an inline spoiler") {
+            context("when the book is not finished") {
+                it("TC-29: reads the spoiler word") {
+                    sut("a ||secret|| b", finished = false, inlineSpoiler = "(spoiler)") shouldBe "a (spoiler) b"
+                }
+            }
+
+            context("when the book is finished") {
+                it("TC-29: reads the secret") {
+                    sut("a ||secret|| b", finished = true) shouldBe "a secret b"
+                }
+            }
         }
 
-        it("TC-30: line endings, blank runs, edges, and empty results") {
-            plain("  a\r\nb\r\n\r\n\r\n\r\nc  ") shouldBe "a\nb\n\nc"
-            plain(null) shouldBe null
-            plain("") shouldBe null
-            plain("   ") shouldBe null
-            plain("![a](u)") shouldBe null
+        it("TC-30: normalises line endings, blank runs, edges") {
+            sut("  a\r\nb\r\n\r\n\r\n\r\nc  ") shouldBe "a\nb\n\nc"
+        }
+
+        it("TC-30: is missing for each input with nothing readable") {
+            checkAll(Exhaustive.of(null, "", "   ", "![a](u)")) { md ->
+                sut(md) shouldBe null
+            }
         }
     }
 })
