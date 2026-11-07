@@ -22,7 +22,6 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
 import io.kotest.property.arbitrary.boolean
-import io.kotest.property.arbitrary.float
 import io.kotest.property.arbitrary.int
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
@@ -229,7 +228,8 @@ class BookDetailLayoutTest : DescribeSpec({
 
         context("for any pane height and either underBar value") {
             it("#211 TC-19: stays within 0.5 to 1 and never shrinks as the pane grows") {
-                checkAll(Arb.float(0f, 2000f), Arb.float(0f, 2000f), Arb.boolean()) { a, b, underBar ->
+                // Whole dp, since Arb.float also emits NaN, which is no pane height.
+                checkAll(Arb.int(0..2000), Arb.int(0..2000), Arb.boolean()) { a, b, underBar ->
                     val low = stageCoverScale(min(a, b).dp, underBar)
                     val high = stageCoverScale(max(a, b).dp, underBar)
 
