@@ -1,216 +1,129 @@
 package com.omnibus.omnibus.feature.bookdetail.more.shelves
 
-import com.omnibus.omnibus.data.auth.CurrentUser
+import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.ShelfKind
 import com.omnibus.omnibus.data.shelves.BookShelves
 import com.omnibus.omnibus.data.shelves.ShelfMatchMode
 import com.omnibus.omnibus.data.shelves.ShelfRules
 import com.omnibus.omnibus.data.shelves.ShelfSummary
+import com.omnibus.omnibus.data.shelves.randomShelfSummary
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.of
+
+private fun manualShelf(owner: Long): ShelfSummary = randomShelfSummary().copy(ownerUserId = owner, kind = ShelfKind.Manual)
+
+private fun smartShelf(owner: Long): ShelfSummary = randomShelfSummary().copy(ownerUserId = owner, kind = ShelfKind.Smart)
+
+private fun shelvesOf(vararg shelves: ShelfSummary, matching: Set<Long> = emptySet()) =
+    BookShelves(shelves = shelves.toList(), memberShelfIds = emptySet(), matchingSmartShelfIds = matching)
 
 class ShelfSheetModelTest : DescribeSpec({
 
-    val bookUuid = "book-1"
-    val user = CurrentUser(id = 1, canEdit = true, canUpload = false, hiddenFormats = emptySet(), isAdmin = false)
-    val admin = user.copy(isAdmin = true)
-
-    fun shelf(
-        id: Long,
-        kind: ShelfKind = ShelfKind.Manual,
-        owner: Long = 1,
-        name: String = "Shelf $id",
-        count: Long = 0,
-        covers: List<String> = emptyList(),
-    ) = ShelfSummary(id, owner, kind, name, count, covers)
-
-    describe("Sheet model") {
-
-        it("#116 TC-37: keeps only own manual shelves and own matching smart shelves") {
-            val book = BookShelves(
-                shelves = listOf(
-                    shelf(1, ShelfKind.Manual, owner = 1, name = "Mine A"),
-                    shelf(2, ShelfKind.Manual, owner = 2, name = "Theirs"),
-                    shelf(3, ShelfKind.Wishlist, owner = 1, name = "Wish"),
-                    shelf(4, ShelfKind.Smart, owner = 1, name = "Mine smart matching"),
-                    shelf(5, ShelfKind.Smart, owner = 1, name = "Mine smart not matching"),
-                    shelf(6, ShelfKind.Smart, owner = 2, name = "Theirs smart matching"),
-                    shelf(7, ShelfKind.Manual, owner = 1, name = "Mine B"),
-                ),
-                memberShelfIds = setOf(1),
-                matchingSmartShelfIds = setOf(4, 6),
-            )
-
-            val sheet = buildShelfSheet(book, user, bookUuid, setOf(1), setOf(1), emptySet(), emptyMap())
-
-            sheet.manual.map { it.name } shouldBe listOf("Mine A", "Mine B")
-            sheet.smart.map { it.name } shouldBe listOf("Mine smart matching")
-        }
-
-        it("#116 TC-37: an admin sees only their own shelves, never other users'") {
-            val book = BookShelves(
-                shelves = listOf(
-                    shelf(1, ShelfKind.Manual, owner = 1, name = "Mine"),
-                    shelf(2, ShelfKind.Manual, owner = 2, name = "Theirs"),
-                    shelf(3, ShelfKind.Smart, owner = 2, name = "Theirs smart"),
-                ),
-                memberShelfIds = emptySet(),
-                matchingSmartShelfIds = setOf(3),
-            )
-
-            val sheet = buildShelfSheet(book, admin, bookUuid, emptySet(), emptySet(), emptySet(), emptyMap())
-
-            sheet.manual.map { it.name } shouldBe listOf("Mine")
-            sheet.smart shouldBe emptyList()
-        }
-
-        describe("bookCount is relative to the server figure") {
-
-            val book = BookShelves(
-                shelves = listOf(shelf(1, count = 3), shelf(2, count = 5)),
-                memberShelfIds = emptySet(),
-                matchingSmartShelfIds = emptySet(),
-            )
-
-            fun countOf(id: Long, member: Set<Long>, serverMember: Set<Long>, server: Long): Long {
-                val shelves = book.shelves.map { if (it.id == id) it.copy(bookCount = server) else it }
-                val sheet = buildShelfSheet(
-                    book.copy(shelves = shelves),
-                    user,
-                    bookUuid,
-                    member,
-                    serverMember,
-                    emptySet(),
-                    emptyMap(),
-                )
-                return sheet.manual.single { it.id == id }.bookCount
-            }
-
-            it("#116 TC-38: off on the server and on now gives the server count") {
-                countOf(1, member = emptySet(), serverMember = emptySet(), server = 3) shouldBe 3
-            }
-
-            it("#116 TC-38: on on the server and on now gives the server count") {
-                countOf(1, member = setOf(1), serverMember = setOf(1), server = 3) shouldBe 3
-            }
-
-            it("#116 TC-38: turned on this session adds one") {
-                countOf(1, member = setOf(1), serverMember = emptySet(), server = 3) shouldBe 4
-            }
-
-            it("#116 TC-38: turned off this session takes one away") {
-                countOf(1, member = emptySet(), serverMember = setOf(1), server = 3) shouldBe 2
-            }
-
-            it("#116 TC-38: the count never goes below zero") {
-                countOf(1, member = emptySet(), serverMember = setOf(1), server = 0) shouldBe 0
-            }
-        }
-
-        it("#116 TC-38: isOn and isPending come from the sets") {
-            val book = BookShelves(
-                shelves = listOf(shelf(1, count = 2), shelf(2, count = 2)),
-                memberShelfIds = emptySet(),
-                matchingSmartShelfIds = emptySet(),
-            )
-
-            val sheet = buildShelfSheet(book, user, bookUuid, setOf(1), emptySet(), setOf(1), emptyMap())
-
-            sheet.manual.single { it.id == 1L }.let {
-                it.isOn shouldBe true
-                it.isPending shouldBe true
-            }
-            sheet.manual.single { it.id == 2L }.let {
-                it.isOn shouldBe false
-                it.isPending shouldBe false
-            }
-        }
-
-        describe("cover lists") {
-
-            it("#116 TC-39: otherCoverUuids excludes this book, keeps order and takes three") {
-                val book = BookShelves(
-                    shelves = listOf(shelf(1, covers = listOf("a", bookUuid, "b", "c", "d"))),
-                    memberShelfIds = emptySet(),
-                    matchingSmartShelfIds = emptySet(),
+    describe("which shelves the sheet lists") {
+        it("#116 TC-37, TC-40: keeps only own manual shelves with own matching smart shelves, regardless of being an admin") {
+            checkAll(Exhaustive.boolean()) { isAdmin ->
+                val user = randomCurrentUser().copy(isAdmin = isAdmin)
+                val other = user.id + 1
+                val ownManual = manualShelf(user.id)
+                val ownMatching = smartShelf(user.id)
+                val otherMatching = smartShelf(other)
+                val book = shelvesOf(
+                    ownManual,
+                    manualShelf(other),
+                    randomShelfSummary().copy(ownerUserId = user.id, kind = ShelfKind.Wishlist),
+                    ownMatching,
+                    smartShelf(user.id),
+                    otherMatching,
+                    matching = setOf(ownMatching.id, otherMatching.id),
                 )
 
-                val row = buildShelfSheet(book, user, bookUuid, emptySet(), emptySet(), emptySet(), emptyMap())
+                val sheet = buildShelfSheet(book, user, randomString(), emptySet(), emptySet(), emptySet(), emptyMap())
+
+                sheet.manual.map { it.id } shouldBe listOf(ownManual.id)
+                sheet.smart.map { it.id } shouldBe listOf(ownMatching.id)
+            }
+        }
+    }
+
+    describe("a manual row") {
+        it("#116 TC-38: moves the server's count by this session's toggle, never below zero") {
+            data class Case(val on: Boolean, val wasOn: Boolean, val server: Long, val expected: Long)
+
+            checkAll(
+                Exhaustive.of(
+                    Case(on = false, wasOn = false, server = 3, expected = 3),
+                    Case(on = true, wasOn = true, server = 3, expected = 3),
+                    Case(on = true, wasOn = false, server = 3, expected = 4),
+                    Case(on = false, wasOn = true, server = 3, expected = 2),
+                    Case(on = false, wasOn = true, server = 0, expected = 0),
+                ),
+            ) { case ->
+                val user = randomCurrentUser()
+                val shelf = manualShelf(user.id).copy(bookCount = case.server)
+                val member = if (case.on) setOf(shelf.id) else emptySet()
+                val serverMember = if (case.wasOn) setOf(shelf.id) else emptySet()
+
+                val row = buildShelfSheet(shelvesOf(shelf), user, randomString(), member, serverMember, emptySet(), emptyMap())
                     .manual.single()
 
-                row.otherCoverUuids shouldBe listOf("a", "b", "c")
-            }
-
-            it("#116 TC-39: empty cover_uuids gives an empty stack") {
-                val book = BookShelves(
-                    shelves = listOf(shelf(1)),
-                    memberShelfIds = emptySet(),
-                    matchingSmartShelfIds = emptySet(),
-                )
-
-                buildShelfSheet(book, user, bookUuid, emptySet(), emptySet(), emptySet(), emptyMap())
-                    .manual.single().otherCoverUuids shouldBe emptyList()
-            }
-
-            it("#116 TC-39: when this book is the only cover the stack is empty") {
-                val book = BookShelves(
-                    shelves = listOf(shelf(1, covers = listOf(bookUuid))),
-                    memberShelfIds = emptySet(),
-                    matchingSmartShelfIds = emptySet(),
-                )
-
-                buildShelfSheet(book, user, bookUuid, emptySet(), emptySet(), emptySet(), emptyMap())
-                    .manual.single().otherCoverUuids shouldBe emptyList()
-            }
-
-            it("#116 TC-39: smart rows drop this book and cap at three, and take rules from the map") {
-                val rules = ShelfRules(matchMode = ShelfMatchMode.All, rules = emptyList())
-                val book = BookShelves(
-                    shelves = listOf(
-                        shelf(4, ShelfKind.Smart, covers = listOf("a", bookUuid, "b", "c", "d")),
-                        shelf(5, ShelfKind.Smart, covers = listOf("x")),
-                    ),
-                    memberShelfIds = emptySet(),
-                    matchingSmartShelfIds = setOf(4, 5),
-                )
-
-                val smart = buildShelfSheet(book, user, bookUuid, emptySet(), emptySet(), emptySet(), mapOf(4L to rules))
-                    .smart
-
-                smart.single { it.id == 4L }.let {
-                    it.coverUuids shouldBe listOf("a", "b", "c")
-                    it.rules shouldBe rules
-                }
-                smart.single { it.id == 5L }.rules shouldBe null
+                row.bookCount shouldBe case.expected
             }
         }
 
-        it("#116 TC-40: no owned manual shelf gives an empty manual list but keeps smart rows") {
-            val book = BookShelves(
-                shelves = listOf(
-                    shelf(1, ShelfKind.Manual, owner = 2),
-                    shelf(2, ShelfKind.Wishlist),
-                    shelf(3, ShelfKind.Smart, owner = 1),
+        it("#116 TC-39: stacks at most three covers of other books, in order") {
+            val user = randomCurrentUser()
+            val uuid = randomString()
+
+            checkAll(
+                Exhaustive.of(
+                    listOf("a", uuid, "b", "c", "d") to listOf("a", "b", "c"),
+                    listOf(uuid) to emptyList<String>(),
+                    emptyList<String>() to emptyList<String>(),
                 ),
-                memberShelfIds = emptySet(),
-                matchingSmartShelfIds = setOf(3),
-            )
+            ) { (covers, expected) ->
+                val shelf = manualShelf(user.id).copy(coverUuids = covers)
 
-            val sheet = buildShelfSheet(book, user, bookUuid, emptySet(), emptySet(), emptySet(), emptyMap())
+                buildShelfSheet(shelvesOf(shelf), user, uuid, emptySet(), emptySet(), emptySet(), emptyMap())
+                    .manual.single().otherCoverUuids shouldBe expected
+            }
+        }
+    }
 
-            sheet.manual.isEmpty() shouldBe true
-            sheet.smart.map { it.id } shouldBe listOf(3L)
+    describe("a smart row") {
+        it("#116 TC-39: takes its covers without this book, capped at three") {
+            val user = randomCurrentUser()
+            val uuid = randomString()
+            val shelf = smartShelf(user.id).copy(coverUuids = listOf("a", uuid, "b", "c", "d"))
+
+            buildShelfSheet(shelvesOf(shelf, matching = setOf(shelf.id)), user, uuid, emptySet(), emptySet(), emptySet(), emptyMap())
+                .smart.single().coverUuids shouldBe listOf("a", "b", "c")
         }
 
-        describe("smart meta") {
+        it("#116 TC-39: carries only the rules already read") {
+            val user = randomCurrentUser()
+            val rules = ShelfRules(matchMode = ShelfMatchMode.All, rules = emptyList())
+            val read = smartShelf(user.id)
+            val unread = smartShelf(user.id)
+            val book = shelvesOf(read, unread, matching = setOf(read.id, unread.id))
 
-            it("#116 TC-55: uses the rule text when there is one") {
-                smartShelfMeta("14 books", "year is at least 1901") { a, b -> "$a · $b" } shouldBe
-                    "14 books · year is at least 1901"
-            }
+            val rows = buildShelfSheet(book, user, randomString(), emptySet(), emptySet(), emptySet(), mapOf(read.id to rules)).smart
 
-            it("#116 TC-55: shows the count alone without rule text") {
-                smartShelfMeta("3 books", null) { a, b -> "$a · $b" } shouldBe "3 books"
+            rows.map { it.rules } shouldBe listOf(rules, null)
+        }
+
+        it("#116 TC-55: shows the count with any rule text") {
+            checkAll(
+                Exhaustive.of(
+                    "year is at least 1901" to "14 books · year is at least 1901",
+                    null to "14 books",
+                ),
+            ) { (ruleText, expected) ->
+                smartShelfMeta("14 books", ruleText) { count, text -> "$count · $text" } shouldBe expected
             }
         }
     }

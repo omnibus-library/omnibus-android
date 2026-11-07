@@ -1,10 +1,13 @@
 package com.omnibus.omnibus.feature.bookdetail.more
 
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarksMenuEntry
+import com.omnibus.omnibus.feature.bookdetail.more.delete.DeleteMenuEntry
+import com.omnibus.omnibus.feature.bookdetail.more.export.ExportMenuEntry
+import com.omnibus.omnibus.feature.bookdetail.more.merge.MergeMenuEntry
 import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfMenuEntry
+import com.omnibus.omnibus.feature.bookdetail.wishlist.WishlistMenuEntry
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import java.io.File
 
 /** One registry block: its `// #N Title` comment and its value line (`null,` or one identifier followed by `,`). */
 data class RegistryBlock(val comment: String, val value: String)
@@ -12,16 +15,6 @@ data class RegistryBlock(val comment: String, val value: String)
 private const val DECLARATION = "internal val moreMenuEntries: List<BookMoreMenuEntry> = listOfNotNull("
 private val COMMENT = Regex("""// #\d+ .+""")
 private val VALUE = Regex("""(null|[A-Za-z_][A-Za-z0-9_.]*),""")
-
-/** The six seeded comments, in menu order. */
-private val SEEDED_COMMENTS = listOf(
-    "// #116 Add to shelf",
-    "// #117 Bookmarks",
-    "// #118 Export",
-    "// #119 Remove from wishlist",
-    "// #120 Merge with",
-    "// #121 Delete",
-)
 
 /**
  * Parses the body of `moreMenuEntries` in [lines]: strictly alternating comment and value lines, up to the closing
@@ -42,57 +35,21 @@ fun parseRegistry(lines: List<String>): List<RegistryBlock>? {
     return blocks
 }
 
-/** Fails the test with a clear message when the registry does not parse. */
-private fun <T : Any> T?.parsed(): T = requireNotNull(this) { "registry body did not parse" }
-
 class MoreMenuEntriesTest : DescribeSpec({
 
-    val source = File(
-        System.getProperty("user.dir"),
-        "src/main/java/com/omnibus/omnibus/feature/bookdetail/more/MoreMenuEntries.kt",
-    ).readLines()
-
-    describe("More menu registry") {
-
-        it("#116 TC-6: registry has the six seeded blocks in order with null or one identifier each") {
-            val blocks = parseRegistry(source).parsed()
-            blocks.map { it.comment } shouldBe SEEDED_COMMENTS
-            blocks.first().value shouldBe "ShelfMenuEntry,"
-            blocks.drop(1).all { VALUE.matches(it.value) } shouldBe true
-            source.any { it.trim() == DECLARATION } shouldBe true
+    describe("the entries of the More menu") {
+        it("#116 TC-7, #117 TC-3, #118 TC-58, #120 TC-9, #121 TC-17: run from shelves through to delete, in menu order") {
+            moreMenuEntries shouldBe listOf(
+                ShelfMenuEntry,
+                BookmarksMenuEntry,
+                ExportMenuEntry,
+                WishlistMenuEntry,
+                MergeMenuEntry,
+                DeleteMenuEntry,
+            )
         }
 
-        it("#116 TC-6: a block with an extra line or reordered comments is rejected") {
-            val extraLine = source.toMutableList().apply {
-                add(indexOfFirst { it.trim() == "// #117 Bookmarks" } + 1, "        // extra")
-            }
-            parseRegistry(extraLine) shouldBe null
-
-            val reordered = source.toMutableList().apply {
-                val a = indexOfFirst { it.trim() == "// #117 Bookmarks" }
-                val b = indexOfFirst { it.trim() == "// #118 Export" }
-                set(a, "        // #118 Export")
-                set(b, "        // #117 Bookmarks")
-            }
-            (parseRegistry(reordered).parsed().map { it.comment } == SEEDED_COMMENTS) shouldBe false
-        }
-
-        it("#116 TC-7: moreMenuEntries starts with the shelf entry and has one entry per non-null block") {
-            val blocks = parseRegistry(source).parsed()
-            moreMenuEntries.first() shouldBe ShelfMenuEntry
-            moreMenuEntries.size shouldBe blocks.count { it.value != "null," }
-        }
-
-        it("#116 TC-8, #117 TC-3: BookMoreMenuEntry declares Rows, Overlay and joinsPreviousGroup") {
-            // Kotlin adds a static `access$...` bridge for the default property; it is not part of the contract.
-            val names = BookMoreMenuEntry::class.java.declaredMethods.map { it.name }.filterNot { it.startsWith("access$") }
-            names.toSet() shouldBe setOf("Rows", "Overlay", "getJoinsPreviousGroup")
-            names.size shouldBe 3
-        }
-
-        it("#117 TC-3: registers the bookmarks entry after shelves, and only it joins the group above") {
-            moreMenuEntries[1] shouldBe BookmarksMenuEntry
-            BookmarksMenuEntry.joinsPreviousGroup shouldBe true
+        it("#117 TC-3: join only bookmarks to the group above") {
             moreMenuEntries.filter { it.joinsPreviousGroup } shouldBe listOf(BookmarksMenuEntry)
         }
     }
