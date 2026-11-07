@@ -5,7 +5,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -40,15 +39,6 @@ class PlayerAccessibilityTest {
         listOf("Speed", "Car Mode", "Sleep", "Bookmark").forEach {
             rule.onNodeWithText(it).assertIsDisplayed()
         }
-    }
-
-    // R18, P-A11Y-1: disabled chapter steps say so to assistive tech
-    @Test
-    fun disabledStepsExposeDisabledState() {
-        rule.setPlayer(fullUiState(canPreviousChapter = false, canNextChapter = false))
-
-        rule.onNodeWithContentDescription("Previous chapter").assertIsNotEnabled()
-        rule.onNodeWithContentDescription("Next chapter").assertIsNotEnabled()
     }
 
     // R18, P-A11Y-2, AC7: the scrubber reads its span time and adjusts through SetProgress

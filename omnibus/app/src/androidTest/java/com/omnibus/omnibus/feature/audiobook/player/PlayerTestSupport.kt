@@ -7,12 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.text.TextLayoutResult
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.ui.components.CoverIdentity
@@ -20,18 +18,6 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /** The sleep pill the tests stand in for the real one. */
 internal const val PILL_TAG = "test_sleep_pill"
-
-/** A title long enough to need both lines and still overflow. */
-internal val LONG_TITLE = "The Long Tide and Every Other Tide That Ever Came In Off the Grey Sea " +
-    "Before the Lighthouse Keepers Wrote Down Their Tables of Times and Heights for the Coast"
-
-/** An author line that cannot fit one line at any phone width. */
-internal val LONG_AUTHOR = "Ada Marlowe with Translators, Editors, Illustrators, Narrators and " +
-    "Contributors from Many Editions Across Many Years"
-
-/** A chapter title long enough to overflow one line. */
-internal val LONG_CHAPTER_TITLE = "Chapter Four: The Night the Lamp Went Out and Nobody Could Find the Matches " +
-    "Anywhere in the Whole Lighthouse"
 
 /**
  * A playing, open book with chapters and an ebook, and a running state for each control. Tests override what they
@@ -162,23 +148,9 @@ internal fun ComposeContentTestRule.setPlayer(
 internal fun ComposeContentTestRule.boundsOf(tag: String): Rect =
     onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
 
-/** The node's text layout, for line counts and overflow. */
-internal fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
-    val results = mutableListOf<TextLayoutResult>()
-    fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-    return results.single()
-}
-
 /** The node's text, joined in order. */
 internal fun SemanticsNodeInteraction.textOf(): String =
     fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(separator = "") { it.text }
-
-/** Whether [inner] lies within [outer], allowing one pixel of rounding. */
-internal fun isWithin(inner: Rect, outer: Rect): Boolean =
-    inner.left >= outer.left - 1f &&
-        inner.right <= outer.right + 1f &&
-        inner.top >= outer.top - 1f &&
-        inner.bottom <= outer.bottom + 1f
 
 /** Reads a `m:ss` or `h:mm:ss` label, with an optional " left" suffix, as seconds. */
 internal fun clockSeconds(label: String): Int {

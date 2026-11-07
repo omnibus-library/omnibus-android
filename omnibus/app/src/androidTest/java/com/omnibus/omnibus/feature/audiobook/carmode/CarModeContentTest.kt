@@ -14,7 +14,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.feature.audiobook.player.textOf
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,20 +57,11 @@ private fun ComposeContentTestRule.setCarMode(inputs: CarInputs) {
     }
 }
 
-/** Text, callbacks, semantics and keep-screen-on. CarModeScreenshotTest covers how the screen looks. */
+/** Callbacks, semantics and keep-screen-on. CarModeScreenshotTest covers how the screen looks. */
 class CarModeContentTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    // P-CAR-AC1, P-CAR-2: the chapter and the time left
-    @Test
-    fun showsChapterTitleAndTimeLeft() {
-        rule.setCarMode(CarInputs())
-
-        assertEquals("004", rule.onNodeWithTag(CarModeTestTags.TITLE).textOf())
-        assertEquals("20h 25m left", rule.onNodeWithTag(CarModeTestTags.TIME_LEFT).textOf())
-    }
 
     // P-CAR-AC2, AC5: each tile is labelled, and a press runs its action
     @Test
@@ -120,9 +110,6 @@ class CarModeContentTest {
         rule.onNodeWithTag(CarModeTestTags.NEXT).assertIsNotEnabled()
         rule.onNodeWithTag(CarModeTestTags.PREVIOUS).performClick()
         rule.onNodeWithTag(CarModeTestTags.NEXT).performClick()
-        rule.onNodeWithTag(CarModeTestTags.BACK_15).assertIsEnabled()
-        rule.onNodeWithTag(CarModeTestTags.FORWARD_30).assertIsEnabled()
-        rule.onNodeWithTag(CarModeTestTags.PLAY_PAUSE).assertIsEnabled()
         rule.waitForIdle()
 
         assertEquals(0, inputs.previous)

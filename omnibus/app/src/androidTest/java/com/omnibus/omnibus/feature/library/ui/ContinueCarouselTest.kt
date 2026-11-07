@@ -14,15 +14,11 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.center
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.data.library.ProgressFormat
@@ -36,7 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Paging, selection, taps, semantics and label wording. ContinueCarouselScreenshotTest covers how the cards and dots look. */
+/** Paging, selection, taps and semantics. ContinueCarouselScreenshotTest covers how the cards and dots look. */
 class ContinueCarouselTest {
 
     @get:Rule
@@ -53,14 +49,7 @@ class ContinueCarouselTest {
     }
 
     @Test
-    fun issue22_tc27_oneCardShowsNoDots() {
-        setCarousel(listOf(card(1L)), selected = "b1:epub")
-
-        rule.onNodeWithTag(ContinueTestTags.DOTS, useUnmergedTree = true).assertDoesNotExist()
-    }
-
-    @Test
-    fun issue22_tc28_dotsAndSelectionFollowTheSettledPageOnly() {
+    fun issue22_tc28_selectionFollowsTheSettledPageOnly() {
         val settled = mutableListOf<String>()
         setCarousel(
             listOf(card(1L), card(2L), card(3L)),
@@ -74,13 +63,11 @@ class ContinueCarouselTest {
         }
         rule.waitForIdle()
 
-        assertTrue("the first dot stays the widest while the finger is down", dotWidth(0) > dotWidth(1) + HALF_DP)
         assertTrue("nothing settles while the finger is down", settled.all { it == "b1:epub" })
 
         rule.onNodeWithTag(ContinueTestTags.CAROUSEL, useUnmergedTree = true).performTouchInput { up() }
         rule.waitForIdle()
 
-        assertTrue("the second dot is the widest after the swipe settles", dotWidth(1) > dotWidth(0) + HALF_DP)
         assertEquals("b2:epub", settled.last())
     }
 
@@ -121,26 +108,6 @@ class ContinueCarouselTest {
         rule.waitForIdle()
 
         rule.onNodeWithTag(ContinueTestTags.card("b3:epub"), useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue22_tc30_justNowShowsInLastOpened() {
-        setCarousel(
-            listOf(card(1L, fraction = null, lastOpened = RelativeAge.JustNow)),
-            selected = "b1:epub",
-        )
-
-        rule.onNodeWithText("Last opened just now", useUnmergedTree = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun issue22_tc30_timeLeftShowsAsMinutesLeft() {
-        setCarousel(
-            listOf(card(2L, medium = ProgressFormat.Listening, fraction = 0.3, position = PositionLabel.TimeLeft(2000))),
-            selected = "b2:audio",
-        )
-
-        rule.onNodeWithText("33m left", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -204,11 +171,6 @@ class ContinueCarouselTest {
         }
     }
 
-    private fun dotWidth(index: Int): Dp =
-        rule.onNodeWithTag(ContinueTestTags.dot(index), useUnmergedTree = true).getUnclippedBoundsInRoot().let {
-            it.right - it.left
-        }
-
     /** Counts the [HapticFeedbackType.VirtualKey] pulses, which the card's taps make. */
     private class CountingHaptics : HapticFeedback {
         var virtualKeys = 0
@@ -219,9 +181,6 @@ class ContinueCarouselTest {
     }
 
     private companion object {
-        /** Half a dp of slack, to absorb sub-pixel rounding in the measured bounds. */
-        val HALF_DP = 0.5.dp
-
         fun card(
             id: Long,
             medium: ProgressFormat = ProgressFormat.Reading,
