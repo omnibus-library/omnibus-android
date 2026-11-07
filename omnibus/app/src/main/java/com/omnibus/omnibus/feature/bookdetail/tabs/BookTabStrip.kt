@@ -52,6 +52,8 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * recomposes the strip only when it pins or unpins.
  *
  * @param ribbonColor The fill of the bookmark that hangs from the selected tab.
+ * @param pins False in two-pane mode, where the strip stays fixed at the top of its pane: no pin, no ground, no ribbon
+ * retraction, and a hairline inset by [TabStripInset] instead.
  */
 @Composable
 internal fun BookTabStrip(
@@ -59,6 +61,7 @@ internal fun BookTabStrip(
     scrollState: ScrollState,
     ribbonColor: Color,
     reducedMotion: Boolean,
+    pins: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -66,14 +69,14 @@ internal fun BookTabStrip(
     // Read only inside the layer and draw lambdas, so scrolling never recomposes the strip.
     val pinOffset = {
         val top = state.stripTopPx
-        if (top < 0) 0 else stripPinOffsetPx(scrollState.value, top, state.pinTopPx)
+        if (!pins || top < 0) 0 else stripPinOffsetPx(scrollState.value, top, state.pinTopPx)
     }
 
     // Recomposes only when the boolean flips, not on every scroll pixel.
     val density = LocalDensity.current
-    val pinned by remember(scrollState, state, density) {
+    val pinned by remember(scrollState, state, density, pins) {
         derivedStateOf {
-            tabsPinned(scrollState.value, state.stripTopPx, state.pinTopPx, with(density) { TabPinSlack.roundToPx() })
+            pins && tabsPinned(scrollState.value, state.stripTopPx, state.pinTopPx, with(density) { TabPinSlack.roundToPx() })
         }
     }
     val pinProgress by animateFloatAsState(
@@ -88,9 +91,16 @@ internal fun BookTabStrip(
             .height(TabStripHeight)
             .graphicsLayer { translationY = pinOffset().toFloat() }
             .drawBehind {
-                if (pinOffset() > 0) {
+                val hairline = 0.5.dp.toPx()
+                if (!pins) {
+                    val inset = TabStripInset.toPx()
+                    drawRect(
+                        palette.line,
+                        topLeft = Offset(inset, size.height - hairline),
+                        size = Size(size.width - 2 * inset, hairline),
+                    )
+                } else if (pinOffset() > 0) {
                     drawRect(palette.bg0.copy(alpha = TOP_BAR_FILL_ALPHA))
-                    val hairline = 0.5.dp.toPx()
                     drawRect(palette.line, topLeft = Offset(0f, size.height - hairline), size = Size(size.width, hairline))
                 }
             }
