@@ -2,27 +2,31 @@ package com.omnibus.omnibus.data.export
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
+import com.omnibus.omnibus.data.export.local.ExportFileStore
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
+import com.omnibus.omnibus.testing.TEST_RANDOM
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.cancellation.CancellationException
-import kotlin.random.Random
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -31,6 +35,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -38,17 +43,22 @@ import okio.Buffer
 
 private const val SEND = "/api/kindle/send"
 private const val STATUS = "/api/kindle/send/status"
-private const val KEPUB = "/api/ebooks/uuid-1/kepub"
-private const val EBOOK = "/api/ebooks/uuid-1/download"
-private const val MANIFEST = "/api/audiobooks/uuid-1/manifest"
-private const val AUDIO = "/api/audiobooks/uuid-1/download"
-private const val TASK_7 = """{"task_id":7}"""
+private const val ATTACH_P_M4B = "attachment; filename=\"p.m4b\""
+private const val MANIFEST_3 = """{"mode":"direct","parts":[{"ordinal":1},{"ordinal":2},{"ordinal":3}]}"""
+private const val ONE_MIB = 1024 * 1024
 private const val PENDING = """{"status":"pending"}"""
 private const val SENT = """{"status":"sent"}"""
-private val EPUB_BYTES = "epub-bytes".toByteArray()
-private const val MANIFEST_3 = """{"mode":"direct","parts":[{"ordinal":1},{"ordinal":2},{"ordinal":3}]}"""
-private const val ATTACH_P_M4B = "attachment; filename=\"p.m4b\""
-private const val ONE_MIB = 1024 * 1024
+private const val TASK_7 = """{"task_id":7}"""
+
+private fun kepubPath(uuid: String) = "/api/ebooks/$uuid/kepub"
+
+private fun ebookPath(uuid: String) = "/api/ebooks/$uuid/download"
+
+private fun manifestPath(uuid: String) = "/api/audiobooks/$uuid/manifest"
+
+private fun audioPath(uuid: String) = "/api/audiobooks/$uuid/download"
+
+private fun randomFileBytes(): ByteArray = randomString().toByteArray()
 
 private fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
@@ -79,296 +89,318 @@ private suspend fun waitUntil(condition: () -> Boolean) {
     }
 }
 
-private suspend fun saveVia(kind: String, repository: ExportRepository): ExportSaveResult =
-    if (kind == "kepub") {
-        repository.saveKepub("uuid-1", "Dune")
-    } else {
-        repository.saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0)
-    }
-
-class DefaultExportRepositoryTest : DescribeSpec({
-
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var tempDir: File
-    lateinit var store: TestExportFileStore
-
-    /** Every request the server receives, in arrival order. */
+/** A test server that records every request and answers through [respond], which a test replaces. */
+private class RecordingServer(private val server: MockWebServer) {
     val requests = ConcurrentLinkedQueue<RecordedRequest>()
 
-    /** Answers the next request. Tests replace it. */
+    @Volatile
     var respond: (RecordedRequest) -> MockResponse = { notFound() }
 
-    /** Answers by `METHOD encodedPath`. A request not in [routes] gets a 404. */
-    fun on(vararg routes: Pair<String, () -> MockResponse>) {
-        val table = routes.toMap()
-        respond = { request -> table["${request.method} ${request.url.encodedPath}"]?.invoke() ?: notFound() }
-    }
+    val url: HttpUrl get() = server.url("/")
 
-    fun freshStore(usable: Long = Long.MAX_VALUE): TestExportFileStore {
-        store = TestExportFileStore(File(tempDir, "store-${System.nanoTime()}"), usable)
-        return store
-    }
-
-    fun repo(
-        timings: ExportTimings = ExportTimings(pollIntervalMillis = 1, pollBudgetMillis = 50, kepubAttempts = 2),
-        dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
-        execute: (suspend (Request) -> Response)? = null,
-    ): DefaultExportRepository = DefaultExportRepository(
-        ioDispatcher = dispatcher,
-        omnibusHttpClient = client,
-        fileStore = store,
-        timings = timings,
-        execute = execute ?: { client.execute(it) },
-    )
-
-    beforeSpec { mockAndroidLog() }
-
-    afterSpec { unmockAndroidLog() }
-
-    beforeEach {
-        tempDir = Files.createTempDirectory("export-repository").toFile()
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { notFound() }
+    init {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests.add(request)
                 return respond(request)
             }
         }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
+    }
+
+    /** Answers by `METHOD encodedPath`. A request not in [routes] gets a 404. */
+    fun on(vararg routes: Pair<String, () -> MockResponse>) {
+        val table = routes.toMap()
+        respond = { request -> table["${request.method} ${request.url.encodedPath}"]?.invoke() ?: notFound() }
+    }
+}
+
+private inline fun <T> withServer(block: (RecordingServer) -> T): T =
+    MockWebServer().use { server ->
+        server.start()
+        block(RecordingServer(server))
+    }
+
+/** Runs [block] with a [TestExportFileStore] under a temp directory, removed afterwards. */
+private inline fun <T> withStore(usable: Long = Long.MAX_VALUE, block: (TestExportFileStore) -> T): T {
+    val directory = Files.createTempDirectory("export-repository").toFile()
+    return try {
+        block(TestExportFileStore(File(directory, "store"), usable))
+    } finally {
+        directory.deleteRecursively()
+    }
+}
+
+private inline fun <T> withServerAndStore(block: (RecordingServer, TestExportFileStore) -> T): T =
+    withServer { server -> withStore { store -> block(server, store) } }
+
+/** Runs a request with a read timeout short enough for [slowHeaders] to trip it. */
+private fun shortTimeoutExecute(): suspend (Request) -> Response {
+    val client = OkHttpClient.Builder().readTimeout(200, TimeUnit.MILLISECONDS).build()
+    return { client.newCall(it).execute() }
+}
+
+private fun slowHeaders(): MockResponse = file(randomFileBytes()).newBuilder().headersDelay(2, TimeUnit.SECONDS).build()
+
+/** The two ways of saving an ebook, which fail alike. */
+private enum class EbookSave { Kepub, Ebook }
+
+private suspend fun ExportRepository.save(kind: EbookSave, uuid: String): ExportSaveResult = when (kind) {
+    EbookSave.Kepub -> saveKepub(uuid, randomString())
+    EbookSave.Ebook -> saveEbook(uuid, randomString(), "epub", expectedBytes = 0)
+}
+
+private fun pathOf(kind: EbookSave, uuid: String): String = when (kind) {
+    EbookSave.Kepub -> kepubPath(uuid)
+    EbookSave.Ebook -> ebookPath(uuid)
+}
+
+private fun failedSaves(): List<Triple<EbookSave, Int, ExportSaveResult>> =
+    EbookSave.entries.flatMap { kind ->
+        listOf(
+            Triple(kind, 403, ExportSaveResult.Forbidden),
+            Triple(kind, 404, ExportSaveResult.NotFound),
+            Triple(kind, 500, ExportSaveResult.Failed),
+        )
+    }
+
+class DefaultExportRepositoryTest : DescribeSpec({
+
+    fun sut(
+        baseUrl: HttpUrl? = null,
+        fileStore: ExportFileStore = TestExportFileStore(File(System.getProperty("java.io.tmpdir"), randomString())),
+        timings: ExportTimings = ExportTimings(pollIntervalMillis = 1, pollBudgetMillis = 50, kepubAttempts = 2),
+        dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+        execute: (suspend (Request) -> Response)? = null,
+    ): DefaultExportRepository {
+        val client = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
             authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         )
-        freshStore()
+        return DefaultExportRepository(
+            ioDispatcher = dispatcher,
+            omnibusHttpClient = client,
+            fileStore = fileStore,
+            timings = timings,
+            execute = execute ?: { client.execute(it) },
+        )
     }
 
-    afterEach {
-        server.close()
-        tempDir.deleteRecursively()
-    }
+    beforeSpec { mockAndroidLog() }
 
-    describe("sendToKindle") {
+    afterSpec { unmockAndroidLog() }
 
-        it("#118 TC-36: sends the book as JSON, then polls pending, pending, sent to Sent") {
-            on(
-                "POST $SEND" to { json(200, TASK_7) },
-                "GET $STATUS" to seq(json(200, PENDING), json(200, PENDING), json(200, SENT)),
-            )
+    describe("sending a book to Kindle") {
+        it("#118 TC-36: POSTs the book as JSON") {
+            withServer { server ->
+                val uuid = randomString()
+                server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { json(200, SENT) })
 
-            repo().sendToKindle("uuid-1") shouldBe KindleSendResult.Sent
+                sut(server.url).sendToKindle(uuid)
 
-            val posted = requests.first()
-            posted.method shouldBe "POST"
-            posted.url.encodedPath shouldBe SEND
-            posted.body!!.utf8() shouldBe """{"book_uuid":"uuid-1"}"""
-            posted.headers["Content-Type"]!! shouldStartWith "application/json"
-            val polls = requests.drop(1)
-            polls.size shouldBe 3
-            polls.forEach { poll ->
-                poll.method shouldBe "GET"
-                poll.url.encodedPath shouldBe STATUS
-                poll.url.queryParameter("task_id") shouldBe "7"
+                val posted = server.requests.first()
+                posted.method shouldBe "POST"
+                posted.url.encodedPath shouldBe SEND
+                posted.body!!.utf8() shouldBe """{"book_uuid":"$uuid"}"""
+                posted.headers["Content-Type"]!! shouldStartWith "application/json"
             }
         }
 
-        it("#118 TC-37: maps each status answer after a good send to its outcome") {
-            val cases: List<Triple<String, () -> MockResponse, KindleSendResult>> = listOf(
-                Triple("failed with a message", { json(200, """{"status":"failed","message":"Mailbox rejected"}""") }, KindleSendResult.Rejected("Mailbox rejected")),
-                Triple("failed with a blank message", { json(200, """{"status":"failed","message":"  "}""") }, KindleSendResult.Rejected(null)),
-                Triple("failed with no message", { json(200, """{"status":"failed"}""") }, KindleSendResult.Rejected(null)),
-                Triple("failed with a null message", { json(200, """{"status":"failed","message":null}""") }, KindleSendResult.Rejected(null)),
-                Triple("status 404", { notFound() }, KindleSendResult.Unconfirmed),
-                Triple("socket closed", { dropped() }, KindleSendResult.Unconfirmed),
-                Triple("status 500", { json(500, "boom") }, KindleSendResult.Failed),
-                Triple("unknown status", { json(200, """{"status":"weird"}""") }, KindleSendResult.Failed),
-                Triple("body that is not JSON", { json(200, "not json") }, KindleSendResult.Failed),
-            )
-            cases.forEach { (name, status, expected) ->
-                requests.clear()
-                on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to status)
-                withClue(name) {
-                    repo().sendToKindle("uuid-1") shouldBe expected
-                }
-            }
-        }
-
-        it("#118 TC-38: a send that stays pending is unconfirmed after no more than the poll budget allows") {
-            on(
-                "POST $SEND" to { json(200, TASK_7) },
-                "GET $STATUS" to { json(200, PENDING) },
-            )
-
-            repo(ExportTimings(pollIntervalMillis = 1, pollBudgetMillis = 50, kepubAttempts = 2))
-                .sendToKindle("uuid-1") shouldBe KindleSendResult.Unconfirmed
-
-            val polls = requests.count { it.url.encodedPath == STATUS }
-            withClue("status requests=$polls") {
-                (polls in 1..50) shouldBe true
-            }
-        }
-
-        it("#118 TC-39: maps each queue answer to its result, and sends nothing without a server") {
-            val cases: List<Triple<String, (() -> MockResponse)?, KindleSendResult>> = listOf(
-                Triple("HTTP 409", { json(409, "email delivery is not configured on this server") }, KindleSendResult.NotConfigured),
-                Triple("HTTP 422", { json(422, "add a Kindle address") }, KindleSendResult.NoAddress),
-                Triple("HTTP 404", { notFound() }, KindleSendResult.NotFound),
-                Triple("HTTP 500", { json(500, "boom") }, KindleSendResult.Failed),
-                Triple("HTTP 401", { json(401, "") }, KindleSendResult.Failed),
-                Triple("a 200 body that is not JSON", { json(200, "not json") }, KindleSendResult.Failed),
-                Triple("a dropped connection", { dropped() }, KindleSendResult.Unreachable),
-                Triple("no server saved", null, KindleSendResult.NoServer),
-            )
-            cases.forEach { (name, answer, expected) ->
-                requests.clear()
-                baseUrlProvider.baseUrl = if (answer == null) null else server.url("/")
-                if (answer != null) on("POST $SEND" to answer)
-                withClue(name) {
-                    repo().sendToKindle("uuid-1") shouldBe expected
-                    if (answer == null) requests.size shouldBe 0
-                }
-            }
-        }
-
-        it("#118 TC-40: cancelling while the send is being polled rethrows the cancellation") {
-            on(
-                "POST $SEND" to { json(200, TASK_7) },
-                "GET $STATUS" to { json(200, PENDING) },
-            )
-
-            coroutineScope {
-                val job = async(Dispatchers.IO) {
-                    repo(ExportTimings(pollIntervalMillis = 20, pollBudgetMillis = 10_000, kepubAttempts = 2))
-                        .sendToKindle("uuid-1")
-                }
-                waitUntil { requests.any { it.url.encodedPath == STATUS } }
-                job.cancel()
-                shouldThrow<CancellationException> { job.await() }
-            }
-        }
-    }
-
-    describe("saveKepub") {
-
-        it("#118 TC-41: saves the KEPUB under its server name, and under the EPUB name when the server falls back") {
-            on(
-                "GET $KEPUB" to {
-                    file(
-                        EPUB_BYTES,
-                        "Content-Type" to "application/epub+zip",
-                        "Content-Disposition" to "attachment; filename=\"uuid-1.kepub.epub\"",
+        context("when the send is pending for a while") {
+            it("#118 TC-36: polls the task until it is sent") {
+                withServer { server ->
+                    server.on(
+                        "POST $SEND" to { json(200, TASK_7) },
+                        "GET $STATUS" to seq(json(200, PENDING), json(200, PENDING), json(200, SENT)),
                     )
-                },
-            )
 
-            val saved = repo().saveKepub("uuid-1", "Dune").shouldBeInstanceOf<ExportSaveResult.Saved>()
-            val exported = saved.files.single()
-            exported.file.name shouldBe "Dune.kepub.epub"
-            exported.mimeType shouldBe "application/epub+zip"
-            withClue("bytes") { exported.file.readBytes().contentEquals(EPUB_BYTES) shouldBe true }
-            exported.file.parentFile shouldBe store.folders.single()
-            requests.single().url.encodedPath shouldBe KEPUB
-            requests.single().headers["Accept"] shouldBe "*/*"
+                    sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Sent
 
-            requests.clear()
-            freshStore()
-            on(
-                "GET $KEPUB" to {
-                    file(
-                        EPUB_BYTES,
-                        "Content-Type" to "application/epub+zip",
-                        "Content-Disposition" to "attachment; filename=\"uuid-1.epub\"",
-                    )
-                },
-            )
-            val fallback = repo().saveKepub("uuid-1", "Dune").shouldBeInstanceOf<ExportSaveResult.Saved>()
-            fallback.files.single().file.name shouldBe "Dune.epub"
+                    server.requests.drop(1).map { it.url.queryParameter("task_id") } shouldBe listOf("7", "7", "7")
+                }
+            }
         }
 
-        it("#118 TC-42: retries a KEPUB request that times out before its headers, and gives up as unreachable") {
-            val shortClient = OkHttpClient.Builder().readTimeout(200, TimeUnit.MILLISECONDS).build()
-            val slowOk = file(EPUB_BYTES, "Content-Disposition" to "attachment; filename=\"uuid-1.kepub.epub\"")
-                .newBuilder()
-                .headersDelay(2, TimeUnit.SECONDS)
-                .build()
-            val execute: suspend (Request) -> Response = { shortClient.newCall(it).execute() }
+        context("when the send stays pending") {
+            it("#118 TC-38: is unconfirmed once the poll budget is spent") {
+                withServer { server ->
+                    server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { json(200, PENDING) })
 
-            on("GET $KEPUB" to seq(slowOk, file(EPUB_BYTES, "Content-Disposition" to "attachment; filename=\"uuid-1.kepub.epub\"")))
-            repo(execute = execute).saveKepub("uuid-1", "Dune").shouldBeInstanceOf<ExportSaveResult.Saved>()
-            requests.size shouldBe 2
+                    sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Unconfirmed
+                }
+            }
+        }
 
-            requests.clear()
-            freshStore()
-            on("GET $KEPUB" to { slowOk })
-            repo(execute = execute).saveKepub("uuid-1", "Dune") shouldBe ExportSaveResult.Unreachable
-            requests.size shouldBe 2
-            store.folders.single().exists() shouldBe false
+        context("when the send was queued") {
+            it("#118 TC-37: maps each status answer to its outcome") {
+                withServer { server ->
+                    val cases = listOf(
+                        json(200, """{"status":"failed","message":"Mailbox rejected"}""") to
+                            KindleSendResult.Rejected("Mailbox rejected"),
+                        json(200, """{"status":"failed","message":"  "}""") to KindleSendResult.Rejected(null),
+                        json(200, """{"status":"failed"}""") to KindleSendResult.Rejected(null),
+                        json(200, """{"status":"failed","message":null}""") to KindleSendResult.Rejected(null),
+                        notFound() to KindleSendResult.Unconfirmed,
+                        dropped() to KindleSendResult.Unconfirmed,
+                        json(500, "boom") to KindleSendResult.Failed,
+                        json(200, """{"status":"weird"}""") to KindleSendResult.Failed,
+                        json(200, "not json") to KindleSendResult.Failed,
+                    )
+                    checkAll(Exhaustive.collection(cases)) { (status, expected) ->
+                        server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { status })
+
+                        sut(server.url).sendToKindle(randomString()) shouldBe expected
+                    }
+                }
+            }
+        }
+
+        context("when the send can't be queued") {
+            it("#118 TC-39: maps each answer to its result") {
+                withServer { server ->
+                    val cases = listOf(
+                        json(409, "email delivery is not configured on this server") to KindleSendResult.NotConfigured,
+                        json(422, "add a Kindle address") to KindleSendResult.NoAddress,
+                        notFound() to KindleSendResult.NotFound,
+                        json(500, "boom") to KindleSendResult.Failed,
+                        json(401, "") to KindleSendResult.Failed,
+                        json(200, "not json") to KindleSendResult.Failed,
+                        dropped() to KindleSendResult.Unreachable,
+                    )
+                    checkAll(Exhaustive.collection(cases)) { (answer, expected) ->
+                        server.on("POST $SEND" to { answer })
+
+                        sut(server.url).sendToKindle(randomString()) shouldBe expected
+                    }
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#118 TC-39: returns NoServer") {
+                sut().sendToKindle(randomString()) shouldBe KindleSendResult.NoServer
+            }
         }
     }
 
-    describe("saves that fail") {
+    describe("saving a KEPUB") {
+        it("#118 TC-41: names the file for what the server sent, a KEPUB or its EPUB fallback") {
+            withServer { server ->
+                val cases = listOf("x.kepub.epub" to "kepub.epub", "x.epub" to "epub")
+                checkAll(Exhaustive.collection(cases)) { (served, extension) ->
+                    withStore { store ->
+                        val uuid = randomString()
+                        val title = randomString()
+                        server.on(
+                            "GET ${kepubPath(uuid)}" to {
+                                file(randomFileBytes(), "Content-Disposition" to "attachment; filename=\"$served\"")
+                            },
+                        )
 
-        it("#118 TC-43: maps 403, 404 and 500 for the KEPUB and the ebook, and deletes the folder each time") {
-            val statuses: List<Pair<Int, ExportSaveResult>> = listOf(
-                403 to ExportSaveResult.Forbidden,
-                404 to ExportSaveResult.NotFound,
-                500 to ExportSaveResult.Failed,
-            )
-            for (kind in listOf("kepub", "ebook")) {
-                val path = if (kind == "kepub") KEPUB else EBOOK
-                statuses.forEach { (code, expected) ->
-                    requests.clear()
-                    freshStore()
-                    on("GET $path" to { json(code, "") })
-                    withClue("$kind HTTP $code") {
-                        saveVia(kind, repo()) shouldBe expected
-                        store.folders.single().exists() shouldBe false
+                        val saved = sut(server.url, store).saveKepub(uuid, title)
+                            .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                        saved.files.single().file.name shouldBe "$title.$extension"
+                    }
+                }
+            }
+        }
+
+        context("when a request times out before its headers") {
+            it("#118 TC-42: retries") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.on("GET ${kepubPath(uuid)}" to seq(slowHeaders(), file(randomFileBytes())))
+
+                    sut(server.url, store, execute = shortTimeoutExecute()).saveKepub(uuid, randomString())
+                        .shouldBeInstanceOf<ExportSaveResult.Saved>()
+                }
+            }
+
+            context("when every attempt times out") {
+                it("#118 TC-42: gives up as unreachable") {
+                    withServerAndStore { server, store ->
+                        val uuid = randomString()
+                        val response = slowHeaders()
+                        server.on("GET ${kepubPath(uuid)}" to { response })
+
+                        sut(server.url, store, execute = shortTimeoutExecute()).saveKepub(uuid, randomString()) shouldBe
+                            ExportSaveResult.Unreachable
                     }
                 }
             }
         }
     }
 
-    describe("saveEbook") {
+    describe("saving an ebook") {
+        context("when the save is refused") {
+            it("#118 TC-43: maps 403, 404 and 500 for the KEPUB and the ebook") {
+                withServer { server ->
+                    checkAll(Exhaustive.collection(failedSaves())) { (kind, code, expected) ->
+                        withStore { store ->
+                            val uuid = randomString()
+                            server.on("GET ${pathOf(kind, uuid)}" to { json(code, "") })
 
-        it("#118 TC-44: names the ebook from the server's file name, its extension, or the fallback") {
-            on("GET $EBOOK" to { file(EPUB_BYTES, "Content-Disposition" to "attachment; filename*=UTF-8''Caf%C3%A9.epub") })
-            val first = repo().saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>().files.single()
-            first.file.name shouldBe "Dune.epub"
-            requests.single().url.encodedPath shouldBe EBOOK
+                            sut(server.url, store).save(kind, uuid) shouldBe expected
+                        }
+                    }
+                }
+            }
 
-            requests.clear()
-            freshStore()
-            on(
-                "GET $EBOOK" to {
-                    file(
-                        EPUB_BYTES,
-                        "Content-Type" to "application/pdf",
-                        "Content-Disposition" to "attachment; filename=\"x.PDF\"",
-                    )
-                },
-            )
-            val pdf = repo().saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>().files.single()
-            pdf.file.name shouldBe "Dune.pdf"
-            pdf.mimeType shouldBe "application/pdf"
+            it("#118 TC-43: deletes the folder after 403, 404 and 500 for the KEPUB and the ebook") {
+                withServer { server ->
+                    checkAll(Exhaustive.collection(failedSaves())) { (kind, code, _) ->
+                        withStore { store ->
+                            val uuid = randomString()
+                            server.on("GET ${pathOf(kind, uuid)}" to { json(code, "") })
 
-            requests.clear()
-            freshStore()
-            on("GET $EBOOK" to { file(EPUB_BYTES) })
-            val fallback = repo().saveEbook("uuid-1", "Dune", "pdf", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>().files.single()
-            fallback.file.name shouldBe "Dune.pdf"
+                            sut(server.url, store).save(kind, uuid)
+
+                            store.folders.single().exists() shouldBe false
+                        }
+                    }
+                }
+            }
         }
 
-        it("#118 TC-45: infers the MIME type from the header or the extension, treating octet-stream as unknown") {
-            val cases: List<Triple<String?, String, String>> = listOf(
+        it("#118 TC-44: names the file from the server's extension, else the fallback") {
+            withServer { server ->
+                val cases = listOf(
+                    "attachment; filename*=UTF-8''Caf%C3%A9.epub" to "epub",
+                    "attachment; filename=\"x.PDF\"" to "pdf",
+                    null to "m4b",
+                )
+                checkAll(Exhaustive.collection(cases)) { (disposition, extension) ->
+                    withStore { store ->
+                        val uuid = randomString()
+                        val title = randomString()
+                        val headers = listOfNotNull(disposition?.let { "Content-Disposition" to it }).toTypedArray()
+                        server.on("GET ${ebookPath(uuid)}" to { file(randomFileBytes(), *headers) })
+
+                        val saved = sut(server.url, store).saveEbook(uuid, title, "m4b", expectedBytes = 0)
+                            .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                        saved.files.single().file.name shouldBe "$title.$extension"
+                    }
+                }
+            }
+        }
+
+        it("#118 TC-44: reports the MIME type the server sent") {
+            withServerAndStore { server, store ->
+                val uuid = randomString()
+                server.on("GET ${ebookPath(uuid)}" to { file(randomFileBytes(), "Content-Type" to "application/pdf") })
+
+                val saved = sut(server.url, store).saveEbook(uuid, randomString(), "epub", expectedBytes = 0)
+                    .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                saved.files.single().mimeType shouldBe "application/pdf"
+            }
+        }
+
+        it("#118 TC-45: infers the MIME type from the extension, for missing and octet-stream headers") {
+            val cases = listOf(
                 Triple(null, "a.epub", "application/epub+zip"),
                 Triple(null, "Dune.kepub.epub", "application/epub+zip"),
                 Triple(null, "a.pdf", "application/pdf"),
@@ -378,238 +410,273 @@ class DefaultExportRepositoryTest : DescribeSpec({
                 Triple(null, "a.xyz", "application/octet-stream"),
                 Triple("application/octet-stream", "a.epub", "application/epub+zip"),
             )
-            cases.forEach { (contentType, name, expected) ->
-                withClue("contentType=$contentType name=$name") {
-                    exportMimeType(contentType, name) shouldBe expected
-                }
+            checkAll(Exhaustive.collection(cases)) { (contentType, name, expected) ->
+                exportMimeType(contentType, name) shouldBe expected
             }
         }
 
-        it("#118 TC-46: a connection dropped before the response or mid-body is unreachable, and the folder is deleted") {
-            val answers: List<() -> MockResponse> = listOf(
-                { dropped() },
-                {
-                    MockResponse.Builder()
-                        .code(200)
-                        .body(Buffer().write(ByteArray(300 * 1024)))
-                        .onResponseBody(SocketEffect.CloseSocket())
-                        .build()
-                },
-            )
-            answers.forEach { answer ->
-                requests.clear()
-                freshStore()
-                on("GET $EBOOK" to answer)
-                repo().saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0) shouldBe ExportSaveResult.Unreachable
-                store.folders.single().exists() shouldBe false
-            }
-        }
+        context("when the connection drops") {
+            it("#118 TC-46: is unreachable, before the response and mid-body") {
+                withServer { server ->
+                    val answers = listOf(
+                        dropped(),
+                        MockResponse.Builder()
+                            .code(200)
+                            .body(Buffer().write(ByteArray(300 * 1024)))
+                            .onResponseBody(SocketEffect.CloseSocket())
+                            .build(),
+                    )
+                    checkAll(Exhaustive.collection(answers)) { answer ->
+                        withStore { store ->
+                            val uuid = randomString()
+                            server.on("GET ${ebookPath(uuid)}" to { answer })
 
-        it("#118 TC-47: refuses a download that would not fit, before any request, and allows one that fits") {
-            data class SpaceCase(
-                val name: String,
-                val usable: Long,
-                val audio: Boolean,
-                val expectedBytes: Long,
-                val expected: ExportSaveResult,
-                val served: Int,
-            )
-            val e = 1_000_000L
-            val cases = listOf(
-                SpaceCase("ebook 100 MB, 10 MB free", 10_000_000, false, 100_000_000, ExportSaveResult.NoSpace, 0),
-                SpaceCase("unknown size, 1 byte free", 1, false, 0, ExportSaveResult.Saved(emptyList()), 1),
-                SpaceCase("size plus 8 MiB exactly free", e + 8 * ONE_MIB, false, e, ExportSaveResult.Saved(emptyList()), 1),
-                SpaceCase("one byte short of size plus 8 MiB", e + 8 * ONE_MIB - 1, false, e, ExportSaveResult.NoSpace, 0),
-                SpaceCase("audiobook 100 MB, 10 MB free", 10_000_000, true, 100_000_000, ExportSaveResult.NoSpace, 0),
-            )
-            on(
-                "GET $EBOOK" to { file(EPUB_BYTES, "Content-Disposition" to "attachment; filename=\"a.epub\"") },
-                "GET $MANIFEST" to { json(200, MANIFEST_3) },
-            )
-            cases.forEach { case ->
-                requests.clear()
-                freshStore(usable = case.usable)
-                withClue(case.name) {
-                    val result = if (case.audio) {
-                        repo().saveAudiobook("uuid-1", "Dune", "m4b", case.expectedBytes)
-                    } else {
-                        repo().saveEbook("uuid-1", "Dune", "epub", case.expectedBytes)
+                            sut(server.url, store).saveEbook(uuid, randomString(), "epub", expectedBytes = 0) shouldBe
+                                ExportSaveResult.Unreachable
+                        }
                     }
-                    result::class shouldBe case.expected::class
-                    requests.size shouldBe case.served
                 }
             }
         }
 
-        it("#118 TC-48: streams a body larger than one chunk byte for byte, and keeps the folder with the file") {
-            val body = Random(48).nextBytes(2 * ONE_MIB + 17)
-            on("GET $EBOOK" to { file(body, "Content-Disposition" to "attachment; filename=\"a.epub\"") })
+        context("when the download would not fit") {
+            it("#118 TC-47: refuses before any request, far short and one byte short of the size plus 8 MiB") {
+                withServer { server ->
+                    val size = randomLong(1L..1_000_000_000L)
+                    val cases = listOf(1L, size + 8 * ONE_MIB - 1)
+                    checkAll(Exhaustive.collection(cases)) { usable ->
+                        withStore(usable) { store ->
+                            server.requests.clear()
 
-            val saved = repo().saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>()
-            val exported = saved.files.single()
-            withClue("bytes") { exported.file.readBytes().contentEquals(body) shouldBe true }
-            exported.file.exists() shouldBe true
-            exported.file.parentFile shouldBe store.folders.single()
-        }
+                            sut(server.url, store).saveEbook(randomString(), randomString(), "epub", size) shouldBe
+                                ExportSaveResult.NoSpace
 
-        it("#118 TC-49: cancelling a throttled download rethrows the cancellation and deletes the folder") {
-            val body = ByteArray(ONE_MIB) { 1 }
-            on(
-                "GET $EBOOK" to {
-                    MockResponse.Builder()
-                        .code(200)
-                        .addHeader("Content-Disposition", "attachment; filename=\"a.epub\"")
-                        .body(Buffer().write(body))
-                        .throttleBody(16L * 1024, 50, TimeUnit.MILLISECONDS)
-                        .build()
-                },
-            )
-
-            coroutineScope {
-                val job = async(Dispatchers.IO) {
-                    repo(dispatcher = Dispatchers.IO).saveEbook("uuid-1", "Dune", "epub", expectedBytes = 0)
-                }
-                waitUntil { store.folders.singleOrNull()?.listFiles().orEmpty().isNotEmpty() }
-                job.cancel()
-                shouldThrow<CancellationException> { job.await() }
-            }
-            store.folders.single().exists() shouldBe false
-        }
-
-        it("#118 TC-50: encodes the uuid as one path segment, and sends nothing without a server") {
-            respond = { file(EPUB_BYTES, "Content-Disposition" to "attachment; filename=\"a.epub\"") }
-
-            repo().saveEbook("a b/c", "Dune", "epub", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>()
-            requests.single().url.encodedPath shouldBe "/api/ebooks/a%20b%2Fc/download"
-
-            requests.clear()
-            baseUrlProvider.baseUrl = null
-            repo().saveEbook("a b/c", "Dune", "epub", expectedBytes = 0) shouldBe ExportSaveResult.NoServer
-            requests.size shouldBe 0
-        }
-    }
-
-    describe("saveAudiobook") {
-
-        it("#118 TC-51: downloads each part in manifest order, numbered by position") {
-            respond = { request ->
-                if (request.url.encodedPath == MANIFEST) {
-                    json(200, MANIFEST_3)
-                } else {
-                    val part = request.url.queryParameter("part")!!
-                    file(part.toByteArray(), "Content-Type" to "audio/mp4", "Content-Disposition" to ATTACH_P_M4B)
-                }
-            }
-
-            val saved = repo().saveAudiobook("uuid-1", "Dune", "m4b", expectedBytes = 0)
-                .shouldBeInstanceOf<ExportSaveResult.Saved>()
-            saved.files.map { it.file.name } shouldBe listOf(
-                "Dune - part 01.m4b",
-                "Dune - part 02.m4b",
-                "Dune - part 03.m4b",
-            )
-            saved.files.map { it.file.readText() } shouldBe listOf("1", "2", "3")
-            requests.map { it.target() } shouldBe listOf(
-                MANIFEST,
-                "$AUDIO?part=1",
-                "$AUDIO?part=2",
-                "$AUDIO?part=3",
-            )
-        }
-
-        it("#118 TC-52: a single-part or hls book makes one request for the whole book, with no part query") {
-            val cases: List<Triple<String, String, () -> MockResponse>> = listOf(
-                Triple(
-                    "direct, one part",
-                    """{"mode":"direct","parts":[{"ordinal":1}]}""",
-                    { file(EPUB_BYTES, "Content-Disposition" to ATTACH_P_M4B) },
-                ),
-                Triple(
-                    "hls",
-                    """{"mode":"hls"}""",
-                    { file(EPUB_BYTES, "Content-Disposition" to ATTACH_P_M4B) },
-                ),
-                Triple(
-                    "hls with no Content-Disposition",
-                    """{"mode":"hls"}""",
-                    { file(EPUB_BYTES) },
-                ),
-            )
-            cases.forEach { (name, manifest, audio) ->
-                requests.clear()
-                freshStore()
-                on(
-                    "GET $MANIFEST" to { json(200, manifest) },
-                    "GET $AUDIO" to audio,
-                )
-                withClue(name) {
-                    val file = repo().saveAudiobook("uuid-1", "Dune", "m4b", expectedBytes = 0)
-                        .shouldBeInstanceOf<ExportSaveResult.Saved>().files.single()
-                    file.file.name shouldBe "Dune.m4b"
-                    requests.map { it.target() } shouldBe listOf(MANIFEST, AUDIO)
+                            server.requests.size shouldBe 0
+                        }
+                    }
                 }
             }
         }
 
-        it("#118 TC-53: a failed manifest fails the download before any audio request, and deletes the folder") {
-            val cases: List<Triple<String, () -> MockResponse, ExportSaveResult>> = listOf(
-                Triple("HTTP 404", { notFound() }, ExportSaveResult.NotFound),
-                Triple("HTTP 403", { json(403, "") }, ExportSaveResult.Forbidden),
-                Triple("HTTP 500", { json(500, "boom") }, ExportSaveResult.Failed),
-                Triple("a body that is not JSON", { json(200, "not json") }, ExportSaveResult.Failed),
-            )
-            cases.forEach { (name, manifest, expected) ->
-                requests.clear()
-                freshStore()
-                on("GET $MANIFEST" to manifest, "GET $AUDIO" to { file(EPUB_BYTES) })
-                withClue(name) {
-                    repo().saveAudiobook("uuid-1", "Dune", "m4b", expectedBytes = 0) shouldBe expected
-                    requests.none { it.url.encodedPath == AUDIO } shouldBe true
+        context("when the download would just fit") {
+            it("#118 TC-47: downloads it, for an exact fit and an unknown size") {
+                withServer { server ->
+                    val size = randomLong(1L..1_000_000_000L)
+                    val cases = listOf(size to size + 8 * ONE_MIB, 0L to 1L)
+                    checkAll(Exhaustive.collection(cases)) { (expectedBytes, usable) ->
+                        withStore(usable) { store ->
+                            val uuid = randomString()
+                            server.on("GET ${ebookPath(uuid)}" to { file(randomFileBytes()) })
+
+                            sut(server.url, store).saveEbook(uuid, randomString(), "epub", expectedBytes)
+                                .shouldBeInstanceOf<ExportSaveResult.Saved>()
+                        }
+                    }
+                }
+            }
+        }
+
+        context("when the body is larger than one chunk") {
+            it("#118 TC-48: writes it byte for byte") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    val body = TEST_RANDOM.nextBytes(2 * ONE_MIB + 17)
+                    server.on("GET ${ebookPath(uuid)}" to { file(body) })
+
+                    val saved = sut(server.url, store).saveEbook(uuid, randomString(), "epub", expectedBytes = 0)
+                        .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                    saved.files.single().file.readBytes().contentEquals(body) shouldBe true
+                }
+            }
+        }
+
+        context("when the download is cancelled") {
+            it("#118 TC-49: deletes the folder") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.on(
+                        "GET ${ebookPath(uuid)}" to {
+                            MockResponse.Builder()
+                                .code(200)
+                                .body(Buffer().write(ByteArray(ONE_MIB) { 1 }))
+                                .throttleBody(16L * 1024, 50, TimeUnit.MILLISECONDS)
+                                .build()
+                        },
+                    )
+
+                    coroutineScope {
+                        val job = async(Dispatchers.IO) {
+                            sut(server.url, store, dispatcher = Dispatchers.IO)
+                                .saveEbook(uuid, randomString(), "epub", expectedBytes = 0)
+                        }
+                        waitUntil { store.folders.singleOrNull()?.listFiles().orEmpty().isNotEmpty() }
+                        job.cancelAndJoin()
+                    }
+
                     store.folders.single().exists() shouldBe false
                 }
             }
         }
 
-        it("#118 TC-54: a part that fails stops the download, never requests the next part, and deletes the folder") {
-            respond = { request ->
-                when {
-                    request.url.encodedPath == MANIFEST -> json(200, MANIFEST_3)
-                    request.url.queryParameter("part") == "2" -> notFound()
-                    else -> file(EPUB_BYTES, "Content-Disposition" to ATTACH_P_M4B)
-                }
-            }
+        it("#118 TC-50: sends the uuid as one encoded path segment") {
+            withServerAndStore { server, store ->
+                server.respond = { file(randomFileBytes()) }
 
-            repo().saveAudiobook("uuid-1", "Dune", "m4b", expectedBytes = 0) shouldBe ExportSaveResult.NotFound
-            requests.map { it.target() } shouldBe listOf(MANIFEST, "$AUDIO?part=1", "$AUDIO?part=2")
-            store.folders.single().exists() shouldBe false
+                sut(server.url, store).saveEbook("a b/c", randomString(), "epub", expectedBytes = 0)
+
+                server.requests.single().url.encodedPath shouldBe "/api/ebooks/a%20b%2Fc/download"
+            }
         }
 
-        it("#118 TC-55: cancelling during a part rethrows the cancellation, deletes the folder, and requests no later part") {
-            respond = { request ->
-                when {
-                    request.url.encodedPath == MANIFEST -> json(200, MANIFEST_3)
-                    request.url.queryParameter("part") == "2" -> MockResponse.Builder()
-                        .code(200)
-                        .addHeader("Content-Disposition", ATTACH_P_M4B)
-                        .body(Buffer().write(ByteArray(ONE_MIB) { 2 }))
-                        .throttleBody(16L * 1024, 50, TimeUnit.MILLISECONDS)
-                        .build()
-                    else -> file(EPUB_BYTES, "Content-Disposition" to ATTACH_P_M4B)
+        context("when no server is saved") {
+            it("#118 TC-50: returns NoServer") {
+                withStore { store ->
+                    sut(fileStore = store).saveEbook(randomString(), randomString(), "epub", expectedBytes = 0) shouldBe
+                        ExportSaveResult.NoServer
+                }
+            }
+        }
+    }
+
+    describe("saving an audiobook") {
+        context("when the manifest has several parts") {
+            /** Serves each part's own number as its bytes, so a file shows which part it holds. */
+            fun RecordingServer.serveParts(uuid: String) {
+                respond = { request ->
+                    if (request.url.encodedPath == manifestPath(uuid)) {
+                        json(200, MANIFEST_3)
+                    } else {
+                        file(request.url.queryParameter("part")!!.toByteArray(), "Content-Disposition" to ATTACH_P_M4B)
+                    }
                 }
             }
 
-            coroutineScope {
-                val job = async(Dispatchers.IO) {
-                    repo(dispatcher = Dispatchers.IO).saveAudiobook("uuid-1", "Dune", "m4b", expectedBytes = 0)
+            it("#118 TC-51: saves each part in manifest order, numbered by position") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    val title = randomString()
+                    server.serveParts(uuid)
+
+                    val saved = sut(server.url, store).saveAudiobook(uuid, title, "m4b", expectedBytes = 0)
+                        .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                    saved.files.map { it.file.name to it.file.readText() } shouldBe listOf(
+                        "$title - part 01.m4b" to "1",
+                        "$title - part 02.m4b" to "2",
+                        "$title - part 03.m4b" to "3",
+                    )
                 }
-                waitUntil { store.folders.singleOrNull()?.listFiles().orEmpty().any { it.name.contains("part 02") } }
-                job.cancel()
-                shouldThrow<CancellationException> { job.await() }
             }
-            store.folders.single().exists() shouldBe false
-            requests.none { it.url.queryParameter("part") == "3" } shouldBe true
+
+            it("#118 TC-51: reads the manifest, then requests each part") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.serveParts(uuid)
+
+                    sut(server.url, store).saveAudiobook(uuid, randomString(), "m4b", expectedBytes = 0)
+
+                    server.requests.map { it.target() } shouldBe listOf(
+                        manifestPath(uuid),
+                        "${audioPath(uuid)}?part=1",
+                        "${audioPath(uuid)}?part=2",
+                        "${audioPath(uuid)}?part=3",
+                    )
+                }
+            }
+        }
+
+        context("when the book is one file") {
+            it("#118 TC-52: makes one request with no part query, for a single part and an hls book") {
+                withServer { server ->
+                    val manifests = listOf("""{"mode":"direct","parts":[{"ordinal":1}]}""", """{"mode":"hls"}""")
+                    checkAll(Exhaustive.collection(manifests)) { manifest ->
+                        withStore { store ->
+                            val uuid = randomString()
+                            val title = randomString()
+                            server.requests.clear()
+                            server.on(
+                                "GET ${manifestPath(uuid)}" to { json(200, manifest) },
+                                "GET ${audioPath(uuid)}" to { file(randomFileBytes(), "Content-Disposition" to ATTACH_P_M4B) },
+                            )
+
+                            val saved = sut(server.url, store).saveAudiobook(uuid, title, "m4b", expectedBytes = 0)
+                                .shouldBeInstanceOf<ExportSaveResult.Saved>()
+
+                            saved.files.single().file.name shouldBe "$title.m4b"
+                            server.requests.map { it.target() } shouldBe listOf(manifestPath(uuid), audioPath(uuid))
+                        }
+                    }
+                }
+            }
+        }
+
+        context("when the manifest fails") {
+            it("#118 TC-53: maps each status and unreadable body, before any audio request") {
+                withServer { server ->
+                    val cases = listOf(
+                        notFound() to ExportSaveResult.NotFound,
+                        json(403, "") to ExportSaveResult.Forbidden,
+                        json(500, "boom") to ExportSaveResult.Failed,
+                        json(200, "not json") to ExportSaveResult.Failed,
+                    )
+                    checkAll(Exhaustive.collection(cases)) { (manifest, expected) ->
+                        withStore { store ->
+                            val uuid = randomString()
+                            server.on("GET ${manifestPath(uuid)}" to { manifest }, "GET ${audioPath(uuid)}" to { file(randomFileBytes()) })
+
+                            sut(server.url, store).saveAudiobook(uuid, randomString(), "m4b", expectedBytes = 0) shouldBe expected
+
+                            server.requests.none { it.url.encodedPath == audioPath(uuid) } shouldBe true
+                        }
+                    }
+                }
+            }
+        }
+
+        context("when a part fails") {
+            /** Serves the manifest and part 1, and answers part 2 with a 404. */
+            fun RecordingServer.failSecondPart(uuid: String) {
+                respond = { request ->
+                    when {
+                        request.url.encodedPath == manifestPath(uuid) -> json(200, MANIFEST_3)
+                        request.url.queryParameter("part") == "2" -> notFound()
+                        else -> file(randomFileBytes(), "Content-Disposition" to ATTACH_P_M4B)
+                    }
+                }
+            }
+
+            it("#118 TC-54: returns that part's failure") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.failSecondPart(uuid)
+
+                    sut(server.url, store).saveAudiobook(uuid, randomString(), "m4b", expectedBytes = 0) shouldBe
+                        ExportSaveResult.NotFound
+                }
+            }
+
+            it("#118 TC-54: never requests the next part") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.failSecondPart(uuid)
+
+                    sut(server.url, store).saveAudiobook(uuid, randomString(), "m4b", expectedBytes = 0)
+
+                    server.requests.none { it.url.queryParameter("part") == "3" } shouldBe true
+                }
+            }
+
+            it("#118 TC-54: deletes the parts already saved") {
+                withServerAndStore { server, store ->
+                    val uuid = randomString()
+                    server.failSecondPart(uuid)
+
+                    sut(server.url, store).saveAudiobook(uuid, randomString(), "m4b", expectedBytes = 0)
+
+                    store.folders.single().exists() shouldBe false
+                }
+            }
         }
     }
 })

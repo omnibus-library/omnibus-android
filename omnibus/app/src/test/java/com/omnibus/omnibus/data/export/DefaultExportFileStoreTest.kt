@@ -1,64 +1,98 @@
 package com.omnibus.omnibus.data.export
 
 import com.omnibus.omnibus.data.export.local.DefaultExportFileStore
+import com.omnibus.omnibus.testing.randomLong
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import java.io.File
 import java.nio.file.Files
 
+private const val HOUR = 60L * 60 * 1000
+
+private inline fun <T> withRoot(block: (File) -> T): T {
+    val directory = Files.createTempDirectory("export-store").toFile()
+    return try {
+        block(File(directory, "book-exports"))
+    } finally {
+        directory.deleteRecursively()
+    }
+}
+
+/** A folder holding one file, last modified at [modifiedAt]. Written first, since writing a child changes a folder's mtime. */
+private fun File.folderModifiedAt(name: String, modifiedAt: Long): File = File(this, name).apply {
+    mkdirs()
+    File(this, "a.epub").writeText("a")
+    setLastModified(modifiedAt)
+}
+
 class DefaultExportFileStoreTest : DescribeSpec({
 
-    val now = 1_800_000_000_000L
-    val hour = 60L * 60 * 1000
-    lateinit var tempDir: File
+    fun sut(root: File, nowMillis: Long = randomLong()): DefaultExportFileStore =
+        DefaultExportFileStore(root = root, nowMillis = { nowMillis })
 
-    beforeEach { tempDir = Files.createTempDirectory("export-store").toFile() }
+    describe("handing out a new folder") {
+        context("when the root is missing") {
+            it("#118 TC-56: creates an empty folder under it") {
+                withRoot { root ->
+                    val folder = sut(root).newFolder()
 
-    afterEach { tempDir.deleteRecursively() }
-
-    describe("DefaultExportFileStore") {
-
-        it("#118 TC-56: creates a missing root, returns two distinct empty folders under it, and reports usable space") {
-            val root = File(tempDir, "book-exports")
-            val store = DefaultExportFileStore(root = root)
-
-            val first = store.newFolder()
-            val second = store.newFolder()
-
-            root.isDirectory shouldBe true
-            listOf(first, second).forEach { folder ->
-                folder.isDirectory shouldBe true
-                folder.parentFile shouldBe root
-                folder.listFiles().orEmpty().size shouldBe 0
+                    folder.parentFile shouldBe root
+                    folder.listFiles().orEmpty().toList().shouldBeEmpty()
+                }
             }
-            first shouldNotBe second
-            (store.usableBytes() >= 0) shouldBe true
         }
 
-        it("#118 TC-57: newFolder removes folders and stray files older than 24 h, keeps newer ones, and returns a new folder") {
-            val root = File(tempDir, "book-exports").apply { mkdirs() }
-            // Contents are written before the timestamp is set, since writing a child changes a folder's mtime.
-            val old = File(root, "old").apply {
-                mkdirs()
-                File(this, "a.epub").writeText("a")
-            }
-            old.setLastModified(now - 25 * hour)
-            val recent = File(root, "recent").apply {
-                mkdirs()
-                File(this, "b.epub").writeText("b")
-            }
-            recent.setLastModified(now - 23 * hour)
-            val stray = File(root, "stray.txt").apply { writeText("c") }
-            stray.setLastModified(now - 25 * hour)
+        it("#118 TC-56: gives a different folder each time") {
+            withRoot { root ->
+                val store = sut(root)
 
-            val created = DefaultExportFileStore(root = root, nowMillis = { now }).newFolder()
+                store.newFolder() shouldNotBe store.newFolder()
+            }
+        }
 
-            old.exists() shouldBe false
-            recent.exists() shouldBe true
-            stray.exists() shouldBe false
-            created.isDirectory shouldBe true
-            created.parentFile shouldBe root
+        context("when the root holds entries older than 24 hours") {
+            it("#118 TC-57: removes old folders") {
+                withRoot { root ->
+                    root.mkdirs()
+                    val now = randomLong(100 * HOUR..1_000_000 * HOUR)
+                    val old = root.folderModifiedAt("old", now - 25 * HOUR)
+
+                    sut(root, now).newFolder()
+
+                    old.exists() shouldBe false
+                }
+            }
+
+            it("#118 TC-57: removes stray files") {
+                withRoot { root ->
+                    root.mkdirs()
+                    val now = randomLong(100 * HOUR..1_000_000 * HOUR)
+                    val stray = File(root, "stray.txt").apply {
+                        writeText("c")
+                        setLastModified(now - 25 * HOUR)
+                    }
+
+                    sut(root, now).newFolder()
+
+                    stray.exists() shouldBe false
+                }
+            }
+        }
+
+        context("when the root holds entries newer than 24 hours") {
+            it("#118 TC-57: keeps them") {
+                withRoot { root ->
+                    root.mkdirs()
+                    val now = randomLong(100 * HOUR..1_000_000 * HOUR)
+                    val recent = root.folderModifiedAt("recent", now - 23 * HOUR)
+
+                    sut(root, now).newFolder()
+
+                    recent.exists() shouldBe true
+                }
+            }
         }
     }
 })

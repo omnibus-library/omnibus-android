@@ -1,64 +1,70 @@
 package com.omnibus.omnibus.data.export
 
-import io.kotest.assertions.withClue
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ExportFileNamesTest : DescribeSpec({
 
-    describe("ExportFileNames.fileName") {
+    describe("naming an exported file") {
+        it("#118 TC-31: sanitises the title, across separators, control characters, long and empty titles") {
+            checkAll(
+                Exhaustive.of(
+                    "A/B\\C:D" to "A B C D.epub",
+                    " \tTi\u0000tle\n " to "Title.epub",
+                    "a".repeat(300) to "a".repeat(120) + ".epub",
+                    "" to "Book.epub",
+                    "   " to "Book.epub",
+                    "///" to "Book.epub",
+                ),
+            ) { (title, expected) ->
+                ExportFileNames.fileName(title, suggested = "x.epub", fallbackExtension = "epub") shouldBe expected
+            }
+        }
 
-        it("#118 TC-31: sanitises the title, strips control characters, caps it at 120 and falls back to Book") {
-            val cases: List<Pair<String, String>> = listOf(
-                "A/B\\C:D" to "A B C D.epub",
-                " \tTi\u0000tle\n " to "Title.epub",
-                "a".repeat(300) to "a".repeat(120) + ".epub",
-                "" to "Book.epub",
-                "   " to "Book.epub",
-                "///" to "Book.epub",
-            )
-            cases.forEach { (title, expected) ->
-                withClue("title=${title.take(20)}") {
-                    ExportFileNames.fileName(title, suggested = "x.epub", fallbackExtension = "epub") shouldBe expected
+        it("#118 TC-32: keeps the server's extension, lowercase, across KEPUB, plain and dotted names") {
+            checkAll(
+                Exhaustive.of(
+                    "X.kepub.epub" to "kepub.epub",
+                    "X.KEPUB.EPUB" to "kepub.epub",
+                    "uuid.epub" to "epub",
+                    "Book.PDF" to "pdf",
+                    "a.b.M4B" to "m4b",
+                ),
+            ) { (suggested, extension) ->
+                val title = randomString()
+
+                ExportFileNames.fileName(title, suggested, fallbackExtension = randomString()) shouldBe "$title.$extension"
+            }
+        }
+
+        context("when the server's name has no extension") {
+            it("#118 TC-32: uses the fallback extension for missing, empty, bare and dot-ended names") {
+                checkAll(Exhaustive.of(null, "", "noext", "name.")) { suggested ->
+                    val title = randomString()
+                    val fallback = randomString().lowercase()
+
+                    ExportFileNames.fileName(title, suggested, fallback) shouldBe "$title.$fallback"
                 }
             }
         }
 
-        it("#118 TC-32: keeps the server's extension (KEPUB as .kepub.epub) and falls back when there is none") {
-            // Each case: suggested name, fallback extension, expected file name for the title "T".
-            val cases: List<Triple<String?, String, String>> = listOf(
-                Triple("X.kepub.epub", "epub", "T.kepub.epub"),
-                Triple("X.KEPUB.EPUB", "epub", "T.kepub.epub"),
-                Triple("uuid.epub", "epub", "T.epub"),
-                Triple("Book.PDF", "epub", "T.pdf"),
-                Triple("a.b.M4B", "epub", "T.m4b"),
-                Triple(null, "epub", "T.epub"),
-                Triple(null, "pdf", "T.pdf"),
-                Triple(null, "m4b", "T.m4b"),
-                Triple("", "epub", "T.epub"),
-                Triple("noext", "pdf", "T.pdf"),
-                Triple("name.", "m4b", "T.m4b"),
-            )
-            cases.forEach { (suggested, fallback, expected) ->
-                withClue("suggested=$suggested fallback=$fallback") {
-                    ExportFileNames.fileName("T", suggested, fallback) shouldBe expected
+        context("when the file is an audiobook part") {
+            it("#118 TC-33: numbers it with at least two digits, for one, two and three digit parts") {
+                checkAll(Exhaustive.of(1 to "01", 10 to "10", 100 to "100")) { (part, number) ->
+                    val title = randomString()
+
+                    ExportFileNames.fileName(title, suggested = "p.m4b", fallbackExtension = "m4b", part = part) shouldBe
+                        "$title - part $number.m4b"
                 }
             }
-        }
 
-        it("#118 TC-33: numbers audiobook parts with at least two digits and sanitises the title") {
-            val cases: List<Triple<String, Int?, String>> = listOf(
-                Triple("T", 1, "T - part 01.m4b"),
-                Triple("T", 2, "T - part 02.m4b"),
-                Triple("T", 10, "T - part 10.m4b"),
-                Triple("T", 100, "T - part 100.m4b"),
-                Triple("A/B", 3, "A B - part 03.m4b"),
-                Triple("T", null, "T.m4b"),
-            )
-            cases.forEach { (title, part, expected) ->
-                withClue("title=$title part=$part") {
-                    ExportFileNames.fileName(title, suggested = "p.m4b", fallbackExtension = "m4b", part = part) shouldBe expected
-                }
+            it("#118 TC-33: sanitises the title") {
+                ExportFileNames.fileName("A/B", suggested = "p.m4b", fallbackExtension = "m4b", part = 3) shouldBe
+                    "A B - part 03.m4b"
             }
         }
     }

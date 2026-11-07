@@ -2,76 +2,89 @@ package com.omnibus.omnibus.data.cover
 
 import android.content.Context
 import coil3.decode.DataSource
+import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
+import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import io.mockk.mockk
-import okio.ByteString.Companion.encodeUtf8
 import java.io.IOException
+import okio.ByteString.Companion.encodeUtf8
 
 class CoverFetcherTest : DescribeSpec({
 
-    val thumbnail = CoverThumbnail("book", CoverSize.Md)
-    val options = Options(mockk<Context>(relaxed = true))
+    fun sut(
+        repository: CoverRepository = TestCoverRepository(),
+        thumbnail: CoverThumbnail = randomCoverThumbnail(),
+    ): Fetcher = CoverFetcher.Factory(repository)
+        .create(thumbnail, Options(mockk<Context>(relaxed = true)), mockk(relaxed = true))
 
-    describe("CoverKeyer") {
+    describe("keying a cover request") {
+        context("when the clock moves into the next revalidation window") {
+            it("TC-186: changes the key") {
+                val time = TestTimeSource(randomLong())
+                val thumbnail = randomCoverThumbnail()
+                val options = Options(mockk<Context>(relaxed = true))
+                val keyer = CoverKeyer(time)
+                val before = keyer.key(thumbnail, options)
 
-        it("TC-186: changes key once the clock moves into the next revalidation window") {
-            var now = 0L
-            val keyer = CoverKeyer { now }
-            val before = keyer.key(thumbnail, options)
+                time.advanceBy(CoverCacheKeys.REVALIDATE_AFTER_MILLIS)
 
-            now += CoverCacheKeys.REVALIDATE_AFTER_MILLIS
-
-            (keyer.key(thumbnail, options) == before) shouldBe false
+                keyer.key(thumbnail, options) shouldNotBe before
+            }
         }
     }
 
-    describe("CoverFetcher") {
-
-        fun fetcher(repository: CoverRepository) = CoverFetcher.Factory(repository)
-            .create(thumbnail, options, mockk(relaxed = true))
-
+    describe("fetching a cover") {
         it("TC-187: asks the repository for the thumbnail's uuid and size") {
-            val repository = TestCoverRepository(CoverImageResult.NotFound)
+            val repository = TestCoverRepository()
+            val thumbnail = randomCoverThumbnail()
 
-            runCatching { fetcher(repository).fetch() }
+            runCatching { sut(repository, thumbnail).fetch() }
 
-            repository.requests shouldBe listOf("book" to CoverSize.Md)
+            repository.requests shouldBe listOf(thumbnail.uuid to thumbnail.size)
         }
 
-        it("TC-188: serves bytes from the server as a NETWORK source") {
-            val repository = TestCoverRepository(
-                CoverImageResult.Found("art".encodeUtf8(), CoverSize.Md, fromCache = false),
-            )
+        context("when the repository has the cover") {
+            it("TC-188: serves its bytes") {
+                val bytes = randomString()
+                val repository = TestCoverRepository(
+                    CoverImageResult.Found(bytes.encodeUtf8(), randomEnum<CoverSize>(), fromCache = randomBoolean()),
+                )
 
-            val result = fetcher(repository).fetch().shouldBeInstanceOf<SourceFetchResult>()
+                val result = sut(repository).fetch().shouldBeInstanceOf<SourceFetchResult>()
 
-            result.dataSource shouldBe DataSource.NETWORK
-            result.mimeType shouldBe "image/webp"
-            result.source.source().readUtf8() shouldBe "art"
+                result.source.source().readUtf8() shouldBe bytes
+            }
+
+            it("TC-189: labels bytes from the server as NETWORK and cached bytes as DISK") {
+                checkAll(Exhaustive.of(false to DataSource.NETWORK, true to DataSource.DISK)) { (fromCache, source) ->
+                    val repository = TestCoverRepository(
+                        CoverImageResult.Found(randomString().encodeUtf8(), randomEnum<CoverSize>(), fromCache),
+                    )
+
+                    sut(repository).fetch().shouldBeInstanceOf<SourceFetchResult>().dataSource shouldBe source
+                }
+            }
         }
 
-        it("TC-189: serves cached bytes as a DISK source") {
-            val repository = TestCoverRepository(
-                CoverImageResult.Found("art".encodeUtf8(), CoverSize.Lg, fromCache = true),
-            )
-
-            val result = fetcher(repository).fetch().shouldBeInstanceOf<SourceFetchResult>()
-
-            result.dataSource shouldBe DataSource.DISK
-            result.source.source().readUtf8() shouldBe "art"
-        }
-
-        it("TC-190: fails with an IOException when the repository has no cover") {
-            shouldThrow<IOException> { fetcher(TestCoverRepository(CoverImageResult.NotFound)).fetch() }
-        }
-
-        it("TC-190: fails with an IOException when the repository errors") {
-            shouldThrow<IOException> { fetcher(TestCoverRepository(CoverImageResult.Error)).fetch() }
+        context("when the repository has no image to give") {
+            it("TC-190: fails with an IOException for NotFound and Error") {
+                checkAll(Exhaustive.of(CoverImageResult.NotFound, CoverImageResult.Error)) { result ->
+                    shouldThrow<IOException> { sut(TestCoverRepository(result)).fetch() }
+                }
+            }
         }
     }
 })
