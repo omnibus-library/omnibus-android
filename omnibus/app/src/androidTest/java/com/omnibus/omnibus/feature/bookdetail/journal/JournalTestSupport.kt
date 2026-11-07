@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail.journal
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.detailText
@@ -13,12 +12,6 @@ import java.util.TimeZone
 
 /** 2025-10-24 00:00 UTC. */
 internal const val OCT_24_2025 = 1_761_264_000_000L
-
-/** 2025-10-15 00:00 UTC. */
-internal const val OCT_15_2025 = 1_760_486_400_000L
-
-/** 2025-10-09 00:00 UTC. */
-internal const val OCT_9_2025 = 1_759_968_000_000L
 
 /** 2025-10-29, so the dates above read as this year. */
 internal const val NOW_MILLIS = 1_761_775_445_000L
@@ -55,9 +48,3 @@ internal fun testCard(
     createdAtMillis = createdAtMillis,
     preview = preview,
 )
-
-/** The dp count of a pixel distance in this rule's density. */
-internal fun ComposeContentTestRule.dpOf(px: Float): Float = px / density.density
-
-/** The pixel count of [dp] in this rule's density. */
-internal fun ComposeContentTestRule.pxOf(dp: Float): Float = dp * density.density

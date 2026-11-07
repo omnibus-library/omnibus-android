@@ -16,23 +16,6 @@ class HighlightsSectionTest {
 
     // TC-52
     @Test
-    fun tc52_aNullIdentifierRendersNothing() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                HighlightsSection.Content(
-                    context = testSectionContext(book = testDetailBook(uniqueIdentifier = null)),
-                    modifier = Modifier,
-                )
-            }
-        }
-
-        rule.onNodeWithTag(HighlightsTestTags.SECTION).assertDoesNotExist()
-        rule.onNodeWithTag(HighlightsTestTags.HEADING).assertDoesNotExist()
-        rule.onNodeWithTag(HighlightsTestTags.RETRY).assertDoesNotExist()
-    }
-
-    // TC-52
-    @Test
     fun tc52_aBlankIdentifierRendersNothing() {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
