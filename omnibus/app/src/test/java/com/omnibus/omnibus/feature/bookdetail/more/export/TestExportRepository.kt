@@ -3,7 +3,6 @@ package com.omnibus.omnibus.feature.bookdetail.more.export
 import com.omnibus.omnibus.data.export.ExportRepository
 import com.omnibus.omnibus.data.export.ExportSaveResult
 import com.omnibus.omnibus.data.export.KindleSendResult
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -23,9 +22,6 @@ class TestExportRepository : ExportRepository {
 
     /** Gates for the next save calls, first in first out. */
     val saveGates = ArrayDeque<CompletableDeferred<ExportSaveResult>>()
-
-    /** Whether a save was cancelled while it waited on its gate. */
-    var saveCancelled = false
 
     override suspend fun sendToKindle(bookUuid: String): KindleSendResult {
         kindleCalls += bookUuid
@@ -58,13 +54,6 @@ class TestExportRepository : ExportRepository {
         return awaitSave()
     }
 
-    private suspend fun awaitSave(): ExportSaveResult {
-        val gate = saveGates.removeFirstOrNull() ?: return ExportSaveResult.Saved(emptyList())
-        return try {
-            gate.await()
-        } catch (ex: CancellationException) {
-            saveCancelled = true
-            throw ex
-        }
-    }
+    private suspend fun awaitSave(): ExportSaveResult =
+        saveGates.removeFirstOrNull()?.await() ?: ExportSaveResult.Saved(emptyList())
 }
