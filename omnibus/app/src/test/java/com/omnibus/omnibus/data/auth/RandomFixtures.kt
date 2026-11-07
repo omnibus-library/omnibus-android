@@ -10,6 +10,7 @@ fun randomCurrentUser(): CurrentUser = CurrentUser(
     canEdit = randomBoolean(),
     canUpload = randomBoolean(),
     hiddenFormats = List(randomInt(0..3)) { randomString() }.toSet(),
+    hiddenFormats = List(randomInt(0..3)) { randomString().lowercase() }.toSet(),
     isAdmin = randomBoolean(),
     canDownload = randomBoolean(),
     kindleEmail = if (randomBoolean()) randomString() else null,

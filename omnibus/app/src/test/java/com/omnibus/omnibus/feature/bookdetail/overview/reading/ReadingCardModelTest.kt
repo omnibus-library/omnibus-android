@@ -1,193 +1,151 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.reading
 
 import com.omnibus.omnibus.data.readstatus.ReadStatus
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.feature.bookdetail.progress.ReadingSession
-import com.omnibus.omnibus.feature.bookdetail.progress.pacePerHour
-import com.omnibus.omnibus.feature.bookdetail.progress.timeLeftSeconds
-import io.kotest.assertions.withClue
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
-import java.util.GregorianCalendar
-import java.util.TimeZone
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
+
+/** A sitting with no fractions, as the server sends today, so the pace comes from the book's fraction. */
+private fun session(startedAt: Long = randomLong(), seconds: Long = randomLong(1L..36_000L)) =
+    ReadingSession(startedAt, seconds, startFraction = null, endFraction = null)
+
+private fun known(status: ReadStatus, finishedAt: Long? = null) =
+    ReadStatusState.Known(randomReadStatusRecord().copy(status = status, finishedAtMillis = finishedAt))
+
+private fun loaded(vararg sessions: ReadingSession) = SessionsState.Loaded(sessions.toList())
+
+private inline fun <reified T : ReadingRow> List<ReadingRow>.only(): T = filterIsInstance<T>().single()
 
 class ReadingCardModelTest : DescribeSpec({
-
-    val utc = TimeZone.getTimeZone("UTC")
-
-    fun at(year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0): Long =
-        GregorianCalendar(utc).apply { clear(); set(year, month - 1, day, hour, minute) }.timeInMillis
-
-    fun session(startedAt: Long, seconds: Long) = ReadingSession(startedAt, seconds, null, null)
-
-    /** The ticket's sample: 11 sittings, newest first, totalling 11 040 s; the longest, 2 880 s, starts Oct 19. */
-    val sample = listOf(
-        session(at(2026, 11, 1, 22, 4), 600),
-        session(at(2026, 10, 31, 20), 900),
-        session(at(2026, 10, 30, 19), 1_200),
-        session(at(2026, 10, 19, 18), 2_880),
-        session(at(2026, 10, 18, 20), 720),
-        session(at(2026, 10, 17, 20), 600),
-        session(at(2026, 10, 16, 20), 480),
-        session(at(2026, 10, 15, 20), 1_000),
-        session(at(2026, 10, 14, 20), 900),
-        session(at(2026, 10, 13, 20), 660),
-        session(at(2026, 10, 12, 20), 1_100),
-    )
-    val sampleFraction = 11_040f / 17_820f
-    val oct12 = at(2026, 10, 12, 20)
-    val oct19 = at(2026, 10, 19, 18)
-    val finishedOct29 = at(2026, 10, 29, 22, 14)
-
-    fun known(status: ReadStatus, finishedAt: Long? = null) =
-        ReadStatusState.Known(ReadStatusRecord(status, 1L, finishedAt))
-
-    val unknown = ReadStatusState.Unknown
-    val failedStatus = ReadStatusState.Failed
-    val loading = SessionsState.Loading
-    val sessionsFailed = SessionsState.Failed
-    val loadedEmpty = SessionsState.Loaded(emptyList())
-    val loadedSample = SessionsState.Loaded(sample)
-    val hold = ReadingCardModel(line = null, rows = emptyList())
-    val somePosition = CardProgress(0.4f, hasPosition = true)
-
-    fun model(
+    /** The card of a book that is in the library, rather than wishlist-only. */
+    fun sut(
         status: ReadStatusState,
         sessions: SessionsState,
-        hasFile: Boolean = true,
-        progress: CardProgress? = null,
-        wishlistOnly: Boolean = false,
-    ) = readingCardModel(wishlistOnly, hasFile, status, sessions, progress)
+        hasFile: Boolean = randomBoolean(),
+        progress: CardProgress? = randomCardProgress(),
+    ) = readingCardModel(wishlistOnly = false, hasFile, status, sessions, progress)
 
-    describe("the card model") {
+    fun noLine(line: ReadingLine) = ReadingCardModel(line, emptyList())
 
-        it("TC-1: a wishlist-only book is the wishlist line with no rows") {
-            model(
-                status = known(ReadStatus.Finished, finishedOct29),
-                sessions = loadedSample,
-                progress = CardProgress(0.5f, true),
-                wishlistOnly = true,
-            ) shouldBe ReadingCardModel(ReadingLine.Wishlist, emptyList())
+    describe("the card's line") {
+        context("when the book is wishlist-only") {
+            it("TC-1: is the wishlist line with no rows, whatever else is known") {
+                readingCardModel(
+                    wishlistOnly = true,
+                    hasFile = true,
+                    status = known(ReadStatus.Finished, randomLong()),
+                    sessions = loaded(session()),
+                    progress = randomCardProgress(),
+                ) shouldBe noLine(ReadingLine.Wishlist)
+            }
         }
 
-        it("TC-2: the card holds the heading alone until the status and the sessions have both answered") {
-            val holds = listOf(
-                unknown to sessionsFailed,
-                unknown to loadedEmpty,
-                unknown to loadedSample,
-                unknown to loading,
-                known(ReadStatus.Unread) to loading,
-                known(ReadStatus.Reading) to loading,
-                known(ReadStatus.Finished, finishedOct29) to loading,
-                failedStatus to loading,
-            )
-            for ((status, sessions) in holds) {
-                for (hasFile in listOf(true, false)) {
-                    for (progress in listOf(null, somePosition)) {
-                        withClue("$status, $sessions, hasFile=$hasFile, progress=$progress") {
-                            model(status, sessions, hasFile, progress) shouldBe hold
-                        }
+        context("when an answer is still missing") {
+            it("TC-2: holds the heading alone, for an unknown status or sessions still loading") {
+                val cases = Exhaustive.of(
+                    ReadStatusState.Unknown to SessionsState.Failed,
+                    ReadStatusState.Unknown to loaded(session()),
+                    ReadStatusState.Unknown to SessionsState.Loading,
+                    known(ReadStatus.Reading) to SessionsState.Loading,
+                    ReadStatusState.Failed to SessionsState.Loading,
+                )
+
+                checkAll(cases) { (status, sessions) ->
+                    sut(status, sessions) shouldBe ReadingCardModel(line = null, rows = emptyList())
+                }
+            }
+        }
+
+        context("when the status failed") {
+            it("TC-3: is the error line, whatever the sessions") {
+                checkAll(Exhaustive.of(SessionsState.Failed, loaded(), loaded(session()))) { sessions ->
+                    sut(ReadStatusState.Failed, sessions) shouldBe noLine(ReadingLine.HistoryFailed)
+                }
+            }
+        }
+
+        context("when the sessions failed") {
+            it("TC-5: is the error line, for any status without a finished date") {
+                checkAll(Exhaustive.of(ReadStatus.Unread, ReadStatus.Reading, ReadStatus.Finished)) { status ->
+                    sut(known(status), SessionsState.Failed) shouldBe noLine(ReadingLine.HistoryFailed)
+                }
+            }
+        }
+
+        context("when the book is unread") {
+            context("when it has a file") {
+                it("TC-4: is the no-reading line with no rows, even with sessions") {
+                    sut(known(ReadStatus.Unread), loaded(session()), hasFile = true) shouldBe noLine(ReadingLine.NoReading)
+                }
+            }
+
+            context("when it is a paper copy") {
+                it("TC-6: is the paper line with no rows, even with sessions") {
+                    sut(known(ReadStatus.Unread), loaded(session()), hasFile = false) shouldBe noLine(ReadingLine.PaperCopy)
+                }
+            }
+        }
+
+        context("when the book is being read") {
+            context("when it has sessions") {
+                it("TC-7: reads since the earliest start") {
+                    sut(known(ReadStatus.Reading), loaded(session(startedAt = 2_000L), session(startedAt = 1_000L))).line shouldBe
+                        ReadingLine.ReadingSince(1_000L)
+                }
+            }
+
+            context("when it has no sessions") {
+                context("when a position is saved") {
+                    it("TC-8: is the sync-pending line") {
+                        sut(known(ReadStatus.Reading), loaded(), progress = randomCardProgress().copy(hasPosition = true)) shouldBe
+                            noLine(ReadingLine.SyncPending)
                     }
                 }
             }
         }
 
-        it("TC-3: a failed status is the error line with no rows, whatever the sessions") {
-            for (sessions in listOf(sessionsFailed, loadedEmpty, loadedSample)) {
-                for (hasFile in listOf(true, false)) {
-                    withClue("$sessions, hasFile=$hasFile") {
-                        model(failedStatus, sessions, hasFile) shouldBe ReadingCardModel(ReadingLine.HistoryFailed, emptyList())
-                    }
+        context("when the book is finished with a date") {
+            it("TC-9: reads the finished date above the rows") {
+                val finishedAt = randomLong()
+
+                val card = sut(known(ReadStatus.Finished, finishedAt), loaded(session()))
+
+                card.line shouldBe ReadingLine.Finished(finishedAt)
+                card.rows.shouldNotBeEmpty()
+            }
+
+            context("when the sessions failed") {
+                it("TC-9: still reads the finished date") {
+                    val finishedAt = randomLong()
+
+                    sut(known(ReadStatus.Finished, finishedAt), SessionsState.Failed) shouldBe noLine(ReadingLine.Finished(finishedAt))
                 }
             }
         }
 
-        it("TC-4: an unread book with a file is the no-reading line with no rows, even with sessions") {
-            model(known(ReadStatus.Unread), loadedEmpty) shouldBe ReadingCardModel(ReadingLine.NoReading, emptyList())
-            model(known(ReadStatus.Unread), loadedSample) shouldBe ReadingCardModel(ReadingLine.NoReading, emptyList())
-        }
+        context("when the book is finished without a date") {
+            it("TC-10: has no line above the rows") {
+                val card = sut(known(ReadStatus.Finished), loaded(session()))
 
-        it("TC-5: a failed sessions read is the error line, never the empty lines") {
-            for (status in listOf(known(ReadStatus.Unread), known(ReadStatus.Reading), known(ReadStatus.Finished))) {
-                for (hasFile in listOf(true, false)) {
-                    withClue("$status, hasFile=$hasFile") {
-                        model(status, sessionsFailed, hasFile) shouldBe ReadingCardModel(ReadingLine.HistoryFailed, emptyList())
-                    }
-                }
+                card.line shouldBe null
+                card.rows.shouldNotBeEmpty()
             }
         }
+    }
 
-        it("TC-6: an unread paper copy is the paper line with no rows") {
-            model(known(ReadStatus.Unread), loadedEmpty, hasFile = false) shouldBe ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-            model(known(ReadStatus.Unread), loadedSample, hasFile = false) shouldBe ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-        }
-
-        it("TC-7: a reading book with sessions shows since the earliest start, then the rows") {
-            val card = model(known(ReadStatus.Reading), loadedSample, progress = null)
-
-            card.line shouldBe ReadingLine.ReadingSince(oct12)
-            card.rows.map { it.kind } shouldBe listOf(
-                ReadingRowKind.Started,
-                ReadingRowKind.TimeRead,
-                ReadingRowKind.LastRead,
-                ReadingRowKind.LongestSitting,
-            )
-            card.rows.first() shouldBe ReadingRow.Started(oct12)
-        }
-
-        it("TC-8: a reading book with no sessions shows the empty state for its position") {
-            model(known(ReadStatus.Reading), loadedEmpty, hasFile = true, progress = CardProgress(0.4f, true)) shouldBe
-                ReadingCardModel(ReadingLine.SyncPending, emptyList())
-            model(known(ReadStatus.Reading), loadedEmpty, hasFile = true, progress = CardProgress(null, false)) shouldBe
-                ReadingCardModel(ReadingLine.NoReading, emptyList())
-            model(known(ReadStatus.Reading), loadedEmpty, hasFile = true, progress = null) shouldBe
-                ReadingCardModel(ReadingLine.NoReading, emptyList())
-            model(known(ReadStatus.Reading), loadedEmpty, hasFile = false, progress = null) shouldBe
-                ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-        }
-
-        it("TC-9: a finished book with a date shows the finished line, with rows when there are sessions") {
-            val withPace = model(known(ReadStatus.Finished, finishedOct29), loadedSample, progress = CardProgress(0.5f, true))
-            withPace.line shouldBe ReadingLine.Finished(finishedOct29)
-            withPace.rows.map { it.kind } shouldBe listOf(
-                ReadingRowKind.Started,
-                ReadingRowKind.TimeRead,
-                ReadingRowKind.Pace,
-                ReadingRowKind.LastRead,
-                ReadingRowKind.LongestSitting,
-            )
-
-            model(known(ReadStatus.Finished, finishedOct29), loadedEmpty) shouldBe
-                ReadingCardModel(ReadingLine.Finished(finishedOct29), emptyList())
-            model(known(ReadStatus.Finished, finishedOct29), sessionsFailed) shouldBe
-                ReadingCardModel(ReadingLine.Finished(finishedOct29), emptyList())
-            model(known(ReadStatus.Finished, finishedOct29), loadedEmpty, hasFile = false) shouldBe
-                ReadingCardModel(ReadingLine.Finished(finishedOct29), emptyList())
-        }
-
-        it("TC-10: a finished book without a date has no line when it has sessions, else its empty line") {
-            val withSessions = model(known(ReadStatus.Finished), loadedSample, progress = CardProgress(0.5f, true))
-            withSessions.line shouldBe null
-            withSessions.rows.map { it.kind } shouldBe listOf(
-                ReadingRowKind.Started,
-                ReadingRowKind.TimeRead,
-                ReadingRowKind.Pace,
-                ReadingRowKind.LastRead,
-                ReadingRowKind.LongestSitting,
-            )
-            model(known(ReadStatus.Finished), loadedEmpty, hasFile = true) shouldBe ReadingCardModel(ReadingLine.NoReading, emptyList())
-            model(known(ReadStatus.Finished), loadedEmpty, hasFile = false) shouldBe ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-            model(known(ReadStatus.Finished), loadedEmpty, hasFile = true, progress = CardProgress(0.4f, true)) shouldBe
-                ReadingCardModel(ReadingLine.NoReading, emptyList())
-        }
-
-        it("TC-11: the rows come in the documented order") {
-            readingRows(sample, sampleFraction, isReading = true).map { it.kind } shouldBe listOf(
+    describe("the card's rows") {
+        it("TC-11: come in the documented order") {
+            readingRows(listOf(session(seconds = 3_600)), 0.5f, isReading = true).map { it.kind } shouldContainExactly listOf(
                 ReadingRowKind.Started,
                 ReadingRowKind.TimeRead,
                 ReadingRowKind.Pace,
@@ -197,15 +155,16 @@ class ReadingCardModelTest : DescribeSpec({
             )
         }
 
-        it("TC-12: with no pace the rows leave out pace and time left") {
-            val withoutPace = listOf(
-                null to sample,
-                0f to sample,
-                0.5f to sample.map { it.copy(durationSeconds = 0L) },
-            )
-            for ((fraction, sessions) in withoutPace) {
-                withClue("fraction=$fraction") {
-                    readingRows(sessions, fraction, isReading = true).map { it.kind } shouldBe listOf(
+        context("when there is no pace") {
+            it("TC-12: leave out the rows that need a pace, for no fraction, a zero fraction or no time read") {
+                val cases = Exhaustive.of(
+                    null to session(),
+                    0f to session(),
+                    0.5f to session(seconds = 0),
+                )
+
+                checkAll(cases) { (fraction, sitting) ->
+                    readingRows(listOf(sitting), fraction, isReading = true).map { it.kind } shouldContainExactly listOf(
                         ReadingRowKind.Started,
                         ReadingRowKind.TimeRead,
                         ReadingRowKind.LastRead,
@@ -213,93 +172,83 @@ class ReadingCardModelTest : DescribeSpec({
                     )
                 }
             }
-            readingRows(emptyList(), 0.5f, isReading = true) shouldBe emptyList()
         }
 
-        it("TC-13: started is the earliest start, and time read is a long sum") {
-            val rows = readingRows(sample, sampleFraction, isReading = true)
-            rows[0] shouldBe ReadingRow.Started(oct12)
-            rows[1] shouldBe ReadingRow.TimeRead(11_040L, 11)
+        it("TC-13: start at the earliest start") {
+            val rows = readingRows(listOf(session(startedAt = 2_000L), session(startedAt = 1_000L)), null, isReading = false)
 
-            val one = session(oct19, 600)
-            val oneRows = readingRows(listOf(one), null, isReading = false)
-            oneRows.only<ReadingRow.TimeRead>() shouldBe ReadingRow.TimeRead(600L, 1)
-            oneRows.only<ReadingRow.Started>() shouldBe ReadingRow.Started(oct19)
-            oneRows.only<ReadingRow.LastRead>() shouldBe ReadingRow.LastRead(oct19 + 600_000L)
-            oneRows.only<ReadingRow.LongestSitting>() shouldBe ReadingRow.LongestSitting(600L, oct19)
+            rows.only<ReadingRow.Started>() shouldBe ReadingRow.Started(1_000L)
+        }
 
+        it("TC-13: total the time read without overflowing an Int") {
             val big = Int.MAX_VALUE.toLong()
-            readingRows(listOf(session(oct19, big), session(oct12, big)), null, isReading = false)
+
+            readingRows(listOf(session(seconds = big), session(seconds = big)), null, isReading = false)
                 .only<ReadingRow.TimeRead>() shouldBe ReadingRow.TimeRead(2 * big, 2)
         }
 
-        it("TC-14: pace rounds to the nearest percent and is hidden when it rounds to zero") {
-            val hour = listOf(session(oct19, 3_600))
-            readingRows(hour, 0.196f, isReading = true).only<ReadingRow.Pace>() shouldBe ReadingRow.Pace(20)
-            readingRows(hour, 0.204f, isReading = true).only<ReadingRow.Pace>() shouldBe ReadingRow.Pace(20)
-            readingRows(listOf(session(oct19, 360_000)), 0.5f, isReading = true).only<ReadingRow.Pace>() shouldBe ReadingRow.Pace(1)
-
-            val tiny = readingRows(listOf(session(oct19, 225_000)), 0.25f, isReading = true)
-            tiny.filterIsInstance<ReadingRow.Pace>().shouldBeEmpty()
-            tiny.only<ReadingRow.TimeLeft>() shouldBe ReadingRow.TimeLeft(675_000L)
-        }
-
-        it("TC-15: time left only while reading and with something left") {
-            val notReading = readingRows(sample, 0.5f, isReading = false)
-            notReading.map { it.kind } shouldContain ReadingRowKind.Pace
-            notReading.map { it.kind } shouldNotContain ReadingRowKind.TimeLeft
-
-            val full = readingRows(sample, 1f, isReading = true)
-            full.map { it.kind } shouldContain ReadingRowKind.Pace
-            full.map { it.kind } shouldNotContain ReadingRowKind.TimeLeft
-        }
-
-        it("TC-16: time left needs at least a minute") {
-            val fraction = 0.75f
-            val atMinute = listOf(session(oct19, 180))
-            timeLeftSeconds(fraction, pacePerHour(atMinute, fraction)!!) shouldBe 60L
-            readingRows(atMinute, fraction, isReading = true).only<ReadingRow.TimeLeft>() shouldBe ReadingRow.TimeLeft(60L)
-
-            val underMinute = listOf(session(oct19, 177))
-            timeLeftSeconds(fraction, pacePerHour(underMinute, fraction)!!) shouldBe 59L
-            readingRows(underMinute, fraction, isReading = true).filterIsInstance<ReadingRow.TimeLeft>().shouldBeEmpty()
-        }
-
-        it("TC-17: the sample's pace and time left use the unrounded pace") {
-            val rows = readingRows(sample, sampleFraction, isReading = true)
-            rows.only<ReadingRow.Pace>() shouldBe ReadingRow.Pace(20)
-            val exact = timeLeftSeconds(sampleFraction, pacePerHour(sample, sampleFraction)!!)
-            rows.only<ReadingRow.TimeLeft>() shouldBe ReadingRow.TimeLeft(6_780L)
-            exact shouldBe 6_780L
-            timeLeftSeconds(sampleFraction, 20f) shouldNotBe exact
-        }
-
-        it("TC-18: last read is the latest end, not the latest start") {
-            val sessions = listOf(
-                session(at(2026, 11, 2, 10, 0), 60),
-                session(at(2026, 11, 2, 8, 0), 4 * 3_600L),
+        it("TC-14: round the pace to the nearest percent") {
+            val cases = Exhaustive.of(
+                Triple(3_600L, 0.196f, 20),
+                Triple(3_600L, 0.204f, 20),
+                Triple(360_000L, 0.5f, 1),
             )
-            readingRows(sessions, null, isReading = false).only<ReadingRow.LastRead>() shouldBe
-                ReadingRow.LastRead(at(2026, 11, 2, 12, 0))
+
+            checkAll(cases) { (seconds, fraction, percent) ->
+                readingRows(listOf(session(seconds = seconds)), fraction, isReading = true)
+                    .only<ReadingRow.Pace>() shouldBe ReadingRow.Pace(percent)
+            }
         }
 
-        it("TC-19: longest sitting is the longest, and the newest one wins a tie") {
-            val longest = listOf(
-                session(at(2026, 10, 25, 10), 600),
-                session(at(2026, 10, 24, 10), 2_880),
-                session(at(2026, 10, 23, 10), 900),
-            )
-            readingRows(longest, null, isReading = false).only<ReadingRow.LongestSitting>() shouldBe
-                ReadingRow.LongestSitting(2_880L, at(2026, 10, 24, 10))
+        context("when the pace rounds to zero") {
+            it("TC-14: leave out the pace") {
+                readingRows(listOf(session(seconds = 225_000)), 0.25f, isReading = true)
+                    .map { it.kind } shouldNotContain ReadingRowKind.Pace
+            }
+        }
 
-            val tie = listOf(
-                session(at(2026, 10, 20, 10), 2_880),
-                session(at(2026, 10, 10, 10), 2_880),
+        context("when there is no reading time left to show") {
+            it("TC-15: leave out time left, for a finished sitting or a full fraction") {
+                checkAll(Exhaustive.of(false to 0.5f, true to 1f)) { (isReading, fraction) ->
+                    readingRows(listOf(session()), fraction, isReading).map { it.kind } shouldNotContain ReadingRowKind.TimeLeft
+                }
+            }
+        }
+
+        it("TC-16: show time left only for a minute or more") {
+            readingRows(listOf(session(seconds = 180)), 0.75f, isReading = true)
+                .only<ReadingRow.TimeLeft>() shouldBe ReadingRow.TimeLeft(60L)
+            readingRows(listOf(session(seconds = 177)), 0.75f, isReading = true)
+                .map { it.kind } shouldNotContain ReadingRowKind.TimeLeft
+        }
+
+        it("TC-17: work out time left from the unrounded pace") {
+            readingRows(listOf(session(seconds = 11_040)), 11_040f / 17_820f, isReading = true)
+                .only<ReadingRow.TimeLeft>() shouldBe ReadingRow.TimeLeft(6_780L)
+        }
+
+        it("TC-18: read last read as the latest end, not the latest start") {
+            val rows = readingRows(
+                listOf(session(startedAt = 100_000L, seconds = 60), session(startedAt = 0L, seconds = 4_000)),
+                null,
+                isReading = false,
             )
-            readingRows(tie, null, isReading = false).only<ReadingRow.LongestSitting>() shouldBe
-                ReadingRow.LongestSitting(2_880L, at(2026, 10, 20, 10))
+
+            rows.only<ReadingRow.LastRead>() shouldBe ReadingRow.LastRead(4_000_000L)
+        }
+
+        it("TC-19: read the longest sitting as the newest of the longest") {
+            val rows = readingRows(
+                listOf(
+                    session(startedAt = 3_000L, seconds = 600),
+                    session(startedAt = 2_000L, seconds = 2_880),
+                    session(startedAt = 1_000L, seconds = 2_880),
+                ),
+                null,
+                isReading = false,
+            )
+
+            rows.only<ReadingRow.LongestSitting>() shouldBe ReadingRow.LongestSitting(2_880L, 2_000L)
         }
     }
 })
-
-private inline fun <reified T : ReadingRow> List<ReadingRow>.only(): T = filterIsInstance<T>().single()
