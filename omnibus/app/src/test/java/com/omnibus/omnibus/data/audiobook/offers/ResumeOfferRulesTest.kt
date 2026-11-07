@@ -1,8 +1,8 @@
 package com.omnibus.omnibus.data.audiobook.offers
 
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.audiobook.position.randomLatePosition
-import com.omnibus.omnibus.data.audiobook.position.randomPlayingBook
 import com.omnibus.omnibus.testing.randomDouble
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull

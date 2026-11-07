@@ -28,6 +28,13 @@ fun ChipEditSheetGenres() {
 @PreviewTest
 @Preview
 @Composable
+fun ChipEditSheetTags() {
+    ChipEditShot(state(tags = listOf("Cozy")), kind = MetadataListKind.Tags)
+}
+
+@PreviewTest
+@Preview
+@Composable
 fun ChipEditSheetEmpty() {
     ChipEditShot(state())
 }
@@ -58,17 +65,18 @@ fun ChipEditSheetPoolLoading() {
 
 private fun state(
     genres: List<String> = emptyList(),
+    tags: List<String> = emptyList(),
     entry: String = "",
     pools: Map<MetadataListKind, PoolState> = emptyMap(),
-) = ChipEditUIState(canEdit = true, isOnline = true, bound = true, genres = genres, tags = emptyList(), entry = entry, pools = pools)
+) = ChipEditUIState(canEdit = true, isOnline = true, bound = true, genres = genres, tags = tags, entry = entry, pools = pools)
 
 @Composable
-private fun ChipEditShot(state: ChipEditUIState) {
+private fun ChipEditShot(state: ChipEditUIState, kind: MetadataListKind = MetadataListKind.Genres) {
     OmnibusTheme(darkTheme = true) {
         Box(Modifier.background(SheetContainer).padding(16.dp)) {
             ChipEditSheetContent(
                 state = state,
-                kind = MetadataListKind.Genres,
+                kind = kind,
                 bookTitle = "The Left Hand of Darkness",
                 inlineError = null,
                 onRemove = {},

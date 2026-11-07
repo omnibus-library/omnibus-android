@@ -31,6 +31,22 @@ fun MyReviewCardWithNotes() {
     )
 }
 
+/** Text without private notes has no notes box. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun MyReviewCardTextOnly() {
+    MyReviewShot(MyReviewModel.Known(review(rating = 4f, text = "Just the text")))
+}
+
+/** Only private notes: the write prompt stays. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun MyReviewCardNotesOnly() {
+    MyReviewShot(MyReviewModel.Known(review(notes = "private")))
+}
+
 @PreviewTest
 @PreviewLightDark
 @Composable

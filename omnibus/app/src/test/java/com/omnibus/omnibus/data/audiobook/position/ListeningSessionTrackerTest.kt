@@ -4,6 +4,7 @@ import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.di.ClientIdSource
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.TestTimeSource

@@ -9,7 +9,7 @@ import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.data.audiobook.playback.chapters
 import com.omnibus.omnibus.data.audiobook.playback.noChapterState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.position.randomPlayingBook
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.testing.randomDouble
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.doubles.plusOrMinus

@@ -25,6 +25,22 @@ fun ReaderContentsWithoutPages() {
     ContentsShot(ReaderContentsPreviewBareToc, ReaderContentsPreviewBareLocation)
 }
 
+/** No location, so no position line and no marker. A padded label is trimmed, and a page of 0 or less shows nothing. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun ReaderContentsOddEntries() {
+    ContentsShot(
+        toc = listOf(
+            TocEntry(label = "   Spaced Out  ", href = "a.xhtml", level = 0, page = 4),
+            TocEntry(label = "Alpha", href = "b.xhtml", level = 0, page = 0),
+            TocEntry(label = "Beta", href = "c.xhtml", level = 1, page = -3),
+            TocEntry(label = "Gamma", href = "d.xhtml", level = 1, page = 9),
+        ),
+        location = null,
+    )
+}
+
 @PreviewTest
 @PreviewLightDark
 @Composable

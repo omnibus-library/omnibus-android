@@ -14,10 +14,26 @@ import com.omnibus.omnibus.screenshot.Shot
 @PreviewLightDark
 @Composable
 fun GenresTagsBothRows() {
+    GenresTagsShot(genres = listOf("Science Fiction", "Dystopia"), tags = listOf("Utopia", "Anthropology"))
+}
+
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun GenresTagsGenresOnly() {
+    GenresTagsShot(genres = listOf("Fantasy"), tags = emptyList())
+}
+
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun GenresTagsTagsOnly() {
+    GenresTagsShot(genres = emptyList(), tags = listOf("Epic"))
+}
+
+@Composable
+private fun GenresTagsShot(genres: List<String>, tags: List<String>) {
     Shot {
-        GenresTagsSection.Content(
-            shotSectionContext(shotBook(genres = listOf("Science Fiction", "Dystopia"), subjects = listOf("Utopia", "Anthropology"))),
-            Modifier,
-        )
+        GenresTagsSection.Content(shotSectionContext(shotBook(genres = genres, subjects = tags)), Modifier)
     }
 }

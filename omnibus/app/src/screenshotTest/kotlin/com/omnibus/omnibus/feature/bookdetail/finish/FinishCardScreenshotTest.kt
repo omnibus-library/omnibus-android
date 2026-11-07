@@ -19,12 +19,28 @@ fun FinishCardLeaveAReview() {
     FinishCardShot(FinishCardModel("The Hound", sampleTotals, FinishAction.Review))
 }
 
+/** A book with no finish date has no totals. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun FinishCardNoTotals() {
+    FinishCardShot(FinishCardModel("The Hound", emptyList(), FinishAction.Review))
+}
+
 @PreviewTest
 @PreviewLightDark
 @Composable
 fun FinishCardUpNext() {
     val next = SeriesMember("uuid-3", "The Sign of the Four", "3", null, null, false)
     FinishCardShot(FinishCardModel("The Hound", sampleTotals, FinishAction.UpNext(next, "Sherlock Holmes")))
+}
+
+/** An unknown review has no action row. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun FinishCardNoAction() {
+    FinishCardShot(FinishCardModel("The Hound", sampleTotals, null))
 }
 
 @Composable

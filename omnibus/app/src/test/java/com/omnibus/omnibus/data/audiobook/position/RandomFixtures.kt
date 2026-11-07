@@ -37,11 +37,3 @@ fun randomListeningSessionReport(): ListeningSessionReport = ListeningSessionRep
     timeZone = randomOf(listOf("UTC", "Asia/Kolkata", "America/New_York")),
 )
 
-/** Lives here until the playback package has its own random fixtures: its `playingBook()` is pinned. */
-fun randomPlayingBook(): PlayingBook = PlayingBook(
-    bookUuid = randomString(),
-    bookFileId = randomLong(1L..1_000_000L),
-    title = randomString(),
-    author = randomString(),
-    hasEbook = randomBoolean(),
-)

@@ -33,6 +33,16 @@ fun LibraryBooks() {
     )
 }
 
+/** A reload keeps the old grid and the new heading, with no loading view. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun LibraryReloading() {
+    LibraryShot(
+        LibraryUIState(books = listOf(book(1L), book(2L)), isInitialLoading = true, category = LibraryCategory.Audiobooks),
+    )
+}
+
 /** A filter with no books keeps its heading and filter button, not the empty library view. */
 @PreviewTest
 @PreviewLightDark

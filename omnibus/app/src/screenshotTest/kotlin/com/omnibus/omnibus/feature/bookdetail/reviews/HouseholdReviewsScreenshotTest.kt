@@ -43,6 +43,14 @@ fun HouseholdReviewsListed() {
     )
 }
 
+/** With no average the heading shows only the count. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun HouseholdReviewsNoAverage() {
+    HouseholdReviewsShot(listed(entry(4, "Theo", markdown = "Slow start.", body = ReviewBody.Text)))
+}
+
 @PreviewTest
 @PreviewLightDark
 @Composable

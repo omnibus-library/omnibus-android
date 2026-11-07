@@ -29,6 +29,14 @@ fun SleepSheetWithChapters() {
     )
 }
 
+/** A book without chapters keeps the eight presets and has no chapter cell. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun SleepSheetNoChapters() {
+    SleepShot(PlaybackState(book = book, durationSeconds = 3600.0))
+}
+
 @Composable
 private fun SleepShot(playback: PlaybackState) {
     Shot {

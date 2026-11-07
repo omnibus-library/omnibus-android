@@ -10,11 +10,11 @@ import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController.Command
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.audiobook.position.LatePosition
 import com.omnibus.omnibus.data.audiobook.position.ListeningPositionSync
 import com.omnibus.omnibus.data.audiobook.position.TestListeningPositionSync
 import com.omnibus.omnibus.data.audiobook.position.randomLatePosition
-import com.omnibus.omnibus.data.audiobook.position.randomPlayingBook
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomEnum
 import io.kotest.core.spec.style.DescribeSpec

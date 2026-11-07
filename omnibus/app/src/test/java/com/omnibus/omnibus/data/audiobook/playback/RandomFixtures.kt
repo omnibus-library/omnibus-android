@@ -9,7 +9,7 @@ import com.omnibus.omnibus.testing.randomString
 
 fun randomPlayingBook(): PlayingBook = PlayingBook(
     bookUuid = randomString(),
-    bookFileId = randomLong(),
+    bookFileId = randomLong(1L..1_000_000L),
     title = randomString(),
     author = randomOf(listOf(null, randomString())),
     hasEbook = randomBoolean(),

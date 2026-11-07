@@ -662,7 +662,6 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                 withServer {
                     checkAll(
                         Exhaustive.of(
-                            dropped() to ReviewError.Unreachable,
                             reply(400) to ReviewError.Http(400),
                             reply(401) to ReviewError.SessionExpired,
                             reply(404) to ReviewError.BookNotFound,
@@ -676,6 +675,22 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                         script.answer("PATCH", failure)
 
                         repository.updateMyReview(uuid, ratingPatch(randomRating())) shouldBe ReviewWriteResult.Failed(error)
+                    }
+                }
+            }
+
+            context("when the connection drops") {
+                it("TC-23: reports the server as unreachable") {
+                    withServer {
+                        val uuid = randomString()
+                        val repository = sut(url)
+                        load(repository, uuid, reviewsBody())
+                        // OkHttp retries a dropped connection once, so both attempts have to drop.
+                        script.answer("PATCH", dropped())
+                        script.answer("PATCH", dropped())
+
+                        repository.updateMyReview(uuid, ratingPatch(randomRating())) shouldBe
+                            ReviewWriteResult.Failed(ReviewError.Unreachable)
                     }
                 }
             }

@@ -6,6 +6,7 @@ import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
 import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog

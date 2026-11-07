@@ -2,6 +2,7 @@ package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusRepository

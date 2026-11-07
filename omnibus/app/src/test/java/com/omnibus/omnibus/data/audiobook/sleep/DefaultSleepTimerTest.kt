@@ -5,7 +5,7 @@ import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerOption.After
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.position.randomPlayingBook
+import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.TestTimeSource
 import io.kotest.core.spec.style.DescribeSpec

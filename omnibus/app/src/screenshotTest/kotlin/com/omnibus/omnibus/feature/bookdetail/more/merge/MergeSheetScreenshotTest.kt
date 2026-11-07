@@ -47,12 +47,27 @@ fun MergeSheetNoResults() {
     MergeShot(MergeUIState(sheetOpen = true, query = "zzz"))
 }
 
+@PreviewTest
+@Preview
+@Composable
+fun MergeSheetOffline() {
+    MergeShot(MergeUIState(sheetOpen = true, query = "dune", isOnline = false))
+}
+
 /** The covers over the body, which names both books in bold, then Back before Merge. */
 @PreviewTest
 @Preview
 @Composable
 fun MergeSheetConfirm() {
     MergeShot(MergeUIState(sheetOpen = true, step = MergeStep.Confirm(bravo)))
+}
+
+/** The offline note sits between the body and the buttons. */
+@PreviewTest
+@Preview
+@Composable
+fun MergeSheetConfirmOffline() {
+    MergeShot(MergeUIState(sheetOpen = true, step = MergeStep.Confirm(bravo), isOnline = false))
 }
 
 /** The error line sits under the body. */
