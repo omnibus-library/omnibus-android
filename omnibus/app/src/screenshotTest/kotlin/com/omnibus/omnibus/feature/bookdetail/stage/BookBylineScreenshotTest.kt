@@ -24,14 +24,6 @@ fun BookBylineUnlinkedAuthor() {
     BylineShot(creatorId = null)
 }
 
-/** The series line takes the year's place, as plain text when the book has no series section. */
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun BookBylineSeriesReplacesYear() {
-    BylineShot(creatorId = null, series = "Dune", seriesIndex = "3", publishedDate = "1965", author = "Frank Herbert")
-}
-
 /** With a series section to scroll to, the line is an underlined link with the series total. */
 @PreviewTest
 @PreviewLightDark

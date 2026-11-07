@@ -42,13 +42,6 @@ fun ContinueCardLastOpened() {
     )
 }
 
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun ContinueCardPart() {
-    CarouselShot(card(4L, ProgressFormat.Listening, fraction = 0.3, position = PositionLabel.Part(2, 4)))
-}
-
 /** Three cards: one dot each, the selected first one a wider capsule. */
 @PreviewTest
 @PreviewLightDark

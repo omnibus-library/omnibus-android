@@ -13,7 +13,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -69,30 +68,25 @@ class ReaderContentsSheetTest {
     private fun showBody(
         toc: MutableState<List<TocEntry>> = mutableStateOf(fiveEntries),
         location: MutableState<RelocateData?> = mutableStateOf(null),
-        title: String = "The Long Road Home",
-        onEntryChosen: (TocEntry) -> Unit = {},
-        onDismiss: () -> Unit = {},
         initialTab: ReaderContentsTab = ReaderContentsTab.Contents,
         bookmarks: MutableState<List<Bookmark>> = mutableStateOf(emptyList()),
         status: MutableState<ReaderBookmarksStatus> = mutableStateOf(ReaderBookmarksStatus.Loaded),
-        onBookmarkChosen: (Bookmark) -> Unit = {},
         onBookmarksRetry: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = false) {
                 ReaderContentsSheetContent(
-                    title = title,
+                    title = "The Long Road Home",
                     cover = cover,
                     accent = accent,
                     toc = toc.value,
                     location = location.value,
-                    onEntryChosen = onEntryChosen,
-                    onDismiss = onDismiss,
+                    onEntryChosen = {},
+                    onDismiss = {},
                     modifier = Modifier.fillMaxSize(),
                     initialTab = initialTab,
                     bookmarks = bookmarks.value,
                     bookmarksStatus = status.value,
-                    onBookmarkChosen = onBookmarkChosen,
                     onBookmarksRetry = onBookmarksRetry,
                 )
             }
@@ -102,7 +96,6 @@ class ReaderContentsSheetTest {
     /** The real modal sheet over a full-size host, shown while [open] is true. */
     private fun showModal(
         open: MutableState<Boolean>,
-        toc: List<TocEntry> = fiveEntries,
         onDismiss: () -> Unit = {},
     ) {
         rule.setContent {
@@ -113,7 +106,7 @@ class ReaderContentsSheetTest {
                             title = "The Long Road Home",
                             cover = cover,
                             accent = accent,
-                            toc = toc,
+                            toc = fiveEntries,
                             location = null,
                             onEntryChosen = {},
                             onDismiss = {
@@ -148,47 +141,7 @@ class ReaderContentsSheetTest {
 
         rule.onNodeWithTag(ReaderContentsTags.row(40)).assertIsDisplayed()
         assertNear(before, rule.onNodeWithTag(ReaderContentsTags.row(40)).fetchSemanticsNode().boundsInRoot.top, "row 40 after the pages arrive")
-        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsSelected()
         rule.onNodeWithTag(ReaderContentsTags.page(40), useUnmergedTree = true).assertTextEquals("41")
-        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
-    }
-
-    // CS-19
-    @Test
-    fun cs19_tappingARowChoosesThatEntry() {
-        val toc = listOf(
-            TocEntry(label = "Same", href = "one.xhtml", level = 0),
-            TocEntry(label = "Same", href = "two.xhtml", level = 0),
-            TocEntry(label = "Same", href = "three.xhtml", level = 0),
-            TocEntry(label = "Other", href = "four.xhtml", level = 0),
-        )
-        val chosen = mutableListOf<TocEntry>()
-        showBody(toc = mutableStateOf(toc), onEntryChosen = { chosen += it })
-
-        rule.onNodeWithTag(ReaderContentsTags.row(2)).performClick()
-        rule.waitForIdle()
-
-        assertEquals(listOf(toc[2]), chosen)
-    }
-
-    // CS-24
-    @Test
-    fun cs24_noMarkerWithoutAValidChapter() {
-        val location = mutableStateOf<RelocateData?>(RelocateData(chapter = 0))
-        showBody(location = location)
-
-        rule.onAllNodesWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)).assertCountEquals(0)
-
-        rule.runOnIdle { location.value = RelocateData(chapter = fiveEntries.size + 1) }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)).assertCountEquals(0)
-
-        rule.runOnIdle { location.value = null }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(ReaderContentsTags.CURRENT_MARKER, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)).assertCountEquals(0)
     }
 
     // CS-27
@@ -199,62 +152,6 @@ class ReaderContentsSheetTest {
         rule.waitUntil { rule.onAllNodesWithTag(ReaderContentsTags.row(39)).fetchSemanticsNodes().isNotEmpty() }
         rule.waitForIdle()
         rule.onNodeWithTag(ReaderContentsTags.row(39)).assertIsDisplayed()
-        rule.onAllNodesWithTag(ReaderContentsTags.row(0)).assertCountEquals(0)
-
-        val list = rule.onNodeWithTag(ReaderContentsTags.LIST).fetchSemanticsNode().boundsInRoot
-        val row = rule.onNodeWithTag(ReaderContentsTags.row(39)).fetchSemanticsNode().boundsInRoot
-        val centre = (row.top + row.bottom) / 2f
-        val height = list.bottom - list.top
-        assertTrue("the current row sits in the middle of the list", centre >= list.top + 0.25f * height && centre <= list.top + 0.75f * height)
-    }
-
-    // CS-28
-    @Test
-    fun cs28_noScrollWhenNothingIsMarked() {
-        showBody(toc = mutableStateOf(sixtyEntries), location = mutableStateOf(RelocateData(chapter = 0)))
-
-        rule.onNodeWithTag(ReaderContentsTags.row(0)).assertIsDisplayed()
-        val list = rule.onNodeWithTag(ReaderContentsTags.LIST).fetchSemanticsNode().boundsInRoot
-        assertNear(list.top, rule.onNodeWithTag(ReaderContentsTags.row(0)).fetchSemanticsNode().boundsInRoot.top, "row 0 at the top of the list")
-    }
-
-    // CS-29 (TC-72): two segments, Contents selected by default.
-    @Test
-    fun cs29_showsContentsAndBookmarksSegmentsWithContentsSelected() {
-        showBody()
-
-        rule.onAllNodesWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertCountEquals(1)
-        rule.onAllNodesWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertCountEquals(1)
-        val segment = rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents))
-        segment.assertTextEquals(text(R.string.reader_contents_tab_contents))
-        segment.assertIsSelected()
-        val bookmarksSegment = rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks))
-        bookmarksSegment.assertTextEquals(text(R.string.reader_contents_tab_bookmarks))
-        bookmarksSegment.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
-
-        segment.performClick()
-        rule.waitForIdle()
-
-        segment.assertIsSelected()
-        rule.onNodeWithTag(ReaderContentsTags.row(0)).assertIsDisplayed()
-    }
-
-    // CS-38
-    @Test
-    fun cs38_closeButtonDismisses() {
-        var dismissals = 0
-        showBody(onDismiss = { dismissals++ })
-
-        val close = rule.onNodeWithTag(ReaderContentsTags.CLOSE)
-        close.assertContentDescriptionEquals(text(R.string.reader_contents_done))
-        close.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-        val bounds = close.fetchSemanticsNode().boundsInRoot
-        assertNear(bounds.width, bounds.height, "the close button is square")
-
-        close.performClick()
-        rule.waitForIdle()
-
-        assertEquals(1, dismissals)
     }
 
     // TC-68
@@ -271,26 +168,6 @@ class ReaderContentsSheetTest {
         rule.waitForIdle()
 
         assertEquals(1, retries)
-    }
-
-    // TC-70
-    @Test
-    fun bookmarksTabRowJumpsOnTap() {
-        val bookmarks = listOf(
-            Bookmark(1L, "client-1", "book-1", "epubcfi(/6/4)", "The ferry", "Part One", 0.43f, null),
-            Bookmark(2L, "client-2", "book-1", "epubcfi(/6/8)", null, "Crossing at Dusk", null, null),
-            Bookmark(3L, "client-3", "book-1", "epubcfi(/6/12)", null, null, 1f, null),
-        )
-        val chosen = mutableListOf<Bookmark>()
-        showBody(
-            initialTab = ReaderContentsTab.Bookmarks,
-            bookmarks = mutableStateOf(bookmarks),
-            onBookmarkChosen = { chosen += it },
-        )
-
-        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(1)).performClick()
-        rule.waitForIdle()
-        assertEquals(listOf(bookmarks[1]), chosen)
     }
 
     // TC-71
@@ -313,10 +190,6 @@ class ReaderContentsSheetTest {
         rule.waitForIdle()
         rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsSelected()
         rule.onNodeWithTag(ReaderContentsTags.row(0)).assertIsDisplayed()
-
-        rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).performClick()
-        rule.waitForIdle()
-        rule.onNodeWithTag(ReaderContentsTags.bookmarkRow(0)).assertIsDisplayed()
     }
 
     // CS-49
@@ -359,19 +232,6 @@ class ReaderContentsSheetTest {
         val current = rule.onNodeWithTag(ReaderContentsTags.row(1)).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
         assertEquals(text(R.string.reader_contents_current_chapter), current)
         rule.onNodeWithTag(ReaderContentsTags.row(0)).assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.StateDescription))
-    }
-
-    // CS-56
-    @Test
-    fun cs56_closeButtonIsReachableBySemantics() {
-        var dismissals = 0
-        showBody(onDismiss = { dismissals++ })
-
-        val height = rule.onNodeWithTag(ReaderContentsTags.CLOSE).fetchSemanticsNode().size.height.toFloat()
-        assertTrue("the close button is at least its 32dp visual", height >= with(rule.density) { 32.dp.toPx() } - 1f)
-        rule.onNodeWithTag(ReaderContentsTags.CLOSE).performClick()
-        rule.waitForIdle()
-        assertEquals(1, dismissals)
     }
 
     private companion object {

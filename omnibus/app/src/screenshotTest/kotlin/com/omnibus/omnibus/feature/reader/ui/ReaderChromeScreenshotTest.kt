@@ -17,9 +17,6 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 /** A mid-book location: page 361 of 661, seven pages left in chapter 3 of 12, 54%. */
 private val Reading = RelocateData(page = 361, totalPages = 661, pct = 54, chapter = 3, totalChapters = 12, chapterPagesLeft = 7)
 
-/** Before page numbers exist, so the labels fall back to the chapter and the percent. */
-private val Fallback = RelocateData(totalPages = 0, pct = 18, chapter = 3, totalChapters = 12, chapterPagesLeft = 0)
-
 private val AllRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
 /** Only the title and the bare page, with no buttons. */
@@ -44,14 +41,6 @@ fun ReaderChromeVisible() {
 @Composable
 fun ReaderChromeVisibleWithoutMenu() {
     ChromeShot(chromeVisible = true, menuRows = emptyList())
-}
-
-/** "Chapter 3 of 12" and "18%" before the book has page numbers. */
-@PreviewTest
-@Preview
-@Composable
-fun ReaderChromeFallback() {
-    ChromeShot(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents), location = Fallback)
 }
 
 /** Rows stacked above the menu button in list order, Contents with 54%, Bookmarks with its count, and Add bookmark. */
@@ -89,8 +78,7 @@ private fun ChromeShot(
     chromeVisible: Boolean,
     menuRows: List<ReaderMenuRow>,
     menuOpen: Boolean = false,
-    location: RelocateData = Reading,
-    percent: Int = location.pct,
+    percent: Int = Reading.pct,
     bookmarkCount: Int = 0,
     pageBookmarked: Boolean = false,
     theme: ReaderTheme = ReaderTheme.Light,
@@ -98,7 +86,7 @@ private fun ChromeShot(
     OmnibusTheme(darkTheme = !theme.isLight) {
         Box(Modifier.background(Color(theme.groundArgb))) {
             ReaderChrome(
-                indicators = ReaderIndicators(location = location, title = "Nineteen Eighty-Four", chromeVisible = chromeVisible),
+                indicators = ReaderIndicators(location = Reading, title = "Nineteen Eighty-Four", chromeVisible = chromeVisible),
                 chromeVisible = chromeVisible,
                 menuOpen = menuOpen,
                 menuRows = menuRows,

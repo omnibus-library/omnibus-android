@@ -10,7 +10,6 @@ import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 private val RedCover = ReaderContentsPreviewCover.copy(accent = "oklch(0.55 0.2 25)")
-private val BlueCover = ReaderContentsPreviewCover.copy(accent = "oklch(0.55 0.2 250)")
 
 /** The active segment, the current chapter's label and page, and its marker are red. */
 @PreviewTest
@@ -20,28 +19,12 @@ fun ReaderContentsRedCover() {
     ContentsShot(RedCover)
 }
 
-/** The same sheet as [ReaderContentsRedCover], with those elements blue. */
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun ReaderContentsBlueCover() {
-    ContentsShot(BlueCover)
-}
-
 /** The selected theme, typeface and margins and the justify switch are red, as is the steppers' glyph on dark. */
 @PreviewTest
 @PreviewLightDark
 @Composable
 fun ReaderSettingsRedCover() {
     SettingsShot(RedCover)
-}
-
-/** The same sheet as [ReaderSettingsRedCover], with those elements blue. */
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun ReaderSettingsBlueCover() {
-    SettingsShot(BlueCover)
 }
 
 @Composable

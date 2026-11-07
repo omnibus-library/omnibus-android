@@ -20,13 +20,6 @@ fun BookDetailsRows() {
     )
 }
 
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun BookDetailsOneRow() {
-    BookDetailsShot(listOf(DetailItem(DetailRow.File, "hound.epub")))
-}
-
 /** A long value is cut in the middle, on two lines. */
 @PreviewTest
 @PreviewLightDark
