@@ -3,39 +3,87 @@ package com.omnibus.omnibus.data.bookprogress
 import com.omnibus.omnibus.data.library.PositionConfidence
 import com.omnibus.omnibus.data.library.ResolvedPosition
 import com.omnibus.omnibus.data.progress.ReadingPosition
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+
+private fun devicePosition(uuid: String, clock: Long, cfi: String, percent: Int) =
+    ReadingPosition(uuid, cfi = cfi, percent = percent, clientUpdatedAt = clock)
 
 class ProgressRecordMergeTest : DescribeSpec({
 
     describe("merging the device position with the server records") {
+        context("when there is no device position") {
+            context("when the server has no records") {
+                it("TC-49: gives no records") {
+                    mergeProgressRecords(null, emptyList()).shouldBeEmpty()
+                }
+            }
 
-        it("TC-49: merge with one side, and order Reading first") {
-            val serverReading = readingRecord(40.0, 100, cfi = "server")
-            val serverListening = listeningRecord(60.0, 90, totalSeconds = 600.0)
+            context("when the server has both records") {
+                it("TC-49: gives them Reading first") {
+                    val uuid = randomString()
+                    val reading = readingRecord(randomDouble(0.0, 100.0), randomLong(), uuid = uuid)
+                    val listening = listeningRecord(randomDouble(0.0, 100.0), randomLong(), uuid = uuid)
 
-            mergeProgressRecords(null, listOf(serverReading, serverListening)) shouldBe listOf(serverReading, serverListening)
-
-            mergeProgressRecords(ReadingPosition("book-1", "x", 50, 200), emptyList()) shouldBe
-                listOf(readingRecord(50.0, 200, cfi = "x"))
-
-            mergeProgressRecords(null, emptyList()) shouldBe emptyList()
-
-            mergeProgressRecords(ReadingPosition("book-1", "x", 50, 200), listOf(serverListening)) shouldBe
-                listOf(readingRecord(50.0, 200, cfi = "x"), serverListening)
+                    mergeProgressRecords(null, listOf(listening, reading)) shouldBe listOf(reading, listening)
+                }
+            }
         }
 
-        it("TC-50: the newest reading record wins, and a tie keeps the server") {
-            val localNewer = mergeProgressRecords(ReadingPosition("book-1", "x", 50, 200), listOf(readingRecord(40.0, 100)))
-            localNewer shouldBe listOf(readingRecord(50.0, 200, cfi = "x"))
+        context("when there is a device position") {
+            context("when the server has no Reading record") {
+                it("TC-49: gives the device position first") {
+                    val uuid = randomString()
+                    val cfi = randomString()
+                    val percent = randomInt(0..100)
+                    val clock = randomLong()
+                    val listening = listeningRecord(randomDouble(0.0, 100.0), randomLong(), uuid = uuid)
 
-            val serverNewer = mergeProgressRecords(ReadingPosition("book-1", "x", 50, 100), listOf(readingRecord(40.0, 200, cfi = "y")))
-            serverNewer shouldBe listOf(readingRecord(40.0, 200, cfi = "y"))
+                    mergeProgressRecords(devicePosition(uuid, clock, cfi, percent), listOf(listening)) shouldBe
+                        listOf(readingRecord(percent.toDouble(), clock, cfi = cfi, uuid = uuid), listening)
+                }
+            }
 
-            val resolved = ResolvedPosition(3, null, null, null, PositionConfidence.High)
-            val serverRecord = readingRecord(40.0, 200, cfi = "y", resolved = resolved)
-            val tie = mergeProgressRecords(ReadingPosition("book-1", "x", 50, 200), listOf(serverRecord))
-            tie shouldBe listOf(serverRecord)
+            context("when the device position is newer than the server's Reading record") {
+                it("TC-50: gives the device position") {
+                    val uuid = randomString()
+                    val cfi = randomString()
+                    val percent = randomInt(0..100)
+                    val clock = randomLong()
+                    val server = readingRecord(randomDouble(0.0, 100.0), clock - 1, uuid = uuid)
+
+                    mergeProgressRecords(devicePosition(uuid, clock, cfi, percent), listOf(server)) shouldBe
+                        listOf(readingRecord(percent.toDouble(), clock, cfi = cfi, uuid = uuid))
+                }
+            }
+
+            context("when the server's Reading record is newer than the device position") {
+                it("TC-50: gives the server's record") {
+                    val uuid = randomString()
+                    val clock = randomLong()
+                    val server = readingRecord(randomDouble(0.0, 100.0), clock + 1, uuid = uuid)
+                    val device = devicePosition(uuid, clock, randomString(), randomInt(0..100))
+
+                    mergeProgressRecords(device, listOf(server)) shouldBe listOf(server)
+                }
+            }
+
+            context("when both Reading positions have the same clock") {
+                it("TC-50: gives the server's record, which carries the resolved position") {
+                    val uuid = randomString()
+                    val clock = randomLong()
+                    val resolved = ResolvedPosition(randomInt(), null, null, null, PositionConfidence.High)
+                    val server = readingRecord(randomDouble(0.0, 100.0), clock, resolved = resolved, uuid = uuid)
+                    val device = devicePosition(uuid, clock, randomString(), randomInt(0..100))
+
+                    mergeProgressRecords(device, listOf(server)) shouldBe listOf(server)
+                }
+            }
         }
     }
 })

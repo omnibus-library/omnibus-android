@@ -33,12 +33,7 @@ class TestAuthTokenStore(initialToken: String? = null) : AuthTokenStore {
     /** When non-null, [clear] throws this instead of removing the token. */
     var clearFailure: Throwable? = null
 
-    /** How many times [clear] has been called, including calls that failed. */
-    var clearCalls = 0
-        private set
-
     override suspend fun clear() {
-        clearCalls++
         clearFailure?.let { throw it }
         _token.value = null
     }

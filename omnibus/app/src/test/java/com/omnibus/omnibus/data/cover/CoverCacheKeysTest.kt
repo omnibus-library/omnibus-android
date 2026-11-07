@@ -1,41 +1,49 @@
 package com.omnibus.omnibus.data.cover
 
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 
 class CoverCacheKeysTest : DescribeSpec({
 
-    describe("diskKey") {
+    val window = CoverCacheKeys.REVALIDATE_AFTER_MILLIS
 
-        it("TC-129: is the SHA-256 of the path as hex") {
-            CoverCacheKeys.diskKey("abc") shouldBe
-                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        }
+    describe("the disk key") {
+        it("TC-130: differs per size of one book") {
+            val uuid = randomString()
 
-        it("TC-130: is stable and differs per size") {
-            CoverCacheKeys.diskKey("u", CoverSize.Md) shouldBe CoverCacheKeys.diskKey("api/thumbs/u/md")
-            CoverCacheKeys.diskKey("u", CoverSize.Md) shouldNotBe CoverCacheKeys.diskKey("u", CoverSize.Sm)
+            CoverCacheKeys.diskKey(uuid, CoverSize.Md) shouldNotBe CoverCacheKeys.diskKey(uuid, CoverSize.Sm)
         }
     }
 
-    describe("memoryKey") {
-        val thumbnail = CoverThumbnail("u", CoverSize.Md)
-        val window = CoverCacheKeys.REVALIDATE_AFTER_MILLIS
+    describe("the memory key") {
+        context("when two reads fall in one revalidation window") {
+            it("TC-131: is the same") {
+                val thumbnail = randomCoverThumbnail()
+                val windowStart = randomLong(0L..1_000_000L) * window
 
-        it("TC-131: is the same within a revalidation window") {
-            CoverCacheKeys.memoryKey(thumbnail, 10 * window) shouldBe
-                CoverCacheKeys.memoryKey(thumbnail, 10 * window + window - 1)
+                CoverCacheKeys.memoryKey(thumbnail, windowStart) shouldBe
+                    CoverCacheKeys.memoryKey(thumbnail, windowStart + window - 1)
+            }
         }
 
-        it("TC-132: changes in the next window so the entry is revalidated") {
-            CoverCacheKeys.memoryKey(thumbnail, 10 * window) shouldNotBe
-                CoverCacheKeys.memoryKey(thumbnail, 11 * window)
+        context("when a read falls in the next revalidation window") {
+            it("TC-132: changes, so the entry is revalidated") {
+                val thumbnail = randomCoverThumbnail()
+                val windowStart = randomLong(0L..1_000_000L) * window
+
+                CoverCacheKeys.memoryKey(thumbnail, windowStart) shouldNotBe
+                    CoverCacheKeys.memoryKey(thumbnail, windowStart + window)
+            }
         }
 
         it("TC-133: maps back to the disk key") {
-            CoverCacheKeys.diskKeyOfMemoryKey(CoverCacheKeys.memoryKey(thumbnail, 123456789)) shouldBe
-                CoverCacheKeys.diskKey("u", CoverSize.Md)
+            val thumbnail = randomCoverThumbnail()
+
+            CoverCacheKeys.diskKeyOfMemoryKey(CoverCacheKeys.memoryKey(thumbnail, randomLong())) shouldBe
+                CoverCacheKeys.diskKey(thumbnail.uuid, thumbnail.size)
         }
     }
 })

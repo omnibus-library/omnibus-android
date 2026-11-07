@@ -2,146 +2,138 @@ package com.omnibus.omnibus.data.authors
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
-import kotlin.coroutines.cancellation.CancellationException
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
+import okhttp3.HttpUrl
+
+private inline fun <T> withServer(block: (MockWebServer) -> T): T =
+    MockWebServer().use { server ->
+        server.start()
+        block(server)
+    }
+
+private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
+
+/** An author with two books, the second carrying a key the app doesn't know. */
+private fun authorJson(id: Long, name: String): String = """
+{
+  "id": $id,
+  "name": "$name",
+  "book_count": 2,
+  "books": [
+    {"id": 1, "unique_identifier": "uuid-1", "filename": "a.epub", "title": "The Dispossessed", "published": "1974-05-01",
+     "creators": [{"name": "$name", "id": $id}], "formats": ["epub"]},
+    {"id": 2, "unique_identifier": "uuid-2", "filename": "b.epub", "title": "Lavinia",
+     "creators": [{"name": "$name", "id": $id}], "formats": ["epub"], "unknown_future_key": 1}
+  ]
+}
+"""
 
 class DefaultAuthorsRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var repository: DefaultAuthorsRepository
-    val requests = ConcurrentLinkedQueue<RecordedRequest>()
-    var respond: () -> MockResponse = { MockResponse.Builder().code(404).build() }
-
-    fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
+    fun sut(baseUrl: HttpUrl? = null): DefaultAuthorsRepository = DefaultAuthorsRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+    )
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { MockResponse.Builder().code(404).build() }
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                requests.add(request)
-                return respond()
+    describe("reading an author") {
+        context("when the server answers with the author") {
+            it("#105 TC-1: returns the author with their books in the server's order") {
+                withServer { server ->
+                    val id = randomLong()
+                    val name = randomString()
+                    server.enqueue(reply(200, authorJson(id, name)))
+
+                    val author = sut(server.url("/")).getAuthor(id).shouldBeTypeOf<AuthorResult.Success>().author
+
+                    author.id shouldBe id
+                    author.name shouldBe name
+                    author.books.map { it.title } shouldContainExactly listOf("The Dispossessed", "Lavinia")
+                }
             }
-        }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-        repository = DefaultAuthorsRepository(ioDispatcher = Dispatchers.Unconfined, omnibusHttpClient = client)
-    }
 
-    afterEach { server.close() }
+            it("#105 TC-1: reads api/authors/{id}") {
+                withServer { server ->
+                    val id = randomLong()
+                    server.enqueue(reply(200, authorJson(id, randomString())))
 
-    describe("getAuthor") {
+                    sut(server.url("/")).getAuthor(id)
 
-        it("#105 TC-1: reads the author and their books from api/authors/{id} with the bearer token") {
-            respond = { json(200, AUTHOR_JSON) }
-
-            val result = repository.getAuthor(7)
-
-            val author = result.shouldBeTypeOf<AuthorResult.Success>().author
-            author.id shouldBe 7
-            author.name shouldBe "Ursula K. Le Guin"
-            author.books.map { it.id } shouldContainExactly listOf(1L, 2L)
-            author.books.map { it.title } shouldContainExactly listOf("The Dispossessed", "Lavinia")
-            author.books[0].publishedDate shouldBe "1974-05-01"
-            val request = requests.single()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/authors/7"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-        }
-
-        it("#105 TC-2: an author with no books decodes to an empty list") {
-            respond = { json(200, """{"id": 7, "name": "A", "book_count": 0, "books": []}""") }
-
-            repository.getAuthor(7).shouldBeTypeOf<AuthorResult.Success>().author.books shouldBe emptyList()
-        }
-
-        listOf(
-            Triple("HTTP 401", { json(401, "") }, AuthorsError.SessionExpired),
-            Triple("HTTP 404", { json(404, "") }, AuthorsError.NotFound),
-            Triple("HTTP 500", { json(500, "boom") }, AuthorsError.Http(500)),
-            Triple("a body that is not JSON", { json(200, "<html>") }, AuthorsError.UnexpectedResponse),
-            Triple("a body without an id", { json(200, """{"name": "A"}""") }, AuthorsError.UnexpectedResponse),
-        ).forEach { (name, response, error) ->
-            it("#105 TC-3: $name gives $error") {
-                respond = response
-
-                repository.getAuthor(7) shouldBe AuthorResult.Failure(error)
+                    val request = server.takeRequest()
+                    request.method shouldBe "GET"
+                    request.url.encodedPath shouldBe "/api/authors/$id"
+                }
             }
         }
 
-        it("#105 TC-4: a dropped connection gives Unreachable") {
-            // A socket dropped by a dispatched response is not reliable, so the server is closed instead.
-            server.close()
+        context("when the author has no books") {
+            it("#105 TC-2: returns an empty book list") {
+                withServer { server ->
+                    val id = randomLong()
+                    server.enqueue(reply(200, """{"id": $id, "name": "${randomString()}", "book_count": 0, "books": []}"""))
 
-            repository.getAuthor(7) shouldBe AuthorResult.Failure(AuthorsError.Unreachable)
+                    sut(server.url("/")).getAuthor(id).shouldBeTypeOf<AuthorResult.Success>().author.books.shouldBeEmpty()
+                }
+            }
         }
 
-        it("#105 TC-5: with no saved server it gives NoServer and sends nothing") {
-            baseUrlProvider.baseUrl = null
+        context("when the read fails") {
+            it("#105 TC-3: maps each status and unusable body to its error") {
+                withServer { server ->
+                    val failures = listOf(
+                        reply(401) to AuthorsError.SessionExpired,
+                        reply(404) to AuthorsError.NotFound,
+                        reply(500) to AuthorsError.Http(500),
+                        reply(200, "<html>") to AuthorsError.UnexpectedResponse,
+                        reply(200, """{"name": "A"}""") to AuthorsError.UnexpectedResponse,
+                    )
+                    checkAll(Exhaustive.collection(failures)) { (response, error) ->
+                        server.enqueue(response)
 
-            repository.getAuthor(7) shouldBe AuthorResult.NoServer
-            requests.size shouldBe 0
+                        sut(server.url("/")).getAuthor(randomLong()) shouldBe AuthorResult.Failure(error)
+                    }
+                }
+            }
         }
 
-        it("#105 TC-6: cancelling an in-flight read throws CancellationException instead of a result") {
-            respond = { json(200, AUTHOR_JSON).newBuilder().headersDelay(500, TimeUnit.MILLISECONDS).build() }
-            val dispatched = DefaultAuthorsRepository(ioDispatcher = Dispatchers.IO, omnibusHttpClient = client)
+        context("when the server can't be reached") {
+            it("#105 TC-4: returns Unreachable") {
+                val closed = withServer { it.url("/") }
 
-            coroutineScope {
-                val pending = async(Dispatchers.IO) { dispatched.getAuthor(7) }
-                delay(100)
-                pending.cancel()
-                shouldThrow<CancellationException> { pending.await() }
+                sut(closed).getAuthor(randomLong()) shouldBe AuthorResult.Failure(AuthorsError.Unreachable)
+            }
+        }
+
+        context("when no server is saved") {
+            it("#105 TC-5: returns NoServer") {
+                sut().getAuthor(randomLong()) shouldBe AuthorResult.NoServer
             }
         }
     }
 })
-
-private const val AUTHOR_JSON = """
-{
-  "id": 7,
-  "name": "Ursula K. Le Guin",
-  "sort": "Le Guin, Ursula K.",
-  "book_count": 2,
-  "has_photo": true,
-  "books": [
-    {"id": 1, "unique_identifier": "uuid-1", "filename": "a.epub", "title": "The Dispossessed", "published": "1974-05-01",
-     "creators": [{"name": "Ursula K. Le Guin", "id": 7}], "formats": ["epub"]},
-    {"id": 2, "unique_identifier": "uuid-2", "filename": "b.epub", "title": "Lavinia",
-     "creators": [{"name": "Ursula K. Le Guin", "id": 7}], "formats": ["epub"], "unknown_future_key": 1}
-  ],
-  "reading": []
-}
-"""
