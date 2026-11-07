@@ -114,19 +114,24 @@ class ReaderWebViewTest {
         rule.waitUntil(timeoutMillis = 15_000) { movements().size >= count }
     }
 
-    /**
-     * Performs [gesture] until the reader reports one more movement. The first touch after a boot
-     * can land while the glue is still settling, and a slow emulator makes that likely.
-     */
+    /** Performs [gesture] until the reader reports one more movement. */
     private fun moveBy(gesture: () -> Unit) {
         val target = movements().size + 1
+        repeatGesture(gesture) { movements().size >= target }
+    }
+
+    /**
+     * Performs [gesture] until [reacted]. The first touch after a boot can land while the glue is
+     * still settling, a slow emulator makes that likely, and the page reports no signal to wait for.
+     */
+    private fun repeatGesture(gesture: () -> Unit, reacted: () -> Boolean) {
         repeat(4) {
             gesture()
             val deadline = System.currentTimeMillis() + 5_000
-            while (movements().size < target && System.currentTimeMillis() < deadline) Thread.sleep(100)
-            if (movements().size >= target) return
+            while (!reacted() && System.currentTimeMillis() < deadline) Thread.sleep(100)
+            if (reacted()) return
         }
-        error("the reader never moved")
+        error("no reaction among " + synchronized(messages) { messages.map { it.javaClass.simpleName } })
     }
 
     private fun findWebView(view: View = rule.activity.window.decorView): WebView? {
@@ -167,12 +172,7 @@ class ReaderWebViewTest {
         awaitReady(controller)
         awaitMovementCount(1)
 
-        tap(0.5f)
-        try {
-            rule.waitUntil(timeoutMillis = 10_000) { synchronized(messages) { messages.any { it is ReaderEvent.ToggleChrome } } }
-        } catch (e: Throwable) {
-            throw AssertionError("no toggleChrome among " + synchronized(messages) { messages.map { it.javaClass.simpleName } }, e)
-        }
+        repeatGesture(gesture = { tap(0.5f) }) { synchronized(messages) { messages.any { it is ReaderEvent.ToggleChrome } } }
     }
 
     @Test
