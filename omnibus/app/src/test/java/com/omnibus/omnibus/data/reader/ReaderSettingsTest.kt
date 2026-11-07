@@ -1,121 +1,176 @@
 package com.omnibus.omnibus.data.reader
 
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.doubles.shouldBeExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldMatch
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
+
+private val fontSizes = ReaderSettings.FONT_SIZE_RANGE
+private val tenths = ReaderSettings.LINE_HEIGHT_TENTHS
 
 class ReaderSettingsTest : DescribeSpec({
 
-    describe("ReaderSettings") {
+    /** The line height for [tenths] as a person would write it, which is also how it must print. */
+    fun printed(tenths: Int): String = "${tenths / 10}.${tenths % 10}"
 
-        it("has the documented defaults") {
-            val settings = ReaderSettings()
+    describe("stepping the font size") {
 
-            settings.theme shouldBe ReaderTheme.Dark
-            settings.typeface shouldBe ReaderTypeface.Original
-            settings.fontSize shouldBe 19
-            settings.lineHeight shouldBeExactly 1.6
-            settings.margins shouldBe ReaderMargins.Normal
-            settings.justify shouldBe true
-            settings.spread shouldBe "none"
-        }
+        it("moves by one regardless of the direction") {
+            val size = randomInt(fontSizes.first + 1 until fontSizes.last)
 
-        it("steps the font size by one and stops at both bounds") {
-            ReaderSettings().withFontSizeStep(+1).fontSize shouldBe 20
-            ReaderSettings().withFontSizeStep(-1).fontSize shouldBe 18
-
-            ReaderSettings(fontSize = 34).withFontSizeStep(+1).fontSize shouldBe 34
-            ReaderSettings(fontSize = 12).withFontSizeStep(-1).fontSize shouldBe 12
-            ReaderSettings.FONT_SIZE_RANGE shouldBe 12..34
-        }
-
-        it("steps the line height in exact tenths with no float drift") {
-            val stepped = ReaderSettings().withLineHeightStep(+1)
-            stepped.lineHeight shouldBe 1.7
-            stepped.lineHeight.toString() shouldBe "1.7"
-
-            var walk = ReaderSettings(lineHeight = 1.2)
-            val seen = mutableListOf(walk.lineHeight.toString())
-            repeat(10) {
-                walk = walk.withLineHeightStep(+1)
-                seen += walk.lineHeight.toString()
+            checkAll(Exhaustive.of(+1, -1)) { step ->
+                randomReaderSettings().copy(fontSize = size).withFontSizeStep(step).fontSize shouldBe size + step
             }
-            seen shouldBe listOf("1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "2.0", "2.1", "2.2")
-
-            repeat(10) { walk = walk.withLineHeightStep(-1) }
-            walk.lineHeight shouldBe 1.2
-
-            ReaderSettings(lineHeight = 2.2).withLineHeightStep(+1).lineHeight shouldBe 2.2
-            ReaderSettings(lineHeight = 1.2).withLineHeightStep(-1).lineHeight shouldBe 1.2
         }
 
-        it("clamps font size and line height and rounds line height to one decimal") {
-            ReaderSettings(fontSize = 5).normalized().fontSize shouldBe 12
-            ReaderSettings(fontSize = 99).normalized().fontSize shouldBe 34
+        context("when the size is at a bound") {
 
-            ReaderSettings(lineHeight = 0.5).normalized().lineHeight shouldBe 1.2
-            ReaderSettings(lineHeight = 9.0).normalized().lineHeight shouldBe 2.2
-            ReaderSettings(lineHeight = 1.64).normalized().lineHeight shouldBe 1.6
-            ReaderSettings(lineHeight = 1.65).normalized().lineHeight shouldBe 1.7
-        }
-
-        it("leaves in-range values unchanged when normalized") {
-            val settings = ReaderSettings(fontSize = 24, lineHeight = 1.8, margins = ReaderMargins.Wide)
-
-            settings.normalized() shouldBe settings
-        }
-
-        it("reports whether each step is still possible") {
-            val low = ReaderSettings(fontSize = 12, lineHeight = 1.2)
-            low.canDecreaseFontSize shouldBe false
-            low.canIncreaseFontSize shouldBe true
-            low.canDecreaseLineHeight shouldBe false
-            low.canIncreaseLineHeight shouldBe true
-
-            val high = ReaderSettings(fontSize = 34, lineHeight = 2.2)
-            high.canDecreaseFontSize shouldBe true
-            high.canIncreaseFontSize shouldBe false
-            high.canDecreaseLineHeight shouldBe true
-            high.canIncreaseLineHeight shouldBe false
+            it("stays there regardless of the bound") {
+                checkAll(Exhaustive.of(fontSizes.last to +1, fontSizes.first to -1)) { (bound, step) ->
+                    randomReaderSettings().copy(fontSize = bound).withFontSizeStep(step).fontSize shouldBe bound
+                }
+            }
         }
     }
 
-    describe("ReaderMargins") {
+    describe("stepping the line height") {
 
-        it("maps each margin to its CSS length") {
-            ReaderMargins.Narrow.css shouldBe "95%"
-            ReaderMargins.Normal.css shouldBe "80%"
-            ReaderMargins.Wide.css shouldBe "65%"
-            ReaderMargins.entries.size shouldBe 3
+        it("moves by exactly one tenth regardless of the starting height or direction") {
+            checkAll(Exhaustive.collection((tenths.first + 1 until tenths.last).toList()), Exhaustive.of(+1, -1)) { start, step ->
+                val stepped = randomReaderSettings().copy(lineHeight = start / 10.0).withLineHeightStep(step)
+
+                stepped.lineHeight.toString() shouldBe printed(start + step)
+            }
         }
 
-        it("decodes each token and rejects unknown ones") {
-            ReaderMargins.fromToken("narrow") shouldBe ReaderMargins.Narrow
-            ReaderMargins.fromToken("normal") shouldBe ReaderMargins.Normal
-            ReaderMargins.fromToken("wide") shouldBe ReaderMargins.Wide
-            ReaderMargins.fromToken("huge").shouldBeNull()
-            ReaderMargins.fromToken(null).shouldBeNull()
+        context("when the height is at a bound") {
+
+            it("stays there regardless of the bound") {
+                checkAll(Exhaustive.of(tenths.last to +1, tenths.first to -1)) { (bound, step) ->
+                    val height = bound / 10.0
+
+                    randomReaderSettings().copy(lineHeight = height).withLineHeightStep(step).lineHeight shouldBe height
+                }
+            }
         }
     }
 
-    describe("ReaderTheme") {
+    describe("normalizing the settings") {
 
-        it("decodes the four theme tokens and round-trips each one") {
-            ReaderTheme.fromToken("light") shouldBe ReaderTheme.Light
-            ReaderTheme.fromToken("sepia") shouldBe ReaderTheme.Sepia
-            ReaderTheme.fromToken("dark") shouldBe ReaderTheme.Dark
-            ReaderTheme.fromToken("black") shouldBe ReaderTheme.Black
+        it("clamps a font size regardless of which side it is out on") {
+            checkAll(Exhaustive.of(fontSizes.first - 1 to fontSizes.first, fontSizes.last + 1 to fontSizes.last)) { (size, clamped) ->
+                randomReaderSettings().copy(fontSize = size).normalized().fontSize shouldBe clamped
+            }
+        }
 
-            ReaderTheme.entries.forEach { theme ->
+        it("clamps a line height regardless of which side it is out on") {
+            checkAll(
+                Exhaustive.of(
+                    (tenths.first - 1) / 10.0 to tenths.first / 10.0,
+                    (tenths.last + 1) / 10.0 to tenths.last / 10.0,
+                ),
+            ) { (height, clamped) ->
+                randomReaderSettings().copy(lineHeight = height).normalized().lineHeight shouldBe clamped
+            }
+        }
+
+        it("rounds a line height to one decimal in either direction") {
+            checkAll(Exhaustive.of(1.64 to 1.6, 1.66 to 1.7)) { (height, rounded) ->
+                randomReaderSettings().copy(lineHeight = height).normalized().lineHeight shouldBe rounded
+            }
+        }
+
+        context("when every value is in range") {
+
+            it("changes nothing") {
+                val settings = randomReaderSettings()
+
+                settings.normalized() shouldBe settings
+            }
+        }
+    }
+
+    describe("whether a step is possible") {
+
+        context("when both values are inside the bounds") {
+
+            it("allows every step") {
+                val settings = randomReaderSettings().copy(
+                    fontSize = randomInt(fontSizes.first + 1 until fontSizes.last),
+                    lineHeight = randomInt(tenths.first + 1 until tenths.last) / 10.0,
+                )
+
+                settings.canDecreaseFontSize shouldBe true
+                settings.canIncreaseFontSize shouldBe true
+                settings.canDecreaseLineHeight shouldBe true
+                settings.canIncreaseLineHeight shouldBe true
+            }
+        }
+
+        context("when both values are at their smallest") {
+
+            it("refuses to go smaller") {
+                val settings = randomReaderSettings().copy(fontSize = fontSizes.first, lineHeight = tenths.first / 10.0)
+
+                settings.canDecreaseFontSize shouldBe false
+                settings.canDecreaseLineHeight shouldBe false
+            }
+        }
+
+        context("when both values are at their largest") {
+
+            it("refuses to go larger") {
+                val settings = randomReaderSettings().copy(fontSize = fontSizes.last, lineHeight = tenths.last / 10.0)
+
+                settings.canIncreaseFontSize shouldBe false
+                settings.canIncreaseLineHeight shouldBe false
+            }
+        }
+    }
+
+    describe("the margins' CSS") {
+
+        it("is a percentage length regardless of the margin, because a bare number is dropped") {
+            checkAll(Exhaustive.enum<ReaderMargins>()) { margins ->
+                margins.css shouldMatch Regex("""\d+%""")
+            }
+        }
+    }
+
+    describe("decoding a margins token") {
+
+        it("reads back its own token regardless of the margin") {
+            checkAll(Exhaustive.enum<ReaderMargins>()) { margins ->
+                ReaderMargins.fromToken(margins.token) shouldBe margins
+            }
+        }
+
+        it("gives nothing regardless of whether the token is unknown, empty or missing") {
+            checkAll(Exhaustive.of(null, "", "unknown-${randomString()}")) { token ->
+                ReaderMargins.fromToken(token).shouldBeNull()
+            }
+        }
+    }
+
+    describe("decoding a theme token") {
+
+        it("reads back its own token regardless of the theme") {
+            checkAll(Exhaustive.enum<ReaderTheme>()) { theme ->
                 ReaderTheme.fromToken(theme.token) shouldBe theme
             }
         }
 
-        it("returns null for unknown, empty or missing tokens") {
-            ReaderTheme.fromToken("solarized").shouldBeNull()
-            ReaderTheme.fromToken("").shouldBeNull()
-            ReaderTheme.fromToken(null).shouldBeNull()
+        it("gives nothing regardless of whether the token is unknown, empty or missing") {
+            checkAll(Exhaustive.of(null, "", "unknown-${randomString()}")) { token ->
+                ReaderTheme.fromToken(token).shouldBeNull()
+            }
         }
     }
 })

@@ -1,35 +1,41 @@
 package com.omnibus.omnibus.data.readstatus
 
+import app.cash.turbine.test
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
-import java.util.concurrent.CopyOnWriteArrayList
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -37,42 +43,22 @@ import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
-private const val UUID = "book-1"
-
-/** `updated_at` in the server's examples, in seconds and in millis. */
-private const val SECONDS_UPDATED = 1_761_775_445L
-private const val MILLIS_UPDATED = 1_761_775_445_000L
-
-/** `finished_at` for a book finished earlier, in seconds and in millis. */
-private const val SECONDS_FINISHED = 1_761_000_000L
-private const val MILLIS_FINISHED = 1_761_000_000_000L
-
-/** The fixed clock's "now" for optimistic values. */
-private const val NOW = 1_000_000L
-
-/** A server record body, as the server writes it. The `updated_at_iso` field is left out. */
-private fun body(
-    status: String,
-    updatedAt: Long? = SECONDS_UPDATED,
-    finishedAt: Long? = null,
-    bookUuid: String = UUID,
-): String {
-    val fields = listOfNotNull(
-        "\"book_uuid\":\"$bookUuid\"",
-        "\"status\":\"$status\"",
-        updatedAt?.let { "\"updated_at\":$it" },
-        finishedAt?.let { "\"finished_at\":$it" },
-    )
-    return fields.joinToString(prefix = "{", postfix = "}", separator = ",")
-}
+/** This record as the server writes it, with its times in seconds. */
+private fun ReadStatusRecord.toBody(): String = listOfNotNull(
+    "\"status\":\"${status.name.lowercase()}\"",
+    updatedAtMillis?.let { "\"updated_at\":${it / 1_000L}" },
+    finishedAtMillis?.let { "\"finished_at\":${it / 1_000L}" },
+).joinToString(prefix = "{", postfix = "}", separator = ",")
 
 private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
-private fun known(status: ReadStatus, updated: Long? = MILLIS_UPDATED, finished: Long? = null) =
-    ReadStatusState.Known(ReadStatusRecord(status, updated, finished))
+private fun reply(record: ReadStatusRecord): MockResponse = reply(200, record.toBody())
 
-private fun record(status: ReadStatus, updated: Long? = MILLIS_UPDATED, finished: Long? = null) =
-    ReadStatusRecord(status, updated, finished)
+/** A connection dropped before any response, which the client reports as an IOException. */
+private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
+
+/** A random record of [status], so a test states only the status it depends on. */
+private fun recordOf(status: ReadStatus): ReadStatusRecord = randomReadStatusRecord().copy(status = status)
 
 /**
  * Answers requests from a script, per HTTP method, in order. A step can hold its response until the test releases
@@ -96,688 +82,684 @@ private class ScriptedDispatcher : Dispatcher() {
     }
 }
 
-/** The `status` field of a recorded PUT body. */
-private fun statusOf(request: RecordedRequest): String =
-    Json.parseToJsonElement(request.body!!.utf8()).jsonObject.getValue("status").jsonPrimitive.content
+/** A running server that answers from [script], and [scope], a place for work that outlives one call. */
+private class TestServer(val server: MockWebServer, val script: ScriptedDispatcher, val scope: CoroutineScope) {
 
-/** Collects a book's flow in the background, recording every emission in order. */
-private class Observed(repository: ReadStatusRepository, uuid: String, scope: CoroutineScope) {
-    val states = CopyOnWriteArrayList<ReadStatusState>()
-    private val job: Job = scope.launch { repository.getReadStatusFlow(uuid).collect { states += it } }
-
-    /** Waits until the latest emission is [expected]. */
-    suspend fun awaitLast(expected: ReadStatusState) {
-        withTimeout(5_000) {
-            while (states.lastOrNull() != expected) delay(10)
-        }
-    }
-
-    fun stop() = job.cancel()
-}
-
-class DefaultReadStatusRepositoryTest : DescribeSpec({
-
-    lateinit var server: MockWebServer
-    lateinit var script: ScriptedDispatcher
-    var now = NOW
-    val scopes = mutableListOf<CoroutineScope>()
-
-    /** A new scope that is cancelled after the test. */
-    fun newScope(dispatcher: CoroutineDispatcher): CoroutineScope =
-        CoroutineScope(SupervisorJob() + dispatcher).also { scopes += it }
-
-    /**
-     * A repository for [baseUrl] (null means no server is saved). [held] runs HTTP on real threads, which lets a test
-     * hold a request open. Otherwise everything runs unconfined on the calling thread.
-     */
-    fun repositoryFor(baseUrl: HttpUrl? = server.url("/"), held: Boolean = false): DefaultReadStatusRepository {
-        val scope = newScope(if (held) Dispatchers.Default else Dispatchers.Unconfined)
-        return DefaultReadStatusRepository(
-            ioDispatcher = if (held) Dispatchers.IO else Dispatchers.Unconfined,
-            omnibusHttpClient = OmnibusHttpClient(
-                baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
-                authTokenProvider = TestAuthTokenProvider(token = "secret"),
-                omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-                authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-            ),
-            timeSource = TimeSource { now },
-            applicationScope = scope,
-        )
-    }
+    val url: HttpUrl get() = server.url("/")
 
     /** Waits for the next request the server received, in arrival order. */
     fun nextRequest(): RecordedRequest =
         checkNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
+}
+
+/** Runs [test] against a new [TestServer], and closes it afterwards. */
+private suspend fun withServer(test: suspend TestServer.() -> Unit) {
+    val script = ScriptedDispatcher()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    MockWebServer().use { server ->
+        server.dispatcher = script
+        server.start()
+        try {
+            TestServer(server, script, scope).test()
+        } finally {
+            scope.cancel()
+        }
+    }
+}
+
+/** Waits until the shared state for [uuid] is [expected]. */
+private suspend fun ReadStatusRepository.awaitState(uuid: String, expected: ReadStatusState) {
+    withTimeout(5_000) { getReadStatusFlow(uuid).first { it == expected } }
+}
+
+class DefaultReadStatusRepositoryTest : DescribeSpec({
+
+    // By default everything runs unconfined on the calling thread, so the state has settled when a call returns.
+    fun sut(
+        baseUrl: HttpUrl? = null,
+        now: Long = randomLong(),
+        applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+    ): DefaultReadStatusRepository = DefaultReadStatusRepository(
+        ioDispatcher = ioDispatcher,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+        timeSource = TimeSource { now },
+        applicationScope = applicationScope,
+    )
+
+    /** A [sut] that runs HTTP on real threads, which lets a test hold a request open. */
+    fun TestServer.threadedSut(now: Long = randomLong()): DefaultReadStatusRepository =
+        sut(url, now, scope, Dispatchers.IO)
+
+    /** Reads [record] for [uuid], so its state is Known, and takes that request from the server's queue. */
+    suspend fun TestServer.load(repository: ReadStatusRepository, uuid: String, record: ReadStatusRecord) {
+        script.answer("GET", reply(record))
+        repository.fetchStatus(uuid)
+        nextRequest()
+    }
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        now = NOW
-        script = ScriptedDispatcher()
-        server = MockWebServer().apply {
-            dispatcher = script
-            start()
-        }
-    }
-
-    afterEach {
-        scopes.forEach { it.cancel() }
-        scopes.clear()
-        server.close()
-    }
-
     describe("reading the status") {
 
-        it("TC-1: a reading record maps its updated_at seconds to millis") {
-            script.answer("GET", reply(200, body("reading")))
+        context("when the server has a record") {
 
-            repositoryFor().fetchStatus(UUID) shouldBe known(ReadStatus.Reading)
-        }
+            it("TC-1, TC-2: maps its times from seconds to milliseconds") {
+                withServer {
+                    val record = randomReadStatusRecord().copy(
+                        updatedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L,
+                        finishedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L,
+                    )
+                    script.answer("GET", reply(record))
 
-        it("TC-2: finished_at seconds map to millis, and updated_at_iso is ignored") {
-            val json = "{\"book_uuid\":\"$UUID\",\"status\":\"finished\",\"updated_at\":$SECONDS_UPDATED," +
-                "\"updated_at_iso\":\"1999-01-01T00:00:00Z\",\"finished_at\":$SECONDS_FINISHED}"
-            script.answer("GET", reply(200, json))
-
-            repositoryFor().fetchStatus(UUID) shouldBe
-                known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-        }
-
-        it("TC-3: a null body is a missing row, which reads as Known Unread") {
-            script.answer("GET", reply(200, "null"))
-            val repository = repositoryFor()
-
-            repository.fetchStatus(UUID) shouldBe known(ReadStatus.Unread, updated = null, finished = null)
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Unread, updated = null, finished = null)
-        }
-
-        it("TC-4: an unknown or missing token reads as Unread, and the token match ignores case") {
-            val repository = repositoryFor()
-
-            script.answer("GET", reply(200, body("abandoned")))
-            repository.fetchStatus(UUID) shouldBe known(ReadStatus.Unread)
-
-            script.answer("GET", reply(200, "{\"book_uuid\":\"$UUID\",\"updated_at\":$SECONDS_UPDATED}"))
-            repository.fetchStatus(UUID) shouldBe known(ReadStatus.Unread)
-
-            script.answer("GET", reply(200, body("FINISHED")))
-            repository.fetchStatus(UUID) shouldBe known(ReadStatus.Finished, MILLIS_UPDATED, finished = null)
-        }
-
-        it("TC-5: a non-2xx read is Failed, and nothing is thrown") {
-            listOf(401, 404, 500).forEach { code ->
-                // The flow's first collection reads once, and the explicit fetch reads again.
-                script.answer("GET", reply(code))
-                script.answer("GET", reply(code))
-                val repository = repositoryFor()
-
-                repository.getReadStatusFlow(UUID).first() shouldBe ReadStatusState.Failed
-                repository.fetchStatus(UUID) shouldBe ReadStatusState.Failed
+                    sut(url).fetchStatus(randomString()) shouldBe ReadStatusState.Known(record)
+                }
             }
         }
 
-        it("TC-6: a malformed, non-JSON or wrong-shaped body is Failed") {
-            listOf("not json", "[1,2]", "{\"status\":5}", "<html></html>").forEach { body ->
-                script.answer("GET", reply(200, body))
+        context("when the server has no record") {
 
-                repositoryFor().fetchStatus(UUID) shouldBe ReadStatusState.Failed
+            it("TC-3: reads as a known Unread") {
+                withServer {
+                    script.answer("GET", reply(200, "null"))
+
+                    sut(url).fetchStatus(randomString()) shouldBe
+                        ReadStatusState.Known(ReadStatusRecord(ReadStatus.Unread, null, null))
+                }
             }
         }
 
-        it("TC-7: no configured server is Failed, and no request is sent") {
-            val before = server.requestCount
+        it("TC-4: reads a token regardless of its case, reading anything else as Unread") {
+            withServer {
+                checkAll(
+                    Exhaustive.of(
+                        """{"status":"abandoned"}""" to ReadStatus.Unread,
+                        "{}" to ReadStatus.Unread,
+                        """{"status":"FINISHED"}""" to ReadStatus.Finished,
+                    ),
+                ) { (body, status) ->
+                    script.answer("GET", reply(200, body))
 
-            repositoryFor(baseUrl = null).fetchStatus(UUID) shouldBe ReadStatusState.Failed
-            server.requestCount shouldBe before
+                    sut(url).fetchStatus(randomString()) shouldBe
+                        ReadStatusState.Known(ReadStatusRecord(status, null, null))
+                }
+            }
         }
 
-        it("TC-8: a dropped connection on the read is Failed, and nothing is thrown") {
-            script.answer("GET", MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
+        it("TC-5, TC-6, TC-8: is Failed regardless of how the read goes wrong") {
+            withServer {
+                checkAll(
+                    Exhaustive.of(
+                        reply(401),
+                        reply(404),
+                        reply(500),
+                        dropped(),
+                        reply(200, "not json"),
+                        reply(200, "[1,2]"),
+                        reply(200, """{"status":5}"""),
+                    ),
+                ) { response ->
+                    script.answer("GET", response)
 
-            repositoryFor().fetchStatus(UUID) shouldBe ReadStatusState.Failed
+                    sut(url).fetchStatus(randomString()) shouldBe ReadStatusState.Failed
+                }
+            }
         }
 
-        it("TC-9: a blank uuid is Failed for the flow, the fetch and the refresh, and sends no request") {
-            val before = server.requestCount
-            val repository = repositoryFor()
+        context("when no server is saved") {
 
-            repository.getReadStatusFlow("").first() shouldBe ReadStatusState.Failed
-            repository.fetchStatus("   ") shouldBe ReadStatusState.Failed
-            repository.refresh("")
-            server.requestCount shouldBe before
+            it("TC-7: is Failed") {
+                sut().fetchStatus(randomString()) shouldBe ReadStatusState.Failed
+            }
         }
 
-        it("TC-10: the GET uses the encoded uuid segment and the bearer token, and the state is keyed by the requested uuid") {
-            script.answer("GET", reply(200, body("reading", bookUuid = "canonical-uuid")))
-            val repository = repositoryFor()
+        context("when the uuid is blank") {
 
-            repository.fetchStatus("book one") shouldBe known(ReadStatus.Reading)
+            it("TC-9: fails without asking the server, regardless of the blank") {
+                withServer {
+                    checkAll(Exhaustive.of("", "   ")) { uuid ->
+                        sut(url).fetchStatus(uuid) shouldBe ReadStatusState.Failed
 
-            val request = nextRequest()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/read-status/book%20one"
-            request.headers["Authorization"] shouldBe "Bearer secret"
-            repository.getReadStatusFlow("book one").first() shouldBe known(ReadStatus.Reading)
+                        server.requestCount shouldBe 0
+                    }
+                }
+            }
         }
 
-        it("TC-11: the first emission is Unknown, one GET starts on the first collect, and a Known state fetches nothing") {
-            val repository = repositoryFor(held = true)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, body("reading")), gate)
-            val first = Observed(repository, UUID, newScope(Dispatchers.Default))
+        it("TC-10: asks for the book with its uuid as one encoded path segment") {
+            withServer {
+                script.answer("GET", reply(randomReadStatusRecord()))
 
-            nextRequest()
-            first.awaitLast(ReadStatusState.Unknown)
-            first.states.first() shouldBe ReadStatusState.Unknown
-            gate.countDown()
-            first.awaitLast(known(ReadStatus.Reading))
+                sut(url).fetchStatus("book one")
 
-            val second = Observed(repository, UUID, newScope(Dispatchers.Default))
-            second.awaitLast(known(ReadStatus.Reading))
-            server.requestCount shouldBe 1
+                nextRequest().url.encodedPath shouldBe "/api/read-status/book%20one"
+            }
         }
 
-        it("TC-12: an in-flight GET is shared, and a refresh after it completes fetches again") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, body("reading")), gate)
-            val observed = Observed(repository, UUID, scope)
-            nextRequest()
+        context("when the read fails after an earlier answer") {
 
-            val refresh = scope.async { repository.refresh(UUID) }
-            val fetch = scope.async { repository.fetchStatus(UUID) }
-            delay(200) // give both callers time to join the GET in flight before it completes
-            gate.countDown()
-            refresh.await()
-            fetch.await() shouldBe known(ReadStatus.Reading)
-            observed.awaitLast(known(ReadStatus.Reading))
-            server.requestCount shouldBe 1
+            it("TC-13: keeps the earlier answer as the state") {
+                withServer {
+                    val uuid = randomString()
+                    val record = randomReadStatusRecord()
+                    val repository = sut(url)
+                    load(repository, uuid, record)
+                    script.answer("GET", reply(500))
 
-            script.answer("GET", reply(200, body("finished")))
-            repository.refresh(UUID)
-            server.requestCount shouldBe 2
-            observed.awaitLast(known(ReadStatus.Finished))
+                    repository.refresh(uuid)
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(record)
+                }
+            }
         }
 
-        it("TC-13: a failed read keeps a Known state, but the caller still gets Failed") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, body("reading")))
-            repository.fetchStatus(UUID) shouldBe known(ReadStatus.Reading)
+        context("when a read is in flight") {
 
-            script.answer("GET", reply(500))
-            repository.refresh(UUID)
-            script.answer("GET", MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
-            repository.fetchStatus(UUID) shouldBe ReadStatusState.Failed
+            it("TC-12: shares it with another caller") {
+                withServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(randomReadStatusRecord()), gate)
+                    val repository = threadedSut()
 
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Reading)
+                    val first = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.fetchStatus(uuid) }
+                    nextRequest()
+                    val second = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.fetchStatus(uuid) }
+                    gate.countDown()
+                    listOf(first, second).awaitAll()
+
+                    server.requestCount shouldBe 1
+                }
+            }
         }
 
-        it("TC-14: an Unknown state that fails becomes Failed, then recovers to Known") {
-            val repository = repositoryFor(held = true)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(500), gate)
-            val observed = Observed(repository, UUID, newScope(Dispatchers.Default))
-            nextRequest()
-            observed.awaitLast(ReadStatusState.Unknown)
+        context("when the last read has completed") {
 
-            gate.countDown()
-            observed.awaitLast(ReadStatusState.Failed)
+            it("TC-12: reads again on a refresh") {
+                withServer {
+                    val uuid = randomString()
+                    val latest = randomReadStatusRecord()
+                    val repository = sut(url)
+                    load(repository, uuid, randomReadStatusRecord())
+                    script.answer("GET", reply(latest))
 
-            script.answer("GET", reply(200, body("reading")))
-            repository.refresh(UUID)
-            observed.awaitLast(known(ReadStatus.Reading))
-            observed.states shouldBe listOf(ReadStatusState.Unknown, ReadStatusState.Failed, known(ReadStatus.Reading))
+                    repository.refresh(uuid)
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(latest)
+                }
+            }
         }
     }
 
-    describe("writing the status") {
+    describe("observing the status") {
 
-        it("TC-15: PUT sends the uuid and lowercase token as JSON to api/read-status") {
-            val repository = repositoryFor()
+        context("when nothing is known") {
 
-            listOf(ReadStatus.Unread, ReadStatus.Reading, ReadStatus.Finished).forEach { status ->
-                val token = status.name.lowercase()
-                script.answer("PUT", reply(200, body(token)))
+            it("TC-11: emits Unknown, then the server's answer") {
+                withServer {
+                    val record = randomReadStatusRecord()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(record), gate)
 
-                repository.setStatus(UUID, status) shouldBe ReadStatusWriteResult.Saved(record(status))
-
-                val request = nextRequest()
-                request.method shouldBe "PUT"
-                request.url.encodedPath shouldBe "/api/read-status"
-                request.headers["Content-Type"]!!.shouldStartWith("application/json")
-                Json.parseToJsonElement(request.body!!.utf8()) shouldBe
-                    Json.parseToJsonElement("{\"book_uuid\":\"$UUID\",\"status\":\"$token\"}")
+                    threadedSut().getReadStatusFlow(randomString()).test {
+                        awaitItem() shouldBe ReadStatusState.Unknown
+                        gate.countDown()
+                        awaitItem() shouldBe ReadStatusState.Known(record)
+                    }
+                }
             }
         }
 
-        it("TC-16: a blank uuid write fails with BookNotFound, sends no request and leaves the state alone") {
-            val before = server.requestCount
-            val repository = repositoryFor()
+        context("when the status is already known") {
 
-            repository.setStatus("", ReadStatus.Finished) shouldBe ReadStatusWriteResult.Failed(ReadStatusError.BookNotFound)
-            server.requestCount shouldBe before
-            repository.getReadStatusFlow("").first() shouldBe ReadStatusState.Failed
-        }
+            it("TC-11: reads nothing more from the server") {
+                withServer {
+                    val uuid = randomString()
+                    val repository = sut(url)
+                    load(repository, uuid, randomReadStatusRecord())
 
-        it("TC-17: the optimistic value is visible to every collector before the PUT returns") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val gate = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("reading")), gate)
-            val scope = newScope(Dispatchers.Default)
-            val write = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
+                    repository.getReadStatusFlow(uuid).first()
 
-            val first = Observed(repository, UUID, scope)
-            val second = Observed(repository, UUID, scope)
-            first.awaitLast(known(ReadStatus.Reading, NOW))
-            second.awaitLast(known(ReadStatus.Reading, NOW))
-
-            gate.countDown()
-            write.await()
-        }
-
-        it("TC-18: the server record replaces the optimistic one and is returned") {
-            val repository = repositoryFor()
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-
-            repository.setStatus(UUID, ReadStatus.Finished) shouldBe
-                ReadStatusWriteResult.Saved(record(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
-            repository.getReadStatusFlow(UUID).first() shouldBe
-                known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-        }
-
-        it("TC-19: setting Finished again keeps finished_at and makes no request") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-            repository.fetchStatus(UUID)
-            val before = server.requestCount
-
-            repository.setStatus(UUID, ReadStatus.Finished) shouldBe ReadStatusWriteResult.Unchanged
-            server.requestCount shouldBe before
-            repository.getReadStatusFlow(UUID).first() shouldBe
-                known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-        }
-
-        it("TC-20: moving from Finished to Reading or Unread clears finished_at, optimistically and on the server") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
-
-            val gate = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("reading", SECONDS_UPDATED)), gate)
-            val reading = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            observed.awaitLast(known(ReadStatus.Reading, NOW, finished = null))
-            gate.countDown()
-            reading.await() shouldBe ReadStatusWriteResult.Saved(record(ReadStatus.Reading, MILLIS_UPDATED, null))
-
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-            repository.setStatus(UUID, ReadStatus.Finished)
-            script.answer("PUT", reply(200, body("unread", SECONDS_UPDATED)))
-            repository.setStatus(UUID, ReadStatus.Unread) shouldBe
-                ReadStatusWriteResult.Saved(record(ReadStatus.Unread, MILLIS_UPDATED, null))
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Unread, MILLIS_UPDATED, null)
-        }
-
-        it("TC-21: moving into Finished takes now as finished_at, and a second finish takes a new date") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Unread))
-
-            val gate = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)), gate)
-            val finish = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            nextRequest()
-            observed.awaitLast(known(ReadStatus.Finished, NOW, finished = NOW))
-            gate.countDown()
-            finish.await() shouldBe
-                ReadStatusWriteResult.Saved(record(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
-
-            script.answer("PUT", reply(200, body("unread", SECONDS_UPDATED)))
-            repository.setStatus(UUID, ReadStatus.Unread)
-
-            now = 2_000_000L
-            val secondGate = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("finished", 2_000_000L / 1_000L)), secondGate)
-            val second = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            nextRequest()
-            observed.awaitLast(known(ReadStatus.Finished, 2_000_000L, finished = 2_000_000L))
-            secondGate.countDown()
-            second.await()
-        }
-
-        it("TC-22: choosing the current status makes no request, for each of the three statuses") {
-            val repository = repositoryFor()
-            ReadStatus.entries.forEach { status ->
-                val uuid = "same-${status.name}"
-                script.answer("GET", reply(200, body(status.name.lowercase())))
-                repository.fetchStatus(uuid)
-                val before = server.requestCount
-
-                repository.setStatus(uuid, status) shouldBe ReadStatusWriteResult.Unchanged
-                server.requestCount shouldBe before
+                    server.requestCount shouldBe 1
+                }
             }
         }
 
-        it("TC-23: the same-status guard applies only to a Known state, so writes while Unknown or Failed are sent") {
-            val repository = repositoryFor()
-            script.answer("PUT", reply(200, body("unread")))
-            val before = server.requestCount
+        context("when the first read fails") {
 
-            repository.setStatus("unknown-book", ReadStatus.Unread) shouldBe
-                ReadStatusWriteResult.Saved(record(ReadStatus.Unread))
-            server.requestCount shouldBe before + 1
+            it("TC-14: moves to Failed, then recovers on a refresh") {
+                withServer {
+                    val uuid = randomString()
+                    val record = randomReadStatusRecord()
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(500), gate)
+                    val repository = threadedSut()
 
-            script.answer("GET", reply(500))
-            repository.fetchStatus("failed-book") shouldBe ReadStatusState.Failed
-            script.answer("PUT", reply(200, body("unread")))
-            repository.setStatus("failed-book", ReadStatus.Unread) shouldBe
-                ReadStatusWriteResult.Saved(record(ReadStatus.Unread))
+                    repository.getReadStatusFlow(uuid).test {
+                        awaitItem() shouldBe ReadStatusState.Unknown
+                        gate.countDown()
+                        awaitItem() shouldBe ReadStatusState.Failed
+
+                        script.answer("GET", reply(record))
+                        repository.refresh(uuid)
+                        awaitItem() shouldBe ReadStatusState.Known(record)
+                    }
+                }
+            }
         }
+    }
 
-        it("TC-24: each write failure maps to its typed error and rolls back to the previous state") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            val previous = known(ReadStatus.Unread)
+    describe("setting the status") {
 
-            repositoryFor(baseUrl = null).setStatus(UUID, ReadStatus.Reading) shouldBe
-                ReadStatusWriteResult.Failed(ReadStatusError.NoServer)
+        it("TC-15: sends the lowercase token for the book as JSON, regardless of the status") {
+            withServer {
+                checkAll(Exhaustive.enum<ReadStatus>()) { status ->
+                    val uuid = randomString()
+                    script.answer("PUT", reply(recordOf(status)))
 
-            val failures = listOf(
-                MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build() to ReadStatusError.Unreachable,
-                reply(400) to ReadStatusError.Http(400),
-                reply(401) to ReadStatusError.SessionExpired,
-                reply(404) to ReadStatusError.BookNotFound,
-                reply(500) to ReadStatusError.Http(500),
-                reply(200, "garbage") to ReadStatusError.UnexpectedResponse,
-                reply(200, "null") to ReadStatusError.UnexpectedResponse,
-            )
-            failures.forEach { (response, error) ->
-                script.answer("PUT", response)
+                    sut(url).setStatus(uuid, status)
 
-                repository.setStatus(UUID, ReadStatus.Reading) shouldBe ReadStatusWriteResult.Failed(error)
-                repository.getReadStatusFlow(UUID).first() shouldBe previous
+                    val request = nextRequest()
+                    request.method shouldBe "PUT"
+                    request.url.encodedPath shouldBe "/api/read-status"
+                    request.headers["Content-Type"]!!.shouldStartWith("application/json")
+                    Json.parseToJsonElement(request.body!!.utf8()) shouldBe
+                        Json.parseToJsonElement("""{"book_uuid":"$uuid","status":"${status.name.lowercase()}"}""")
+                }
             }
         }
 
-        it("TC-25: the rollback restores the exact previous state, including its times") {
-            val repository = repositoryFor()
-            val scope = newScope(Dispatchers.Unconfined)
+        context("when the uuid is blank") {
 
-            script.answer("GET", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-            repository.fetchStatus(UUID)
-            val previousFinished = known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-            val seen = CopyOnWriteArrayList<ReadStatusState>()
-            scope.launch { repository.getReadStatusFlow(UUID).collect { seen += it } }
-            script.answer("PUT", reply(500))
-            repository.setStatus(UUID, ReadStatus.Unread) shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            seen shouldContain known(ReadStatus.Unread, NOW, null)
-            seen.last() shouldBe previousFinished
+            it("TC-16: fails with BookNotFound without asking the server") {
+                withServer {
+                    sut(url).setStatus("", randomEnum()) shouldBe ReadStatusWriteResult.Failed(ReadStatusError.BookNotFound)
 
-            script.answer("GET", reply(200, body("reading")))
-            repository.refresh(UUID)
-            script.answer("PUT", reply(500))
-            repository.setStatus(UUID, ReadStatus.Finished)
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Reading)
-
-            // A Failed state rolls back to Failed: the flow's own read answers the 500 it gets on collection.
-            script.answer("GET", reply(500))
-            repository.fetchStatus("failed-rollback")
-            script.answer("PUT", reply(500))
-            repository.setStatus("failed-rollback", ReadStatus.Reading) shouldBe
-                ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            script.answer("GET", reply(500))
-            repository.getReadStatusFlow("failed-rollback").first() shouldBe ReadStatusState.Failed
+                    server.requestCount shouldBe 0
+                }
+            }
         }
 
-        it("TC-26: an earlier success does not overwrite a later write's optimistic value") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Unread))
+        context("when the server is still answering") {
 
-            val gateA = CountDownLatch(1)
-            val gateB = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("reading", SECONDS_UPDATED)), gateA)
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)), gateB)
-            val a = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            val b = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            observed.awaitLast(known(ReadStatus.Finished, NOW, finished = NOW))
+            it("TC-17: shows the new status with the time now") {
+                withServer {
+                    val uuid = randomString()
+                    val now = randomLong()
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut(now)
+                    load(repository, uuid, recordOf(ReadStatus.Unread))
+                    script.answer("PUT", reply(recordOf(ReadStatus.Reading)), gate)
 
-            gateA.countDown()
-            a.await() shouldBe ReadStatusWriteResult.Saved(record(ReadStatus.Reading, MILLIS_UPDATED, null))
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Finished, NOW, finished = NOW)
+                    val write = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
 
-            gateB.countDown()
-            b.await() shouldBe ReadStatusWriteResult.Saved(record(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
+                    repository.awaitState(
+                        uuid,
+                        ReadStatusState.Known(ReadStatusRecord(ReadStatus.Reading, now, null)),
+                    )
+                    gate.countDown()
+                    write.await()
+                }
+            }
+
+            context("when moving out of Finished") {
+
+                it("TC-20: clears the finish time regardless of the new status") {
+                    withServer {
+                        checkAll(Exhaustive.of(ReadStatus.Reading, ReadStatus.Unread)) { status ->
+                            val uuid = randomString()
+                            val now = randomLong()
+                            val gate = CountDownLatch(1)
+                            val repository = threadedSut(now)
+                            load(repository, uuid, recordOf(ReadStatus.Finished).copy(finishedAtMillis = randomLong()))
+                            script.answer("PUT", reply(recordOf(status)), gate)
+
+                            val write = scope.async { repository.setStatus(uuid, status) }
+
+                            repository.awaitState(uuid, ReadStatusState.Known(ReadStatusRecord(status, now, null)))
+                            gate.countDown()
+                            write.await()
+                            nextRequest()
+                        }
+                    }
+                }
+            }
+
+            context("when moving into Finished") {
+
+                it("TC-21: takes the time now as the finish time") {
+                    withServer {
+                        val uuid = randomString()
+                        val now = randomLong()
+                        val gate = CountDownLatch(1)
+                        val repository = threadedSut(now)
+                        load(repository, uuid, recordOf(ReadStatus.Unread))
+                        script.answer("PUT", reply(recordOf(ReadStatus.Finished)), gate)
+
+                        val write = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+
+                        repository.awaitState(
+                            uuid,
+                            ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, now, now)),
+                        )
+                        gate.countDown()
+                        write.await()
+                    }
+                }
+            }
         }
 
-        it("TC-27: an earlier failure does not roll back over a later write") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Unread))
+        context("when the server accepts the write") {
 
-            val gateA = CountDownLatch(1)
-            val gateB = CountDownLatch(1)
-            script.answer("PUT", reply(500), gateA)
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)), gateB)
-            val a = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            val b = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            observed.awaitLast(known(ReadStatus.Finished, NOW, finished = NOW))
+            it("TC-18: replaces the shown status with the server's record") {
+                withServer {
+                    val uuid = randomString()
+                    val record = randomReadStatusRecord()
+                    script.answer("PUT", reply(record))
+                    val repository = sut(url)
 
-            gateA.countDown()
-            a.await() shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Finished, NOW, finished = NOW)
+                    repository.setStatus(uuid, record.status)
 
-            gateB.countDown()
-            b.await() shouldBe ReadStatusWriteResult.Saved(record(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(record)
+                }
+            }
         }
 
-        it("TC-28: a later failure rolls back to the last confirmed record, not to the superseded optimistic value") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
+        context("when the status is already the known one") {
 
-            val gateA = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("reading", SECONDS_UPDATED)), gateA)
-            script.answer("PUT", reply(500))
-            val a = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            val b = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            gateA.countDown()
-            a.await() shouldBe ReadStatusWriteResult.Saved(record(ReadStatus.Reading))
-            b.await() shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
+            it("TC-22: answers Unchanged without asking the server, regardless of the status") {
+                withServer {
+                    checkAll(Exhaustive.enum<ReadStatus>()) { status ->
+                        val uuid = randomString()
+                        val repository = sut(url)
+                        load(repository, uuid, recordOf(status))
+                        val requests = server.requestCount
 
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Reading)
+                        repository.setStatus(uuid, status) shouldBe ReadStatusWriteResult.Unchanged
+
+                        server.requestCount shouldBe requests
+                    }
+                }
+            }
         }
 
-        it("TC-29: writes for one uuid reach the server in call order, one at a time") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val gateA = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("reading", SECONDS_UPDATED)), gateA)
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
+        context("when nothing is known yet") {
 
-            val a = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            val firstRequest = nextRequest()
-            val b = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
+            it("TC-23: sends the write regardless of the status") {
+                withServer {
+                    checkAll(Exhaustive.enum<ReadStatus>()) { status ->
+                        val record = recordOf(status)
+                        script.answer("PUT", reply(record))
 
-            server.takeRequest(300, TimeUnit.MILLISECONDS) shouldBe null
-            gateA.countDown()
-            a.await()
-            b.await()
-
-            statusOf(firstRequest) shouldBe "reading"
-            statusOf(nextRequest()) shouldBe "finished"
+                        sut(url).setStatus(randomString(), status) shouldBe ReadStatusWriteResult.Saved(record)
+                    }
+                }
+            }
         }
 
-        it("TC-30: a GET answered after a newer write does not overwrite the write's value, but the caller gets its outcome") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val gate = CountDownLatch(1)
-            script.answer("GET", reply(200, body("unread")), gate)
-            val fetch = scope.async { repository.fetchStatus(UUID) }
-            nextRequest()
+        context("when the write fails") {
 
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)))
-            repository.setStatus(UUID, ReadStatus.Finished)
-            nextRequest()
+            it("TC-24: reports each failure as its own error") {
+                withServer {
+                    checkAll(
+                        Exhaustive.of(
+                            dropped() to ReadStatusError.Unreachable,
+                            reply(400) to ReadStatusError.Http(400),
+                            reply(401) to ReadStatusError.SessionExpired,
+                            reply(404) to ReadStatusError.BookNotFound,
+                            reply(500) to ReadStatusError.Http(500),
+                            reply(200, "garbage") to ReadStatusError.UnexpectedResponse,
+                            reply(200, "null") to ReadStatusError.UnexpectedResponse,
+                        ),
+                    ) { (response, error) ->
+                        script.answer("PUT", response)
 
-            gate.countDown()
-            fetch.await() shouldBe known(ReadStatus.Unread)
-            repository.getReadStatusFlow(UUID).first() shouldBe
-                known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
+                        sut(url).setStatus(randomString(), randomEnum()) shouldBe ReadStatusWriteResult.Failed(error)
+                    }
+                }
+            }
+
+            it("TC-25: shows the new status, then restores the exact previous record") {
+                withServer {
+                    val uuid = randomString()
+                    val now = randomLong()
+                    val previous = recordOf(ReadStatus.Finished)
+                    val repository = sut(url, now)
+                    load(repository, uuid, previous)
+                    script.answer("PUT", reply(500))
+
+                    repository.getReadStatusFlow(uuid).test {
+                        awaitItem() shouldBe ReadStatusState.Known(previous)
+
+                        repository.setStatus(uuid, ReadStatus.Unread)
+
+                        awaitItem() shouldBe ReadStatusState.Known(ReadStatusRecord(ReadStatus.Unread, now, null))
+                        awaitItem() shouldBe ReadStatusState.Known(previous)
+                    }
+                }
+            }
         }
 
-        it("TC-31: a cancelled caller leaves the write and the read to finish or roll back in the application scope") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Unread))
+        context("when no server is saved") {
 
-            // Success after cancellation: the write completes and the server record is shown.
-            val gate = CountDownLatch(1)
-            script.answer("PUT", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)), gate)
-            val caller = scope.launch { repository.setStatus(UUID, ReadStatus.Finished) }
-            nextRequest()
-            caller.cancel()
-            caller.join()
-            caller.isCancelled shouldBe true
-            gate.countDown()
-            observed.awaitLast(known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
-
-            // Failure after cancellation: the write rolls back to the previous confirmed record.
-            val failGate = CountDownLatch(1)
-            script.answer("PUT", reply(500), failGate)
-            val failing = scope.launch { repository.setStatus(UUID, ReadStatus.Unread) }
-            nextRequest()
-            observed.awaitLast(known(ReadStatus.Unread, NOW, finished = null))
-            failing.cancel()
-            failing.join()
-            failGate.countDown()
-            observed.awaitLast(known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED))
-
-            // A cancelled read still completes and updates the state.
-            val uuid = "fetch-cancel"
-            val readGate = CountDownLatch(1)
-            script.answer("GET", reply(200, body("reading")), readGate)
-            val read = scope.launch { repository.fetchStatus(uuid) }
-            nextRequest()
-            read.cancel()
-            read.join()
-            readGate.countDown()
-            Observed(repository, uuid, scope).awaitLast(known(ReadStatus.Reading))
+            it("TC-24: fails with NoServer") {
+                sut().setStatus(randomString(), randomEnum()) shouldBe
+                    ReadStatusWriteResult.Failed(ReadStatusError.NoServer)
+            }
         }
 
-        it("TC-32: one state per uuid, shared by every collector; another uuid is untouched") {
-            val repository = repositoryFor()
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            script.answer("GET", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED, bookUuid = "other")))
-            repository.fetchStatus("other")
-            val scope = newScope(Dispatchers.Unconfined)
-            val seenA = CopyOnWriteArrayList<ReadStatusState>()
-            val seenB = CopyOnWriteArrayList<ReadStatusState>()
-            scope.launch { repository.getReadStatusFlow(UUID).collect { seenA += it } }
-            scope.launch { repository.getReadStatusFlow(UUID).collect { seenB += it } }
+        context("when a newer write is pending") {
 
-            script.answer("PUT", reply(200, body("reading", SECONDS_UPDATED)))
-            repository.setStatus(UUID, ReadStatus.Reading)
+            context("when the older write succeeds") {
 
-            seenA.last() shouldBe known(ReadStatus.Reading)
-            seenB.last() shouldBe known(ReadStatus.Reading)
-            repository.getReadStatusFlow("other").first() shouldBe
-                known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-            server.requestCount shouldBe 3
+                it("TC-26: keeps the newer write's value") {
+                    withServer {
+                        val uuid = randomString()
+                        val now = randomLong()
+                        val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, now, now))
+                        val gateA = CountDownLatch(1)
+                        val gateB = CountDownLatch(1)
+                        val repository = threadedSut(now)
+                        load(repository, uuid, recordOf(ReadStatus.Unread))
+                        script.answer("PUT", reply(recordOf(ReadStatus.Reading)), gateA)
+                        script.answer("PUT", reply(recordOf(ReadStatus.Finished)), gateB)
+
+                        val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                        nextRequest()
+                        val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+                        repository.awaitState(uuid, optimistic)
+                        gateA.countDown()
+                        a.await()
+
+                        repository.getReadStatusFlow(uuid).first() shouldBe optimistic
+                        gateB.countDown()
+                        b.await()
+                    }
+                }
+            }
+
+            context("when the older write fails") {
+
+                it("TC-27: keeps the newer write's value") {
+                    withServer {
+                        val uuid = randomString()
+                        val now = randomLong()
+                        val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, now, now))
+                        val gateA = CountDownLatch(1)
+                        val gateB = CountDownLatch(1)
+                        val repository = threadedSut(now)
+                        load(repository, uuid, recordOf(ReadStatus.Unread))
+                        script.answer("PUT", reply(500), gateA)
+                        script.answer("PUT", reply(recordOf(ReadStatus.Finished)), gateB)
+
+                        val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                        nextRequest()
+                        val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+                        repository.awaitState(uuid, optimistic)
+                        gateA.countDown()
+                        a.await()
+
+                        repository.getReadStatusFlow(uuid).first() shouldBe optimistic
+                        gateB.countDown()
+                        b.await()
+                    }
+                }
+            }
+
+            it("TC-28: rolls back to the older write's record once the newer one fails") {
+                withServer {
+                    val uuid = randomString()
+                    val confirmed = recordOf(ReadStatus.Reading)
+                    val gateA = CountDownLatch(1)
+                    val repository = threadedSut()
+                    load(repository, uuid, recordOf(ReadStatus.Unread))
+                    script.answer("PUT", reply(confirmed), gateA)
+                    script.answer("PUT", reply(500))
+
+                    val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                    nextRequest()
+                    val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+                    gateA.countDown()
+                    listOf(a, b).awaitAll()
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(confirmed)
+                }
+            }
+
+            it("TC-29: holds the newer write back until the older one is answered") {
+                withServer {
+                    val uuid = randomString()
+                    val gateA = CountDownLatch(1)
+                    val repository = threadedSut()
+                    script.answer("PUT", reply(recordOf(ReadStatus.Reading)), gateA)
+                    script.answer("PUT", reply(recordOf(ReadStatus.Finished)))
+
+                    val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                    nextRequest()
+                    val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+
+                    // There is no event for "a request was not sent", so this waits a bounded time for one to arrive.
+                    server.takeRequest(300, TimeUnit.MILLISECONDS).shouldBeNull()
+                    gateA.countDown()
+                    listOf(a, b).awaitAll()
+                }
+            }
         }
 
-        it("TC-33: an undecodable value on either call is a result, never a thrown exception") {
-            val repository = repositoryFor()
-            val huge = "{\"status\":\"reading\",\"updated_at\":99999999999999999999999}"
+        context("when a read started before the write") {
 
-            script.answer("GET", reply(200, huge))
-            repository.fetchStatus(UUID) shouldBe ReadStatusState.Failed
+            it("TC-30: keeps the write's record as the state") {
+                withServer {
+                    val uuid = randomString()
+                    val written = recordOf(ReadStatus.Finished)
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    script.answer("GET", reply(recordOf(ReadStatus.Unread)), gate)
+                    script.answer("PUT", reply(written))
 
-            script.answer("PUT", reply(200, huge))
-            repository.setStatus(UUID, ReadStatus.Reading) shouldBe
-                ReadStatusWriteResult.Failed(ReadStatusError.UnexpectedResponse)
+                    val fetch = scope.async { repository.fetchStatus(uuid) }
+                    nextRequest()
+                    repository.setStatus(uuid, ReadStatus.Finished)
+                    gate.countDown()
+                    fetch.await()
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(written)
+                }
+            }
         }
 
-        it("TC-102: two overlapping writes that both fail restore the state from before both") {
-            val repository = repositoryFor(held = true)
-            script.answer("GET", reply(200, body("unread")))
-            repository.fetchStatus(UUID)
-            nextRequest()
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            observed.awaitLast(known(ReadStatus.Unread))
+        context("when a read lands during the write") {
 
-            val gateA = CountDownLatch(1)
-            script.answer("PUT", reply(500), gateA)
-            script.answer("PUT", reply(500))
-            val a = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            val b = scope.async { repository.setStatus(UUID, ReadStatus.Finished) }
-            observed.awaitLast(known(ReadStatus.Finished, NOW, finished = NOW))
+            it("TC-103: keeps showing the write's value") {
+                withServer {
+                    val uuid = randomString()
+                    val now = randomLong()
+                    val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Reading, now, null))
+                    val readGate = CountDownLatch(1)
+                    val writeGate = CountDownLatch(1)
+                    val repository = threadedSut(now)
+                    script.answer("GET", reply(recordOf(ReadStatus.Finished)), readGate)
+                    script.answer("PUT", reply(500), writeGate)
 
-            gateA.countDown()
-            a.await() shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            b.await() shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Unread)
+                    val fetch = scope.async { repository.fetchStatus(uuid) }
+                    nextRequest()
+                    val write = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                    nextRequest()
+                    readGate.countDown()
+                    fetch.await()
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe optimistic
+                    writeGate.countDown()
+                    write.await()
+                }
+            }
+
+            it("TC-103: falls back to the read's record once the write fails") {
+                withServer {
+                    val uuid = randomString()
+                    val read = recordOf(ReadStatus.Finished)
+                    val readGate = CountDownLatch(1)
+                    val writeGate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    script.answer("GET", reply(read), readGate)
+                    script.answer("PUT", reply(500), writeGate)
+
+                    val fetch = scope.async { repository.fetchStatus(uuid) }
+                    nextRequest()
+                    val write = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                    nextRequest()
+                    readGate.countDown()
+                    fetch.await()
+                    writeGate.countDown()
+                    write.await()
+
+                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(read)
+                }
+            }
         }
 
-        it("TC-103: a read that lands during a write does not replace the optimistic value, and a failed write falls back to the read") {
-            val repository = repositoryFor(held = true)
-            val scope = newScope(Dispatchers.Default)
-            val observed = Observed(repository, UUID, scope)
-            val gateG = CountDownLatch(1)
-            script.answer("GET", reply(200, body("finished", SECONDS_UPDATED, SECONDS_FINISHED)), gateG)
-            val fetch = scope.async { repository.fetchStatus(UUID) }
-            nextRequest()
-            observed.awaitLast(ReadStatusState.Unknown)
+        context("when the caller is cancelled") {
 
-            val gateW = CountDownLatch(1)
-            script.answer("PUT", reply(500), gateW)
-            val write = scope.async { repository.setStatus(UUID, ReadStatus.Reading) }
-            nextRequest()
-            observed.awaitLast(known(ReadStatus.Reading, NOW, finished = null))
+            it("TC-31: lets the write finish") {
+                withServer {
+                    val uuid = randomString()
+                    val record = recordOf(ReadStatus.Finished)
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    script.answer("PUT", reply(record), gate)
 
-            gateG.countDown()
-            fetch.await() shouldBe known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Reading, NOW, finished = null)
+                    val caller = scope.launch { repository.setStatus(uuid, ReadStatus.Finished) }
+                    nextRequest()
+                    caller.cancelAndJoin()
+                    gate.countDown()
 
-            gateW.countDown()
-            write.await() shouldBe ReadStatusWriteResult.Failed(ReadStatusError.Http(500))
-            repository.getReadStatusFlow(UUID).first() shouldBe known(ReadStatus.Finished, MILLIS_UPDATED, MILLIS_FINISHED)
+                    repository.awaitState(uuid, ReadStatusState.Known(record))
+                }
+            }
+        }
+
+        context("when another book has a known status") {
+
+            it("TC-32: leaves that book's status alone") {
+                withServer {
+                    val other = randomString()
+                    val record = randomReadStatusRecord()
+                    val repository = sut(url)
+                    load(repository, other, record)
+                    script.answer("PUT", reply(randomReadStatusRecord()))
+
+                    repository.setStatus(randomString(), randomEnum())
+
+                    repository.getReadStatusFlow(other).first() shouldBe ReadStatusState.Known(record)
+                }
+            }
         }
     }
 })

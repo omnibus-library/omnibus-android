@@ -2,41 +2,64 @@ package com.omnibus.omnibus.data.reviews.remote
 
 import com.omnibus.omnibus.data.reviews.Patch
 import com.omnibus.omnibus.data.reviews.ReviewPatch
+import com.omnibus.omnibus.data.reviews.randomRating
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okio.Buffer
 
 class ReviewPatchRequestTest : DescribeSpec({
 
     describe("the PATCH body") {
 
-        it("TC-12: only set fields are sent, a set null is an explicit null, and the request has the JSON media type") {
-            ReviewPatch().toJsonObject().toString() shouldBe "{}"
+        it("TC-12: names every set field the way the server does") {
+            val rating = randomRating()
+            val text = randomString()
+            val notes = randomString()
+            val spoiler = randomBoolean()
 
-            val cleared = ReviewPatch(rating = Patch.Set(null))
-            cleared.toJsonObject().toString() shouldBe """{"stars":null}"""
+            val patch = ReviewPatch(
+                rating = Patch.Set(rating),
+                text = Patch.Set(text),
+                privateNotes = Patch.Set(notes),
+                isSpoiler = Patch.Set(spoiler),
+            )
 
-            val rated = ReviewPatch(rating = Patch.Set(4.5f))
-            rated.toJsonObject().jsonObject["stars"]!!.jsonPrimitive.content shouldBe "4.5"
+            patch.toJsonObject() shouldBe buildJsonObject {
+                put("stars", rating)
+                put("body_md", text)
+                put("notes_md", notes)
+                put("spoiler", spoiler)
+            }
+        }
 
-            val all = ReviewPatch(
-                rating = Patch.Set(3f),
-                text = Patch.Set(null),
-                privateNotes = Patch.Set("n"),
-                isSpoiler = Patch.Set(true),
-            ).toJsonObject()
-            all.keys shouldContainExactlyInAnyOrder listOf("stars", "body_md", "notes_md", "spoiler")
-            all["body_md"] shouldBe JsonNull
-            all["notes_md"]!!.jsonPrimitive.content shouldBe "n"
-            all["spoiler"]!!.jsonPrimitive.content shouldBe "true"
+        it("TC-12: writes only the set fields, keeping a set null explicit") {
+            checkAll(
+                Exhaustive.of(
+                    ReviewPatch() to "{}",
+                    ReviewPatch(rating = Patch.Set(null)) to """{"stars":null}""",
+                    ReviewPatch(text = Patch.Set(null)) to """{"body_md":null}""",
+                    ReviewPatch(privateNotes = Patch.Set(null)) to """{"notes_md":null}""",
+                ),
+            ) { (patch, json) ->
+                patch.toJsonObject().toString() shouldBe json
+            }
+        }
 
-            val body = ReviewPatch(rating = Patch.Set(4.5f)).toJsonRequest()
+        it("TC-12: is sent as JSON") {
+            val rating = randomRating()
+
+            val body = ReviewPatch(rating = Patch.Set(rating)).toJsonRequest()
+
             body.contentType().toString() shouldBe "application/json; charset=utf-8"
-            Buffer().also { body.writeTo(it) }.readUtf8() shouldBe """{"stars":4.5}"""
+            Buffer().also { body.writeTo(it) }.readUtf8() shouldBe """{"stars":${JsonPrimitive(rating)}}"""
         }
     }
 })

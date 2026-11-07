@@ -2,395 +2,228 @@ package com.omnibus.omnibus.data.series
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
+import okhttp3.HttpUrl
+
+/** [value] as a JSON string, or JSON null. */
+private fun quoted(value: String?): String = value?.let { "\"$it\"" } ?: "null"
+
+/** A series response holding [books], in that order. */
+private fun seriesBody(vararg books: String): String = """{"books":[${books.joinToString(",")}]}"""
+
+/** This member as the server writes it. */
+private fun SeriesMember.toJson(): String =
+    """{"unique_identifier":${quoted(uuid)},"filename":"${randomString()}","title":${quoted(title)},""" +
+        """"series_index":${quoted(seriesIndex)},"cover_url":${quoted(coverUrl)},"accent":${quoted(accent)}}"""
+
+/** A book whose order and uuid are all a test cares about. */
+private fun bookWithIndex(uuid: String, seriesIndex: String?): String =
+    randomSeriesMember().copy(uuid = uuid, seriesIndex = seriesIndex).toJson()
+
+private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
 class DefaultSeriesRepositoryTest : DescribeSpec({
 
-    lateinit var server: MockWebServer
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var client: OmnibusHttpClient
-    lateinit var repository: DefaultSeriesRepository
+    fun sut(baseUrl: HttpUrl? = null): DefaultSeriesRepository = DefaultSeriesRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = OmnibusHttpClient(
+            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
+            authTokenProvider = TestAuthTokenProvider(),
+            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+        ),
+    )
 
-    /** Every request the server receives, in arrival order. */
-    val requests = ConcurrentLinkedQueue<RecordedRequest>()
-
-    /** Answers the next request. Tests replace it. */
-    var respond: (RecordedRequest) -> MockResponse = { MockResponse.Builder().code(404).build() }
-
-    /** Answers by exact path. A path not in [routes] gets a 404. */
-    fun route(routes: Map<String, () -> MockResponse>) {
-        respond = { request -> routes[request.url.encodedPath]?.invoke() ?: MockResponse.Builder().code(404).build() }
+    /** The members the server's answer [body] reads as. */
+    suspend fun membersOf(body: String): List<SeriesMember> = MockWebServer().use { server ->
+        server.start()
+        server.enqueue(reply(200, body))
+        sut(server.url("/")).getSeries(randomLong()).shouldBeTypeOf<SeriesResult.Success>().members
     }
-
-    fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-    fun newRepository(dispatcher: CoroutineDispatcher) =
-        DefaultSeriesRepository(ioDispatcher = dispatcher, omnibusHttpClient = client)
-
-    /** One book object of the series response. Null values are sent as JSON null. */
-    fun bookJson(
-        id: Long = 1,
-        uniqueIdentifier: String? = "u$id",
-        filename: String = "book$id.epub",
-        title: String? = "Book $id",
-        seriesIndex: String? = null,
-        coverUrl: String? = null,
-        accent: String? = null,
-    ): String = """
-        {"id":$id,"unique_identifier":${quoted(uniqueIdentifier)},"filename":${quoted(filename)},
-         "title":${quoted(title)},"series_index":${quoted(seriesIndex)},"cover_url":${quoted(coverUrl)},
-         "accent":${quoted(accent)}}
-    """.trimIndent()
-
-    /** A series response holding [books] in the given order. */
-    fun seriesJson(vararg books: String): String =
-        """{"id":4,"name":"Dune","book_count":${books.size},"books":[${books.joinToString(",")}]}"""
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        server = MockWebServer().apply { start() }
-        requests.clear()
-        respond = { MockResponse.Builder().code(404).build() }
-        server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                requests.add(request)
-                return respond(request)
-            }
-        }
-        baseUrlProvider = TestServerBaseUrlProvider(baseUrl = server.url("/"))
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-        repository = newRepository(Dispatchers.Unconfined)
-    }
+    describe("reading a series") {
 
-    afterEach { server.close() }
+        it("#104 TC-1: maps every book field") {
+            val member = randomSeriesMember()
 
-    describe("getSeries") {
-
-        it("#104 TC-1: a 200 maps every book field") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(
-                                    id = 7,
-                                    uniqueIdentifier = "u-7",
-                                    filename = "dune.epub",
-                                    title = "Dune",
-                                    seriesIndex = "1",
-                                    coverUrl = "/covers/u-7.jpg",
-                                    accent = "#c8a04a",
-                                ),
-                            ),
-                        )
-                    },
-                ),
-            )
-
-            repository.getSeries(4) shouldBe SeriesResult.Success(
-                listOf(SeriesMember("u-7", "Dune", "1", "/covers/u-7.jpg", "#c8a04a", hasCover = true)),
-            )
+            membersOf(seriesBody(member.toJson())) shouldBe listOf(member)
         }
 
-        it("#104 TC-2: uuid falls back to the id when unique_identifier is null, and a present identifier wins") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 42, uniqueIdentifier = null),
-                                bookJson(id = 1, uniqueIdentifier = "u-1"),
-                            ),
-                        )
-                    },
-                ),
-            )
+        context("when a book has no unique identifier") {
 
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members.map { it.uuid } shouldContainExactly listOf("42", "u-1")
-        }
+            it("#104 TC-2: uses its id as the uuid") {
+                val id = randomLong()
 
-        it("#104 TC-3: a blank or missing title falls back to the filename, and a real title is kept") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 1, title = "", filename = "dune.epub"),
-                                bookJson(id = 2, title = "   ", filename = "dune.epub"),
-                                bookJson(id = 3, title = null, filename = "dune.epub"),
-                                bookJson(id = 4, title = "Dune", filename = "dune.epub"),
-                            ),
-                        )
-                    },
-                ),
-            )
+                val members = membersOf(seriesBody("""{"id":$id,"unique_identifier":null,"filename":"${randomString()}"}"""))
 
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members.map { it.title } shouldContainExactly listOf("dune.epub", "dune.epub", "dune.epub", "Dune")
-        }
-
-        it("#104 TC-4: hasCover follows cover_url") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 1, coverUrl = null, accent = null),
-                                bookJson(id = 2, coverUrl = "/c/b.jpg", accent = "#112233"),
-                            ),
-                        )
-                    },
-                ),
-            )
-
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members[0].hasCover shouldBe false
-            members[0].coverUrl shouldBe null
-            members[0].accent shouldBe null
-            members[1].hasCover shouldBe true
-            members[1].coverUrl shouldBe "/c/b.jpg"
-            members[1].accent shouldBe "#112233"
-        }
-
-        it("#104 TC-5: members are sorted by numeric series index") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 10, seriesIndex = "10"),
-                                bookJson(id = 2, seriesIndex = "2"),
-                                bookJson(id = 15, seriesIndex = "1.5"),
-                                bookJson(id = 1, seriesIndex = "1"),
-                            ),
-                        )
-                    },
-                ),
-            )
-
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members.map { it.seriesIndex } shouldContainExactly listOf("1", "1.5", "2", "10")
-        }
-
-        it("#104 TC-6: null and non-numeric indexes sort last in server order") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 1, seriesIndex = "II"),
-                                bookJson(id = 2, seriesIndex = null),
-                                bookJson(id = 3, seriesIndex = "2"),
-                                bookJson(id = 4, seriesIndex = ""),
-                                bookJson(id = 5, seriesIndex = "1"),
-                                bookJson(id = 6, seriesIndex = "Omnibus"),
-                            ),
-                        )
-                    },
-                ),
-            )
-
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members.map { it.uuid } shouldContainExactly listOf("u5", "u3", "u1", "u2", "u4", "u6")
-        }
-
-        it("#104 TC-7: ties keep the server order, and an ordered response is unchanged") {
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            seriesJson(
-                                bookJson(id = 1, seriesIndex = "2"),
-                                bookJson(id = 2, seriesIndex = null),
-                                bookJson(id = 3, seriesIndex = "2"),
-                                bookJson(id = 4, seriesIndex = "2"),
-                                bookJson(id = 5, seriesIndex = null),
-                            ),
-                        )
-                    },
-                ),
-            )
-
-            val members = repository.getSeries(4).shouldBeTypeOf<SeriesResult.Success>().members
-            members.map { it.uuid } shouldContainExactly listOf("u1", "u3", "u4", "u2", "u5")
-
-            val ordered = listOf(member("a", "1"), member("b", "1.5"), member("c", "2"), member("d", null))
-            ordered.inSeriesOrder() shouldBe ordered
-            listOf(member("x", "2"), member("y", null), member("z", "2")).inSeriesOrder().map { it.uuid } shouldContainExactly
-                listOf("x", "z", "y")
-        }
-
-        it("#104 TC-8: an empty or sparse body is a success") {
-            route(mapOf(SERIES_4 to { json(200, """{"books":[]}""") }))
-            repository.getSeries(4) shouldBe SeriesResult.Success(emptyList())
-
-            route(mapOf(SERIES_4 to { json(200, "{}") }))
-            repository.getSeries(4) shouldBe SeriesResult.Success(emptyList())
-
-            route(
-                mapOf(
-                    SERIES_4 to {
-                        json(
-                            200,
-                            """
-                            {"id":4,"name":"Dune","sort":"dune","reading":{"x":1},"hidden_from_home":false,
-                             "books":[{"id":1,"unique_identifier":"u1","filename":"f.epub","title":"T",
-                               "accent":"#unknown-token","future":[1,2]}]}
-                            """.trimIndent(),
-                        )
-                    },
-                ),
-            )
-            repository.getSeries(4) shouldBe SeriesResult.Success(
-                listOf(SeriesMember("u1", "T", null, null, "#unknown-token", hasCover = false)),
-            )
-        }
-
-        it("#104 TC-9: it requests GET api/series/{id} with one encoded path segment") {
-            route(
-                mapOf(
-                    SERIES_4 to { json(200, "{}") },
-                    SERIES_BIG to { json(200, "{}") },
-                ),
-            )
-
-            repository.getSeries(4)
-            repository.getSeries(123456789012)
-
-            requests.map { it.method }.toSet() shouldBe setOf("GET")
-            requests.map { it.url.encodedPath } shouldContainExactly listOf(SERIES_4, SERIES_BIG)
-            requests.forEach {
-                it.url.query shouldBe null
-                it.headers["Authorization"] shouldBe "Bearer secret"
+                members.single().uuid shouldBe id.toString()
             }
         }
 
-        it("#104 TC-10: 401 is SessionExpired") {
-            route(mapOf(SERIES_4 to { json(401, "") }))
+        it("#104 TC-3: uses the filename as the title regardless of how the title is absent") {
+            val filename = randomString()
 
-            repository.getSeries(4) shouldBe SeriesResult.Failure(SeriesError.SessionExpired)
-        }
+            checkAll(Exhaustive.of("\"\"", "\"   \"", "null")) { title ->
+                val members = membersOf(seriesBody("""{"filename":"$filename","title":$title}"""))
 
-        it("#104 TC-11: 404 is NotFound") {
-            route(mapOf(SERIES_4 to { json(404, "") }))
-
-            repository.getSeries(4) shouldBe SeriesResult.Failure(SeriesError.NotFound)
-        }
-
-        listOf(500, 503, 403).forEach { code ->
-            it("#104 TC-12: HTTP $code is Http($code)") {
-                route(mapOf(SERIES_4 to { json(code, "boom") }))
-
-                repository.getSeries(4) shouldBe SeriesResult.Failure(SeriesError.Http(code))
+                members.single().title shouldBe filename
             }
         }
 
-        it("#104 TC-13: an IO error is Unreachable") {
-            server.close()
+        context("when a book has no cover URL") {
 
-            repository.getSeries(4) shouldBe SeriesResult.Failure(SeriesError.Unreachable)
-        }
+            it("#104 TC-4: says it has no cover") {
+                val member = randomSeriesMember().copy(coverUrl = null)
 
-        listOf(
-            "invalid JSON" to "not json",
-            "a top-level array" to "[]",
-            "an empty body" to "",
-            "books of the wrong type" to """{"books":"nope"}""",
-        ).forEach { (case, body) ->
-            it("#104 TC-14: a 200 with $case is UnexpectedResponse") {
-                route(mapOf(SERIES_4 to { json(200, body) }))
-
-                repository.getSeries(4) shouldBe SeriesResult.Failure(SeriesError.UnexpectedResponse)
+                membersOf(seriesBody(member.toJson())).single().hasCover shouldBe false
             }
         }
 
-        it("#104 TC-15: with no saved server it gives NoServer and sends nothing") {
-            baseUrlProvider.baseUrl = null
+        context("when a book has a cover URL") {
 
-            repository.getSeries(4) shouldBe SeriesResult.NoServer
+            it("#104 TC-4: says it has a cover") {
+                val member = randomSeriesMember().copy(coverUrl = "/covers/${randomString()}.jpg")
 
-            server.requestCount shouldBe 0
-        }
-
-        it("#104 TC-16: cancelling an in-flight read throws CancellationException instead of a result") {
-            respond = { MockResponse.Builder().code(200).headersDelay(500, TimeUnit.MILLISECONDS).body("{}").build() }
-            val dispatched = newRepository(Dispatchers.IO)
-
-            coroutineScope {
-                val pending = async(Dispatchers.IO) { dispatched.getSeries(4) }
-                delay(100)
-                pending.cancel()
-                shouldThrow<CancellationException> { pending.await() }
+                membersOf(seriesBody(member.toJson())).single().hasCover shouldBe true
             }
         }
 
-        it("#104 TC-17: the request and decode run on the injected IO dispatcher") {
-            route(mapOf(SERIES_4 to { json(200, seriesJson(bookJson(id = 1, seriesIndex = "1"))) }))
-            val recording = RecordingDispatcher()
+        it("#104 TC-5: sorts the books by their numeric series index") {
+            val members = membersOf(
+                seriesBody(
+                    bookWithIndex("tenth", "10"),
+                    bookWithIndex("second", "2"),
+                    bookWithIndex("between", "1.5"),
+                    bookWithIndex("first", "1"),
+                ),
+            )
 
-            val result = newRepository(recording).getSeries(4)
+            members.map { it.uuid } shouldBe listOf("first", "between", "second", "tenth")
+        }
 
-            result.shouldBeTypeOf<SeriesResult.Success>()
-            recording.dispatches shouldBeGreaterThanOrEqual 1
+        it("#104 TC-6: puts missing and non-numeric indexes last, in the server's order") {
+            val members = membersOf(
+                seriesBody(
+                    bookWithIndex("roman", "II"),
+                    bookWithIndex("missing", null),
+                    bookWithIndex("second", "2"),
+                    bookWithIndex("empty", ""),
+                    bookWithIndex("first", "1"),
+                    bookWithIndex("word", "Omnibus"),
+                ),
+            )
+
+            members.map { it.uuid } shouldBe listOf("first", "second", "roman", "missing", "empty", "word")
+        }
+
+        it("#104 TC-7: keeps equal indexes in the server's order") {
+            val members = membersOf(
+                seriesBody(
+                    bookWithIndex("a", "2"),
+                    bookWithIndex("b", "1"),
+                    bookWithIndex("c", "2"),
+                    bookWithIndex("d", "2"),
+                ),
+            )
+
+            members.map { it.uuid } shouldBe listOf("b", "a", "c", "d")
+        }
+
+        it("#104 TC-8: is an empty success regardless of how the books are absent") {
+            checkAll(Exhaustive.of("""{"books":[]}""", "{}")) { body ->
+                membersOf(body) shouldBe emptyList()
+            }
+        }
+
+        it("#104 TC-8: ignores keys it does not know") {
+            val member = randomSeriesMember()
+
+            val body = """{"sort":"${randomString()}","reading":{"x":1},"books":[${member.toJson()}]}"""
+
+            membersOf(body) shouldBe listOf(member)
+        }
+
+        it("#104 TC-9: asks for the series by its id") {
+            MockWebServer().use { server ->
+                server.start()
+                val id = randomLong()
+                server.enqueue(reply(200, "{}"))
+
+                sut(server.url("/")).getSeries(id)
+
+                val request = server.takeRequest()
+                request.method shouldBe "GET"
+                request.url.encodedPath shouldBe "/api/series/$id"
+            }
+        }
+
+        it("#104 TC-10, TC-11, TC-12: reports each failure status as its own error") {
+            MockWebServer().use { server ->
+                server.start()
+                checkAll(
+                    Exhaustive.of(
+                        401 to SeriesError.SessionExpired,
+                        404 to SeriesError.NotFound,
+                        403 to SeriesError.Http(403),
+                        500 to SeriesError.Http(500),
+                    ),
+                ) { (code, error) ->
+                    server.enqueue(reply(code))
+
+                    sut(server.url("/")).getSeries(randomLong()) shouldBe SeriesResult.Failure(error)
+                }
+            }
+        }
+
+        context("when the server cannot be reached") {
+
+            it("#104 TC-13: reports Unreachable") {
+                val closed = MockWebServer().use { server ->
+                    server.start()
+                    server.url("/")
+                }
+
+                sut(closed).getSeries(randomLong()) shouldBe SeriesResult.Failure(SeriesError.Unreachable)
+            }
+        }
+
+        it("#104 TC-14: reports UnexpectedResponse regardless of how the body is unreadable") {
+            MockWebServer().use { server ->
+                server.start()
+                checkAll(Exhaustive.of("not json", "[]", "", """{"books":"nope"}""")) { body ->
+                    server.enqueue(reply(200, body))
+
+                    sut(server.url("/")).getSeries(randomLong()) shouldBe
+                        SeriesResult.Failure(SeriesError.UnexpectedResponse)
+                }
+            }
+        }
+
+        context("when no server is saved") {
+
+            it("#104 TC-15: reports NoServer") {
+                sut().getSeries(randomLong()) shouldBe SeriesResult.NoServer
+            }
         }
     }
-}) {
-    private companion object {
-        const val SERIES_4 = "/api/series/4"
-        const val SERIES_BIG = "/api/series/123456789012"
-
-        fun quoted(value: String?): String = value?.let { "\"$it\"" } ?: "null"
-
-        fun member(uuid: String, index: String?) = SeriesMember(uuid, "Title $uuid", index, null, null, false)
-    }
-}
-
-/** Counts the dispatches it receives and runs each block on [Dispatchers.IO]. */
-private class RecordingDispatcher : CoroutineDispatcher() {
-    var dispatches = 0
-
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
-        dispatches++
-        Dispatchers.IO.dispatch(context, block)
-    }
-}
+})

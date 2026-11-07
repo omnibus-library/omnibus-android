@@ -1,78 +1,100 @@
 package com.omnibus.omnibus.data.reviews
 
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ReviewPatchTest : DescribeSpec({
 
-    /** A review with the given parts. Its attribution is the signed-in reader's, which is blank. */
-    fun review(
-        rating: Float? = null,
-        text: String? = null,
-        notes: String? = null,
-        spoiler: Boolean = false,
-        updatedAt: Long? = 1_000L,
-    ) = Review(
-        userId = 0L,
-        displayName = "",
-        hasAvatar = false,
-        rating = rating,
-        text = text,
-        privateNotes = notes,
-        isSpoiler = spoiler,
-        updatedAtMillis = updatedAt,
-    )
-
     describe("applying a patch") {
 
-        it("TC-7: a set rating on no review makes a new one, and a change alters only the rating") {
-            val created = (null as Review?).applying(ReviewPatch(rating = Patch.Set(4.5f)))
-            created shouldBe Review(0L, "", false, 4.5f, null, null, isSpoiler = false, updatedAtMillis = null)
+        context("when there is no review") {
 
-            val full = review(rating = 4f, text = "Body", notes = "private", spoiler = true, updatedAt = 99L)
-            val changed = full.applying(ReviewPatch(rating = Patch.Set(3.5f)))
-            changed shouldBe full.copy(rating = 3.5f)
-            changed!!.updatedAtMillis shouldBe 99L
-        }
+            it("TC-7: makes a new one with no attribution or change time") {
+                val rating = randomRating()
 
-        it("TC-9: clearing the rating keeps the text and the notes") {
-            val withText = review(rating = 4f, text = "Body", updatedAt = 5L)
-            withText.applying(ReviewPatch(rating = Patch.Set(null))) shouldBe withText.copy(rating = null)
-
-            val withNotes = review(notes = "private")
-            withNotes.applying(ReviewPatch(rating = Patch.Set(null))) shouldBe withNotes
-        }
-
-        it("TC-10: a review left with no rating, text or notes is null, and blank text counts as null") {
-            review(rating = 4f).applying(ReviewPatch(rating = Patch.Set(null))) shouldBe null
-            review(text = "Body").applying(ReviewPatch(text = Patch.Set(null))) shouldBe null
-            review(text = "Body").applying(ReviewPatch(text = Patch.Set("  "))) shouldBe null
-            review(text = "Body", notes = "private").applying(ReviewPatch(text = Patch.Set(null)))!!.let {
-                it.text shouldBe null
-                it.privateNotes shouldBe "private"
+                (null as Review?).applying(ReviewPatch(rating = Patch.Set(rating))) shouldBe
+                    Review(0L, "", false, rating, null, null, isSpoiler = false, updatedAtMillis = null)
             }
-            (null as Review?).applying(ReviewPatch(isSpoiler = Patch.Set(true))) shouldBe null
+
+            context("when the patch sets only the spoiler flag") {
+
+                it("TC-10: makes nothing") {
+                    (null as Review?).applying(ReviewPatch(isSpoiler = Patch.Set(true))).shouldBeNull()
+                }
+            }
+        }
+
+        context("when the review has text") {
+
+            it("TC-7, TC-9: changes only the rating, regardless of whether it sets or clears it") {
+                val review = randomReview().copy(text = randomString())
+
+                checkAll(Exhaustive.of(randomRating(), null)) { rating ->
+                    review.applying(ReviewPatch(rating = Patch.Set(rating))) shouldBe review.copy(rating = rating)
+                }
+            }
+        }
+
+        context("when the patch leaves the review empty") {
+
+            it("TC-10: gives no review, regardless of whether the text is null or blank") {
+                val review = randomReview().copy(rating = null, text = randomString(), privateNotes = null)
+
+                checkAll(Exhaustive.of(null, "  ")) { text ->
+                    review.applying(ReviewPatch(text = Patch.Set(text))).shouldBeNull()
+                }
+            }
         }
     }
 
-    describe("no-op patches") {
+    describe("whether a patch is a no-op") {
 
-        it("TC-11: a patch that would leave the review as it is is a no-op") {
-            val mine = review(rating = 4f, text = "Body", notes = "private", spoiler = true)
-            val nothing = ReviewPatch()
+        it("TC-11: is one regardless of which field repeats its current value") {
+            val rating = randomRating()
+            val text = randomString()
+            val notes = randomString()
+            val spoiler = randomBoolean()
+            val mine = randomReview().copy(rating = rating, text = text, privateNotes = notes, isSpoiler = spoiler)
 
-            nothing.isNoOpFor(null) shouldBe true
-            nothing.isNoOpFor(mine) shouldBe true
-            ReviewPatch(rating = Patch.Set(4f)).isNoOpFor(mine) shouldBe true
-            ReviewPatch(text = Patch.Set("Body")).isNoOpFor(mine) shouldBe true
-            ReviewPatch(privateNotes = Patch.Set("private")).isNoOpFor(mine) shouldBe true
-            ReviewPatch(isSpoiler = Patch.Set(true)).isNoOpFor(mine) shouldBe true
-            ReviewPatch(rating = Patch.Set(null)).isNoOpFor(null) shouldBe true
-            ReviewPatch(text = Patch.Set("  ")).isNoOpFor(null) shouldBe true
-            ReviewPatch(rating = Patch.Set(null)).isNoOpFor(review(text = "Body")) shouldBe true
+            checkAll(
+                Exhaustive.of(
+                    ReviewPatch(),
+                    ReviewPatch(rating = Patch.Set(rating)),
+                    ReviewPatch(text = Patch.Set(text)),
+                    ReviewPatch(privateNotes = Patch.Set(notes)),
+                    ReviewPatch(isSpoiler = Patch.Set(spoiler)),
+                ),
+            ) { patch ->
+                patch.isNoOpFor(mine) shouldBe true
+            }
+        }
 
-            ReviewPatch(rating = Patch.Set(4f)).isNoOpFor(null) shouldBe false
-            ReviewPatch(rating = Patch.Set(null)).isNoOpFor(review(rating = 4f)) shouldBe false
+        context("when there is no review") {
+
+            it("TC-11: is one regardless of which empty value it sets") {
+                checkAll(Exhaustive.of(ReviewPatch(), ReviewPatch(rating = Patch.Set(null)), ReviewPatch(text = Patch.Set("  ")))) { patch ->
+                    patch.isNoOpFor(null) shouldBe true
+                }
+            }
+        }
+
+        it("TC-11: is not one regardless of whether it adds a rating or clears one") {
+            val rated = randomReview().copy(rating = randomRating())
+
+            checkAll(
+                Exhaustive.of(
+                    ReviewPatch(rating = Patch.Set(randomRating())) to null,
+                    ReviewPatch(rating = Patch.Set(null)) to rated,
+                ),
+            ) { (patch, mine) ->
+                patch.isNoOpFor(mine) shouldBe false
+            }
         }
     }
 })
