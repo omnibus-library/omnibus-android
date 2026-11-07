@@ -2,21 +2,6 @@ package com.omnibus.omnibus.data.audiobook.playback
 
 import kotlinx.coroutines.CompletableDeferred
 
-/** Records each [begin] and hands out a [TestPendingResume] for it. */
-class TestResumeStartResolver : ResumeStartResolver {
-
-    /** The arguments of each [begin] call, in call order: book uuid, explicit file id, explicit position. */
-    val begins = mutableListOf<Triple<String, Long?, Double?>>()
-
-    /** The pending resume each [begin] returned, in call order. */
-    val pendings = mutableListOf<TestPendingResume>()
-
-    override fun begin(bookUuid: String, explicitFileId: Long?, explicitPositionSeconds: Double?): PendingResume {
-        begins += Triple(bookUuid, explicitFileId, explicitPositionSeconds)
-        return TestPendingResume().also { pendings += it }
-    }
-}
-
 /**
  * One load's resume answers. [settleAnswer] can be deferred to hold the start until the test completes it. [cancelCount]
  * counts the abandonments.
