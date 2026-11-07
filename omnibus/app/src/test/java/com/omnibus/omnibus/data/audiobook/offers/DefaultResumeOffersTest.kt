@@ -234,28 +234,30 @@ class DefaultResumeOffersTest : DescribeSpec({
             }
         }
 
-        // R4: the controller must still hold the settled book and file, not loading
-        it("#166 TC-45: drops an answer once the controller holds another book or file, or is loading (I-RES-7)") {
-            val book = randomPlayingBook()
+        context("when the controller has moved on from the book") {
+            // R4: the controller must still hold the settled book and file, not loading
+            it("#166 TC-45: drops an answer, for another book, another file or a load (I-RES-7)") {
+                val book = randomPlayingBook()
 
-            checkAll(
-                Exhaustive.of(
-                    playbackState(book.copy(bookUuid = "${book.bookUuid}-other"), isLoading = false),
-                    playbackState(book.copy(bookFileId = book.bookFileId + 1), isLoading = false),
-                    playbackState(book, isLoading = true),
-                ),
-            ) { moved ->
-                withScope { scope ->
-                    val controller = controllerHolding(book)
-                    val repository = TestCrossFormatRepository()
-                    val answer = repository.hold()
-                    val holder = sut(scope, controller, repository = repository)
-                    holder.settle(controller)
+                checkAll(
+                    Exhaustive.of(
+                        playbackState(book.copy(bookUuid = "${book.bookUuid}-other"), isLoading = false),
+                        playbackState(book.copy(bookFileId = book.bookFileId + 1), isLoading = false),
+                        playbackState(book, isLoading = true),
+                    ),
+                ) { moved ->
+                    withScope { scope ->
+                        val controller = controllerHolding(book)
+                        val repository = TestCrossFormatRepository()
+                        val answer = repository.hold()
+                        val holder = sut(scope, controller, repository = repository)
+                        holder.settle(controller)
 
-                    controller.state.value = moved
-                    answer.complete(offerableCandidate(book).copy(follow = true))
+                        controller.state.value = moved
+                        answer.complete(offerableCandidate(book).copy(follow = true))
 
-                    controller.commands.shouldBeEmpty()
+                        controller.commands.shouldBeEmpty()
+                    }
                 }
             }
         }
@@ -281,20 +283,21 @@ class DefaultResumeOffersTest : DescribeSpec({
         }
 
         context("when an offer is showing") {
+            context("when the next settle arrives") {
+                // R4: a same-book reload has no unload, so its settle resets the offer
+                it("#166 TC-48: goes (I-RES-7)") {
+                    withScope { scope ->
+                        val book = randomPlayingBook()
+                        val controller = controllerHolding(book)
+                        val repository = TestCrossFormatRepository(offerableCandidate(book))
+                        val holder = sut(scope, controller, repository = repository)
+                        holder.settle(controller)
 
-            // R4: a same-book reload has no unload, so its settle resets the offer
-            it("#166 TC-48: goes on the next settle (I-RES-7)") {
-                withScope { scope ->
-                    val book = randomPlayingBook()
-                    val controller = controllerHolding(book)
-                    val repository = TestCrossFormatRepository(offerableCandidate(book))
-                    val holder = sut(scope, controller, repository = repository)
-                    holder.settle(controller)
+                        repository.result = CrossFormatAudioResult.NoCandidate
+                        holder.settle(controller)
 
-                    repository.result = CrossFormatAudioResult.NoCandidate
-                    holder.settle(controller)
-
-                    holder.visible().ebook.shouldBeNull()
+                        holder.visible().ebook.shouldBeNull()
+                    }
                 }
             }
         }
@@ -334,19 +337,21 @@ class DefaultResumeOffersTest : DescribeSpec({
                 }
             }
 
-            // R2
-            it("#166 TC-51: moves nothing once the controller holds another book or file (I-SAVE-3)") {
-                val book = randomPlayingBook()
+            context("when the controller has moved on from the book") {
+                // R2
+                it("#166 TC-51: moves nothing, for another book or file (I-SAVE-3)") {
+                    val book = randomPlayingBook()
 
-                checkAll(
-                    Exhaustive.of(book.copy(bookUuid = "${book.bookUuid}-other"), book.copy(bookFileId = book.bookFileId + 1)),
-                ) { other ->
-                    withScope { scope ->
-                        val controller = controllerHolding(other)
+                    checkAll(
+                        Exhaustive.of(book.copy(bookUuid = "${book.bookUuid}-other"), book.copy(bookFileId = book.bookFileId + 1)),
+                    ) { other ->
+                        withScope { scope ->
+                            val controller = controllerHolding(other)
 
-                        sut(scope, controller).acceptDeviceOffer(lateFor(book))
+                            sut(scope, controller).acceptDeviceOffer(lateFor(book))
 
-                        controller.commands.shouldBeEmpty()
+                            controller.commands.shouldBeEmpty()
+                        }
                     }
                 }
             }
@@ -369,20 +374,22 @@ class DefaultResumeOffersTest : DescribeSpec({
                 }
             }
 
-            // R3: the dismissal is per load
-            it("#166 TC-53: returns on the next settle (R3)") {
-                withScope { scope ->
-                    val book = randomPlayingBook()
-                    val controller = controllerHolding(book)
-                    val sync = TestListeningPositionSync()
-                    val holder = sut(scope, controller, sync)
-                    val late = lateFor(book)
-                    sync.lateServerPosition.value = late
-                    holder.dismissDeviceOffer(late)
+            context("when the next settle arrives") {
+                // R3: the dismissal is per load
+                it("#166 TC-53: returns (R3)") {
+                    withScope { scope ->
+                        val book = randomPlayingBook()
+                        val controller = controllerHolding(book)
+                        val sync = TestListeningPositionSync()
+                        val holder = sut(scope, controller, sync)
+                        val late = lateFor(book)
+                        sync.lateServerPosition.value = late
+                        holder.dismissDeviceOffer(late)
 
-                    holder.settle(controller)
+                        holder.settle(controller)
 
-                    holder.visible().device shouldBe late
+                        holder.visible().device shouldBe late
+                    }
                 }
             }
         }
@@ -450,19 +457,21 @@ class DefaultResumeOffersTest : DescribeSpec({
                 }
             }
 
-            // R8, P-SYNC-AC6
-            it("#166 TC-57: stays hidden on a fresh settle (P-SYNC-AC6)") {
-                withScope { scope ->
-                    val book = randomPlayingBook()
-                    val controller = controllerHolding(book)
-                    val candidate = offerableCandidate(book)
-                    val holder = sut(scope, controller, repository = TestCrossFormatRepository(candidate))
-                    holder.settle(controller)
-                    holder.dismissEbookOffer(candidate.asOffer(book))
+            context("when a fresh settle arrives") {
+                // R8, P-SYNC-AC6
+                it("#166 TC-57: stays hidden (P-SYNC-AC6)") {
+                    withScope { scope ->
+                        val book = randomPlayingBook()
+                        val controller = controllerHolding(book)
+                        val candidate = offerableCandidate(book)
+                        val holder = sut(scope, controller, repository = TestCrossFormatRepository(candidate))
+                        holder.settle(controller)
+                        holder.dismissEbookOffer(candidate.asOffer(book))
 
-                    holder.settle(controller)
+                        holder.settle(controller)
 
-                    holder.visible().ebook.shouldBeNull()
+                        holder.visible().ebook.shouldBeNull()
+                    }
                 }
             }
         }

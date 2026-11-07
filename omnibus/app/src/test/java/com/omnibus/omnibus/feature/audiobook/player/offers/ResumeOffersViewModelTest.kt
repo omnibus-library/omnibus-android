@@ -62,7 +62,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
 
     describe("acting on an offer") {
         // R2, R3: Go and Dismiss on the device offer hand the offer back to the holder
-        it("#166 TC-63: forwards Go then Dismiss on the device offer to the holder (R2, R3)") {
+        it("#166 TC-63: forwards each action on the device offer to the holder (R2, R3)") {
             val uuid = randomString()
             val device = randomLatePosition().copy(bookUuid = uuid)
             val offers = TestResumeOffers()
@@ -76,7 +76,7 @@ class ResumeOffersViewModelTest : DescribeSpec({
         }
 
         // R7, R8: Go and Dismiss on the ebook offer hand the offer back to the holder
-        it("#166 TC-64: forwards Go then Dismiss on the ebook offer to the holder (R7, R8)") {
+        it("#166 TC-64: forwards each action on the ebook offer to the holder (R7, R8)") {
             val uuid = randomString()
             val ebook = randomEbookOffer().copy(bookUuid = uuid)
             val offers = TestResumeOffers()

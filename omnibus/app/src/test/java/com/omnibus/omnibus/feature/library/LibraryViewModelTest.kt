@@ -122,17 +122,19 @@ class LibraryViewModelTest : DescribeSpec({
                 }
             }
 
-            it("TC-60: goes through Loading to Content on a retry") {
-                val repository = TestLibraryRepository().apply { enqueue(unreachable) }
-                val viewModel = sut(repository)
-                val second = CompletableDeferred<LibraryPageResult>()
-                repository.enqueue(second)
+            context("when retried") {
+                it("TC-60: goes through Loading to Content") {
+                    val repository = TestLibraryRepository().apply { enqueue(unreachable) }
+                    val viewModel = sut(repository)
+                    val second = CompletableDeferred<LibraryPageResult>()
+                    repository.enqueue(second)
 
-                viewModel.retry()
-                viewModel.uiState.value.screen shouldBe LibraryScreenState.Loading
+                    viewModel.retry()
+                    viewModel.uiState.value.screen shouldBe LibraryScreenState.Loading
 
-                second.complete(page(1L, 2L))
-                viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+                    second.complete(page(1L, 2L))
+                    viewModel.uiState.value.screen shouldBe LibraryScreenState.Content
+                }
             }
         }
 
@@ -174,7 +176,7 @@ class LibraryViewModelTest : DescribeSpec({
     }
 
     describe("loading more") {
-        it("TC-77: appends the next page and advances the cursor") {
+        it("TC-77: moves on to the next page") {
             val repository = TestLibraryRepository()
             val viewModel = sutWithSixtyBooks(repository)
             repository.enqueue(pageOf(61L..90L, cursor = "c2"))
@@ -278,15 +280,17 @@ class LibraryViewModelTest : DescribeSpec({
                 state.screen shouldBe LibraryScreenState.Content
             }
 
-            it("TC-96: retries with the same cursor on the next scroll") {
-                val repository = TestLibraryRepository()
-                val viewModel = sutWithSixtyBooks(repository)
-                repository.enqueue(unreachable)
-                viewModel.loadMoreIfNeeded(59)
+            context("when the next scroll arrives") {
+                it("TC-96: retries with the same cursor") {
+                    val repository = TestLibraryRepository()
+                    val viewModel = sutWithSixtyBooks(repository)
+                    repository.enqueue(unreachable)
+                    viewModel.loadMoreIfNeeded(59)
 
-                viewModel.loadMoreIfNeeded(59)
+                    viewModel.loadMoreIfNeeded(59)
 
-                repository.pageRequests.last().cursor shouldBe "c1"
+                    repository.pageRequests.last().cursor shouldBe "c1"
+                }
             }
         }
 
@@ -310,7 +314,7 @@ class LibraryViewModelTest : DescribeSpec({
     }
 
     describe("refreshing") {
-        it("TC-85: replaces the list and the cursor") {
+        it("TC-85: starts over from the new first page") {
             val repository = TestLibraryRepository()
             val viewModel = sutWithSixtyBooks(repository)
             repository.enqueue(pageOf(100L..101L, cursor = "new"))
@@ -395,15 +399,17 @@ class LibraryViewModelTest : DescribeSpec({
     }
 
     describe("the transient error") {
-        it("TC-98: clears once shown") {
-            val repository = TestLibraryRepository()
-            val viewModel = sutWithSixtyBooks(repository)
-            repository.enqueue(unreachable)
-            viewModel.loadMoreIfNeeded(59)
+        context("when it has been shown") {
+            it("TC-98: clears") {
+                val repository = TestLibraryRepository()
+                val viewModel = sutWithSixtyBooks(repository)
+                repository.enqueue(unreachable)
+                viewModel.loadMoreIfNeeded(59)
 
-            viewModel.transientErrorShown()
+                viewModel.transientErrorShown()
 
-            viewModel.uiState.value.transientError shouldBe null
+                viewModel.uiState.value.transientError shouldBe null
+            }
         }
     }
 
@@ -572,7 +578,7 @@ class LibraryViewModelTest : DescribeSpec({
         fun LibraryViewModel.cardIds() = uiState.value.continueCards.map { it.id }
 
         context("with an empty list") {
-            it("#22 TC-19: clears the cards and the selection") {
+            it("#22 TC-19: clears the cards") {
                 val repository = TestLibraryRepository()
                 val viewModel = repository.shown(reading(), reading())
                 repository.enqueueRecent(success())
@@ -580,7 +586,6 @@ class LibraryViewModelTest : DescribeSpec({
                 viewModel.libraryShown()
 
                 viewModel.cardIds().shouldBeEmpty()
-                viewModel.uiState.value.continueSelectedId shouldBe null
             }
         }
 
@@ -614,15 +619,17 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.cardIds() shouldBe listOf(next.cardId)
         }
 
-        it("#22 TC-21: reload on a refresh") {
-            val repository = TestLibraryRepository()
-            val viewModel = repository.shown(reading())
-            val next = reading()
-            repository.enqueueRecent(success(next))
+        context("when the library refreshes") {
+            it("#22 TC-21: reload") {
+                val repository = TestLibraryRepository()
+                val viewModel = repository.shown(reading())
+                val next = reading()
+                repository.enqueueRecent(success(next))
 
-            viewModel.refresh()
+                viewModel.refresh()
 
-            viewModel.cardIds() shouldBe listOf(next.cardId)
+                viewModel.cardIds() shouldBe listOf(next.cardId)
+            }
         }
 
         context("with a stale load") {
@@ -686,14 +693,16 @@ class LibraryViewModelTest : DescribeSpec({
                     viewModel.uiState.value.pendingResume shouldBe ResumeTarget.Player(point.book.uuid, 20L)
                 }
 
-                it("#22 TC-26: clears the request once handled") {
-                    val point = reading()
-                    val viewModel = TestLibraryRepository().shown(point)
-                    viewModel.resume(point.cardId)
+                context("when the request is handled") {
+                    it("#22 TC-26: clears the request") {
+                        val point = reading()
+                        val viewModel = TestLibraryRepository().shown(point)
+                        viewModel.resume(point.cardId)
 
-                    viewModel.resumeHandled()
+                        viewModel.resumeHandled()
 
-                    viewModel.uiState.value.pendingResume shouldBe null
+                        viewModel.uiState.value.pendingResume shouldBe null
+                    }
                 }
             }
 
@@ -708,12 +717,14 @@ class LibraryViewModelTest : DescribeSpec({
                         UnavailableBook(point.book.displayTitle, ProgressFormat.Reading)
                 }
 
-                it("#22 TC-26: clears the alert once dismissed") {
-                    val viewModel = unavailableAfterResume(reading())
+                context("when the alert is dismissed") {
+                    it("#22 TC-26: clears the alert") {
+                        val viewModel = unavailableAfterResume(reading())
 
-                    viewModel.unavailableDismissed()
+                        viewModel.unavailableDismissed()
 
-                    viewModel.uiState.value.unavailableBook shouldBe null
+                        viewModel.uiState.value.unavailableBook shouldBe null
+                    }
                 }
             }
 

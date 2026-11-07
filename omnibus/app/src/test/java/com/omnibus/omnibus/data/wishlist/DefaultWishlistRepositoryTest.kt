@@ -234,16 +234,18 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("#119 TC-9: takes the new answer on a refresh") {
-                withScriptedServer {
-                    val uuid = randomString()
-                    val repository = sut(url)
-                    load(repository, uuid, randomWishlistEntry())
-                    script.answer("GET", reply(200, "null"))
+            context("when refreshed") {
+                it("#119 TC-9: takes the new answer") {
+                    withScriptedServer {
+                        val uuid = randomString()
+                        val repository = sut(url)
+                        load(repository, uuid, randomWishlistEntry())
+                        script.answer("GET", reply(200, "null"))
 
-                    repository.refresh(uuid)
+                        repository.refresh(uuid)
 
-                    repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Absent
+                        repository.getWishlistFlow(uuid).first() shouldBe WishlistState.Absent
+                    }
                 }
             }
 

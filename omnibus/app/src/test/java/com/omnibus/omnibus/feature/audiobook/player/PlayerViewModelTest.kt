@@ -108,16 +108,18 @@ class PlayerViewModelTest : DescribeSpec({
             controller.commands shouldBe listOf(Command.Load(uuid, fileId, position, autoplay = true))
         }
 
-        // R4
-        it("#165 TC-18: never reloads on a state update") {
-            val uuid = randomString()
-            val controller = TestAudiobookController()
-            sut(uuid, controller, TestBookAvailability(answer = true))
+        context("when the state updates") {
+            // R4
+            it("#165 TC-18: never reloads") {
+                val uuid = randomString()
+                val controller = TestAudiobookController()
+                sut(uuid, controller, TestBookAvailability(answer = true))
 
-            controller.state.value = holding(uuid)
-            controller.state.value = holding(uuid)
+                controller.state.value = holding(uuid)
+                controller.state.value = holding(uuid)
 
-            controller.loads() shouldHaveSize 1
+                controller.loads() shouldHaveSize 1
+            }
         }
     }
 
@@ -138,18 +140,20 @@ class PlayerViewModelTest : DescribeSpec({
 
     describe("leaving") {
         context("when the controller had the book") {
-            // R20
-            it("#165 TC-20 TC-21: leaves once the controller drops it or loads another book") {
-                val uuid = randomString()
+            context("when the controller moves off the book") {
+                // R20
+                it("#165 TC-20 TC-21: leaves, for a dropped book or another book") {
+                    val uuid = randomString()
 
-                checkAll(Exhaustive.of(PlaybackState(), holding("$uuid-other"))) { next ->
-                    val controller = TestAudiobookController()
-                    val vm = sut(uuid, controller)
-                    controller.state.value = holding(uuid)
+                    checkAll(Exhaustive.of(PlaybackState(), holding("$uuid-other"))) { next ->
+                        val controller = TestAudiobookController()
+                        val vm = sut(uuid, controller)
+                        controller.state.value = holding(uuid)
 
-                    controller.state.value = next
+                        controller.state.value = next
 
-                    vm.uiState.value.leave shouldBe true
+                        vm.uiState.value.leave shouldBe true
+                    }
                 }
             }
         }

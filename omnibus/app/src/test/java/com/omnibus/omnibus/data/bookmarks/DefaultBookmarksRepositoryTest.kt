@@ -430,24 +430,26 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
         }
 
         context("when a list is already loaded") {
-            it("TC-22: refetches on a new collection without dropping the list") {
-                withScriptedServer {
-                    val uuid = randomString(8..16)
-                    val first = savedRow(uuid)
-                    val second = savedRow(uuid)
-                    val repository = threadedSut(server, scope)
-                    script.answer("GET", reply(200, listOf(first).json()))
-                    repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
-                        awaitState(loaded(first))
-                    }
-                    val gate = CountDownLatch(1)
-                    script.answer("GET", reply(200, listOf(first, second).json()), gate)
+            context("when collected again") {
+                it("TC-22: keeps the list through the refetch") {
+                    withScriptedServer {
+                        val uuid = randomString(8..16)
+                        val first = savedRow(uuid)
+                        val second = savedRow(uuid)
+                        val repository = threadedSut(server, scope)
+                        script.answer("GET", reply(200, listOf(first).json()))
+                        repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(loaded(first))
+                        }
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(200, listOf(first, second).json()), gate)
 
-                    repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
-                        awaitItem() shouldBe loaded(first)
+                        repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitItem() shouldBe loaded(first)
 
-                        gate.countDown()
-                        awaitItem() shouldBe loaded(first, second)
+                            gate.countDown()
+                            awaitItem() shouldBe loaded(first, second)
+                        }
                     }
                 }
             }
@@ -517,24 +519,26 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("TC-26: shows Loading then the list on a retry") {
-                withScriptedServer {
-                    val uuid = randomString(8..16)
-                    val row = savedRow(uuid)
-                    val repository = threadedSut(server, scope)
-                    val gate = CountDownLatch(1)
-                    script.answer("GET", reply(500))
+            context("when retried") {
+                it("TC-26: shows Loading then the list") {
+                    withScriptedServer {
+                        val uuid = randomString(8..16)
+                        val row = savedRow(uuid)
+                        val repository = threadedSut(server, scope)
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(500))
 
-                    repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
-                        awaitState(BookmarksState.Failed)
-                        script.answer("GET", reply(200, listOf(row).json()), gate)
+                        repository.getBookmarksFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(BookmarksState.Failed)
+                            script.answer("GET", reply(200, listOf(row).json()), gate)
 
-                        val refresh = scope.async { repository.refresh(uuid) }
-                        awaitItem() shouldBe BookmarksState.Loading
+                            val refresh = scope.async { repository.refresh(uuid) }
+                            awaitItem() shouldBe BookmarksState.Loading
 
-                        gate.countDown()
-                        awaitItem() shouldBe loaded(row)
-                        refresh.await()
+                            gate.countDown()
+                            awaitItem() shouldBe loaded(row)
+                            refresh.await()
+                        }
                     }
                 }
             }
@@ -652,7 +656,7 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
             }
         }
 
-        context("when the bookmark has neither a client id nor a numeric id") {
+        context("when the bookmark has no usable id") {
             it("TC-14: returns UnexpectedResponse") {
                 sut().removeBookmark(randomBookmark().copy(id = null, clientId = null)) shouldBe
                     BookmarkWriteResult.Failed(BookmarkError.UnexpectedResponse)
@@ -667,31 +671,33 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
         }
 
         context("when the row's create is still in flight") {
-            it("TC-32: leaves nothing once both writes finish") {
-                withScriptedServer {
-                    val nowMillis = randomLong()
-                    val clientId = randomString(8..16)
-                    val draft = randomBookmarkDraft()
-                    val repository = threadedSut(server, scope, nowMillis, clientId)
-                    val row = optimistic(draft, clientId, nowMillis)
-                    val gate = CountDownLatch(1)
-                    script.answer("GET", reply(200, "[]"))
-                    script.answer("POST", reply(200, savedRow(draft.bookUuid, clientId).json()), gate)
-                    script.answer("DELETE", reply(204))
+            context("when both writes finish") {
+                it("TC-32: leaves nothing") {
+                    withScriptedServer {
+                        val nowMillis = randomLong()
+                        val clientId = randomString(8..16)
+                        val draft = randomBookmarkDraft()
+                        val repository = threadedSut(server, scope, nowMillis, clientId)
+                        val row = optimistic(draft, clientId, nowMillis)
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(200, "[]"))
+                        script.answer("POST", reply(200, savedRow(draft.bookUuid, clientId).json()), gate)
+                        script.answer("DELETE", reply(204))
 
-                    repository.getBookmarksFlow(draft.bookUuid).test(timeout = AWAIT_TIMEOUT) {
-                        awaitState(loaded())
+                        repository.getBookmarksFlow(draft.bookUuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(loaded())
 
-                        val add = scope.async { repository.addBookmark(draft) }
-                        awaitItem() shouldBe loaded(row)
+                            val add = scope.async { repository.addBookmark(draft) }
+                            awaitItem() shouldBe loaded(row)
 
-                        val remove = scope.async { repository.removeBookmark(row) }
-                        awaitItem() shouldBe loaded()
+                            val remove = scope.async { repository.removeBookmark(row) }
+                            awaitItem() shouldBe loaded()
 
-                        gate.countDown()
-                        add.await()
-                        remove.await()
-                        expectNoEvents()
+                            gate.countDown()
+                            add.await()
+                            remove.await()
+                            expectNoEvents()
+                        }
                     }
                 }
             }

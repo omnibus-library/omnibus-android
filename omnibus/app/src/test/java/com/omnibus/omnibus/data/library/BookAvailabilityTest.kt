@@ -36,7 +36,7 @@ class BookAvailabilityTest : DescribeSpec({
             }
 
             context("when the file is not on disk") {
-                it("#22 TC-17: opens only while online") {
+                it("#22 TC-17: follows the connection") {
                     checkAll(Exhaustive.boolean()) { online ->
                         sut(filesOnDisk(false), TestConnectivityMonitor(online))
                             .canOpen(randomString(), ProgressFormat.Reading) shouldBe online
@@ -46,7 +46,7 @@ class BookAvailabilityTest : DescribeSpec({
         }
 
         context("when listening") {
-            it("#22 TC-17: opens only while online, whether or not a file is on disk") {
+            it("#22 TC-17: follows the connection, whether or not a file is on disk") {
                 checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { online, fileOnDisk ->
                     sut(filesOnDisk(fileOnDisk), TestConnectivityMonitor(online))
                         .canOpen(randomString(), ProgressFormat.Listening) shouldBe online

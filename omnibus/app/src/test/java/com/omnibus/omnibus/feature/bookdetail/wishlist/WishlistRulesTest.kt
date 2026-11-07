@@ -144,21 +144,22 @@ class WishlistRulesTest : DescribeSpec({
         }
     }
 
-    describe("leaving the page after a removal") {
+    describe("leaving the page") {
+        context("after a removal") {
+            it("#119 TC-23: leaves a deleted book or one nothing else holds") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple(true, true, true) to true,
+                        Triple(true, false, false) to true,
+                        Triple(false, false, false) to true,
+                        Triple(false, true, false) to false,
+                        Triple(false, false, true) to false,
+                    ),
+                ) { (inputs, expected) ->
+                    val (bookDeleted, hasFile, hasPhysical) = inputs
 
-        it("#119 TC-23: leaves a deleted book or one nothing else holds") {
-            checkAll(
-                Exhaustive.of(
-                    Triple(true, true, true) to true,
-                    Triple(true, false, false) to true,
-                    Triple(false, false, false) to true,
-                    Triple(false, true, false) to false,
-                    Triple(false, false, true) to false,
-                ),
-            ) { (inputs, expected) ->
-                val (bookDeleted, hasFile, hasPhysical) = inputs
-
-                leavesAfterRemoval(bookDeleted, hasFile, hasPhysical) shouldBe expected
+                    leavesAfterRemoval(bookDeleted, hasFile, hasPhysical) shouldBe expected
+                }
             }
         }
     }

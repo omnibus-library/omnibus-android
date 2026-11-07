@@ -229,18 +229,19 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         }
 
         context("when the last read has completed") {
+            context("when refreshed") {
+                it("TC-12: reads again") {
+                    withScriptedServer {
+                        val uuid = randomString()
+                        val latest = randomReadStatusRecord()
+                        val repository = sut(url)
+                        load(repository, uuid, randomReadStatusRecord())
+                        script.answer("GET", reply(latest))
 
-            it("TC-12: reads again on a refresh") {
-                withScriptedServer {
-                    val uuid = randomString()
-                    val latest = randomReadStatusRecord()
-                    val repository = sut(url)
-                    load(repository, uuid, randomReadStatusRecord())
-                    script.answer("GET", reply(latest))
+                        repository.refresh(uuid)
 
-                    repository.refresh(uuid)
-
-                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(latest)
+                        repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(latest)
+                    }
                 }
             }
         }
@@ -561,23 +562,25 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("TC-28: rolls back to the older write's record once the newer one fails") {
-                withScriptedServer {
-                    val uuid = randomString()
-                    val confirmed = recordOf(ReadStatus.Reading)
-                    val gateA = CountDownLatch(1)
-                    val repository = threadedSut()
-                    load(repository, uuid, recordOf(ReadStatus.Unread))
-                    script.answer("PUT", reply(confirmed), gateA)
-                    script.answer("PUT", reply(500))
+            context("when the newer one fails") {
+                it("TC-28: rolls back to the older write's record") {
+                    withScriptedServer {
+                        val uuid = randomString()
+                        val confirmed = recordOf(ReadStatus.Reading)
+                        val gateA = CountDownLatch(1)
+                        val repository = threadedSut()
+                        load(repository, uuid, recordOf(ReadStatus.Unread))
+                        script.answer("PUT", reply(confirmed), gateA)
+                        script.answer("PUT", reply(500))
 
-                    val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
-                    nextRequest()
-                    val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
-                    gateA.countDown()
-                    listOf(a, b).awaitAll()
+                        val a = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                        nextRequest()
+                        val b = scope.async { repository.setStatus(uuid, ReadStatus.Finished) }
+                        gateA.countDown()
+                        listOf(a, b).awaitAll()
 
-                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(confirmed)
+                        repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(confirmed)
+                    }
                 }
             }
 
@@ -649,26 +652,28 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("TC-103: falls back to the read's record once the write fails") {
-                withScriptedServer {
-                    val uuid = randomString()
-                    val read = recordOf(ReadStatus.Finished)
-                    val readGate = CountDownLatch(1)
-                    val writeGate = CountDownLatch(1)
-                    val repository = threadedSut()
-                    script.answer("GET", reply(read), readGate)
-                    script.answer("PUT", reply(500), writeGate)
+            context("when the write fails") {
+                it("TC-103: falls back to the read's record") {
+                    withScriptedServer {
+                        val uuid = randomString()
+                        val read = recordOf(ReadStatus.Finished)
+                        val readGate = CountDownLatch(1)
+                        val writeGate = CountDownLatch(1)
+                        val repository = threadedSut()
+                        script.answer("GET", reply(read), readGate)
+                        script.answer("PUT", reply(500), writeGate)
 
-                    val fetch = scope.async { repository.fetchStatus(uuid) }
-                    nextRequest()
-                    val write = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
-                    nextRequest()
-                    readGate.countDown()
-                    fetch.await()
-                    writeGate.countDown()
-                    write.await()
+                        val fetch = scope.async { repository.fetchStatus(uuid) }
+                        nextRequest()
+                        val write = scope.async { repository.setStatus(uuid, ReadStatus.Reading) }
+                        nextRequest()
+                        readGate.countDown()
+                        fetch.await()
+                        writeGate.countDown()
+                        write.await()
 
-                    repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(read)
+                        repository.getReadStatusFlow(uuid).first() shouldBe ReadStatusState.Known(read)
+                    }
                 }
             }
         }

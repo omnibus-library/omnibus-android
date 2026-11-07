@@ -152,17 +152,19 @@ class SyncHereViewModelTest : DescribeSpec({
         }
 
         context("when a request has ended") {
-            // TC32, TC35, R8, R9: once it ends, a tap is accepted again, including after a sync
-            it("TC32 TC35: sends again on the next tap") {
-                val uuid = randomString()
-                val sync = TestSyncPointRepository()
-                sync.onDeclare = { _, _, _ -> randomOf(listOf(SyncPointResult.Declared, randomFailure())) }
-                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
+            context("when tapped again") {
+                // TC32, TC35, R8, R9: once it ends, a tap is accepted again, including after a sync
+                it("TC32 TC35: sends again") {
+                    val uuid = randomString()
+                    val sync = TestSyncPointRepository()
+                    sync.onDeclare = { _, _, _ -> randomOf(listOf(SyncPointResult.Declared, randomFailure())) }
+                    val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
 
-                vm.onSyncHere()
-                vm.onSyncHere()
+                    vm.onSyncHere()
+                    vm.onSyncHere()
 
-                sync.calls shouldHaveSize 2
+                    sync.calls shouldHaveSize 2
+                }
             }
         }
 

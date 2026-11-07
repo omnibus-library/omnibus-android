@@ -179,13 +179,15 @@ class DeleteBookViewModelTest : DescribeSpec({
         }
 
         context("when nothing is picked") {
-            it("#121 TC-33: stays on the choose step on continue") {
-                val manifest = itemsManifest()
-                val vm = choosing(manifest)
+            context("when continuing") {
+                it("#121 TC-33: stays on the choose step") {
+                    val manifest = itemsManifest()
+                    val vm = choosing(manifest)
 
-                vm.continueToConfirm()
+                    vm.continueToConfirm()
 
-                vm.uiState.value.sheet shouldBe DeleteSheet.Choosing(manifest)
+                    vm.uiState.value.sheet shouldBe DeleteSheet.Choosing(manifest)
+                }
             }
         }
     }

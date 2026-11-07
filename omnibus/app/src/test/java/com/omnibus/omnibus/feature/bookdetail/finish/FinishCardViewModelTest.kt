@@ -162,7 +162,7 @@ class FinishCardViewModelTest : DescribeSpec({
 
         fun member(uuid: String) = randomSeriesMember().copy(uuid = uuid)
 
-        it("TC-25: keeps the finished ones, reading every member but this book") {
+        it("TC-25: keeps the finished ones among the other members") {
             val uuid = randomString()
             val status = TestReadStatusRepository()
             status.seed(uuid, known(ReadStatus.Finished))

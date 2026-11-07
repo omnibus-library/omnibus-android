@@ -19,28 +19,30 @@ class ReaderStartTest : DescribeSpec({
             }
         }
 
-        context("with a percent but no own EPUB cfi") {
-            context("with a derived EPUB cfi") {
-                it("TC-62: boots at the derived cfi") {
-                    val derived = randomCfi()
+        context("with no own EPUB cfi") {
+            context("with a percent") {
+                context("with a derived EPUB cfi") {
+                    it("TC-62: boots at the derived cfi") {
+                        val derived = randomCfi()
 
-                    readerStartOf(null, derived, 57) shouldBe ReaderStart.AtPercent(0.57, derived)
+                        readerStartOf(null, derived, 57) shouldBe ReaderStart.AtPercent(0.57, derived)
+                    }
                 }
-            }
 
-            context("without a derived EPUB cfi") {
-                it("TC-62: opens near the percent, for no anchor or a non-cfi one") {
-                    checkAll(Exhaustive.of(null, "pdf-page:3")) { anchor ->
-                        readerStartOf(anchor, anchor, 40) shouldBe ReaderStart.AtPercent(0.4, null)
+                context("without a derived EPUB cfi") {
+                    it("TC-62: opens near the percent, for no anchor or a non-cfi one") {
+                        checkAll(Exhaustive.of(null, "pdf-page:3")) { anchor ->
+                            readerStartOf(anchor, anchor, 40) shouldBe ReaderStart.AtPercent(0.4, null)
+                        }
                     }
                 }
             }
-        }
 
-        context("without a cfi or a positive percent") {
-            it("TC-62: opens at the beginning, for a zero or missing percent") {
-                checkAll(Exhaustive.of(null, 0)) { percent ->
-                    readerStartOf(null, null, percent) shouldBe ReaderStart.Beginning
+            context("without a positive percent") {
+                it("TC-62: opens at the beginning, for a zero or missing percent") {
+                    checkAll(Exhaustive.of(null, 0)) { percent ->
+                        readerStartOf(null, null, percent) shouldBe ReaderStart.Beginning
+                    }
                 }
             }
         }

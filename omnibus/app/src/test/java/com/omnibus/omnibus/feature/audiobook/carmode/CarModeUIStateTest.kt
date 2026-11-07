@@ -66,7 +66,7 @@ class CarModeUIStateTest : DescribeSpec({
 
     describe("the chapter tiles") {
         // P-CAR-4, P-PLAY-4, P-PLAY-5, P-CAR-AC2, edge case: no chapters
-        it("#170 TC-8 TC-10: are enabled in the middle of a book, disabled without chapters") {
+        it("#170 TC-8 TC-10: are enabled only with chapters to move through") {
             val book = randomPlayingBook()
 
             checkAll(

@@ -216,11 +216,13 @@ class DefaultExportRepositoryTest : DescribeSpec({
         }
 
         context("when the send stays pending") {
-            it("#118 TC-38: is unconfirmed once the poll budget is spent") {
-                withServer { server ->
-                    server.on("POST $SEND" to { reply(200, TASK_7) }, "GET $STATUS" to { reply(200, PENDING) })
+            context("when the poll budget is spent") {
+                it("#118 TC-38: is unconfirmed") {
+                    withServer { server ->
+                        server.on("POST $SEND" to { reply(200, TASK_7) }, "GET $STATUS" to { reply(200, PENDING) })
 
-                    sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Unconfirmed
+                        sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Unconfirmed
+                    }
                 }
             }
         }
@@ -341,7 +343,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("#118 TC-43: deletes the folder after 403, 404 and 500 for the KEPUB and the ebook") {
+            it("#118 TC-43: deletes the folder, across 403, 404 and 500 for the KEPUB and the ebook") {
                 withServer { server ->
                     checkAll(Exhaustive.collection(failedSaves())) { (kind, code, _) ->
                         withStore { store ->

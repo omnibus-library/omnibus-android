@@ -36,21 +36,23 @@ class LoginViewModelTest : DescribeSpec({
         vm.viewModelScope.launch { vm.uiState.collect {} }
     }
 
-    describe("the state before an attempt") {
-        context("when a server is saved") {
-            it("is NOT_LOGGED_IN, showing the saved server") {
-                val server = randomServerAddress()
+    describe("the state") {
+        context("before an attempt") {
+            context("when a server is saved") {
+                it("is NOT_LOGGED_IN, showing the saved server") {
+                    val server = randomServerAddress()
 
-                sut(serverConfigRepository = TestServerConfigurationRepository(server)).uiState.value shouldBe
-                    LoginUIState(loginStatus = LoginStatus.NOT_LOGGED_IN, serverAddress = server)
+                    sut(serverConfigRepository = TestServerConfigurationRepository(server)).uiState.value shouldBe
+                        LoginUIState(loginStatus = LoginStatus.NOT_LOGGED_IN, serverAddress = server)
+                }
             }
-        }
 
-        it("is MISSING_SERVER_CONFIG for a null, empty or blank saved server") {
-            checkAll(Exhaustive.of(null, "", "   ")) { saved ->
-                val vm = sut(serverConfigRepository = TestServerConfigurationRepository(saved))
+            it("is MISSING_SERVER_CONFIG for a null, empty or blank saved server") {
+                checkAll(Exhaustive.of(null, "", "   ")) { saved ->
+                    val vm = sut(serverConfigRepository = TestServerConfigurationRepository(saved))
 
-                vm.uiState.value.loginStatus shouldBe LoginStatus.MISSING_SERVER_CONFIG
+                    vm.uiState.value.loginStatus shouldBe LoginStatus.MISSING_SERVER_CONFIG
+                }
             }
         }
     }

@@ -901,27 +901,29 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                 }
             }
 
-            it("TC-31: falls back to the read's answer once the write fails") {
-                withScriptedServer {
-                    val uuid = randomString()
-                    val read = randomMine()
-                    val getGate = CountDownLatch(1)
-                    val patchGate = CountDownLatch(1)
-                    val repository = threadedSut()
-                    load(repository, uuid, reviewsBody())
-                    script.answer("GET", reply(200, reviewsBody(read)), getGate)
-                    script.answer("PATCH", reply(500), patchGate)
+            context("when the write fails") {
+                it("TC-31: falls back to the read's answer") {
+                    withScriptedServer {
+                        val uuid = randomString()
+                        val read = randomMine()
+                        val getGate = CountDownLatch(1)
+                        val patchGate = CountDownLatch(1)
+                        val repository = threadedSut()
+                        load(repository, uuid, reviewsBody())
+                        script.answer("GET", reply(200, reviewsBody(read)), getGate)
+                        script.answer("PATCH", reply(500), patchGate)
 
-                    val refresh = scope.async { repository.refresh(uuid) }
-                    nextRequest().method shouldBe "GET"
-                    val write = scope.async { repository.updateMyReview(uuid, ratingPatch(randomRating())) }
-                    nextRequest().method shouldBe "PATCH"
-                    getGate.countDown()
-                    refresh.await()
-                    patchGate.countDown()
-                    write.await()
+                        val refresh = scope.async { repository.refresh(uuid) }
+                        nextRequest().method shouldBe "GET"
+                        val write = scope.async { repository.updateMyReview(uuid, ratingPatch(randomRating())) }
+                        nextRequest().method shouldBe "PATCH"
+                        getGate.countDown()
+                        refresh.await()
+                        patchGate.countDown()
+                        write.await()
 
-                    repository.getReviewsFlow(uuid).first() shouldBe loaded(read)
+                        repository.getReviewsFlow(uuid).first() shouldBe loaded(read)
+                    }
                 }
             }
         }

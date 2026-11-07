@@ -114,88 +114,92 @@ class ReadAlikesViewModelTest : DescribeSpec({
         }
     }
 
-    describe("polling while the server searches") {
-        it("#106 TC-37: shows the section as searching") {
-            runTest {
-                val vm = sut(timed(pending))
-
-                val job = launch { vm.load(0) }
-                runCurrent()
-
-                vm.uiState.value shouldBe ReadAlikesUiState.Searching
-                job.cancel()
-            }
-        }
-
-        context("when the server keeps searching") {
-            it("#106 TC-39: asks every 4 s for 20 s, then shows the section as unavailable") {
+    describe("polling") {
+        context("while the server searches") {
+            it("#106 TC-37: shows the section as searching") {
                 runTest {
-                    val fake = timed(pending)
-                    val vm = sut(fake)
+                    val vm = sut(timed(pending))
 
-                    vm.load(0)
-                    advance(60_000)
+                    val job = launch { vm.load(0) }
+                    runCurrent()
 
-                    fake.requestTimes shouldContainExactly listOf(0L, 4_000L, 8_000L, 12_000L, 16_000L, 20_000L)
-                    vm.uiState.value shouldBe ReadAlikesUiState.Unavailable
+                    vm.uiState.value shouldBe ReadAlikesUiState.Searching
+                    job.cancel()
                 }
             }
-        }
 
-        context("when a re-ask fails") {
-            it("#106 TC-40: keeps asking, for a failed read or no saved server") {
-                checkAll(Exhaustive.of(unreachable, SuggestionsResult.NoServer)) { failed ->
+            context("when the server keeps searching") {
+                it("#106 TC-39: asks every 4 s for 20 s, then shows the section as unavailable") {
                     runTest {
-                        val vm = loaded(pending, failed, readyShelf())
+                        val fake = timed(pending)
+                        val vm = sut(fake)
 
+                        vm.load(0)
+                        advance(60_000)
 
-                        vm.uiState.value.shouldBeInstanceOf<ReadAlikesUiState.Ready>()
+                        fake.requestTimes shouldContainExactly listOf(0L, 4_000L, 8_000L, 12_000L, 16_000L, 20_000L)
+                        vm.uiState.value shouldBe ReadAlikesUiState.Unavailable
                     }
                 }
             }
-        }
 
-        context("when every re-ask fails") {
-            it("#106 TC-41: spends the budget, then shows the section as unavailable") {
-                runTest {
-                    val fake = timed(pending, unreachable)
-                    val vm = sut(fake)
+            context("when a re-ask fails") {
+                it("#106 TC-40: keeps asking, for a failed read or no saved server") {
+                    checkAll(Exhaustive.of(unreachable, SuggestionsResult.NoServer)) { failed ->
+                        runTest {
+                            val vm = loaded(pending, failed, readyShelf())
 
-                    vm.load(0)
 
-                    fake.requests shouldBe 6
-                    vm.uiState.value shouldBe ReadAlikesUiState.Unavailable
-                }
-            }
-        }
-
-        context("when the load is cancelled") {
-            it("#106 TC-48: stops asking") {
-                runTest {
-                    val fake = timed(pending)
-                    val vm = sut(fake)
-
-                    val job = launch { vm.load(0) }
-                    advance(5_000)
-                    job.cancel()
-                    advance(60_000)
-
-                    fake.requests shouldBe 2
+                            vm.uiState.value.shouldBeInstanceOf<ReadAlikesUiState.Ready>()
+                        }
+                    }
                 }
             }
 
-            it("#106 TC-49: reads again with a fresh budget on a later load with the same key") {
-                runTest {
-                    val fake = timed(pending)
-                    val vm = sut(fake)
+            context("when every re-ask fails") {
+                it("#106 TC-41: spends the budget, then shows the section as unavailable") {
+                    runTest {
+                        val fake = timed(pending, unreachable)
+                        val vm = sut(fake)
 
-                    val job = launch { vm.load(0) }
-                    advance(5_000)
-                    job.cancel()
-                    vm.load(0)
+                        vm.load(0)
 
-                    // Two requests before the cancel, then one read plus five re-asks.
-                    fake.requests shouldBe 8
+                        fake.requests shouldBe 6
+                        vm.uiState.value shouldBe ReadAlikesUiState.Unavailable
+                    }
+                }
+            }
+
+            context("when the load is cancelled") {
+                it("#106 TC-48: stops asking") {
+                    runTest {
+                        val fake = timed(pending)
+                        val vm = sut(fake)
+
+                        val job = launch { vm.load(0) }
+                        advance(5_000)
+                        job.cancel()
+                        advance(60_000)
+
+                        fake.requests shouldBe 2
+                    }
+                }
+
+                context("when a later load has the same key") {
+                    it("#106 TC-49: reads again with a fresh budget") {
+                        runTest {
+                            val fake = timed(pending)
+                            val vm = sut(fake)
+
+                            val job = launch { vm.load(0) }
+                            advance(5_000)
+                            job.cancel()
+                            vm.load(0)
+
+                            // Two requests before the cancel, then one read plus five re-asks.
+                            fake.requests shouldBe 8
+                        }
+                    }
                 }
             }
         }

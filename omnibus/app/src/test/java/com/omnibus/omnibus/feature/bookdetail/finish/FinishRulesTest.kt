@@ -193,7 +193,7 @@ class FinishRulesTest : DescribeSpec({
 
     describe("which books get the card") {
 
-        context("when the book has an ebook or an audiobook") {
+        context("when the book has a digital copy") {
             it("TC-14: shows it") {
                 checkAll(Exhaustive.of("epub", "m4b")) { format ->
                     showsFinishCard(randomBook().copy(formats = listOf(format))) shouldBe true

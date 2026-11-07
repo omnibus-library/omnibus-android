@@ -100,7 +100,7 @@ class ResumeOfferRulesTest : DescribeSpec({
     describe("both offers together") {
 
         // I-RES-6, P-SYNC-7: nothing shows with no settled book, whatever qualifies
-        it("#166 TC-28, TC-29: show nothing while loading or with no book (I-RES-6, P-SYNC-7)") {
+        it("#166 TC-28, TC-29: show nothing, for a load in flight or no book (I-RES-6, P-SYNC-7)") {
             val book = randomPlayingBook()
             val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
             val offer = randomEbookOffer().copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId)

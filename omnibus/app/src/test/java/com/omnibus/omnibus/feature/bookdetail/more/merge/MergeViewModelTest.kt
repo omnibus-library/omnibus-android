@@ -287,20 +287,22 @@ class MergeViewModelTest : DescribeSpec({
                 }
             }
 
-            it("#120 TC-33: searches the same query again at once on retry") {
-                val query = randomString()
-                val found = candidate()
-                val repo = ScriptedMergeRepository().apply { searchResult = MergeCandidatesResult.NoServer }
+            context("when retried") {
+                it("#120 TC-33: searches the same query again at once") {
+                    val query = randomString()
+                    val found = candidate()
+                    val repo = ScriptedMergeRepository().apply { searchResult = MergeCandidatesResult.NoServer }
 
-                runAsAdmin(repo) { s ->
-                    searchFor(s, query)
-                    repo.searchResult = MergeCandidatesResult.Success(listOf(found))
+                    runAsAdmin(repo) { s ->
+                        searchFor(s, query)
+                        repo.searchResult = MergeCandidatesResult.Success(listOf(found))
 
-                    s.vm.retrySearch()
-                    runCurrent()
+                        s.vm.retrySearch()
+                        runCurrent()
 
-                    s.repo.searches shouldBe listOf(query, query)
-                    s.vm.uiState.value.candidates shouldBe listOf(found)
+                        s.repo.searches shouldBe listOf(query, query)
+                        s.vm.uiState.value.candidates shouldBe listOf(found)
+                    }
                 }
             }
         }

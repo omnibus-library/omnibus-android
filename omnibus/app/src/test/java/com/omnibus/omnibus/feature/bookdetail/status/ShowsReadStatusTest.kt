@@ -12,7 +12,7 @@ class ShowsReadStatusTest : DescribeSpec({
 
     describe("whether a book shows its read status") {
 
-        context("when the book has an ebook or an audiobook") {
+        context("when the book has a digital copy") {
             it("TC-77: shows it, regardless of a physical copy or wishlist entry") {
                 checkAll(Exhaustive.of("epub", "m4b"), Exhaustive.boolean(), Exhaustive.boolean()) { format, physical, wishlisted ->
                     val book = randomBook().copy(formats = listOf(format), hasPhysical = physical, isWishlisted = wishlisted)

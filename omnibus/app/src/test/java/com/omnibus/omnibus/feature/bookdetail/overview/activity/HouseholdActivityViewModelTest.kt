@@ -84,17 +84,19 @@ class HouseholdActivityViewModelTest : DescribeSpec({
         }
 
         context("when a reader has left the list") {
-            it("TC-13: removes them on the next reload") {
-                val repository = TestHouseholdRepository().apply {
-                    results += HouseholdResult.Success(listOf(reader()))
-                    results += HouseholdResult.Success(emptyList())
+            context("when the next reload arrives") {
+                it("TC-13: removes them") {
+                    val repository = TestHouseholdRepository().apply {
+                        results += HouseholdResult.Success(listOf(reader()))
+                        results += HouseholdResult.Success(emptyList())
+                    }
+                    val vm = sut(repository)
+
+                    vm.reload(0)
+                    vm.reload(1)
+
+                    vm.readers.value.shouldBeEmpty()
                 }
-                val vm = sut(repository)
-
-                vm.reload(0)
-                vm.reload(1)
-
-                vm.readers.value.shouldBeEmpty()
             }
         }
     }

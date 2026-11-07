@@ -52,7 +52,7 @@ class ReaderViewModelTest : DescribeSpec({
         }
 
         // #199: before locations the page reports pct 0; the echo once they load carries the real one.
-        it("TC-199: shows a menu percent only once the book has locations") {
+        it("TC-199: shows a menu percent only for a book with locations") {
             val vm = sut()
             val location = randomRelocateData().copy(pct = randomInt(1..100))
 

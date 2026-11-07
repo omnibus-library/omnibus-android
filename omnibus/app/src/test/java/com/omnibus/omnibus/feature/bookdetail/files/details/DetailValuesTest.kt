@@ -88,7 +88,7 @@ class DetailValuesTest : DescribeSpec({
             }
         }
 
-        context("when the code has a region or odd form") {
+        context("when the code is not a bare language") {
             it("#114 AC2: ignores all but the language") {
                 checkAll(Exhaustive.of("en-US", "en_GB", " EN ")) { code ->
                     languageName(code) shouldBe "English"

@@ -87,21 +87,23 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
         }
 
         context("when the book is hls") {
-            // TC-74
-            it("settles once the player is ready, with the duration it reports (I-RES-3)") {
-                val resolver = ScriptedResolver(settleAnswer = answering(300.0))
-                val rig = sut(resolver = resolver)
-                rig.repository.result = AudiobookManifestResult.Success(hlsManifest())
+            context("when the player is ready") {
+                // TC-74
+                it("settles with the duration it reports (I-RES-3)") {
+                    val resolver = ScriptedResolver(settleAnswer = answering(300.0))
+                    val rig = sut(resolver = resolver)
+                    rig.repository.result = AudiobookManifestResult.Success(hlsManifest())
 
-                rig.loadAndSettle()
-                resolver.pendings.single().settleCalls.shouldBeEmpty()
+                    rig.loadAndSettle()
+                    resolver.pendings.single().settleCalls.shouldBeEmpty()
 
-                rig.engine.snapshot = rig.engine.snapshot.copy(durationSeconds = 1_800.0)
-                rig.engine.emit(EngineEvent.Ready)
-                rig.settle()
+                    rig.engine.snapshot = rig.engine.snapshot.copy(durationSeconds = 1_800.0)
+                    rig.engine.emit(EngineEvent.Ready)
+                    rig.settle()
 
-                resolver.pendings.single().settleCalls shouldBe listOf(11L to 1_800.0)
-                rig.controller.state.value.durationSeconds shouldBe 1_800.0
+                    resolver.pendings.single().settleCalls shouldBe listOf(11L to 1_800.0)
+                    rig.controller.state.value.durationSeconds shouldBe 1_800.0
+                }
             }
         }
     }
@@ -170,15 +172,17 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
         }
     }
 
-    describe("starting with no resolver") {
-        context("when a position is given") {
-            // TC-76
-            it("starts there (C5)") {
-                val rig = sut()
+    describe("starting") {
+        context("with no resolver") {
+            context("when a position is given") {
+                // TC-76
+                it("starts there (C5)") {
+                    val rig = sut()
 
-                rig.loadAndSettle(positionSeconds = 120.0)
+                    rig.loadAndSettle(positionSeconds = 120.0)
 
-                rig.controller.state.value.positionSeconds shouldBe 120.0
+                    rig.controller.state.value.positionSeconds shouldBe 120.0
+                }
             }
         }
     }

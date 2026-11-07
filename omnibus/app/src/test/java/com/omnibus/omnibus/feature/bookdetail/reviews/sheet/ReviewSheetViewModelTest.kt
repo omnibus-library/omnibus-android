@@ -111,7 +111,7 @@ class ReviewSheetViewModelTest : DescribeSpec({
     }
 
     describe("the save button") {
-        it("TC-38: is enabled only while the draft differs from the opened review") {
+        it("TC-38: follows whether the draft differs from the opened review") {
             val vm = Rig().openOn(randomReview().copy(rating = 4f)).vm
             val enabled = mutableListOf(vm.uiState.value.saveEnabled)
 
@@ -285,7 +285,7 @@ class ReviewSheetViewModelTest : DescribeSpec({
             }
         }
 
-        context("when the draft was touched then reverted") {
+        context("when the draft was reverted") {
             it("TC-55: closes at once") {
                 val rig = changedRig()
                 rig.vm.setRating(4f)

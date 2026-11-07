@@ -631,7 +631,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 }
             }
 
-            context("when the user then signs out") {
+            context("when the user signs out") {
                 it("TC-16: is null") {
                     withMockServer { server ->
                         server.enqueue(reply(200, acceptedBody()))
@@ -645,7 +645,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 }
             }
 
-            context("when the session is then rejected") {
+            context("when the session is rejected") {
                 it("TC-16: is null") {
                     withMockServer { server ->
                         server.enqueue(reply(200, acceptedBody()))
@@ -660,7 +660,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 }
             }
 
-            context("when the token is then cleared elsewhere") {
+            context("when the token is cleared elsewhere") {
                 it("TC-16: is null") {
                     withMockServer { server ->
                         val tokenStore = TestAuthTokenStore()

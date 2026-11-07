@@ -32,88 +32,88 @@ class OmnibusHttpClientTest : DescribeSpec({
         authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
     )
 
-    describe("building a request for the saved server") {
-
-        it("resolves against the saved server") {
-            sut(TestServerBaseUrlProvider(SERVER)).request("api/auth/login")!!.build().url.toString() shouldBe
-                "https://read.example.com/api/auth/login"
-        }
-
-        context("when no server is saved") {
-            it("gives no request") {
-                sut().request(randomString()).shouldBeNull()
+    describe("building a request") {
+        context("with no base URL given") {
+            it("resolves against the saved server") {
+                sut(TestServerBaseUrlProvider(SERVER)).request("api/auth/login")!!.build().url.toString() shouldBe
+                    "https://read.example.com/api/auth/login"
             }
-        }
 
-        context("when the saved server changes") {
-            it("follows it") {
-                val baseUrl = TestServerBaseUrlProvider("https://one.example.com".toHttpUrl())
-                val client = sut(baseUrl)
-                client.request("api/_health")
-
-                baseUrl.baseUrl = "https://two.example.com".toHttpUrl()
-
-                client.request("api/_health")!!.build().url.host shouldBe "two.example.com"
+            context("when no server is saved") {
+                it("gives no request") {
+                    sut().request(randomString()).shouldBeNull()
+                }
             }
-        }
 
-        context("when a token is stored") {
-            it("TC-10: adds one bearer header") {
-                val token = randomString()
+            context("when the saved server changes") {
+                it("follows it") {
+                    val baseUrl = TestServerBaseUrlProvider("https://one.example.com".toHttpUrl())
+                    val client = sut(baseUrl)
+                    client.request("api/_health")
 
-                sut(TestServerBaseUrlProvider(SERVER), TestAuthTokenProvider(token)).request("api/auth/me")!!.build()
-                    .headers("Authorization") shouldBe listOf("Bearer $token")
+                    baseUrl.baseUrl = "https://two.example.com".toHttpUrl()
+
+                    client.request("api/_health")!!.build().url.host shouldBe "two.example.com"
+                }
             }
-        }
 
-        context("when the stored token changes") {
-            it("TC-10: uses the current one") {
-                val tokens = TestAuthTokenProvider(randomString())
-                val client = sut(TestServerBaseUrlProvider(SERVER), tokens)
-                client.request("api/auth/me")
-                val token = randomString()
+            context("when a token is stored") {
+                it("TC-10: adds one bearer header") {
+                    val token = randomString()
 
-                tokens.token = token
-
-                client.request("api/auth/me")!!.build().header("Authorization") shouldBe "Bearer $token"
-            }
-        }
-
-        context("when no usable token is stored") {
-            it("TC-11: adds no bearer header") {
-                checkAll(Exhaustive.of(null, "", "   ")) { token ->
                     sut(TestServerBaseUrlProvider(SERVER), TestAuthTokenProvider(token)).request("api/auth/me")!!.build()
-                        .header("Authorization").shouldBeNull()
+                        .headers("Authorization") shouldBe listOf("Bearer $token")
+                }
+            }
+
+            context("when the stored token changes") {
+                it("TC-10: uses the current one") {
+                    val tokens = TestAuthTokenProvider(randomString())
+                    val client = sut(TestServerBaseUrlProvider(SERVER), tokens)
+                    client.request("api/auth/me")
+                    val token = randomString()
+
+                    tokens.token = token
+
+                    client.request("api/auth/me")!!.build().header("Authorization") shouldBe "Bearer $token"
+                }
+            }
+
+            context("when no usable token is stored") {
+                it("TC-11: adds no bearer header") {
+                    checkAll(Exhaustive.of(null, "", "   ")) { token ->
+                        sut(TestServerBaseUrlProvider(SERVER), TestAuthTokenProvider(token)).request("api/auth/me")!!.build()
+                            .header("Authorization").shouldBeNull()
+                    }
                 }
             }
         }
-    }
 
-    describe("building a request for a server not saved yet") {
-
-        it("resolves beneath the base URL, with or without a trailing slash") {
-            checkAll(
-                Exhaustive.of(
-                    "http://10.0.0.2:3000" to "http://10.0.0.2:3000/api/_health",
-                    "http://10.0.0.2:3000/" to "http://10.0.0.2:3000/api/_health",
-                    "https://example.com/omnibus" to "https://example.com/omnibus/api/_health",
-                    "https://example.com/omnibus/" to "https://example.com/omnibus/api/_health",
-                ),
-            ) { (base, expected) ->
-                sut().request(base.toHttpUrl(), "api/_health").build().url.toString() shouldBe expected
+        context("with a base URL given") {
+            it("resolves beneath the base URL, with or without a trailing slash") {
+                checkAll(
+                    Exhaustive.of(
+                        "http://10.0.0.2:3000" to "http://10.0.0.2:3000/api/_health",
+                        "http://10.0.0.2:3000/" to "http://10.0.0.2:3000/api/_health",
+                        "https://example.com/omnibus" to "https://example.com/omnibus/api/_health",
+                        "https://example.com/omnibus/" to "https://example.com/omnibus/api/_health",
+                    ),
+                ) { (base, expected) ->
+                    sut().request(base.toHttpUrl(), "api/_health").build().url.toString() shouldBe expected
+                }
             }
-        }
 
-        it("TC-12: never adds a bearer header, even with a stored token") {
-            sut(authTokenProvider = TestAuthTokenProvider(randomString()))
-                .request(SERVER, "api/_health").build()
-                .header("Authorization").shouldBeNull()
-        }
+            it("TC-12: never adds a bearer header, even with a stored token") {
+                sut(authTokenProvider = TestAuthTokenProvider(randomString()))
+                    .request(SERVER, "api/_health").build()
+                    .header("Authorization").shouldBeNull()
+            }
 
-        context("when the path is absolute") {
-            it("rejects it, as it would drop the server's path prefix") {
-                shouldThrow<IllegalArgumentException> {
-                    sut().request("https://example.com/omnibus".toHttpUrl(), "/api/_health")
+            context("when the path is absolute") {
+                it("rejects it, as it would drop the server's path prefix") {
+                    shouldThrow<IllegalArgumentException> {
+                        sut().request("https://example.com/omnibus".toHttpUrl(), "/api/_health")
+                    }
                 }
             }
         }

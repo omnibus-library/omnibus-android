@@ -81,16 +81,18 @@ class ActionBarViewModelTest : DescribeSpec({
         }
 
         context("when the chapters failed to load") {
-            it("TC-40: tries again on the next key") {
-                withHarness {
-                    seedPlace(40.0)
-                    progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
-                    progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null))
-                    vm.reload(1)
+            context("when the next key arrives") {
+                it("TC-40: tries again") {
+                    withHarness {
+                        seedPlace(40.0)
+                        progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
+                        progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, 0.3f), emptyList(), null, null))
+                        vm.reload(1)
 
-                    vm.reload(2)
+                        vm.reload(2)
 
-                    vm.uiState.value.progress?.chapterNumber shouldBe 2
+                        vm.uiState.value.progress?.chapterNumber shouldBe 2
+                    }
                 }
             }
         }

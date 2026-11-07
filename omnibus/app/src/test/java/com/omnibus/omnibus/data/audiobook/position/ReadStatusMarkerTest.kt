@@ -107,47 +107,51 @@ class ReadStatusMarkerTest : DescribeSpec({
         }
 
         context("when the listener marks the book unread again") {
-            // TC-75: only the first play of a load marks
-            it("TC-75: leaves it unread on a later play of the load (I-SESS-4)") {
-                runTest {
-                    val book = randomPlayingBook()
-                    val state = playbackState(book, isPlaying = true)
-                    val readStatus = TestReadStatusRepository()
-                    readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
-                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
-                    val marker = sut(readStatus)
-                    marker.onSettled(state, randomDouble())
-                    marker.onPlay(state)
-                    runCurrent()
-                    readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+            context("when the load plays again") {
+                // TC-75: only the first play of a load marks
+                it("TC-75: leaves it unread (I-SESS-4)") {
+                    runTest {
+                        val book = randomPlayingBook()
+                        val state = playbackState(book, isPlaying = true)
+                        val readStatus = TestReadStatusRepository()
+                        readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+                        readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
+                        val marker = sut(readStatus)
+                        marker.onSettled(state, randomDouble())
+                        marker.onPlay(state)
+                        runCurrent()
+                        readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
 
-                    marker.onPlay(state)
-                    runCurrent()
+                        marker.onPlay(state)
+                        runCurrent()
 
-                    readStatus.setStatusCalls.size shouldBe 1
+                        readStatus.setStatusCalls.size shouldBe 1
+                    }
                 }
             }
 
-            // TC-75
-            it("TC-75: marks it reading on the first play of the next load (I-SESS-4)") {
-                runTest {
-                    val book = randomPlayingBook()
-                    val state = playbackState(book, isPlaying = true)
-                    val readStatus = TestReadStatusRepository()
-                    readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
-                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
-                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
-                    val marker = sut(readStatus)
-                    marker.onSettled(state, randomDouble())
-                    marker.onPlay(state)
-                    runCurrent()
-                    readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+            context("when the next load first plays") {
+                // TC-75
+                it("TC-75: marks it reading (I-SESS-4)") {
+                    runTest {
+                        val book = randomPlayingBook()
+                        val state = playbackState(book, isPlaying = true)
+                        val readStatus = TestReadStatusRepository()
+                        readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+                        readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
+                        readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
+                        val marker = sut(readStatus)
+                        marker.onSettled(state, randomDouble())
+                        marker.onPlay(state)
+                        runCurrent()
+                        readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
 
-                    marker.onSettled(state, randomDouble())
-                    marker.onPlay(state)
-                    runCurrent()
+                        marker.onSettled(state, randomDouble())
+                        marker.onPlay(state)
+                        runCurrent()
 
-                    readStatus.setStatusCalls.size shouldBe 2
+                        readStatus.setStatusCalls.size shouldBe 2
+                    }
                 }
             }
         }

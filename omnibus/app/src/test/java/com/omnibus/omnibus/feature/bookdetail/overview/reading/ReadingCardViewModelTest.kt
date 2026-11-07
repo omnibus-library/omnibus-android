@@ -80,71 +80,28 @@ class ReadingCardViewModelTest : DescribeSpec({
         progressFor(bookUuid).value = result(listOf(readingRecord(50.0, randomLong(), uuid = bookUuid)))
     }
 
-    describe("the card before the answers arrive") {
-        context("when the sessions have not answered") {
-            it("TC-29: holds") {
-                val bookUuid = randomString()
-                val vm = sut(bookUuid, GatedSessionsRepository(), reading(bookUuid))
+    describe("the card") {
+        context("before the answers arrive") {
+            context("when the sessions have not answered") {
+                it("TC-29: holds") {
+                    val bookUuid = randomString()
+                    val vm = sut(bookUuid, GatedSessionsRepository(), reading(bookUuid))
 
-                vm.whileCollected {
-                    vm.reload(0)
+                    vm.whileCollected {
+                        vm.reload(0)
 
-                    vm.uiState.value.card shouldBe hold
-                }
-            }
-        }
-    }
-
-    describe("the card once it has loaded") {
-        it("TC-30: works out the pace from the book's progress") {
-            val bookUuid = randomString()
-            val progress = TestBookProgressRepository().apply {
-                sessionsResults += success(session(seconds = 3_600))
-                progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
-            }
-            val vm = sut(bookUuid, progress, reading(bookUuid))
-
-            vm.whileCollected {
-                vm.reload(0)
-
-                vm.uiState.value.card.rows shouldContain ReadingRow.Pace(50)
-            }
-        }
-
-        it("TC-38: reads its dates against the time source") {
-            val now = randomLong()
-            val vm = sut(timeSource = { now })
-
-            vm.whileCollected {
-                vm.reload(0)
-
-                vm.uiState.value.nowMillis shouldBe now
-            }
-        }
-
-        context("when a position is saved without any sessions") {
-            it("TC-31: shows that the sittings have yet to sync") {
-                val bookUuid = randomString()
-                val progress = TestBookProgressRepository().apply {
-                    progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
-                    sessionsResults.addLast(success())
-                }
-                val vm = sut(bookUuid, progress, reading(bookUuid))
-
-                vm.whileCollected {
-                    vm.reload(0)
-
-                    vm.uiState.value.card.line shouldBe ReadingLine.SyncPending
+                        vm.uiState.value.card shouldBe hold
+                    }
                 }
             }
         }
 
-        context("when the progress read has failed") {
-            it("TC-37: still works out the pace from the records it kept") {
+        context("once it has loaded") {
+            it("TC-30: works out the pace from the book's progress") {
                 val bookUuid = randomString()
                 val progress = TestBookProgressRepository().apply {
                     sessionsResults += success(session(seconds = 3_600))
-                    progressOf(bookUuid) { BookProgressResult.Failed(BookProgressError.Unreachable, it) }
+                    progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
                 }
                 val vm = sut(bookUuid, progress, reading(bookUuid))
 
@@ -154,22 +111,67 @@ class ReadingCardViewModelTest : DescribeSpec({
                     vm.uiState.value.card.rows shouldContain ReadingRow.Pace(50)
                 }
             }
-        }
 
-        context("when the status changes") {
-            it("TC-35: updates without a reload") {
-                val bookUuid = randomString()
-                val finishedAt = randomLong()
-                val status = reading(bookUuid)
-                val progress = TestBookProgressRepository().apply { sessionsResults.addLast(success()) }
-                val vm = sut(bookUuid, progress, status)
+            it("TC-38: reads its dates against the time source") {
+                val now = randomLong()
+                val vm = sut(timeSource = { now })
 
                 vm.whileCollected {
                     vm.reload(0)
 
-                    status.seed(bookUuid, known(ReadStatus.Finished, finishedAt))
+                    vm.uiState.value.nowMillis shouldBe now
+                }
+            }
 
-                    vm.uiState.value.card.line shouldBe ReadingLine.Finished(finishedAt)
+            context("when a position is saved without any sessions") {
+                it("TC-31: shows that the sittings have yet to sync") {
+                    val bookUuid = randomString()
+                    val progress = TestBookProgressRepository().apply {
+                        progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
+                        sessionsResults.addLast(success())
+                    }
+                    val vm = sut(bookUuid, progress, reading(bookUuid))
+
+                    vm.whileCollected {
+                        vm.reload(0)
+
+                        vm.uiState.value.card.line shouldBe ReadingLine.SyncPending
+                    }
+                }
+            }
+
+            context("when the progress read has failed") {
+                it("TC-37: still works out the pace from the records it kept") {
+                    val bookUuid = randomString()
+                    val progress = TestBookProgressRepository().apply {
+                        sessionsResults += success(session(seconds = 3_600))
+                        progressOf(bookUuid) { BookProgressResult.Failed(BookProgressError.Unreachable, it) }
+                    }
+                    val vm = sut(bookUuid, progress, reading(bookUuid))
+
+                    vm.whileCollected {
+                        vm.reload(0)
+
+                        vm.uiState.value.card.rows shouldContain ReadingRow.Pace(50)
+                    }
+                }
+            }
+
+            context("when the status changes") {
+                it("TC-35: updates without a reload") {
+                    val bookUuid = randomString()
+                    val finishedAt = randomLong()
+                    val status = reading(bookUuid)
+                    val progress = TestBookProgressRepository().apply { sessionsResults.addLast(success()) }
+                    val vm = sut(bookUuid, progress, status)
+
+                    vm.whileCollected {
+                        vm.reload(0)
+
+                        status.seed(bookUuid, known(ReadStatus.Finished, finishedAt))
+
+                        vm.uiState.value.card.line shouldBe ReadingLine.Finished(finishedAt)
+                    }
                 }
             }
         }

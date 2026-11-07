@@ -162,48 +162,50 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
         }
     }
 
-    describe("the state during a load") {
-        context("when the manifest has not answered") {
-            // TC-50
-            it("shows the book's interim fields at once (C1d)") {
-                val rig = sut()
-                rig.repository.pending = CompletableDeferred()
+    describe("the state") {
+        context("during a load") {
+            context("when the manifest has not answered") {
+                // TC-50
+                it("shows the book's interim fields at once (C1d)") {
+                    val rig = sut()
+                    rig.repository.pending = CompletableDeferred()
 
-                rig.stageBook()
-                rig.controller.load("book-1", 33L, null, true)
+                    rig.stageBook()
+                    rig.controller.load("book-1", 33L, null, true)
 
-                rig.controller.state.value.book shouldBe PlayingBook("book-1", 33L, "", null, false)
-                rig.controller.state.value.isLoading shouldBe true
+                    rig.controller.state.value.book shouldBe PlayingBook("book-1", 33L, "", null, false)
+                    rig.controller.state.value.isLoading shouldBe true
+                }
             }
-        }
 
-        context("when the manifest has answered") {
-            // TC-50
-            it("shows the book's details, chapters and duration (C1)") {
-                val rig = sut()
+            context("when the manifest has answered") {
+                // TC-50
+                it("shows the book's details, chapters and duration (C1)") {
+                    val rig = sut()
 
-                rig.loadAndSettle()
+                    rig.loadAndSettle()
 
-                val state = rig.controller.state.value
-                state.book shouldBe PlayingBook("book-1", 11L, "The Book", "An Author", false)
-                state.chapters shouldBe multiPartManifest().chapters
-                state.durationSeconds shouldBe 3_000.0
-                state.isLoading shouldBe false
+                    val state = rig.controller.state.value
+                    state.book shouldBe PlayingBook("book-1", 11L, "The Book", "An Author", false)
+                    state.chapters shouldBe multiPartManifest().chapters
+                    state.durationSeconds shouldBe 3_000.0
+                    state.isLoading shouldBe false
+                }
             }
-        }
 
-        context("when the book cannot be read") {
-            // TC-51
-            it("plays on with an empty title (R9a)") {
-                val rig = sut()
-                rig.library.bookResult = BookResult.NotFound
+            context("when the book cannot be read") {
+                // TC-51
+                it("plays on with an empty title (R9a)") {
+                    val rig = sut()
+                    rig.library.bookResult = BookResult.NotFound
 
-                rig.loadAndSettle()
+                    rig.loadAndSettle()
 
-                val state = rig.controller.state.value
-                state.book?.title shouldBe ""
-                state.error shouldBe null
-                state.isPlaying shouldBe true
+                    val state = rig.controller.state.value
+                    state.book?.title shouldBe ""
+                    state.error shouldBe null
+                    state.isPlaying shouldBe true
+                }
             }
         }
     }

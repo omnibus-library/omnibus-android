@@ -8,7 +8,7 @@ import io.kotest.property.exhaustive.of
 
 class ArtworkRetryScheduleTest : DescribeSpec({
 
-    describe("waiting after repeated failures") {
+    describe("waiting between fetches") {
         // TC-43
         it("doubles from 15 seconds up to 240 seconds for any failure count (I-SYS-4)") {
             checkAll(

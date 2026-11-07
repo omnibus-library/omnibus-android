@@ -35,64 +35,66 @@ class DefaultAudiobookControllerHealthTest : DescribeSpec({
         listeners: Set<PlaybackListener> = emptySet(),
     ) = ControllerRig(TestCoroutineScheduler(), resolver = resolver, listeners = listeners)
 
-    describe("rebuilding after a stream failure") {
-        context("when playing") {
-            // TC-37: the rebuilt item does not report playing (reflect is off), so the failures stay consecutive.
-            it("rebuilds at the position, waiting a second longer each time (I-HLTH-2)") {
-                val rig = sut()
-                rig.loadAndSettle()
-                rig.controller.seekTo(120.0)
-                rig.engine.reflect = false
+    describe("rebuilding the stream") {
+        context("after a stream failure") {
+            context("when playing") {
+                // TC-37: the rebuilt item does not report playing (reflect is off), so the failures stay consecutive.
+                it("rebuilds at the position, waiting a second longer each time (I-HLTH-2)") {
+                    val rig = sut()
+                    rig.loadAndSettle()
+                    rig.controller.seekTo(120.0)
+                    rig.engine.reflect = false
 
-                rig.failAndExpectRebuildAfter(1_000)
-                rig.failAndExpectRebuildAfter(2_000)
-                rig.failAndExpectRebuildAfter(3_000)
+                    rig.failAndExpectRebuildAfter(1_000)
+                    rig.failAndExpectRebuildAfter(2_000)
+                    rig.failAndExpectRebuildAfter(3_000)
+                }
+
+                // TC-42
+                it("reports no pause or second play (R10)") {
+                    val listener = CallRecorder()
+                    val rig = sut(listeners = setOf(listener))
+                    rig.loadAndSettle()
+
+                    rig.engine.fail(FailureKind.Stream)
+                    rig.settle()
+                    rig.advance(1_000)
+
+                    listener.count("pause") shouldBe 0
+                    listener.count("play") shouldBe 1
+                }
             }
 
-            // TC-42
-            it("reports no pause or second play (R10)") {
-                val listener = CallRecorder()
-                val rig = sut(listeners = setOf(listener))
-                rig.loadAndSettle()
+            context("when paused") {
+                // TC-38
+                it("rebuilds without resuming (I-HLTH-2)") {
+                    val rig = sut()
+                    rig.loadAndSettle(autoplay = false)
+                    rig.engine.emit(EngineEvent.Failed(FailureKind.Stream))
+                    rig.settle()
 
-                rig.engine.fail(FailureKind.Stream)
-                rig.settle()
-                rig.advance(1_000)
+                    val calls = rig.callsAfter { rig.advance(1_000) }
 
-                listener.count("pause") shouldBe 0
-                listener.count("play") shouldBe 1
+                    calls.contains("setSource") shouldBe true
+                    calls.contains("play") shouldBe false
+                }
             }
-        }
 
-        context("when paused") {
-            // TC-38
-            it("rebuilds without resuming (I-HLTH-2)") {
-                val rig = sut()
-                rig.loadAndSettle(autoplay = false)
-                rig.engine.emit(EngineEvent.Failed(FailureKind.Stream))
-                rig.settle()
+            context("when a load still owes a start") {
+                // TC-38
+                it("resumes with the rebuild (I-HLTH-2)") {
+                    val rig = sut(resolver = ScriptedResolver(settleAnswer = CompletableDeferred()))
+                    rig.loadAndSettle()
+                    rig.engine.emit(EngineEvent.Failed(FailureKind.Stream))
+                    rig.settle()
 
-                val calls = rig.callsAfter { rig.advance(1_000) }
-
-                calls.contains("setSource") shouldBe true
-                calls.contains("play") shouldBe false
-            }
-        }
-
-        context("when a load still owes a start") {
-            // TC-38
-            it("resumes with the rebuild (I-HLTH-2)") {
-                val rig = sut(resolver = ScriptedResolver(settleAnswer = CompletableDeferred()))
-                rig.loadAndSettle()
-                rig.engine.emit(EngineEvent.Failed(FailureKind.Stream))
-                rig.settle()
-
-                rig.callsAfter { rig.advance(1_000) }.shouldBeInOrder("setSource", "play")
+                    rig.callsAfter { rig.advance(1_000) }.shouldBeInOrder("setSource", "play")
+                }
             }
         }
     }
 
-    describe("giving up after repeated failures") {
+    describe("giving up") {
         context("when the fourth failure in a row arrives") {
             // TC-39
             it("gives up with StoppedAfterRetries (I-HLTH-3)") {

@@ -146,13 +146,15 @@ class ReaderControllerTest : DescribeSpec({
         }
 
         context("after a failed load") {
-            it("TC-259: is loading once reset for a retry") {
-                val reader = sut()
-                reader.onBookFailure(BookFileResult.NotFound)
+            context("when reset for a retry") {
+                it("TC-259: is loading") {
+                    val reader = sut()
+                    reader.onBookFailure(BookFileResult.NotFound)
 
-                reader.reset()
+                    reader.reset()
 
-                reader.status shouldBe ReaderLoadStatus.Loading
+                    reader.status shouldBe ReaderLoadStatus.Loading
+                }
             }
         }
     }
@@ -234,20 +236,22 @@ class ReaderControllerTest : DescribeSpec({
         }
 
         context("between boot and first paint") {
-            it("TC-265: applies the change once the page is ready") {
-                val page = mutableListOf<String>()
-                val uuid = randomString()
-                val settings = randomReaderSettings()
-                val reader = sut(page, bookUuid = uuid, settings = settings)
-                reader.hostReady()
-                page.clear()
-                val changed = settings.withOtherFontSize()
-                reader.configure(uuid, changed)
-                page.shouldBeEmpty()
+            context("when the page is ready") {
+                it("TC-265: applies the change") {
+                    val page = mutableListOf<String>()
+                    val uuid = randomString()
+                    val settings = randomReaderSettings()
+                    val reader = sut(page, bookUuid = uuid, settings = settings)
+                    reader.hostReady()
+                    page.clear()
+                    val changed = settings.withOtherFontSize()
+                    reader.configure(uuid, changed)
+                    page.shouldBeEmpty()
 
-                reader.pageReady()
+                    reader.pageReady()
 
-                page shouldContainExactly ReaderScripts.settingsChange(settings, changed)
+                    page shouldContainExactly ReaderScripts.settingsChange(settings, changed)
+                }
             }
         }
     }
@@ -311,7 +315,7 @@ class ReaderControllerTest : DescribeSpec({
         }
 
         context("with a fraction out of range") {
-            it("TC-89: clamps the fraction, and drops NaN") {
+            it("TC-89: sends only in-range fractions, for too large, too small and NaN") {
                 val page = mutableListOf<String>()
                 val reader = sut(page)
                 reader.pageReady()

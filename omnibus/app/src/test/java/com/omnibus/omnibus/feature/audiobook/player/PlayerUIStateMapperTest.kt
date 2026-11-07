@@ -49,7 +49,7 @@ class PlayerUIStateMapperTest : DescribeSpec({
         }
 
         // I-HLTH-1
-        it("#165 TC-26: shows buffering only once the load has settled") {
+        it("#165 TC-26: shows buffering only for a settled load") {
             val book = randomPlayingBook()
 
             checkAll(Exhaustive.of(true to false, false to true)) { (isLoading, expected) ->
@@ -129,7 +129,7 @@ class PlayerUIStateMapperTest : DescribeSpec({
 
     describe("the chapter buttons") {
         // P-SCR-AC4
-        it("#165 TC-30: are enabled in the middle of a book, disabled without chapters") {
+        it("#165 TC-30: are enabled only with chapters to move through") {
             val book = randomPlayingBook()
 
             checkAll(

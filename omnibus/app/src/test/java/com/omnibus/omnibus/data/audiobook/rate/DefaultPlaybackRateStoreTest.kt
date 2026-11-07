@@ -395,23 +395,25 @@ class DefaultPlaybackRateStoreTest : DescribeSpec({
     describe("flushing pending rates") {
 
         context("when changes arrive during a send") {
-            // I-SPD-3
-            it("#168 TC-54: sends only the newest once the send is done (I-SPD-3)") {
-                runTest {
-                    val book = randomString()
-                    val gate = CompletableDeferred<PutOutcome>()
-                    val api = TestPlaybackRateApi().apply { putAnswers.addLast(gate) }
-                    val store = sut(api)
-                    store.save(book, 1.5)
-                    runCurrent()
-                    store.save(book, 1.8)
-                    store.save(book, 2.0)
-                    runCurrent()
+            context("when the send is done") {
+                // I-SPD-3
+                it("#168 TC-54: sends only the newest (I-SPD-3)") {
+                    runTest {
+                        val book = randomString()
+                        val gate = CompletableDeferred<PutOutcome>()
+                        val api = TestPlaybackRateApi().apply { putAnswers.addLast(gate) }
+                        val store = sut(api)
+                        store.save(book, 1.5)
+                        runCurrent()
+                        store.save(book, 1.8)
+                        store.save(book, 2.0)
+                        runCurrent()
 
-                    gate.complete(PutOutcome.Sent)
-                    runCurrent()
+                        gate.complete(PutOutcome.Sent)
+                        runCurrent()
 
-                    api.puts shouldBe listOf(book to 1.5, book to 2.0)
+                        api.puts shouldBe listOf(book to 1.5, book to 2.0)
+                    }
                 }
             }
         }

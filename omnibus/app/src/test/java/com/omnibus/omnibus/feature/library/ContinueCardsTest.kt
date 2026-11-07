@@ -34,7 +34,7 @@ class ContinueCardsTest : DescribeSpec({
         .withRecord { copy(format = Listening, audioPositionSeconds = position, totalDurationSeconds = total, resolved = null) }
 
     describe("the medium a card presents") {
-        it("#22 TC-5: is the requested one unless the book lacks it, for each format mix") {
+        it("#22 TC-5: falls back from a requested one the book lacks, for each format mix") {
             checkAll(
                 Exhaustive.of(
                     Triple(emptyList<String>(), Listening, Listening),
@@ -264,17 +264,19 @@ class ContinueCardsTest : DescribeSpec({
         }
     }
 
-    describe("the selection after a refresh") {
-        it("#22 TC-13: keeps a listed card, else takes the first or nothing") {
-            checkAll(
-                Exhaustive.of(
-                    Triple("b", listOf("a", "b"), "b"),
-                    Triple("z", listOf("a", "b"), "a"),
-                    Triple(null, listOf("a"), "a"),
-                    Triple("a", emptyList<String>(), null),
-                ),
-            ) { (current, ids, selected) ->
-                selectionAfterRefresh(current, ids) shouldBe selected
+    describe("the selection") {
+        context("after a refresh") {
+            it("#22 TC-13: keeps a listed card, else takes the first or nothing") {
+                checkAll(
+                    Exhaustive.of(
+                        Triple("b", listOf("a", "b"), "b"),
+                        Triple("z", listOf("a", "b"), "a"),
+                        Triple(null, listOf("a"), "a"),
+                        Triple("a", emptyList<String>(), null),
+                    ),
+                ) { (current, ids, selected) ->
+                    selectionAfterRefresh(current, ids) shouldBe selected
+                }
             }
         }
     }

@@ -51,18 +51,20 @@ class PlayerBookmarksViewModelTest : DescribeSpec({
     ) = PlayerBookmarksViewModel(bookUuid, controller, repository, time)
 
     describe("the Bookmark cell") {
-        // TC15, R1, R2, P-BMK-1: the cell adds only while this book is loaded and settled
-        it("TC15: can add once this book has settled") {
-            val uuid = randomString()
-            val loading = holding(uuid).copy(isLoading = true, positionSeconds = randomDouble(0.0, 10_000.0))
-            val controller = TestAudiobookController(loading)
-            val vm = sut(uuid, controller)
-            vm.keepCollecting(vm.canAddBookmark)
-            vm.canAddBookmark.value shouldBe false
+        context("when this book settles") {
+            // TC15, R1, R2, P-BMK-1: the cell adds only while this book is loaded and settled
+            it("TC15: can add") {
+                val uuid = randomString()
+                val loading = holding(uuid).copy(isLoading = true, positionSeconds = randomDouble(0.0, 10_000.0))
+                val controller = TestAudiobookController(loading)
+                val vm = sut(uuid, controller)
+                vm.keepCollecting(vm.canAddBookmark)
+                vm.canAddBookmark.value shouldBe false
 
-            controller.state.value = loading.copy(isLoading = false)
+                controller.state.value = loading.copy(isLoading = false)
 
-            vm.canAddBookmark.value shouldBe true
+                vm.canAddBookmark.value shouldBe true
+            }
         }
 
         // TC16, R1, R2, AC1: a tap on the loaded book drafts its position and chapter, read at the tap
@@ -115,7 +117,7 @@ class PlayerBookmarksViewModelTest : DescribeSpec({
         }
 
         // TC21, R3, R4: the bookmarks are read only once the sheet collects, not when the player opens
-        it("TC21: reads the bookmarks only once collected") {
+        it("TC21: waits for a collector before reading the bookmarks") {
             val uuid = randomString()
             val repository = TestBookmarksRepository()
             val vm = sut(uuid, repository = repository)
@@ -126,14 +128,16 @@ class PlayerBookmarksViewModelTest : DescribeSpec({
             repository.flowRequests shouldBe listOf(uuid)
         }
 
-        // TC22, R4: a retry asks the repository to refresh this book
-        it("TC22: refreshes this book on a retry") {
-            val uuid = randomString()
-            val repository = TestBookmarksRepository()
+        context("when retried") {
+            // TC22, R4: a retry asks the repository to refresh this book
+            it("TC22: refreshes this book") {
+                val uuid = randomString()
+                val repository = TestBookmarksRepository()
 
-            sut(uuid, repository = repository).onRetry()
+                sut(uuid, repository = repository).onRetry()
 
-            repository.refreshCalls shouldBe listOf(uuid)
+                repository.refreshCalls shouldBe listOf(uuid)
+            }
         }
 
         // TC23, R6, AC2: a removed row is passed to the repository

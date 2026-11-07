@@ -144,7 +144,7 @@ class AudioBookmarkRulesTest : DescribeSpec({
         }
 
         // TC13, R9, AC3, AC5: the label reads synced after a declaration
-        it("TC13: reads synced once synced, else Sync here") {
+        it("TC13: names whether it is synced") {
             val syncHere = randomString()
             val synced = "$syncHere-synced"
 

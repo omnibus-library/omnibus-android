@@ -173,12 +173,14 @@ class ActionBarModelTest : DescribeSpec({
         }
     }
 
-    describe("a book with no readable copy") {
-        it("TC-18: has no main button, whatever the status, the place, the physical copy") {
-            checkAll(Exhaustive.boolean(), Exhaustive.of(null, readingPlace(), listeningPlace())) { physical, progress ->
-                val book = randomBook().copy(formats = emptyList(), hasPhysical = physical)
+    describe("the main button") {
+        context("when the book has no readable copy") {
+            it("TC-18: has no main button, whatever the status, the place, the physical copy") {
+                checkAll(Exhaustive.boolean(), Exhaustive.of(null, readingPlace(), listeningPlace())) { physical, progress ->
+                    val book = randomBook().copy(formats = emptyList(), hasPhysical = physical)
 
-                actionBarModel(book, randomStatus(), progress) shouldBe ActionBarModel.NoCopy(physical)
+                    actionBarModel(book, randomStatus(), progress) shouldBe ActionBarModel.NoCopy(physical)
+                }
             }
         }
     }

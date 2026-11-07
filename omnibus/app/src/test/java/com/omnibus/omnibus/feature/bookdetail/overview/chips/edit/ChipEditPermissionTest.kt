@@ -15,7 +15,7 @@ class ChipEditPermissionTest : DescribeSpec({
             }
         }
 
-        context("when the user is neither an editor nor an administrator") {
+        context("when the user may not edit") {
             it("TC-1: refuses") {
                 canEditChips(randomCurrentUser().copy(canEdit = false, isAdmin = false)) shouldBe false
             }

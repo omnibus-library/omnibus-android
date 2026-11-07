@@ -108,7 +108,7 @@ class HighlightsViewModelTest : DescribeSpec({
             }
         }
 
-        context("when text or a note is blank") {
+        context("when its fields are blank") {
             it("TC-28: reads as absent") {
                 val uuid = randomString()
                 val repository = TestHighlightsRepository()
@@ -205,17 +205,19 @@ class HighlightsViewModelTest : DescribeSpec({
     describe("retrying") {
 
         context("when the highlights failed") {
-            it("TC-32: shows the list once the refresh succeeds") {
-                val uuid = randomString()
-                val highlight = randomHighlight()
-                val repository = TestHighlightsRepository()
-                repository.seed(uuid, HighlightsState.Failed)
-                repository.refreshResults.addLast(HighlightsState.Loaded(listOf(highlight)))
+            context("when the refresh succeeds") {
+                it("TC-32: shows the list") {
+                    val uuid = randomString()
+                    val highlight = randomHighlight()
+                    val repository = TestHighlightsRepository()
+                    repository.seed(uuid, HighlightsState.Failed)
+                    repository.refreshResults.addLast(HighlightsState.Loaded(listOf(highlight)))
 
-                collecting(sut(uuid, repository)) {
-                    retry()
+                    collecting(sut(uuid, repository)) {
+                        retry()
 
-                    rows().map { it.id } shouldBe listOf(highlight.id)
+                        rows().map { it.id } shouldBe listOf(highlight.id)
+                    }
                 }
             }
         }

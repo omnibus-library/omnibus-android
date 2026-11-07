@@ -172,17 +172,19 @@ class JournalViewModelTest : DescribeSpec({
     describe("retrying") {
 
         context("when the entries failed") {
-            it("TC-39: shows the list once the refresh succeeds") {
-                val uuid = randomString()
-                val entry = randomJournalEntry()
-                val repository = TestJournalsRepository()
-                repository.seed(uuid, JournalsState.Failed)
-                repository.refreshResults.addLast(JournalsState.Loaded(listOf(entry)))
+            context("when the refresh succeeds") {
+                it("TC-39: shows the list") {
+                    val uuid = randomString()
+                    val entry = randomJournalEntry()
+                    val repository = TestJournalsRepository()
+                    repository.seed(uuid, JournalsState.Failed)
+                    repository.refreshResults.addLast(JournalsState.Loaded(listOf(entry)))
 
-                collecting(sut(uuid, repository)) {
-                    retry()
+                    collecting(sut(uuid, repository)) {
+                        retry()
 
-                    cards().map { it.id } shouldBe listOf(entry.id)
+                        cards().map { it.id } shouldBe listOf(entry.id)
+                    }
                 }
             }
         }

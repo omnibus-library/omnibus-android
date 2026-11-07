@@ -82,16 +82,18 @@ class ReadingProgressViewModelTest : DescribeSpec({
         }
 
         context("when the chapters failed to load") {
-            it("TC-71: tries again on the next key") {
-                withHarness {
-                    seedReadingAt(40.0)
-                    progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
-                    progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, .3f), emptyList(), null, null))
-                    vm.reload(0)
+            context("when the next key arrives") {
+                it("TC-71: tries again") {
+                    withHarness {
+                        seedReadingAt(40.0)
+                        progress.chaptersResults.addLast(BookChaptersResult.Failed(BookProgressError.Unreachable))
+                        progress.chaptersResults.addLast(BookChaptersResult.Success(chapters(0f, .3f), emptyList(), null, null))
+                        vm.reload(0)
 
-                    vm.reload(1)
+                        vm.reload(1)
 
-                    bar().flag shouldBe FlagLabel.Chapter(2)
+                        bar().flag shouldBe FlagLabel.Chapter(2)
+                    }
                 }
             }
         }

@@ -175,37 +175,38 @@ class DefaultListeningPositionSyncTest : DescribeSpec({
         }
     }
 
-    describe("saving on a tick") {
+    describe("saving the position") {
+        context("on a tick") {
+            // TC-55
+            it("TC-55: saves the position at the current unix second (I-SAVE-1, I-SAVE-2)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val seconds = randomDouble(0.01, 3_000.0)
+                    val repository = TestListeningProgressRepository()
+                    val time = TestTimeSource(7_999L)
+                    val sync = sut(repository, time)
+                    sync.onSettled(at(book), randomDouble())
 
-        // TC-55
-        it("TC-55: saves the position at the current unix second (I-SAVE-1, I-SAVE-2)") {
-            runTest {
-                val book = randomPlayingBook()
-                val seconds = randomDouble(0.01, 3_000.0)
-                val repository = TestListeningProgressRepository()
-                val time = TestTimeSource(7_999L)
-                val sync = sut(repository, time)
-                sync.onSettled(at(book), randomDouble())
+                    sync.onTick(at(book, seconds))
+                    runCurrent()
 
-                sync.onTick(at(book, seconds))
-                runCurrent()
-
-                repository.saves.single().first shouldBe AudioPosition(book.bookUuid, seconds, book.bookFileId, 7L)
+                    repository.saves.single().first shouldBe AudioPosition(book.bookUuid, seconds, book.bookFileId, 7L)
+                }
             }
-        }
 
-        // TC-56
-        it("TC-56: skips the first tick's push, then pushes at most every 5 s (I-SAVE-2)") {
-            runTest {
-                val book = randomPlayingBook()
-                val repository = TestListeningProgressRepository()
-                val time = TestTimeSource()
-                val sync = sut(repository, time)
-                sync.onSettled(at(book), randomDouble())
+            // TC-56
+            it("TC-56: skips the first tick's push, then pushes at most every 5 s (I-SAVE-2)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val time = TestTimeSource()
+                    val sync = sut(repository, time)
+                    sync.onSettled(at(book), randomDouble())
 
-                tickAt(sync, time, at(book), 0L, 500L, 5_499L, 5_500L, 5_501L)
+                    tickAt(sync, time, at(book), 0L, 500L, 5_499L, 5_500L, 5_501L)
 
-                repository.saves.map { it.second } shouldBe listOf(false, true, false, false, true)
+                    repository.saves.map { it.second } shouldBe listOf(false, true, false, false, true)
+                }
             }
         }
     }

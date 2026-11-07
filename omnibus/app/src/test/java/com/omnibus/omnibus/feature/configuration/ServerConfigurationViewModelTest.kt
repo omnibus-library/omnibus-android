@@ -30,12 +30,14 @@ class ServerConfigurationViewModelTest : DescribeSpec({
             vm.viewModelScope.launch { vm.uiState.collect {} }
         }
 
-    describe("the state before a submission") {
-        context("when a server is saved") {
-            it("exposes the saved address to prefill the field") {
-                val server = randomServerAddress()
+    describe("the state") {
+        context("before a submission") {
+            context("when a server is saved") {
+                it("exposes the saved address to prefill the field") {
+                    val server = randomServerAddress()
 
-                sut(TestServerConfigurationRepository(server)).uiState.value.savedConfigurationValue shouldBe server
+                    sut(TestServerConfigurationRepository(server)).uiState.value.savedConfigurationValue shouldBe server
+                }
             }
         }
     }

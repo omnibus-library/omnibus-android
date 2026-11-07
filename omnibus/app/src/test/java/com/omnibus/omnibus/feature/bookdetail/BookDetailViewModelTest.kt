@@ -178,15 +178,17 @@ class BookDetailViewModelTest : DescribeSpec({
                 }
             }
 
-            it("#93 TC-58: clears the error once it has been shown") {
-                val repo = ScriptedBookRepository()
-                val vm = sutShowing(randomBook(), repo)
-                repo.enqueue(BookResult.NotFound)
-                vm.refresh()
+            context("when the error has been shown") {
+                it("#93 TC-58: clears it") {
+                    val repo = ScriptedBookRepository()
+                    val vm = sutShowing(randomBook(), repo)
+                    repo.enqueue(BookResult.NotFound)
+                    vm.refresh()
 
-                vm.transientErrorShown()
+                    vm.transientErrorShown()
 
-                vm.uiState.value.transientError shouldBe null
+                    vm.uiState.value.transientError shouldBe null
+                }
             }
         }
     }

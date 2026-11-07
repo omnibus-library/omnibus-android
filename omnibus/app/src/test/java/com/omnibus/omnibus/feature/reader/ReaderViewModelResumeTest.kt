@@ -102,7 +102,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
         }
 
         context("with an answer exactly at the deadline") {
-            it("TC-65: opens locally, offers the position and saves nothing") {
+            it("TC-65: keeps the local position, offering the server's") {
                 onVirtualTime { scheduler ->
                     val local = localPosition()
                     val record = newerThan(local)
@@ -136,7 +136,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
             }
         }
 
-        context("with a failed or empty answer") {
+        context("with no usable answer") {
             it("TC-66: opens locally without waiting, for an error or no position") {
                 checkAll(Exhaustive.of(ServerPositionResult.Error, ServerPositionResult.None)) { answer ->
                     onVirtualTime { scheduler ->
@@ -154,7 +154,7 @@ class ReaderViewModelResumeTest : DescribeSpec({
 
     describe("an answer in time") {
         context("with an older position") {
-            it("TC-71: opens locally and saves nothing") {
+            it("TC-71: keeps the local position") {
                 onVirtualTime { scheduler ->
                     val local = localPosition()
                     val record = newerThan(local).copy(clientUpdatedAt = local.clientUpdatedAt - 1)

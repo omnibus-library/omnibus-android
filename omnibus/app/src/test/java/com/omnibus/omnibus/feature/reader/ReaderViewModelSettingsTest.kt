@@ -28,29 +28,31 @@ class ReaderViewModelSettingsTest : DescribeSpec({
     /** A copy that differs in font size, whichever size this is. */
     fun ReaderSettings.withOtherFontSize() = withFontSizeStep(if (canIncreaseFontSize) 1 else -1)
 
-    describe("loading before the page boots") {
-        it("keeps the gate closed until the stored settings are read") {
-            val stored = randomReaderSettings()
-            val hold = CompletableDeferred<Unit>()
-            val store = TestReaderSettingsStore(stored).apply { holdFirstEmission = hold }
+    describe("loading") {
+        context("before the page boots") {
+            it("keeps the gate closed until the stored settings are read") {
+                val stored = randomReaderSettings()
+                val hold = CompletableDeferred<Unit>()
+                val store = TestReaderSettingsStore(stored).apply { holdFirstEmission = hold }
 
-            val vm = sut(settingsStore = store)
-            vm.uiState.value.settingsLoaded shouldBe false
+                val vm = sut(settingsStore = store)
+                vm.uiState.value.settingsLoaded shouldBe false
 
-            hold.complete(Unit)
+                hold.complete(Unit)
 
-            vm.uiState.value.settingsLoaded shouldBe true
-            vm.uiState.value.settings shouldBe stored
-        }
+                vm.uiState.value.settingsLoaded shouldBe true
+                vm.uiState.value.settings shouldBe stored
+            }
 
-        it("ignores a later emission from the store") {
-            val stored = randomReaderSettings()
-            val store = TestReaderSettingsStore(stored)
-            val vm = sut(settingsStore = store)
+            it("ignores a later emission from the store") {
+                val stored = randomReaderSettings()
+                val store = TestReaderSettingsStore(stored)
+                val vm = sut(settingsStore = store)
 
-            store.emit(stored.withOtherFontSize())
+                store.emit(stored.withOtherFontSize())
 
-            vm.uiState.value.settings shouldBe stored
+                vm.uiState.value.settings shouldBe stored
+            }
         }
     }
 
