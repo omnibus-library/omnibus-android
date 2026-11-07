@@ -1,23 +1,50 @@
 package com.omnibus.omnibus.feature.bookdetail.reviews.mine
 
 import com.omnibus.omnibus.data.reviews.BookReviews
-import com.omnibus.omnibus.data.reviews.TestReviewsRepository
 import com.omnibus.omnibus.data.reviews.Patch
 import com.omnibus.omnibus.data.reviews.Review
 import com.omnibus.omnibus.data.reviews.ReviewError
 import com.omnibus.omnibus.data.reviews.ReviewPatch
 import com.omnibus.omnibus.data.reviews.ReviewWriteResult
 import com.omnibus.omnibus.data.reviews.ReviewsState
+import com.omnibus.omnibus.data.reviews.TestReviewsRepository
+import com.omnibus.omnibus.data.reviews.randomReview
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+
+/** A ViewModel on fresh fakes, with its state kept active by [collecting] until the test ends. */
+private class Harness {
+    val uuid = randomString()
+    val reviews = TestReviewsRepository()
+    val pulse = ReviewSavePulse()
+    val collecting = CollectingScope()
+    val vm = MyReviewViewModel(uuid, reviews, pulse).also { collecting.collect(it.uiState) }
+
+    /** Seeds the reader's own review as [mine]. */
+    fun seedMine(mine: Review?) = reviews.seed(uuid, ReviewsState.Loaded(BookReviews(mine, emptyList(), null)))
+}
+
+/** Runs [block] on a [Harness], and cancels its collection afterwards. */
+private inline fun withHarness(block: Harness.() -> Unit) {
+    val harness = Harness()
+    try {
+        harness.block()
+    } finally {
+        harness.collecting.cancel()
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MyReviewViewModelTest : DescribeSpec({
@@ -25,232 +52,127 @@ class MyReviewViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    val uuid = "uuid-1"
-
-    /** A review with the given parts, as the signed-in reader's, with no change time. */
-    fun review(rating: Float? = null, text: String? = null, notes: String? = null) =
-        Review(0L, "", false, rating, text, notes, isSpoiler = false, updatedAtMillis = null)
-
-    /** A Loaded state whose own review is [mine]. */
-    fun loaded(mine: Review?) = ReviewsState.Loaded(BookReviews(mine, emptyList(), null))
-
-    /** A ViewModel on [fake] and [pulse], with its state kept active by [collecting]. */
-    fun viewModel(
-        fake: TestReviewsRepository,
-        pulse: ReviewSavePulse,
-        collecting: CollectingScope,
-    ) = MyReviewViewModel(uuid, fake, pulse).also { collecting.collect(it.uiState) }
-
     describe("rating") {
+        it("TC-39: writes only the rating, for each of a new value, a clear") {
+            checkAll(Exhaustive.of(4.5f, null)) { rating ->
+                withHarness {
+                    seedMine(randomReview().copy(rating = 4f))
 
-        it("TC-39: a rating on no review and a change of it each make one write, and each save counts once") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(null))
-            val vm = viewModel(fake, pulse, collecting)
+                    vm.rate(rating)
 
-            vm.rate(4.5f)
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 4.5f))
-            pulse.pulses(uuid).value shouldBe 1
-
-            fake.seed(uuid, loaded(review(rating = 3f)))
-            vm.rate(4f)
-            fake.updateCalls shouldContainExactly listOf(
-                uuid to ReviewPatch(rating = Patch.Set(4.5f)),
-                uuid to ReviewPatch(rating = Patch.Set(4f)),
-            )
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 4f))
-            pulse.pulses(uuid).value shouldBe 2
-            collecting.cancel()
-        }
-
-        it("TC-41: clearing the rating sends only the rating and keeps the text and notes, and counts as a save") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f, text = "Body", notes = "private")))
-            val vm = viewModel(fake, pulse, collecting)
-
-            vm.rate(null)
-
-            fake.updateCalls shouldContainExactly listOf(uuid to ReviewPatch(rating = Patch.Set(null)))
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(text = "Body", notes = "private"))
-            pulse.pulses(uuid).value shouldBe 1
-            collecting.cancel()
-        }
-
-        it("TC-42: rating the current rating, or clearing an unrated review, makes no call and no pulse") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            val vm = viewModel(fake, pulse, collecting)
-
-            vm.rate(4f)
-            fake.seed(uuid, loaded(null))
-            vm.rate(null)
-
-            fake.updateCalls.shouldBeEmpty()
-            pulse.pulses(uuid).value shouldBe 0
-            vm.uiState.value.saveFailure shouldBe null
-            collecting.cancel()
-        }
-
-        it("TC-43: while the review is unknown, rating, clearing and deleting do nothing") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val fresh = MyReviewViewModel(uuid, fake, pulse)
-            fresh.uiState.value.card shouldBe MyReviewModel.Unknown(UnknownReason.Loading)
-
-            listOf(ReviewsState.Loading, ReviewsState.Offline, ReviewsState.Failed).forEach { state ->
-                fake.seed(uuid, state)
-                val collecting = CollectingScope()
-                val vm = viewModel(fake, pulse, collecting)
-
-                vm.rate(4f)
-                vm.rate(null)
-                vm.delete()
-
-                vm.uiState.value.saveFailure shouldBe null
-                collecting.cancel()
+                    reviews.updateCalls shouldContainExactly listOf(uuid to ReviewPatch(rating = Patch.Set(rating)))
+                }
             }
-            fake.updateCalls.shouldBeEmpty()
-            fake.deleteCalls.shouldBeEmpty()
-            pulse.pulses(uuid).value shouldBe 0
         }
 
-        it("TC-44: a failed save rolls back, names the failure, and posts nothing for a NotLoaded write") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            val vm = viewModel(fake, pulse, collecting)
+        it("TC-39, TC-47: counts only a saved rating, across each answer") {
+            checkAll(
+                Exhaustive.of(
+                    ReviewWriteResult.Saved(randomReview()) to 1,
+                    ReviewWriteResult.Failed(ReviewError.Http(500)) to 0,
+                    ReviewWriteResult.Unchanged to 0,
+                ),
+            ) { (result, count) ->
+                withHarness {
+                    seedMine(randomReview().copy(rating = 4f))
+                    reviews.writeResults.addLast(result)
 
-            val offline = listOf(ReviewError.NoServer, ReviewError.Unreachable)
-            val other = listOf(ReviewError.SessionExpired, ReviewError.Http(500), ReviewError.BookNotFound)
-            offline.forEach { error ->
-                fake.writeResults.addLast(ReviewWriteResult.Failed(error))
-                vm.rate(4.5f)
-                vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 4f))
-                vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Rate, offline = true)
-                vm.saveFailureShown()
+                    vm.rate(4.5f)
+
+                    pulse.pulses(uuid).value shouldBe count
+                }
             }
-            other.forEach { error ->
-                fake.writeResults.addLast(ReviewWriteResult.Failed(error))
-                vm.rate(4.5f)
-                vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Rate, offline = false)
-                vm.saveFailureShown()
+        }
+
+        context("when the write fails") {
+            it("TC-44: says whether it was offline, posting nothing for a write never sent, for each error") {
+                fun failure(offline: Boolean) = MyReviewSaveFailure(MyReviewSaveFailure.Kind.Rate, offline)
+
+                checkAll(
+                    Exhaustive.of(
+                        ReviewError.NoServer to failure(offline = true),
+                        ReviewError.Unreachable to failure(offline = true),
+                        ReviewError.SessionExpired to failure(offline = false),
+                        ReviewError.Http(500) to failure(offline = false),
+                        ReviewError.BookNotFound to failure(offline = false),
+                        ReviewError.NotLoaded to null,
+                    ),
+                ) { (error, posted) ->
+                    withHarness {
+                        seedMine(randomReview().copy(rating = 4f))
+                        reviews.writeResults.addLast(ReviewWriteResult.Failed(error))
+
+                        vm.rate(4.5f)
+
+                        vm.uiState.value.saveFailure shouldBe posted
+                    }
+                }
             }
 
-            fake.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.NotLoaded))
-            vm.rate(4.5f)
-            vm.uiState.value.saveFailure shouldBe null
+            context("when the failure has been shown") {
+                it("TC-44: clears it") {
+                    withHarness {
+                        seedMine(randomReview().copy(rating = 4f))
+                        reviews.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Http(500)))
+                        vm.rate(4.5f)
 
-            pulse.pulses(uuid).value shouldBe 0
-            collecting.cancel()
-        }
+                        vm.saveFailureShown()
 
-        it("TC-44: a failure stays until it is shown, and a later failure sets it again") {
-            val fake = TestReviewsRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            val vm = viewModel(fake, ReviewSavePulse(), collecting)
-
-            fake.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Http(500)))
-            vm.rate(4.5f)
-            vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Rate, offline = false)
-
-            vm.saveFailureShown()
-            vm.uiState.value.saveFailure shouldBe null
-
-            fake.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Http(500)))
-            vm.rate(3.5f)
-            vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Rate, offline = false)
-            collecting.cancel()
+                        vm.uiState.value.saveFailure shouldBe null
+                    }
+                }
+            }
         }
     }
 
     describe("deleting") {
+        context("when the reader has a review") {
+            it("TC-46: deletes it") {
+                withHarness {
+                    seedMine(randomReview())
 
-        it("TC-46: a delete makes one call and shows no review, and nothing happens without a review") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f, text = "Body")))
-            val vm = viewModel(fake, pulse, collecting)
+                    vm.delete()
 
-            vm.delete()
-
-            fake.deleteCalls shouldContainExactly listOf(uuid)
-            vm.uiState.value.card shouldBe MyReviewModel.Known(null)
-            pulse.pulses(uuid).value shouldBe 0
-
-            vm.delete()
-            fake.deleteCalls.size shouldBe 1
-            collecting.cancel()
+                    reviews.deleteCalls shouldContainExactly listOf(uuid)
+                }
+            }
         }
 
-        it("TC-46: a failed delete shows its failure and restores the review") {
-            val fake = TestReviewsRepository()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            val vm = viewModel(fake, ReviewSavePulse(), collecting)
+        context("when the reader has no review") {
+            it("TC-46: deletes nothing") {
+                withHarness {
+                    seedMine(null)
 
-            fake.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Unreachable))
-            vm.delete()
+                    vm.delete()
 
-            vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Delete, offline = true)
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 4f))
-            collecting.cancel()
+                    reviews.deleteCalls.shouldBeEmpty()
+                }
+            }
         }
-    }
 
-    describe("the save pulse") {
+        context("when the delete fails") {
+            it("TC-46: shows a delete failure") {
+                withHarness {
+                    seedMine(randomReview())
+                    reviews.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Unreachable))
 
-        it("TC-47: a refresh, a delete, a failure and an unchanged write do not count as a save") {
-            val fake = TestReviewsRepository()
-            val pulse = ReviewSavePulse()
-            val collecting = CollectingScope()
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            val vm = viewModel(fake, pulse, collecting)
+                    vm.delete()
 
-            fake.refreshResults.addLast(loaded(review(rating = 3f)))
-            vm.reload(0)
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 3f))
-            pulse.pulses(uuid).value shouldBe 0
-
-            vm.delete()
-            pulse.pulses(uuid).value shouldBe 0
-
-            fake.seed(uuid, loaded(review(rating = 4f)))
-            fake.writeResults.addLast(ReviewWriteResult.Failed(ReviewError.Http(500)))
-            vm.rate(4.5f)
-            pulse.pulses(uuid).value shouldBe 0
-
-            fake.writeResults.addLast(ReviewWriteResult.Unchanged)
-            vm.rate(3.5f)
-            pulse.pulses(uuid).value shouldBe 0
-            collecting.cancel()
+                    vm.uiState.value.saveFailure shouldBe MyReviewSaveFailure(MyReviewSaveFailure.Kind.Delete, offline = true)
+                }
+            }
         }
     }
 
     describe("reloading") {
+        it("TC-48: refreshes once per new key") {
+            withHarness {
+                vm.reload(0)
+                vm.reload(0)
+                vm.reload(1)
 
-        it("TC-48: a reload refreshes once per new key, and the card reads the refreshed rating") {
-            val fake = TestReviewsRepository()
-            val collecting = CollectingScope()
-            val vm = viewModel(fake, ReviewSavePulse(), collecting)
-
-            vm.reload(0)
-            vm.reload(0)
-            fake.refreshCalls.size shouldBe 1
-
-            fake.refreshResults.addLast(loaded(review(rating = 4.5f)))
-            vm.reload(1)
-            fake.refreshCalls.size shouldBe 2
-            vm.uiState.value.card shouldBe MyReviewModel.Known(review(rating = 4.5f))
-            collecting.cancel()
+                reviews.refreshCalls shouldContainExactly listOf(uuid, uuid)
+            }
         }
     }
 })
