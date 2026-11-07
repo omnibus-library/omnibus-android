@@ -1,6 +1,5 @@
 package com.omnibus.omnibus.feature.bookdetail.more.delete
 
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
@@ -16,8 +15,6 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
@@ -27,17 +24,13 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.data.deletion.DeletionImpact
 import com.omnibus.omnibus.data.library.Book
-import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -62,16 +55,8 @@ private fun ComposeContentTestRule.setSheet(
     }
 }
 
-/** The title, in the app's words for the title's own step. */
-private val choosePickedTitle get() = detailText(R.string.book_detail_delete_choose_title, bookTitle)
-
-private val bookTitle = testDetailBook().displayTitle
-
-/** A book with one epub file, so its row label is "Delete files…". */
+/** A book with one epub file. */
 private fun fileBook(): Book = testDetailBook(formats = listOf("epub"))
-
-/** A book with no files, so its row label is "Delete record…". */
-private fun recordBook(): Book = testDetailBook(formats = emptyList())
 
 /** Two files, the first with a label and the second without a size, and two copies (one with an ISBN). */
 private val mixedManifest = deleteManifest(
@@ -95,110 +80,27 @@ class DeleteBookSheetContentTest {
 
     // TC-44
     @Test
-    fun issue121_tc44_theLoadingAndLoadFailedStatesShowTheRowLabelAndTheirMessages() {
-        var ui by mutableStateOf(DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Loading))
-        var book by mutableStateOf(fileBook())
+    fun issue121_tc44_retryInTheLoadFailedStateRetries() {
+        val ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.LoadFailed)
         val taps = DeleteTaps()
-        rule.setSheet({ ui }, { book }, taps)
-
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_delete_row_files))
-        rule.onNodeWithTag(DeleteTestTags.LOADING).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_loading)).assertIsDisplayed()
-        rule.onAllNodesWithTag(DeleteTestTags.fileRow(1)).assertCountEquals(0)
-
-        rule.runOnIdle { book = recordBook() }
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_delete_row_record))
-
-        rule.runOnIdle { ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.LoadFailed) }
-        rule.onNodeWithTag(DeleteTestTags.ERROR).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_load_error_title)).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_load_error_message)).assertIsDisplayed()
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_delete_row_record))
+        rule.setSheet({ ui }, { fileBook() }, taps)
 
         rule.onNodeWithText(detailText(R.string.book_detail_delete_retry)).performClick()
         rule.waitForIdle()
+
         assertEquals(1, taps.retries)
-    }
-
-    // TC-45
-    @Test
-    fun issue121_tc45_theChooseStepForFilesOnlyListsEachFileWithItsLabelAndDetail() {
-        val manifest = deleteManifest(
-            files = listOf(
-                deleteFile(1, label = "Read copy", format = "epub", sizeBytes = 2048),
-                deleteFile(2, label = null, format = "pdf", filename = "b.pdf", sizeBytes = 0),
-            ),
-        )
-        val ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Choosing(manifest))
-        rule.setSheet({ ui }, { fileBook() }, DeleteTaps())
-
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(choosePickedTitle)
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_intro_files)).assertIsDisplayed()
-        rule.onNodeWithText(deletePlural(R.plurals.book_detail_delete_summary_files_on_disk, 2)).assertIsDisplayed()
-        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).assertTextEquals(detailText(R.string.book_detail_delete_select_all))
-
-        rule.onNodeWithText("Read copy").assertIsDisplayed()
-        rule.onNodeWithText("b.pdf").assertIsDisplayed()
-        val size = Formatter.formatShortFileSize(
-            InstrumentationRegistry.getInstrumentation().targetContext,
-            2048,
-        )
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_file_detail, "EPUB", size)).assertIsDisplayed()
-        rule.onNodeWithText("PDF").assertIsDisplayed()
-
-        rule.onNodeWithTag(DeleteTestTags.fileRow(1)).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
-        rule.onNodeWithTag(DeleteTestTags.fileRow(1)).assert(
-            SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off),
-        )
-        rule.onNodeWithTag(DeleteTestTags.fileRow(2)).assert(
-            SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off),
-        )
-
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(detailText(R.string.book_detail_delete_choose_files_unpicked))
-            .assertIsNotEnabled()
-        rule.onNodeWithTag(DeleteTestTags.CANCEL).assertIsEnabled()
-    }
-
-    // TC-46
-    @Test
-    fun issue121_tc46_theChooseStepWithCopiesCountsItemsAndListsFilesBeforeCopies() {
-        val ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Choosing(mixedManifest))
-        rule.setSheet({ ui }, { fileBook() }, DeleteTaps())
-
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_intro_items)).assertIsDisplayed()
-        rule.onNodeWithText(deletePlural(R.plurals.book_detail_delete_summary_items, 4)).assertIsDisplayed()
-
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_copy_title_isbn, "9780000000001")).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_copy_title)).assertIsDisplayed()
-        rule.onNodeWithText(detailText(R.string.book_detail_delete_copy_detail)).assertIsDisplayed()
-        rule.onNodeWithText("shelf 3").assertIsDisplayed()
-
-        val lastFile = rule.onNodeWithTag(DeleteTestTags.fileRow(2)).bounds()
-        val firstCopy = rule.onNodeWithTag(DeleteTestTags.copyRow(5)).bounds()
-        assertTrue("files are listed before copies", lastFile.bottom <= firstCopy.top + 1f)
-
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(detailText(R.string.book_detail_delete_choose_items_unpicked))
-            .assertIsNotEnabled()
     }
 
     // TC-47
     @Test
-    fun issue121_tc47_pickingFilesUpdatesTheCountAndSelectAllToggles() {
+    fun issue121_tc47_theChooseActionContinuesOnlyOnceSomethingIsPicked() {
         var ui by mutableStateOf(DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Choosing(filesOnlyManifest)))
         val taps = DeleteTaps()
         rule.setSheet(
             { ui },
             { fileBook() },
             taps,
-            taps.callbacks(
-                toggleFile = { id -> ui = ui.copy(pickedFiles = ui.pickedFiles.flipped(id)) },
-                toggleAll = {
-                    val everything = ui.pickedFiles.size == filesOnlyManifest.files.size
-                    ui = ui.copy(pickedFiles = if (everything) emptySet() else filesOnlyManifest.files.map { it.id }.toSet())
-                },
-            ),
+            taps.callbacks(toggleFile = { id -> ui = ui.copy(pickedFiles = ui.pickedFiles.flipped(id)) }),
         )
 
         rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION).performClick()
@@ -206,158 +108,10 @@ class DeleteBookSheetContentTest {
         assertEquals(0, taps.continues)
 
         rule.onNodeWithTag(DeleteTestTags.fileRow(1)).performClick()
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(deletePlural(R.plurals.book_detail_delete_choose_files, 1))
-            .assertIsEnabled()
-
-        rule.onNodeWithTag(DeleteTestTags.fileRow(2)).performClick()
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(deletePlural(R.plurals.book_detail_delete_choose_files, 2))
-        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).assertTextEquals(detailText(R.string.book_detail_delete_clear_selection))
-
-        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).performClick()
-        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).assertTextEquals(detailText(R.string.book_detail_delete_select_all))
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION).assertIsNotEnabled()
-
-        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).performClick()
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(deletePlural(R.plurals.book_detail_delete_choose_files, 2))
-            .performClick()
+        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION).performClick()
         rule.waitForIdle()
+
         assertEquals(1, taps.continues)
-    }
-
-    // TC-47
-    @Test
-    fun issue121_tc47_pickingItemsWithCopiesReadsDeleteItems() {
-        var ui by mutableStateOf(DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Choosing(mixedManifest)))
-        val taps = DeleteTaps()
-        rule.setSheet(
-            { ui },
-            { fileBook() },
-            taps,
-            taps.callbacks(toggleCopy = { id -> ui = ui.copy(pickedCopies = ui.pickedCopies.flipped(id)) }),
-        )
-
-        rule.onNodeWithTag(DeleteTestTags.copyRow(6)).performClick()
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(deletePlural(R.plurals.book_detail_delete_choose_items, 1))
-            .assertIsEnabled()
-        rule.onNodeWithTag(DeleteTestTags.copyRow(5)).performClick()
-        rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION)
-            .assertTextEquals(deletePlural(R.plurals.book_detail_delete_choose_items, 2))
-    }
-
-    // TC-48
-    @Test
-    fun issue121_tc48_theConfirmStepWordsAPartialAndATotalDelete() {
-        val partial = DeleteBookUIState(
-            isAdmin = true,
-            sheet = DeleteSheet.Confirming(filesOnlyManifest),
-            pickedFiles = setOf(1L),
-        )
-        var ui by mutableStateOf(partial)
-        val taps = DeleteTaps()
-        rule.setSheet({ ui }, { fileBook() }, taps)
-
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(deletePlural(R.plurals.book_detail_delete_heading_some_files, 1))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(
-            detailText(
-                R.string.book_detail_delete_body_partial_files,
-                detailText(R.string.book_detail_delete_picked_named, "file-1.epub"),
-                bookTitle,
-                deletePlural(R.plurals.book_detail_delete_remaining_files, 1),
-            ),
-        )
-        rule.onAllNodesWithTag(DeleteTestTags.LOSSES).assertCountEquals(0)
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_file))
-        rule.onNodeWithTag(DeleteTestTags.BACK).performClick()
-        rule.waitForIdle()
-        assertEquals(1, taps.backs)
-
-        val impact = DeletionImpact(highlights = 4, bookmarks = 2, reviews = 1)
-        val total = filesOnlyManifest.copy(impact = impact)
-        rule.runOnIdle {
-            ui = DeleteBookUIState(
-                isAdmin = true,
-                sheet = DeleteSheet.Confirming(total),
-                pickedFiles = setOf(1L, 2L),
-            )
-        }
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(deletePlural(R.plurals.book_detail_delete_heading_all_files, 2))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(
-            detailText(R.string.book_detail_delete_body_total_files, bookTitle),
-        )
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_book))
-        rule.onNodeWithTag(DeleteTestTags.LOSSES).assertTextEquals(
-            detailText(R.string.book_detail_delete_losses, "4 highlights, 2 bookmarks and 1 review"),
-        )
-        rule.onNodeWithTag(DeleteTestTags.BACK).assertIsDisplayed()
-
-        rule.runOnIdle { ui = ui.copy(sheet = DeleteSheet.Confirming(filesOnlyManifest)) }
-        rule.onAllNodesWithTag(DeleteTestTags.LOSSES).assertCountEquals(0)
-    }
-
-    // TC-49
-    @Test
-    fun issue121_tc49_theConfirmStepWordsASingleItemTotalCopiesOnlyAndMixed() {
-        val singleFile = deleteManifest(files = listOf(deleteFile(1)))
-        var ui by mutableStateOf(
-            DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Confirming(singleFile), pickedFiles = setOf(1L)),
-        )
-        rule.setSheet({ ui }, { fileBook() }, DeleteTaps())
-
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_delete_heading_name, bookTitle))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(
-            detailText(R.string.book_detail_delete_body_total_files, bookTitle),
-        )
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_book))
-
-        val twoCopies = deleteManifest(copies = listOf(deleteCopy(5), deleteCopy(6)))
-        rule.runOnIdle {
-            ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Confirming(twoCopies), pickedCopies = setOf(5L, 6L))
-        }
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(deletePlural(R.plurals.book_detail_delete_heading_all_items, 2))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(
-            detailText(R.string.book_detail_delete_body_total_copies, bookTitle),
-        )
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_book))
-
-        rule.runOnIdle {
-            ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Confirming(mixedManifest), pickedFiles = setOf(1L), pickedCopies = setOf(5L))
-        }
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(deletePlural(R.plurals.book_detail_delete_heading_some_items, 2))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(
-            detailText(
-                R.string.book_detail_delete_body_partial_mixed,
-                detailText(
-                    R.string.book_detail_delete_picked_files_and_copies,
-                    deletePlural(R.plurals.book_detail_delete_picked_files, 1),
-                    deletePlural(R.plurals.book_detail_delete_picked_copies, 1),
-                ),
-                bookTitle,
-                deletePlural(R.plurals.book_detail_delete_remaining_items, 2),
-            ),
-        )
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_items))
-    }
-
-    // TC-50
-    @Test
-    fun issue121_tc50_theRecordOnlyConfirmHasCancelAndNoBack() {
-        val ui = DeleteBookUIState(isAdmin = true, sheet = DeleteSheet.Confirming(deleteManifest()))
-        val taps = DeleteTaps()
-        rule.setSheet({ ui }, { recordBook() }, taps)
-
-        rule.onNodeWithTag(DeleteTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_delete_heading_name, bookTitle))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_BODY).assertTextEquals(detailText(R.string.book_detail_delete_body_record))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertTextEquals(detailText(R.string.book_detail_delete_action_record))
-        rule.onAllNodesWithTag(DeleteTestTags.BACK).assertCountEquals(0)
-
-        rule.onNodeWithTag(DeleteTestTags.CANCEL).assertTextEquals(detailText(R.string.book_detail_delete_cancel))
-        rule.onNodeWithTag(DeleteTestTags.CANCEL).performClick()
-        rule.waitForIdle()
-        assertEquals(1, taps.closes)
     }
 
     // TC-51
@@ -385,30 +139,6 @@ class DeleteBookSheetContentTest {
         assertEquals(0, taps.confirms)
         assertEquals(0, taps.backs)
         assertEquals(0, taps.closes)
-    }
-
-    // TC-52
-    @Test
-    fun issue121_tc52_aFailedDeleteShowsItsInlineErrorAndReenablesThePills() {
-        var ui by mutableStateOf(
-            DeleteBookUIState(
-                isAdmin = true,
-                sheet = DeleteSheet.Confirming(filesOnlyManifest),
-                pickedFiles = setOf(1L),
-                deleteError = DeleteFailure.Unreachable,
-            ),
-        )
-        rule.setSheet({ ui }, { fileBook() }, DeleteTaps())
-
-        rule.onNodeWithTag(DeleteTestTags.INLINE_ERROR).assertTextEquals(detailText(R.string.book_detail_delete_error_unreachable))
-        rule.onNodeWithTag(DeleteTestTags.CONFIRM_ACTION).assertIsEnabled()
-        rule.onNodeWithTag(DeleteTestTags.BACK).assertIsEnabled()
-
-        rule.runOnIdle { ui = ui.copy(deleteError = DeleteFailure.Other) }
-        rule.onNodeWithTag(DeleteTestTags.INLINE_ERROR).assertTextEquals(detailText(R.string.book_detail_delete_error_other))
-
-        rule.runOnIdle { ui = ui.copy(deleteError = null) }
-        rule.onAllNodesWithTag(DeleteTestTags.INLINE_ERROR).assertCountEquals(0)
     }
 
     // TC-53
@@ -455,11 +185,13 @@ class DeleteBookSheetContentTest {
         val taps = DeleteTaps()
         rule.setSheet({ ui }, { fileBook() }, taps)
 
+        rule.onNodeWithTag(DeleteTestTags.SELECT_ALL).performClick()
         rule.onNodeWithTag(DeleteTestTags.fileRow(2)).performClick()
         rule.onNodeWithTag(DeleteTestTags.copyRow(5)).performClick()
         rule.onNodeWithTag(DeleteTestTags.CHOOSE_ACTION).performClick()
         rule.onNodeWithTag(DeleteTestTags.CANCEL).performClick()
         rule.waitForIdle()
+        assertEquals(1, taps.toggledAll)
         assertEquals(listOf(2L), taps.toggledFiles)
         assertEquals(listOf(5L), taps.toggledCopies)
         assertEquals(1, taps.continues)

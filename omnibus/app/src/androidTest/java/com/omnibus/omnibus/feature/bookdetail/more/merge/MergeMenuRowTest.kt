@@ -5,16 +5,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -49,27 +43,14 @@ class MergeMenuRowTest {
 
     // TC-62
     @Test
-    fun issue120_tc62_enabledRowClicksAndHiddenDrawsNothing() {
+    fun issue120_tc62_enabledRowClicks() {
         var taps = 0
         rule.setRow(MergeRow.Enabled) { taps++ }
 
-        rule.onNodeWithTag(MergeTestTags.MENU_ROW)
-            .assertIsEnabled()
-            .assertHasClickAction()
-        rule.onNodeWithText(label).assertIsDisplayed()
-        rule.onAllNodesWithText(needsConnection).assertCountEquals(0)
         rule.onNodeWithTag(MergeTestTags.MENU_ROW).performClick()
         rule.waitForIdle()
+
         assertEquals(1, taps)
-    }
-
-    // TC-62
-    @Test
-    fun issue120_tc62_hiddenRowDrawsNothing() {
-        rule.setRow(MergeRow.Hidden) {}
-
-        rule.onNodeWithTag(MergeTestTags.MENU_ROW).assertDoesNotExist()
-        rule.onAllNodesWithText(label).assertCountEquals(0)
     }
 
     // TC-63

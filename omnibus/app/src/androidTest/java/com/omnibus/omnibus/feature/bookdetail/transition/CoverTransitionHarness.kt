@@ -5,13 +5,10 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.ComposeTestRule
@@ -55,12 +51,6 @@ internal data object HarnessLibrary : NavKey
 /** A Book Detail entry in the harness, for one book. */
 @Serializable
 internal data class HarnessDetail(val uuid: String) : NavKey
-
-/** Test tag of the host [SharedTransitionLayout], which is the shell's slot for the `NavDisplay`. */
-internal const val HARNESS_HOST = "cover-transition-host"
-
-/** Test tag of the stand-in tab bar, placed below the host as the shell does. */
-internal const val HARNESS_TAB_BAR = "cover-transition-tab-bar"
 
 /**
  * A `SharedTransitionLayout` hosting a `NavDisplay` with the shell's fade specs, a Library entry that renders the real
@@ -113,11 +103,11 @@ internal class CoverTransitionHarness(
     fun bookFor(uuid: String): Book = allBooks.firstOrNull { it.uuid == uuid } ?: testDetailBook()
 
     @Composable
-    fun Content(withTabBar: Boolean = false) {
+    fun Content() {
         state = if (restorable) rememberBookCoverTransitionState() else remember { BookCoverTransitionState() }
         OmnibusTheme(darkTheme = true) {
             Column(Modifier.fillMaxSize()) {
-                SharedTransitionLayout(Modifier.weight(1f).testTag(HARNESS_HOST)) {
+                SharedTransitionLayout(Modifier.weight(1f)) {
                     sharedScope = this
                     ProvideBookCoverTransition(this, reducedMotion = reducedMotion, state = state) {
                         NavDisplay(
@@ -165,7 +155,6 @@ internal class CoverTransitionHarness(
                         )
                     }
                 }
-                if (withTabBar) Box(Modifier.fillMaxWidth().fillMaxHeight(0.08f).testTag(HARNESS_TAB_BAR))
             }
         }
     }

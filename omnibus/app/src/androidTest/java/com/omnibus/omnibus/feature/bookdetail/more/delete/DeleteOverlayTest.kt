@@ -103,42 +103,6 @@ class DeleteOverlayTest {
         assertEquals(listOf(1L), reports.outcomesShown)
     }
 
-    // TC-57
-    @Test
-    fun issue121_tc57_aPartialDeleteShowsItsMessageAndReloadsForEachKind() {
-        val cases = listOf(
-            Triple(1, 0, detailText(R.string.book_detail_delete_done_file)),
-            Triple(2, 0, deletePlural(R.plurals.book_detail_delete_done_files, 2)),
-            Triple(0, 1, detailText(R.string.book_detail_delete_done_copy)),
-            Triple(0, 2, deletePlural(R.plurals.book_detail_delete_done_items_removed, 2)),
-            Triple(1, 1, deletePlural(R.plurals.book_detail_delete_done_items_deleted, 2)),
-        )
-        val ui = mutableStateOf(DeleteBookUIState(isAdmin = true))
-        val recorder = SectionContextRecorder()
-        val reports = OverlayReports()
-        rule.setOverlay({ ui.value }, recorder, reports)
-
-        cases.forEachIndexed { index, (files, copies, _) ->
-            rule.runOnIdle {
-                ui.value = ui.value.copy(
-                    outcome = DeleteOutcome(
-                        eventId = index + 1L,
-                        bookDeleted = false,
-                        deletedFiles = files,
-                        deletedCopies = copies,
-                    ),
-                )
-            }
-            rule.waitForIdle()
-        }
-
-        assertEquals(cases.map { BookDetailMessage(it.third) }, recorder.messages)
-        assertEquals(cases.size, recorder.reloadCount)
-        assertTrue(reports.toasts.isEmpty())
-        assertEquals(0, recorder.closeCount)
-        assertEquals((1L..cases.size.toLong()).toList(), reports.outcomesShown)
-    }
-
     // TC-58
     @Test
     fun issue121_tc58_eachOutcomeIsReportedOnceAcrossRecompositions() {

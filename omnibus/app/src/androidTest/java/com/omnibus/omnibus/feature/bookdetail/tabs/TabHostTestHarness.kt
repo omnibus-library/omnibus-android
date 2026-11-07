@@ -1,8 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.tabs
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,48 +21,41 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
-import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
 import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.feature.bookdetail.testSectionContext
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
-/** The controller and context a [TabHostUnderTest] exposes to its test. */
+/** The context a [TabHostUnderTest] exposes to its test. */
 internal class TabHostHandle {
-    lateinit var state: BookDetailTabState
-    lateinit var scroll: ScrollState
     lateinit var context: BookDetailSectionContext
 }
 
 /**
  * The tab host alone, on a plain scroll column, with a pin at the top of the window (pinTop 0). Tests use it through
- * [setTabHost] or a [androidx.compose.ui.test.junit4.StateRestorationTester].
+ * [setTabHost].
  */
 @Composable
 internal fun TabHostUnderTest(
     handle: TabHostHandle,
     slots: BookDetailSlots,
     reducedMotion: Boolean,
-    book: Book,
-    accent: BookAccent?,
 ) {
     val scroll = rememberScrollState()
     val state = rememberBookDetailTabController(scroll, reducedMotion)
-    val context = remember(state, book, accent) {
+    val context = remember(state) {
+        val book = testDetailBook()
         testSectionContext(
             book = book,
             tabs = state,
-            accent = accent ?: bookAccent(book.coverIdentity().tone, lightGround = false),
+            accent = bookAccent(book.coverIdentity().tone, lightGround = false),
         )
     }
-    handle.state = state
-    handle.scroll = scroll
     handle.context = context
     Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
         // Puts the strip below the pin, so it rests unpinned with its ribbon out.
@@ -85,13 +76,11 @@ internal fun TabHostUnderTest(
 internal fun ComposeContentTestRule.setTabHost(
     slots: BookDetailSlots = BookDetailSlots(),
     reducedMotion: Boolean = true,
-    book: Book = testDetailBook(),
-    accent: BookAccent? = null,
 ): TabHostHandle {
     val handle = TabHostHandle()
     setContent {
         OmnibusTheme(darkTheme = true) {
-            TabHostUnderTest(handle, slots, reducedMotion, book, accent)
+            TabHostUnderTest(handle, slots, reducedMotion)
         }
     }
     waitForIdle()
@@ -111,9 +100,6 @@ fun tallFakeSection(tag: String, color: Color = Color.Unspecified): BookDetailSe
 fun ComposeContentTestRule.tabNode(tab: BookDetailTab): SemanticsNodeInteraction =
     onNodeWithTag(BookDetailTabsTestTags.tab(tab))
 
-fun ComposeContentTestRule.labelNode(tab: BookDetailTab): SemanticsNodeInteraction =
-    onNodeWithTag(BookDetailTabsTestTags.tabLabel(tab), useUnmergedTree = true)
-
 fun ComposeContentTestRule.ribbonNode(): SemanticsNodeInteraction =
     onNodeWithTag(BookDetailTabsTestTags.RIBBON, useUnmergedTree = true)
 
@@ -128,7 +114,3 @@ fun ComposeContentTestRule.tapTab(tab: BookDetailTab) {
     waitForIdle()
 }
 
-/** A section with a text button that runs [onTap] when clicked. */
-fun buttonSection(tag: String, onTap: (BookDetailSectionContext) -> Unit): BookDetailSection = BookDetailSection { ctx, modifier ->
-    Text(text = tag, modifier = modifier.testTag(tag).clickable { onTap(ctx) })
-}

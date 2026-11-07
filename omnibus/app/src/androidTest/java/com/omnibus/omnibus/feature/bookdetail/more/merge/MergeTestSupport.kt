@@ -1,7 +1,5 @@
 package com.omnibus.omnibus.feature.bookdetail.more.merge
 
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.testDetailBook
@@ -31,6 +29,3 @@ internal fun mergeBook(
     publishedDate = year,
 ).copy(seriesId = seriesId)
 
-/** The texts of the node, one per `Text` child in the merged tree. */
-internal fun SemanticsNodeInteraction.texts(): List<String> =
-    runCatching { fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text } }.getOrDefault(emptyList())

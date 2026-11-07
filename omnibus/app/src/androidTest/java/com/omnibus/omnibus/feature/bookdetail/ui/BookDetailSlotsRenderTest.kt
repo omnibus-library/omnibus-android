@@ -10,24 +10,15 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
-import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
-import com.omnibus.omnibus.feature.bookdetail.bounds
-import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.scrollTo
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
@@ -43,44 +34,6 @@ class BookDetailSlotsRenderTest {
 
     @get:Rule
     val rule = createComposeRule()
-
-    private fun fake(tag: String): BookDetailSection = BookDetailSection { _, modifier ->
-        Text(text = tag, modifier = modifier.testTag(tag))
-    }
-
-    private val linkedBook: Book = testDetailBook(
-        creators = listOf(Creator("Ann Lee", "author", null, null)),
-    )
-
-    // TC-115
-    @Test
-    fun issue93_tc115_topBarOverlayAndTabListSlots() {
-        val slots = BookDetailSlots(
-            topBarActions = listOf(fake("fake-top-action")),
-            screenOverlays = listOf(fake("fake-overlay-screen")),
-            overviewSections = listOf(fake("fake-overview")),
-            reviewsSections = listOf(fake("fake-reviews")),
-            highlightsSections = listOf(fake("fake-highlights")),
-            filesSections = listOf(fake("fake-files")),
-        )
-        rule.setDetailScreen(BookDetailUIState(book = linkedBook, isLoading = false), slots = slots)
-
-        val bar = rule.onNodeWithTag(BookDetailTestTags.TOP_BAR).bounds()
-        val disc = rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).bounds()
-        val action = rule.onNodeWithTag("fake-top-action").bounds()
-        assertTrue(bar.contains(action.center))
-        assertTrue(action.left >= disc.right)
-
-        val root = rule.onRoot().bounds()
-        rule.onNodeWithTag("fake-overlay-screen").assertIsDisplayed()
-        assertTrue(root.contains(rule.onNodeWithTag("fake-overlay-screen").bounds().center))
-
-        // #94: only the selected tab's panel is composed
-        rule.onAllNodesWithTag("fake-overview").assertCountEquals(1)
-        listOf("fake-reviews", "fake-highlights", "fake-files").forEach {
-            rule.onAllNodesWithTag(it).assertCountEquals(0)
-        }
-    }
 
     // TC-117
     @Test

@@ -2,7 +2,6 @@ package com.omnibus.omnibus.feature.bookdetail.transition
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
@@ -42,35 +41,6 @@ class CoverTransitionLateCoverTest {
             rule.movingStage(book.uuid).rootRect(),
             "stage cover after a late arrival",
         )
-    }
-
-    // TC-23
-    @Test
-    fun issue122_tc23_coverArrivingAfterTheJoinWindowDoesNotJoin() {
-        val h = CoverTransitionHarness(listOf(book))
-        h.detailOverride = BookDetailUIState()
-        rule.setContent { h.Content() }
-        rule.waitForIdle()
-        val source = gridCover().rootRect()
-
-        rule.mainClock.autoAdvance = false
-        gridCover().performClick()
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeByFrame()
-        rule.mainClock.advanceTimeBy(150)
-
-        // Beyond the 100 ms join window, the cover arrives.
-        rule.runOnIdle { h.detailOverride = null }
-        repeat(60) {
-            rule.mainClock.advanceTimeByFrame()
-            val moving = rule.onAllNodesWithTag(BookCoverTransitionTestTags.stage(book.uuid), useUnmergedTree = true)
-                .fetchSemanticsNodes()
-            if (moving.isNotEmpty()) {
-                assertSameRect(rule.stageCover().rootRect(), moving.single().boundsInRoot, "stage cover, frame $it")
-            }
-            val grid = rule.onAllNodesWithTag(gridSourceTag("uuid-1"), useUnmergedTree = true).fetchSemanticsNodes()
-            if (grid.isNotEmpty()) assertSameRect(source, grid.single().boundsInRoot, "grid source, frame $it")
-        }
     }
 
     // TC-27

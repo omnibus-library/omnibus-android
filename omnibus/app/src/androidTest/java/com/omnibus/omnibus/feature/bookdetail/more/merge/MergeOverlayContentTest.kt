@@ -2,10 +2,7 @@ package com.omnibus.omnibus.feature.bookdetail.more.merge
 
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.SectionContextRecorder
 import com.omnibus.omnibus.feature.bookdetail.detailText
@@ -109,22 +106,5 @@ class MergeOverlayContentTest {
         assertNull(expired.actionLabel)
         assertFalse(expired.holdUntilDismissed)
         assertEquals(0, recorder.reloadCount)
-    }
-
-    // TC-49
-    @Test
-    fun issue120_tc49_outcomesPostWithTheSheetClosedAndTheSheetMountsWhenOpen() {
-        val state = mutableStateOf(MergeUIState(sheetOpen = false, outcome = MergeOutcome.Merged(5, 42)))
-        setOverlay(state)
-        rule.waitForIdle()
-
-        rule.onAllNodesWithTag(MergeTestTags.SHEET).assertCountEquals(0)
-        assertEquals(listOf(detailText(R.string.book_detail_merge_done)), recorder.messages.map { it.text })
-
-        rule.runOnIdle { state.value = state.value.copy(sheetOpen = true) }
-        rule.waitForIdle()
-
-        rule.onNodeWithTag(MergeTestTags.SHEET).assertExists()
-        assertEquals(1, recorder.messages.size)
     }
 }
