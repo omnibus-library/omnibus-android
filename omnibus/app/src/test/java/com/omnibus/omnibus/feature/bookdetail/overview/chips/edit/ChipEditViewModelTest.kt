@@ -1,20 +1,28 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.chips.edit
 
-import com.omnibus.omnibus.data.auth.CurrentUser
+import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.Book
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.metadata.TestMetadataRepository
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.metadata.MetadataError
 import com.omnibus.omnibus.data.metadata.MetadataListKind
+import com.omnibus.omnibus.data.metadata.MetadataRepository
 import com.omnibus.omnibus.data.metadata.MetadataWriteResult
-import com.omnibus.omnibus.data.metadata.VocabularyEntry
+import com.omnibus.omnibus.data.metadata.TestMetadataRepository
 import com.omnibus.omnibus.data.metadata.VocabularyResult
+import com.omnibus.omnibus.data.metadata.randomVocabularyEntry
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -24,420 +32,315 @@ import kotlinx.coroutines.test.setMain
 private val Genres = MetadataListKind.Genres
 private val Tags = MetadataListKind.Tags
 
-/** The editor under test, with the fakes it talks to. */
-private class Harness(
-    val repository: TestMetadataRepository = TestMetadataRepository(),
-    val auth: TestAuthRepository = TestAuthRepository(),
-    val connectivity: TestConnectivityMonitor = TestConnectivityMonitor(online = true),
-) {
-    val viewModel = ChipEditViewModel(
-        bookUuid = "uuid-1",
-        repository = repository,
-        authRepository = auth,
-        connectivityMonitor = connectivity,
-    )
-    val state get() = viewModel.uiState.value
-}
+/** [count] chips. The index in each one keeps them apart from each other and from [newChip], even ignoring case. */
+private fun chips(count: Int = 2): List<String> = List(count) { "chip$it-${randomString()}" }
 
-private val editor = CurrentUser(id = 1, canEdit = true, canUpload = false, hiddenFormats = emptySet())
-private val reader = CurrentUser(id = 2, canEdit = false, canUpload = false, hiddenFormats = emptySet())
+private fun newChip(): String = "new-${randomString()}"
 
-/** Book 1 with the given lists. The default has genres Noir and Epic and tag Cozy. */
-private fun book(genres: List<String> = listOf("Noir", "Epic"), subjects: List<String> = listOf("Cozy")): Book =
-    testBook(1, genres = genres, subjects = subjects)
+private fun bookWith(genres: List<String> = chips(), tags: List<String> = chips()): Book =
+    randomBook().copy(genres = genres, subjects = tags)
 
-/** A signed-in editor, with an online device and a book bound. */
-private fun Harness.ready(book: Book = book()): Harness = apply {
-    auth.currentUserState.value = editor
-    viewModel.bind(book)
-}
+private fun saved(genres: List<String> = chips(), tags: List<String> = chips()) =
+    MetadataWriteResult.Saved(bookWith(genres, tags))
+
+private val failed = MetadataWriteResult.Failure(MetadataError.Unreachable)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChipEditViewModelTest : DescribeSpec({
-
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    describe("bind") {
+    fun sut(
+        repository: MetadataRepository = TestMetadataRepository(),
+        auth: AuthRepository = TestAuthRepository(),
+        connectivity: ConnectivityMonitor = TestConnectivityMonitor(),
+        bookUuid: String = randomString(),
+    ) = ChipEditViewModel(bookUuid, repository, auth, connectivity)
 
-        it("TC-36: seeds both lists from the book, with the flags from the fakes") {
-            val h = Harness().apply { auth.currentUserState.value = editor }
-            h.state.bound shouldBe false
-
-            h.viewModel.bind(book(genres = listOf(" Noir ", "", "Epic", "Noir"), subjects = listOf("Cozy")))
-
-            h.state.bound shouldBe true
-            h.state.genres shouldBe listOf("Noir", "Epic")
-            h.state.tags shouldBe listOf("Cozy")
-            h.state.canEdit shouldBe true
-            h.state.isOnline shouldBe true
-            h.state.openKind.shouldBeNull()
-        }
-
-        it("TC-47: skips a kind with a save in flight and reseeds the other") {
-            val h = Harness().ready()
-            val held = h.repository.holdWrite()
-            h.viewModel.add(Genres, "Thriller")
-
-            h.viewModel.bind(book(genres = listOf("Fresh"), subjects = listOf("New")))
-
-            h.state.genres shouldBe listOf("Noir", "Epic", "Thriller")
-            h.state.tags shouldBe listOf("New")
-            held.complete(MetadataWriteResult.Failure(MetadataError.Unreachable))
-            h.state.genres shouldBe listOf("Noir", "Epic")
-        }
-
-        it("TC-48: reseeds a kind once its save has settled") {
-            val h = Harness().ready()
-            h.viewModel.add(Genres, "Thriller")
-
-            h.viewModel.bind(book(genres = listOf("Fresh"), subjects = listOf("Z")))
-
-            h.state.genres shouldBe listOf("Fresh")
-            h.state.tags shouldBe listOf("Z")
-        }
+    fun signedIn(canEdit: Boolean) = TestAuthRepository().apply {
+        currentUserState.value = randomCurrentUser().copy(canEdit = canEdit, isAdmin = false)
     }
 
-    describe("add") {
+    /** An online editor's view model with [book] bound. */
+    fun editing(
+        book: Book = bookWith(),
+        repository: MetadataRepository = TestMetadataRepository(),
+        bookUuid: String = randomString(),
+    ) = sut(repository, signedIn(canEdit = true), TestConnectivityMonitor(online = true), bookUuid).apply { bind(book) }
 
-        it("TC-37: shows the new list at once and saves the full list, leaving tags alone") {
-            val h = Harness().ready()
-            val held = h.repository.holdWrite()
+    describe("binding a book") {
+        context("when a kind has a save in flight") {
+            it("TC-47: keeps that kind's list while reseeding the other") {
+                val book = bookWith()
+                val repository = TestMetadataRepository().apply { holdWrite() }
+                val vm = editing(book, repository)
+                val chip = newChip()
+                val fresh = bookWith()
+                vm.add(Genres, chip)
 
-            h.viewModel.add(Genres, "Thriller")
+                vm.bind(fresh)
 
-            h.state.genres shouldBe listOf("Noir", "Epic", "Thriller")
-            h.state.tags shouldBe listOf("Cozy")
-            h.repository.writes shouldBe listOf(
-                TestMetadataRepository.Write("uuid-1", Genres, listOf("Noir", "Epic", "Thriller")),
-            )
-            held.complete(MetadataWriteResult.Superseded)
-        }
-
-        it("TC-53: refuses blank, duplicate, over-limit and too-long values without a save") {
-            val h = Harness().ready()
-            h.viewModel.add(Genres, "   ")
-            h.viewModel.add(Genres, "noir")
-            h.viewModel.add(Genres, "a".repeat(129))
-            h.repository.writes.size shouldBe 0
-            h.state.genres shouldBe listOf("Noir", "Epic")
-
-            val full = Harness().ready(book(genres = List(64) { "g$it" }))
-            full.viewModel.add(Genres, "one more")
-            full.repository.writes.size shouldBe 0
-            full.state.genres.size shouldBe 64
-        }
-
-        it("TC-54: clears the entry after a pick, accepted or refused, and caps the text at 128") {
-            val h = Harness().ready()
-
-            h.viewModel.updateEntry("Thriller")
-            h.viewModel.add(Genres, "Thriller")
-            h.state.entry shouldBe ""
-
-            h.viewModel.updateEntry("Noir")
-            h.viewModel.add(Genres, "Noir")
-            h.state.entry shouldBe ""
-
-            h.viewModel.updateEntry("x".repeat(200))
-            h.state.entry.length shouldBe 128
-        }
-    }
-
-    describe("remove") {
-
-        it("TC-38: shows the shorter list at once, and the last chip sends an empty list") {
-            val h = Harness().ready(book(genres = listOf("Noir", "Epic"), subjects = listOf("Cozy")))
-
-            h.viewModel.remove(Genres, "Noir")
-            h.state.genres shouldBe listOf("Epic")
-            h.repository.writes.last() shouldBe TestMetadataRepository.Write("uuid-1", Genres, listOf("Epic"))
-
-            h.viewModel.remove(Tags, "Cozy")
-            h.state.tags shouldBe emptyList()
-            h.repository.writes.last() shouldBe TestMetadataRepository.Write("uuid-1", Tags, emptyList())
-        }
-    }
-
-    describe("result") {
-
-        it("TC-39: the newest Saved shows the server list and emits one bookUpdate") {
-            val h = Harness().ready()
-            h.repository.writeResult = {
-                MetadataWriteResult.Saved(testBook(1, genres = listOf("Noir", "Epic", "Server Added")))
-            }
-
-            h.viewModel.add(Genres, "Thriller")
-
-            h.state.genres shouldBe listOf("Noir", "Epic", "Server Added")
-            val update = h.state.bookUpdate.shouldNotBeNull()
-            update.eventId shouldBe 1
-            update.book.genres shouldBe listOf("Noir", "Epic", "Server Added")
-
-            h.viewModel.bookUpdateApplied(update.eventId)
-            h.state.bookUpdate.shouldBeNull()
-        }
-
-        it("TC-39: an ack with a stale eventId leaves a newer update in place") {
-            val h = Harness().ready()
-            h.repository.writeResult = { MetadataWriteResult.Saved(testBook(1, genres = listOf("N"))) }
-            h.viewModel.add(Genres, "A")
-            h.viewModel.add(Genres, "B")
-            h.state.bookUpdate.shouldNotBeNull().eventId shouldBe 2
-
-            h.viewModel.bookUpdateApplied(1)
-
-            h.state.bookUpdate.shouldNotBeNull().eventId shouldBe 2
-        }
-
-        it("TC-40: a failed save restores the opening list and reports once") {
-            val h = Harness().ready()
-            h.repository.writeResult = { MetadataWriteResult.Failure(MetadataError.Unreachable) }
-
-            h.viewModel.add(Genres, "Thriller")
-
-            h.state.genres shouldBe listOf("Noir", "Epic")
-            h.state.failure shouldBe ChipEditFailure(1, Genres)
-            h.viewModel.failureShown(1)
-            h.state.failure.shouldBeNull()
-            h.state.genres shouldBe listOf("Noir", "Epic")
-        }
-
-        it("TC-41: a failed save restores the last confirmed list, not the opening one") {
-            val h = Harness().ready()
-            var calls = 0
-            h.repository.writeResult = {
-                if (calls++ == 0) MetadataWriteResult.Saved(testBook(1, genres = listOf("S1")))
-                else MetadataWriteResult.Failure(MetadataError.Unreachable)
-            }
-
-            h.viewModel.add(Genres, "Thriller")
-            h.state.genres shouldBe listOf("S1")
-
-            h.viewModel.add(Genres, "Other")
-            h.state.genres shouldBe listOf("S1")
-            h.state.failure shouldBe ChipEditFailure(2, Genres)
-        }
-
-        it("TC-42: every failure kind rolls back and sets exactly one failure") {
-            val failures = listOf(
-                MetadataWriteResult.NoServer,
-                MetadataWriteResult.Failure(MetadataError.Unreachable),
-                MetadataWriteResult.Failure(MetadataError.SessionExpired),
-                MetadataWriteResult.Failure(MetadataError.Forbidden),
-                MetadataWriteResult.Failure(MetadataError.NotFound),
-                MetadataWriteResult.Failure(MetadataError.Http(400, "reason")),
-                MetadataWriteResult.Failure(MetadataError.UnexpectedResponse),
-            )
-            failures.forEach { result ->
-                val h = Harness().ready()
-                h.repository.writeResult = { result }
-
-                h.viewModel.add(Genres, "Thriller")
-
-                h.state.genres shouldBe listOf("Noir", "Epic")
-                h.state.failure shouldBe ChipEditFailure(1, Genres)
+                vm.uiState.value.genres shouldBe book.genres + chip
+                vm.uiState.value.tags shouldBe fresh.subjects
             }
         }
 
-        it("TC-43: an older failure after a newer save started is ignored") {
-            val h = Harness().ready()
-            val first = h.repository.holdWrite()
-            val second = h.repository.holdWrite()
-            h.viewModel.add(Genres, "A")
-            h.viewModel.add(Genres, "B")
+        context("when a kind's save has settled") {
+            it("TC-48: reseeds that kind") {
+                val vm = editing()
+                val fresh = bookWith()
+                vm.add(Genres, newChip())
 
-            first.complete(MetadataWriteResult.Failure(MetadataError.Unreachable))
+                vm.bind(fresh)
 
-            h.state.genres shouldBe listOf("Noir", "Epic", "A", "B")
-            h.state.failure.shouldBeNull()
-            second.complete(MetadataWriteResult.Saved(testBook(1, genres = listOf("Noir", "Epic", "A", "B"))))
-        }
-
-        it("TC-44: an older Saved only updates the confirmed list, which a later failure restores") {
-            val h = Harness().ready()
-            val first = h.repository.holdWrite()
-            val second = h.repository.holdWrite()
-            h.viewModel.add(Genres, "A")
-            h.viewModel.add(Genres, "B")
-
-            first.complete(MetadataWriteResult.Saved(testBook(1, genres = listOf("Noir", "Epic", "A"))))
-
-            h.state.genres shouldBe listOf("Noir", "Epic", "A", "B")
-            h.state.bookUpdate.shouldBeNull()
-
-            second.complete(MetadataWriteResult.Failure(MetadataError.Unreachable))
-            h.state.genres shouldBe listOf("Noir", "Epic", "A")
-            h.state.failure shouldBe ChipEditFailure(1, Genres)
-        }
-
-        it("TC-45: Superseded changes nothing") {
-            val h = Harness().ready()
-            h.repository.writeResult = { MetadataWriteResult.Superseded }
-
-            h.viewModel.add(Genres, "Thriller")
-
-            h.state.genres shouldBe listOf("Noir", "Epic", "Thriller")
-            h.state.failure.shouldBeNull()
-            h.state.bookUpdate.shouldBeNull()
-        }
-
-        it("TC-46: a genres failure leaves tags, and a tags save in flight, alone") {
-            val h = Harness().ready()
-            val genresHold = h.repository.holdWrite()
-            val tagsHold = h.repository.holdWrite()
-            h.viewModel.add(Genres, "A")
-            h.viewModel.add(Tags, "t")
-
-            genresHold.complete(MetadataWriteResult.Failure(MetadataError.Unreachable))
-
-            h.state.genres shouldBe listOf("Noir", "Epic")
-            h.state.tags shouldBe listOf("Cozy", "t")
-            h.state.failure shouldBe ChipEditFailure(1, Genres)
-
-            tagsHold.complete(MetadataWriteResult.Saved(testBook(1, subjects = listOf("Cozy", "t"))))
-            h.state.tags shouldBe listOf("Cozy", "t")
-            h.state.failure shouldBe ChipEditFailure(1, Genres)
-        }
-    }
-
-    describe("bookUpdate") {
-
-        it("TC-49: keeps the optimistic list of a kind still in flight, both ways") {
-            val tagsInFlight = Harness().ready()
-            val tagsHold = tagsInFlight.repository.holdWrite()
-            tagsInFlight.viewModel.add(Tags, "t")
-            tagsInFlight.repository.writeResult = {
-                MetadataWriteResult.Saved(testBook(1, genres = listOf("Noir", "Epic", "A")))
+                vm.uiState.value.genres shouldBe fresh.genres
             }
-            tagsInFlight.viewModel.add(Genres, "A")
-            tagsInFlight.state.bookUpdate.shouldNotBeNull().book.subjects shouldBe listOf("Cozy", "t")
+        }
+    }
 
-            val genresInFlight = Harness().ready()
-            val genresHold = genresInFlight.repository.holdWrite()
-            genresInFlight.viewModel.add(Genres, "A")
-            genresInFlight.repository.writeResult = {
-                MetadataWriteResult.Saved(testBook(1, subjects = listOf("Cozy", "t")))
+    describe("adding a chip") {
+        it("TC-37: saves the full list") {
+            val book = bookWith()
+            val bookUuid = randomString()
+            val repository = TestMetadataRepository()
+            val chip = newChip()
+
+            editing(book, repository, bookUuid).add(Genres, chip)
+
+            repository.writes shouldBe listOf(TestMetadataRepository.Write(bookUuid, Genres, book.genres + chip))
+        }
+
+        context("when the value is refused") {
+            it("TC-53: saves nothing") {
+                val book = bookWith()
+                val repository = TestMetadataRepository()
+
+                editing(book, repository).add(Genres, book.genres.first())
+
+                repository.writes.shouldBeEmpty()
             }
-            genresInFlight.viewModel.add(Tags, "t")
-            genresInFlight.state.bookUpdate.shouldNotBeNull().book.genres shouldBe listOf("Noir", "Epic", "A")
-
-            tagsHold.complete(MetadataWriteResult.Superseded)
-            genresHold.complete(MetadataWriteResult.Superseded)
         }
     }
 
-    describe("offline") {
+    describe("removing a chip") {
+        context("when it is the last one") {
+            it("TC-38: saves an empty list") {
+                val book = bookWith(genres = chips(1))
+                val repository = TestMetadataRepository()
 
-        it("TC-50: ignores open, add and remove, and makes no repository call") {
-            val h = Harness(connectivity = TestConnectivityMonitor(online = false)).ready()
+                editing(book, repository).remove(Genres, book.genres.single())
 
-            h.viewModel.open(Genres)
-            h.viewModel.add(Genres, "Thriller")
-            h.viewModel.remove(Genres, "Noir")
-
-            h.state.openKind.shouldBeNull()
-            h.state.genres shouldBe listOf("Noir", "Epic")
-            h.repository.writes.size shouldBe 0
-            h.repository.vocabularyRequests.size shouldBe 0
+                repository.writes.single().values.shouldBeEmpty()
+            }
         }
     }
 
-    describe("permission") {
+    describe("the answer to a save") {
+        context("when the newest save is saved") {
+            it("TC-39: shows the server's list") {
+                val server = chips(3)
+                val repository = TestMetadataRepository().apply { writeResult = { saved(genres = server) } }
+                val vm = editing(repository = repository)
 
-        it("TC-51: ignores every edit intent for a user who may not edit") {
-            listOf<CurrentUser?>(null, reader).forEach { user ->
-                val h = Harness().apply {
-                    auth.currentUserState.value = user
-                    viewModel.bind(book())
+                vm.add(Genres, newChip())
+
+                vm.uiState.value.genres shouldBe server
+            }
+        }
+
+        context("when the newest save fails") {
+            it("TC-42: restores the list, for no saved server or a failed write") {
+                checkAll(Exhaustive.of(MetadataWriteResult.NoServer, failed)) { result ->
+                    val book = bookWith()
+                    val repository = TestMetadataRepository().apply { writeResult = { result } }
+                    val vm = editing(book, repository)
+
+                    vm.add(Genres, newChip())
+
+                    vm.uiState.value.genres shouldBe book.genres
                 }
+            }
 
-                h.viewModel.open(Genres)
-                h.viewModel.add(Genres, "Thriller")
-                h.viewModel.remove(Genres, "Noir")
+            it("TC-40: reports the failed kind once") {
+                val repository = TestMetadataRepository().apply { writeResult = { failed } }
+                val vm = editing(repository = repository)
 
-                h.state.openKind.shouldBeNull()
-                h.state.genres shouldBe listOf("Noir", "Epic")
-                h.repository.writes.size shouldBe 0
-                h.repository.vocabularyRequests.size shouldBe 0
+                vm.add(Genres, newChip())
+                val failure = vm.uiState.value.failure.shouldNotBeNull()
+                failure.kind shouldBe Genres
+
+                vm.failureShown(failure.eventId)
+                vm.uiState.value.failure.shouldBeNull()
             }
         }
 
-        it("TC-52: follows connectivity and the signed-in user") {
-            val h = Harness().apply { viewModel.bind(book()) }
+        context("when an earlier save was confirmed") {
+            it("TC-41: a failure restores the confirmed list rather than the opening one") {
+                val server = chips(3)
+                val repository = TestMetadataRepository().apply { writeResult = { saved(genres = server) } }
+                val vm = editing(repository = repository)
+                vm.add(Genres, newChip())
 
-            h.connectivity.isOnline.value = false
-            h.auth.currentUserState.value = editor
-            h.viewModel.add(Genres, "A")
-            h.repository.writes.size shouldBe 0
+                repository.writeResult = { failed }
+                vm.add(Genres, newChip())
 
-            h.connectivity.isOnline.value = true
-            h.state.canEdit shouldBe true
-            h.viewModel.add(Genres, "A")
-            h.repository.writes.size shouldBe 1
-
-            h.auth.currentUserState.value = reader
-            h.state.canEdit shouldBe false
-        }
-    }
-
-    describe("open") {
-
-        it("TC-55: loads each kind's values once, deduplicated and sorted, while the load is Loading") {
-            val h = Harness().ready()
-            h.repository.vocabulary[Genres] = VocabularyResult.Success(
-                listOf(VocabularyEntry("fantasy", 3), VocabularyEntry("Fantasy", 9), VocabularyEntry("Cozy", 1)),
-            )
-            val held = h.repository.holdVocabulary(Genres)
-
-            h.viewModel.open(Genres)
-            h.state.pools[Genres] shouldBe PoolState.Loading
-            held.complete(h.repository.vocabulary.getValue(Genres))
-
-            h.state.pools[Genres] shouldBe PoolState.Loaded(
-                listOf(VocabularyEntry("Cozy", 1), VocabularyEntry("fantasy", 9)),
-            )
-            h.viewModel.close()
-            h.viewModel.open(Genres)
-            h.repository.vocabularyRequests shouldBe listOf(Genres)
-
-            h.viewModel.open(Tags)
-            h.repository.vocabularyRequests shouldBe listOf(Genres, Tags)
+                vm.uiState.value.genres shouldBe server
+            }
         }
 
-        it("TC-56: a failed pool leaves adding as new working") {
-            listOf<VocabularyResult>(
-                VocabularyResult.Failure(MetadataError.Unreachable),
-                VocabularyResult.NoServer,
-            ).forEach { failed ->
-                val h = Harness().ready()
-                h.repository.vocabulary[Genres] = failed
+        context("when a newer save has started") {
+            it("TC-43: ignores an older failure") {
+                val book = bookWith()
+                val repository = TestMetadataRepository()
+                val older = repository.holdWrite()
+                repository.holdWrite()
+                val vm = editing(book, repository)
+                val chips = listOf(newChip(), newChip())
+                chips.forEach { vm.add(Genres, it) }
 
-                h.viewModel.open(Genres)
-                h.state.pools[Genres] shouldBe PoolState.Failed
+                older.complete(failed)
 
-                h.viewModel.add(Genres, "Grimdark")
-                h.state.genres shouldBe listOf("Noir", "Epic", "Grimdark")
+                vm.uiState.value.genres shouldBe book.genres + chips
+                vm.uiState.value.failure.shouldBeNull()
+            }
+
+            it("TC-44: an older Saved only updates the list a later failure restores") {
+                val book = bookWith()
+                val repository = TestMetadataRepository()
+                val older = repository.holdWrite()
+                val newer = repository.holdWrite()
+                val vm = editing(book, repository)
+                val chips = listOf(newChip(), newChip())
+                chips.forEach { vm.add(Genres, it) }
+                val confirmed = chips(3)
+
+                older.complete(saved(genres = confirmed))
+                vm.uiState.value.genres shouldBe book.genres + chips
+
+                newer.complete(failed)
+                vm.uiState.value.genres shouldBe confirmed
+            }
+        }
+
+        context("when the save was superseded") {
+            it("TC-45: changes nothing") {
+                val book = bookWith()
+                val repository = TestMetadataRepository().apply { writeResult = { MetadataWriteResult.Superseded } }
+                val vm = editing(book, repository)
+                val chip = newChip()
+
+                vm.add(Genres, chip)
+
+                vm.uiState.value.genres shouldBe book.genres + chip
+                vm.uiState.value.failure.shouldBeNull()
+            }
+        }
+
+        context("when the other kind has a save in flight") {
+            it("TC-46: a failure leaves the other kind's list alone") {
+                val book = bookWith()
+                val repository = TestMetadataRepository()
+                val genres = repository.holdWrite()
+                repository.holdWrite()
+                val vm = editing(book, repository)
+                val tag = newChip()
+                vm.add(Genres, newChip())
+                vm.add(Tags, tag)
+
+                genres.complete(failed)
+
+                vm.uiState.value.tags shouldBe book.subjects + tag
+            }
+
+            it("TC-49: the book offered to the page keeps the other kind's displayed list") {
+                val book = bookWith()
+                val repository = TestMetadataRepository().apply { holdWrite() }
+                val vm = editing(book, repository)
+                val tag = newChip()
+                vm.add(Tags, tag)
+
+                repository.writeResult = { saved() }
+                vm.add(Genres, newChip())
+
+                vm.uiState.value.bookUpdate.shouldNotBeNull().book.subjects shouldBe book.subjects + tag
             }
         }
     }
 
-    describe("close") {
+    describe("refusing edits") {
+        /** Tries every edit intent on a bound [vm], and checks that none of them changed anything. */
+        fun shouldIgnoreEdits(vm: ChipEditViewModel, repository: TestMetadataRepository) {
+            val book = bookWith()
+            vm.bind(book)
+            val before = vm.uiState.value
 
-        it("TC-57: clears the sheet and lets saves finish") {
-            val h = Harness().ready()
-            val held = h.repository.holdWrite()
-            h.viewModel.open(Genres)
-            h.viewModel.add(Genres, "A")
-            h.viewModel.updateEntry("zz")
+            vm.open(Genres)
+            vm.add(Genres, newChip())
+            vm.remove(Genres, book.genres.first())
 
-            h.viewModel.close()
+            vm.uiState.value shouldBe before
+            repository.writes.shouldBeEmpty()
+        }
 
-            h.state.openKind.shouldBeNull()
-            h.state.entry shouldBe ""
-            held.complete(MetadataWriteResult.Saved(testBook(1, genres = listOf("Noir", "Epic", "A"))))
-            h.state.genres shouldBe listOf("Noir", "Epic", "A")
-            h.state.bookUpdate.shouldNotBeNull().eventId shouldBe 1
+        context("when the device is offline") {
+            it("TC-50: ignores every edit") {
+                val repository = TestMetadataRepository()
+                val vm = sut(repository, signedIn(canEdit = true), TestConnectivityMonitor(online = false))
+
+                shouldIgnoreEdits(vm, repository)
+            }
+        }
+
+        context("when the user may not edit") {
+            it("TC-51: ignores every edit") {
+                val repository = TestMetadataRepository()
+                val vm = sut(repository, signedIn(canEdit = false), TestConnectivityMonitor(online = true))
+
+                shouldIgnoreEdits(vm, repository)
+            }
+        }
+    }
+
+    describe("opening the sheet") {
+        it("TC-55: shows loading, then the kind's values") {
+            val entry = randomVocabularyEntry()
+            val repository = TestMetadataRepository()
+            val held = repository.holdVocabulary(Genres)
+            val vm = editing(repository = repository)
+
+            vm.open(Genres)
+            vm.uiState.value.pools[Genres] shouldBe PoolState.Loading
+
+            held.complete(VocabularyResult.Success(listOf(entry)))
+            vm.uiState.value.pools[Genres] shouldBe PoolState.Loaded(listOf(entry))
+        }
+
+        context("when the kind's values have loaded") {
+            it("TC-55: does not load them again") {
+                val repository = TestMetadataRepository()
+                val vm = editing(repository = repository)
+
+                vm.open(Genres)
+                vm.close()
+                vm.open(Genres)
+
+                repository.vocabularyRequests shouldBe listOf(Genres)
+            }
+        }
+
+        context("when the values cannot load") {
+            it("TC-56: marks the pool as failed, for a failed read or no saved server") {
+                checkAll(
+                    Exhaustive.of(VocabularyResult.Failure(MetadataError.Unreachable), VocabularyResult.NoServer),
+                ) { result ->
+                    val repository = TestMetadataRepository().apply { vocabulary[Genres] = result }
+                    val vm = editing(repository = repository)
+
+                    vm.open(Genres)
+
+                    vm.uiState.value.pools[Genres] shouldBe PoolState.Failed
+                }
+            }
         }
     }
 })

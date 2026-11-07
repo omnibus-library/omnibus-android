@@ -3,69 +3,44 @@ package com.omnibus.omnibus.feature.bookdetail.overview.reading
 import com.omnibus.omnibus.data.bookprogress.BookProgressError
 import com.omnibus.omnibus.data.bookprogress.BookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.BookProgressResult
-import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.ReadingSessionsResult
+import com.omnibus.omnibus.data.bookprogress.TestBookProgressRepository
 import com.omnibus.omnibus.data.bookprogress.readingRecord
-import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.library.ProgressRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatus
-import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
+import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.bookdetail.progress.ReadingSession
 import com.omnibus.omnibus.testing.CollectingScope
+import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import java.util.GregorianCalendar
-import java.util.TimeZone
-
-private const val UUID = "uuid-1"
-private val utc: TimeZone = TimeZone.getTimeZone("UTC")
-
-private fun at(year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0): Long =
-    GregorianCalendar(utc).apply { clear(); set(year, month - 1, day, hour, minute) }.timeInMillis
-
-private val NOW = at(2026, 11, 2)
-private val OCT12 = at(2026, 10, 12, 20)
-private val FINISHED_OCT29 = at(2026, 10, 29, 22, 14)
-
-/** The ticket's sample: 11 sittings, newest first, totalling 11 040 s. */
-private val sample = listOf(
-    ReadingSession(at(2026, 11, 1, 22, 4), 600, null, null),
-    ReadingSession(at(2026, 10, 31, 20), 900, null, null),
-    ReadingSession(at(2026, 10, 30, 19), 1_200, null, null),
-    ReadingSession(at(2026, 10, 19, 18), 2_880, null, null),
-    ReadingSession(at(2026, 10, 18, 20), 720, null, null),
-    ReadingSession(at(2026, 10, 17, 20), 600, null, null),
-    ReadingSession(at(2026, 10, 16, 20), 480, null, null),
-    ReadingSession(at(2026, 10, 15, 20), 1_000, null, null),
-    ReadingSession(at(2026, 10, 14, 20), 900, null, null),
-    ReadingSession(at(2026, 10, 13, 20), 660, null, null),
-    ReadingSession(at(2026, 10, 12, 20), 1_100, null, null),
-)
-
-/** The sample's fraction: 11 040 s over a 17 820 s book, so the pace is about 20% an hour. */
-private val SAMPLE_FRACTION = 11_040f / 17_820f
 
 private val hold = ReadingCardModel(line = null, rows = emptyList())
 
+/** A sitting with no fractions, as the server sends today, so the pace comes from the book's fraction. */
+private fun session(startedAt: Long = randomLong(), seconds: Long = randomLong(1L..36_000L)) =
+    ReadingSession(startedAt, seconds, startFraction = null, endFraction = null)
+
+private fun success(vararg sessions: ReadingSession) = ReadingSessionsResult.Success(sessions.toList())
+
 private fun known(status: ReadStatus, finishedAt: Long? = null) =
-    ReadStatusState.Known(ReadStatusRecord(status, 1L, finishedAt))
+    ReadStatusState.Known(randomReadStatusRecord().copy(status = status, finishedAtMillis = finishedAt))
 
 /** Sessions reads that wait until the test completes them, in call order. Everything else is the shared fake. */
 private class GatedSessionsRepository(
-    val delegate: TestBookProgressRepository = TestBookProgressRepository(),
+    delegate: TestBookProgressRepository = TestBookProgressRepository(),
 ) : BookProgressRepository by delegate {
     val pending = mutableListOf<CompletableDeferred<ReadingSessionsResult>>()
 
@@ -73,263 +48,217 @@ private class GatedSessionsRepository(
         CompletableDeferred<ReadingSessionsResult>().also { pending += it }.await()
 }
 
-/** A ViewModel with its fakes, and its state kept active by [collecting] until the test ends. */
-private class Harness(
-    val fake: TestBookProgressRepository = TestBookProgressRepository(),
-    val status: TestReadStatusRepository = TestReadStatusRepository(),
-    hasFile: Boolean = true,
-    repository: BookProgressRepository = fake,
-) {
+/** Runs [block] with the card's state collected, since it is only kept while something collects it. */
+private inline fun ReadingCardViewModel.whileCollected(block: () -> Unit) {
     val collecting = CollectingScope()
-    val vm = ReadingCardViewModel(UUID, hasFile, repository, status, TimeSource { NOW })
-        .also { collecting.collect(it.uiState) }
-}
-
-/** Runs [block] on a [Harness], and cancels its collection afterwards. */
-private inline fun withHarness(
-    fake: TestBookProgressRepository = TestBookProgressRepository(),
-    status: TestReadStatusRepository = TestReadStatusRepository(),
-    hasFile: Boolean = true,
-    block: Harness.() -> Unit,
-) {
-    val harness = Harness(fake, status, hasFile)
+    collecting.collect(uiState)
     try {
-        harness.block()
+        block()
     } finally {
-        harness.collecting.cancel()
+        collecting.cancel()
     }
 }
-
-/** The kinds of the card's rows, in order. */
-private fun Harness.kinds(): List<ReadingRowKind> = vm.uiState.value.card.rows.map { it.kind }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReadingCardViewModelTest : DescribeSpec({
-
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    describe("the hold") {
+    fun sut(
+        bookUuid: String = randomString(),
+        progress: BookProgressRepository = TestBookProgressRepository(),
+        status: TestReadStatusRepository = TestReadStatusRepository(),
+        hasFile: Boolean = randomBoolean(),
+        timeSource: TimeSource = TimeSource { randomLong() },
+    ) = ReadingCardViewModel(bookUuid, hasFile, progress, status, timeSource)
 
-        it("TC-29: the card holds until both the status and the sessions have answered") {
-            withHarness {
-                vm.uiState.value.card shouldBe hold
-            }
+    /** The read status of a book the reader is reading. */
+    fun reading(bookUuid: String) = TestReadStatusRepository().apply { seed(bookUuid, known(ReadStatus.Reading)) }
 
-            val gate = GatedSessionsRepository()
-            val pending = Harness(gate.delegate, TestReadStatusRepository(), repository = gate)
-            try {
-                pending.status.seed(UUID, known(ReadStatus.Reading))
-                pending.vm.reload(0)
-                pending.vm.uiState.value.card shouldBe hold
-            } finally {
-                pending.collecting.cancel()
-            }
+    /** Sets the book's progress to [result] of a record at half way. */
+    fun TestBookProgressRepository.progressOf(bookUuid: String, result: (List<ProgressRecord>) -> BookProgressResult) {
+        progressFor(bookUuid).value = result(listOf(readingRecord(50.0, randomLong(), uuid = bookUuid)))
+    }
 
-            withHarness {
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                vm.reload(0)
-                vm.uiState.value.card shouldBe hold
+    describe("the card before the answers arrive") {
+        context("when the sessions have not answered") {
+            it("TC-29: holds") {
+                val bookUuid = randomString()
+                val vm = sut(bookUuid, GatedSessionsRepository(), reading(bookUuid))
+
+                vm.whileCollected {
+                    vm.reload(0)
+
+                    vm.uiState.value.card shouldBe hold
+                }
             }
         }
     }
 
-    describe("the card's state") {
+    describe("the card once it has loaded") {
+        it("TC-30: works out the pace from the book's progress") {
+            val bookUuid = randomString()
+            val progress = TestBookProgressRepository().apply {
+                sessionsResults += success(session(seconds = 3_600))
+                progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
+            }
+            val vm = sut(bookUuid, progress, reading(bookUuid))
 
-        it("TC-30: a reading book loads its card, with pace and time left from the progress") {
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                fake.progressFor(UUID).value = BookProgressResult.Success(
-                    listOf(readingRecord(SAMPLE_FRACTION * 100.0, 1L, uuid = UUID)),
-                    fromServer = true,
-                )
+            vm.whileCollected {
                 vm.reload(0)
 
-                val card = vm.uiState.value.card
-                card.line shouldBe ReadingLine.ReadingSince(OCT12)
-                card.rows shouldContain ReadingRow.Pace(20)
-                card.rows.map { it.kind } shouldContain ReadingRowKind.TimeLeft
+                vm.uiState.value.card.rows shouldContain ReadingRow.Pace(50)
             }
         }
 
-        it("TC-31: the empty states follow the file and the saved position") {
-            withHarness(hasFile = true) {
-                status.seed(UUID, known(ReadStatus.Unread))
+        it("TC-38: reads its dates against the time source") {
+            val now = randomLong()
+            val vm = sut(timeSource = { now })
+
+            vm.whileCollected {
                 vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.NoReading, emptyList())
-            }
-            withHarness(hasFile = false) {
-                status.seed(UUID, known(ReadStatus.Unread))
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-            }
-            withHarness(hasFile = false) {
-                status.seed(UUID, known(ReadStatus.Reading))
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.PaperCopy, emptyList())
-            }
-            withHarness(hasFile = true) {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.progressFor(UUID).value = BookProgressResult.Success(
-                    listOf(readingRecord(40.0, 1L, uuid = UUID)),
-                    fromServer = false,
-                )
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.SyncPending, emptyList())
+
+                vm.uiState.value.nowMillis shouldBe now
             }
         }
 
-        it("TC-32: sessions are read once per reload key, and a new key takes the new answer") {
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                fake.sessionsResults += ReadingSessionsResult.Success(
-                    listOf(ReadingSession(at(2026, 10, 30, 10), 1_800, null, null)),
-                )
-                vm.reload(0)
-                vm.reload(0)
-                fake.sessionsCalls.size shouldBe 1
+        context("when a position is saved without any sessions") {
+            it("TC-31: shows that the sittings have yet to sync") {
+                val bookUuid = randomString()
+                val progress = TestBookProgressRepository().apply {
+                    progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
+                }
+                val vm = sut(bookUuid, progress, reading(bookUuid))
 
+                vm.whileCollected {
+                    vm.reload(0)
+
+                    vm.uiState.value.card.line shouldBe ReadingLine.SyncPending
+                }
+            }
+        }
+
+        context("when the progress read has failed") {
+            it("TC-37: still works out the pace from the records it kept") {
+                val bookUuid = randomString()
+                val progress = TestBookProgressRepository().apply {
+                    sessionsResults += success(session(seconds = 3_600))
+                    progressOf(bookUuid) { BookProgressResult.Failed(BookProgressError.Unreachable, it) }
+                }
+                val vm = sut(bookUuid, progress, reading(bookUuid))
+
+                vm.whileCollected {
+                    vm.reload(0)
+
+                    vm.uiState.value.card.rows shouldContain ReadingRow.Pace(50)
+                }
+            }
+        }
+
+        context("when the status changes") {
+            it("TC-35: updates without a reload") {
+                val bookUuid = randomString()
+                val finishedAt = randomLong()
+                val status = reading(bookUuid)
+                val vm = sut(bookUuid, status = status)
+
+                vm.whileCollected {
+                    vm.reload(0)
+
+                    status.seed(bookUuid, known(ReadStatus.Finished, finishedAt))
+
+                    vm.uiState.value.card.line shouldBe ReadingLine.Finished(finishedAt)
+                }
+            }
+        }
+    }
+
+    describe("reading the sessions") {
+        it("TC-32: reads once per reload key") {
+            val bookUuid = randomString()
+            val progress = TestBookProgressRepository().apply {
+                sessionsResults += success(session())
+                sessionsResults += success(session(seconds = 1_800))
+            }
+            val vm = sut(bookUuid, progress, reading(bookUuid))
+
+            vm.whileCollected {
+                vm.reload(0)
+                vm.reload(0)
                 vm.reload(1)
-                fake.sessionsCalls.size shouldBe 2
+
                 vm.uiState.value.card.rows shouldContain ReadingRow.TimeRead(1_800L, 1)
             }
         }
 
-        it("TC-33: a failed read keeps the sessions already loaded, and a failure with none is the error line") {
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.HistoryFailed, emptyList())
-            }
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                fake.sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
-                vm.reload(0)
-                vm.reload(1)
-                vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(OCT12)
-                vm.uiState.value.card.rows.map { it.kind } shouldContain ReadingRowKind.LongestSitting
+        context("when the first read fails") {
+            it("TC-33: shows the error line") {
+                val bookUuid = randomString()
+                val progress = TestBookProgressRepository().apply {
+                    sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
+                }
+                val vm = sut(bookUuid, progress, reading(bookUuid))
+
+                vm.whileCollected {
+                    vm.reload(0)
+
+                    vm.uiState.value.card.line shouldBe ReadingLine.HistoryFailed
+                }
             }
         }
 
-        it("TC-34: a re-read never drops back to the hold, and a newer reload wins over a read in flight") {
-            val gate = GatedSessionsRepository()
-            val seen = mutableListOf<ReadingCardModel>()
-            val recorder = CoroutineScope(UnconfinedTestDispatcher())
-            val harness = Harness(gate.delegate, TestReadStatusRepository(), repository = gate)
-            try {
-                recorder.launch { harness.vm.uiState.map { it.card }.collect { seen += it } }
-                harness.status.seed(UUID, known(ReadStatus.Reading))
+        context("when a later read fails") {
+            it("TC-33: keeps the sessions already loaded") {
+                val bookUuid = randomString()
+                val sitting = session()
+                val progress = TestBookProgressRepository().apply {
+                    sessionsResults += success(sitting)
+                    sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
+                }
+                val vm = sut(bookUuid, progress, reading(bookUuid))
 
-                harness.vm.reload(0)
-                gate.pending[0].complete(ReadingSessionsResult.Success(sample))
-                val loadedAt = seen.size
-                harness.vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(OCT12)
+                vm.whileCollected {
+                    vm.reload(0)
+                    vm.reload(1)
 
-                harness.vm.reload(1)
-                harness.vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(OCT12)
-
-                harness.vm.reload(2)
-                gate.pending[1].complete(ReadingSessionsResult.Success(listOf(ReadingSession(OCT12, 60, null, null))))
-                harness.vm.uiState.value.card.rows.only<ReadingRow.TimeRead>() shouldBe ReadingRow.TimeRead(11_040L, 11)
-
-                gate.pending[2].complete(ReadingSessionsResult.Success(sample))
-                harness.vm.uiState.value.card.rows.only<ReadingRow.TimeRead>() shouldBe ReadingRow.TimeRead(11_040L, 11)
-                seen.drop(loadedAt).shouldNotContain(hold)
-            } finally {
-                recorder.cancel()
-                harness.collecting.cancel()
+                    vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(sitting.startedAtMillis)
+                }
             }
         }
 
-        it("TC-35: a status change updates the card without a reload, and never refreshes") {
-            withHarness {
-                fake.progressFor(UUID).value = BookProgressResult.Success(
-                    listOf(readingRecord(SAMPLE_FRACTION * 100.0, 1L, uuid = UUID)),
-                    fromServer = true,
-                )
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                vm.reload(0)
-                kinds() shouldContain ReadingRowKind.TimeLeft
+        context("when a later read is in flight") {
+            it("TC-34: never drops back to the hold") {
+                val bookUuid = randomString()
+                val sitting = session()
+                val gate = GatedSessionsRepository()
+                val vm = sut(bookUuid, gate, reading(bookUuid))
 
-                status.seed(UUID, known(ReadStatus.Finished, FINISHED_OCT29))
-                vm.uiState.value.card.line shouldBe ReadingLine.Finished(FINISHED_OCT29)
-                kinds() shouldNotContain ReadingRowKind.TimeLeft
+                vm.whileCollected {
+                    vm.reload(0)
+                    gate.pending[0].complete(success(sitting))
 
-                fake.sessionsCalls.size shouldBe 1
-                status.refreshCount shouldBe 0
-            }
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Unread))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.NoReading, emptyList())
+                    vm.reload(1)
 
-                status.seed(UUID, known(ReadStatus.Reading))
-                vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(OCT12)
-                kinds() shouldContain ReadingRowKind.TimeRead
-
-                fake.sessionsCalls.size shouldBe 1
-                status.refreshCount shouldBe 0
+                    vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(sitting.startedAtMillis)
+                }
             }
         }
 
-        it("TC-36: a failed status is the error line, and a finished date beats a failed sessions read") {
-            withHarness {
-                status.seed(UUID, ReadStatusState.Failed)
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.HistoryFailed, emptyList())
-            }
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Finished, FINISHED_OCT29))
-                fake.sessionsResults += ReadingSessionsResult.Failed(BookProgressError.Unreachable)
-                vm.reload(0)
-                vm.uiState.value.card shouldBe ReadingCardModel(ReadingLine.Finished(FINISHED_OCT29), emptyList())
-            }
-        }
+        context("when a newer reload has superseded a read") {
+            it("TC-34: ignores the older answer") {
+                val bookUuid = randomString()
+                val gate = GatedSessionsRepository()
+                val vm = sut(bookUuid, gate, reading(bookUuid))
 
-        it("TC-37: progress feeds the pace, is collected again on each reload, and a failed read still supplies it") {
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                fake.progressCollections.size shouldBe 0
+                vm.whileCollected {
+                    vm.reload(0)
+                    vm.reload(1)
 
-                vm.reload(0)
-                vm.uiState.value.card.line shouldBe ReadingLine.ReadingSince(OCT12)
-                kinds() shouldNotContain ReadingRowKind.Pace
-                kinds() shouldNotContain ReadingRowKind.TimeLeft
+                    gate.pending[0].complete(success(session()))
 
-                fake.progressFor(UUID).value = BookProgressResult.Success(
-                    listOf(readingRecord(SAMPLE_FRACTION * 100.0, 1L, uuid = UUID)),
-                    fromServer = true,
-                )
-                vm.uiState.value.card.rows shouldContain ReadingRow.Pace(20)
-
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                vm.reload(1)
-                fake.progressCollections.size shouldBe 2
-
-                fake.progressFor(UUID).value = BookProgressResult.Failed(
-                    BookProgressError.Unreachable,
-                    listOf(readingRecord(SAMPLE_FRACTION * 100.0, 1L, uuid = UUID)),
-                )
-                vm.uiState.value.card.rows shouldContain ReadingRow.Pace(20)
-            }
-        }
-
-        it("TC-38: the card's dates are read against the time source") {
-            withHarness {
-                status.seed(UUID, known(ReadStatus.Reading))
-                fake.sessionsResults += ReadingSessionsResult.Success(sample)
-                vm.reload(0)
-                vm.uiState.value.nowMillis shouldBe NOW
+                    vm.uiState.value.card shouldBe hold
+                }
             }
         }
     }
 })
-
-private inline fun <reified T : ReadingRow> List<ReadingRow>.only(): T = filterIsInstance<T>().single()

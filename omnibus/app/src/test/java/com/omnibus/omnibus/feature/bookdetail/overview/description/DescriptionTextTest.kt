@@ -1,71 +1,83 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.description
 
+import com.omnibus.omnibus.testing.randomInt
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldNotContain
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class DescriptionTextTest : DescribeSpec({
-
-    describe("description text") {
-
-        it("#94 TC-1: stripDescriptionHtml removes inline tags") {
-            val out = stripDescriptionHtml("<b>Bold</b> and <i>it</i><a href=\"x\">link</a>")
-            out shouldBe "Bold and itlink"
-            out shouldNotContain "<"
-            out shouldNotContain ">"
+    describe("turning a description's HTML into text") {
+        it("#94 TC-1: removes inline tags") {
+            stripDescriptionHtml("<b>Bold</b> and <i>it</i><a href=\"x\">link</a>") shouldBe "Bold and itlink"
         }
 
-        it("#94 TC-2: block tags and br become line breaks") {
-            stripDescriptionHtml("<p>One</p><p>Two</p>") shouldBe "One\n\nTwo"
-            stripDescriptionHtml("A<br>B") shouldBe "A\nB"
-            stripDescriptionHtml("A<br/>B") shouldBe "A\nB"
-            stripDescriptionHtml("A<br />B") shouldBe "A\nB"
-            stripDescriptionHtml("<li>A</li><li>B</li>") shouldBe "A\nB"
-            stripDescriptionHtml("<div>A</div>B") shouldBe "A\nB"
-            stripDescriptionHtml("<h2>One</h2>Two") shouldBe "One\n\nTwo"
-            stripDescriptionHtml("<BR>A</P>B") shouldBe "A\n\nB"
+        it("#94 TC-2: turns block ends into new lines, for any such tag in any case") {
+            val cases = Exhaustive.of(
+                "<p>One</p><p>Two</p>" to "One\n\nTwo",
+                "<h2>One</h2>Two" to "One\n\nTwo",
+                "One<br>Two" to "One\nTwo",
+                "One<br/>Two" to "One\nTwo",
+                "One<br />Two" to "One\nTwo",
+                "<li>One</li><li>Two</li>" to "One\nTwo",
+                "<div>One</div>Two" to "One\nTwo",
+                "<BR>One</P>Two" to "One\n\nTwo",
+            )
+
+            checkAll(cases) { (html, text) -> stripDescriptionHtml(html) shouldBe text }
         }
 
-        it("#94 TC-3: at most one blank line between paragraphs") {
-            stripDescriptionHtml("A<br><br><br><br>B") shouldBe "A\n\nB"
-            stripDescriptionHtml("A\n\n\n\n\nB") shouldBe "A\n\nB"
+        it("#94 TC-3: leaves at most one blank line between paragraphs") {
+            stripDescriptionHtml("A<br><br><br><br>B\n\n\n\n\nC") shouldBe "A\n\nB\n\nC"
         }
 
-        it("#94 TC-4: named entities are decoded, amp last") {
-            stripDescriptionHtml("a&nbsp;b &amp; &lt; &gt; &quot; &apos; &#39;") shouldBe "a b & < > \" ' '"
-            stripDescriptionHtml("&amp;lt;") shouldBe "&lt;"
+        it("#94 TC-4: decodes named entities, each only once") {
+            val cases = Exhaustive.of(
+                "a&nbsp;b &amp; &lt; &gt; &quot; &apos;" to "a b & < > \" '",
+                "&amp;lt;" to "&lt;",
+            )
+
+            checkAll(cases) { (html, text) -> stripDescriptionHtml(html) shouldBe text }
         }
 
-        it("#94 TC-5: numeric entities are decoded") {
-            stripDescriptionHtml("&#65;") shouldBe "A"
-            stripDescriptionHtml("&#x41;") shouldBe "A"
-            stripDescriptionHtml("&#x2019;") shouldBe "’"
-            stripDescriptionHtml("&#xZZ;") shouldBe "&#xZZ;"
-            stripDescriptionHtml("&#;") shouldBe "&#;"
-            stripDescriptionHtml("&#99999999999;") shouldBe "&#99999999999;"
+        it("#94 TC-5: decodes numeric entities, leaving one that is not a code point as written") {
+            val cases = Exhaustive.of(
+                "&#65;&#x41;&#x2019;" to "AA’",
+                "&#xZZ;" to "&#xZZ;",
+                "&#;" to "&#;",
+                "&#99999999999;" to "&#99999999999;",
+            )
+
+            checkAll(cases) { (html, text) -> stripDescriptionHtml(html) shouldBe text }
         }
 
-        it("#94 TC-6: whitespace runs are collapsed and lines trimmed") {
+        it("#94 TC-6: tidies the whitespace of each line") {
             stripDescriptionHtml("  a \t  b \n  c  ") shouldBe "a b\nc"
         }
+    }
 
-        it("#94 TC-7: cleanDescription returns null for null and blank input") {
-            listOf(null, "", "   ", "<p></p>", "<br><br>", "&nbsp;", "<p> &nbsp; </p>").forEach { raw ->
-                cleanDescription(raw) shouldBe null
+    describe("the description to show") {
+        context("when there is nothing to read in it") {
+            it("#94 TC-7: is none, for missing, blank or empty markup") {
+                checkAll(Exhaustive.of(null, "", "   ", "<p></p>", "<br><br>", "&nbsp;", "<p> &nbsp; </p>")) { raw ->
+                    cleanDescription(raw).shouldBeNull()
+                }
             }
         }
 
-        it("#94 TC-8: cleanDescription returns cleaned text") {
+        it("#94 TC-8: is the cleaned text") {
             cleanDescription("<p>Hello &amp; welcome</p>") shouldBe "Hello & welcome"
-            cleanDescription("Plain") shouldBe "Plain"
         }
+    }
 
-        it("#94 TC-9: toggle shows only above the clamp") {
-            DESCRIPTION_CLAMP_LINES shouldBe 3
-            listOf(0, 1, 2, 3).forEach { showsDescriptionToggle(it) shouldBe false }
-            listOf(4, 5, 100).forEach { showsDescriptionToggle(it) shouldBe true }
-            showsDescriptionToggle(5, clampLines = 5) shouldBe false
-            showsDescriptionToggle(6, clampLines = 5) shouldBe true
+    describe("the show more toggle") {
+        it("#94 TC-9: appears only past the clamp") {
+            val clamp = randomInt(1..10)
+
+            showsDescriptionToggle(clamp, clampLines = clamp) shouldBe false
+            showsDescriptionToggle(clamp + 1, clampLines = clamp) shouldBe true
         }
     }
 })

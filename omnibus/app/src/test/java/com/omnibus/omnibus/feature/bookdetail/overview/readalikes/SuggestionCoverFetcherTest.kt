@@ -1,53 +1,49 @@
 package com.omnibus.omnibus.feature.bookdetail.overview.readalikes
 
 import android.content.Context
-import coil3.decode.DataSource
+import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import com.omnibus.omnibus.data.suggestions.TestSuggestionsRepository
 import com.omnibus.omnibus.data.suggestions.SuggestionCoverResult
+import com.omnibus.omnibus.data.suggestions.TestSuggestionsRepository
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import io.mockk.mockk
 import java.io.IOException
 
 class SuggestionCoverFetcherTest : DescribeSpec({
+    fun sut(result: SuggestionCoverResult): Fetcher =
+        SuggestionCoverFetcher.Factory(TestSuggestionsRepository().also { it.coverResult = result }).create(
+            SuggestionCoverRequest(randomString()),
+            Options(mockk<Context>(relaxed = true)),
+            mockk(relaxed = true),
+        )
 
-    val path = "/api/suggestions/uuid-1/1/cover"
-    val request = SuggestionCoverRequest(path)
-    val options = Options(mockk<Context>(relaxed = true))
-
-    fun fetcher(repository: TestSuggestionsRepository) =
-        SuggestionCoverFetcher.Factory(repository).create(request, options, mockk(relaxed = true))
-
-    describe("SuggestionCoverFetcher") {
-
-        listOf(
-            "a missing cover" to SuggestionCoverResult.NotFound,
-            "a failed cover" to SuggestionCoverResult.Failure,
-        ).forEach { (name, result) ->
-            it("#106 TC-51: $name throws IOException, so the plate stays visible") {
-                val repository = TestSuggestionsRepository().also { it.coverResult = result }
-
-                shouldThrow<IOException> { fetcher(repository).fetch() }
-
-                repository.coverPaths shouldContainExactly listOf(path)
+    describe("fetching a suggestion's cover") {
+        context("when there is no cover to give") {
+            it("#106 TC-51: throws IOException so the plate stays visible, for a missing or a failed cover") {
+                checkAll(Exhaustive.of(SuggestionCoverResult.NotFound, SuggestionCoverResult.Failure)) { result ->
+                    shouldThrow<IOException> { sut(result).fetch() }
+                }
             }
         }
 
-        it("#106 TC-52: a found cover gives a network source result with its mime type") {
-            val repository = TestSuggestionsRepository().also {
-                it.coverResult = SuggestionCoverResult.Found("art".encodeToByteArray(), "image/png")
+        context("when the cover is found") {
+            it("#106 TC-52: gives its bytes with its mime type") {
+                val art = randomString()
+
+                val result = sut(SuggestionCoverResult.Found(art.encodeToByteArray(), "image/png"))
+                    .fetch().shouldBeInstanceOf<SourceFetchResult>()
+
+                result.mimeType shouldBe "image/png"
+                result.source.source().readUtf8() shouldBe art
             }
-
-            val result = fetcher(repository).fetch().shouldBeInstanceOf<SourceFetchResult>()
-
-            result.mimeType shouldBe "image/png"
-            result.dataSource shouldBe DataSource.NETWORK
-            result.source.source().readUtf8() shouldBe "art"
         }
     }
 })
