@@ -1,24 +1,26 @@
 package com.omnibus.omnibus.data.audiobook.position
 
+import com.omnibus.omnibus.data.audiobook.ScriptedServer
+import com.omnibus.omnibus.data.audiobook.httpClientFor
 import com.omnibus.omnibus.data.audiobook.position.local.AudioPositionStore
 import com.omnibus.omnibus.data.audiobook.position.local.TestAudioPositionStore
-import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
-import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.audiobook.droppedConnection
+import com.omnibus.omnibus.data.audiobook.reply
+import com.omnibus.omnibus.data.audiobook.unreachableUrl
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
-import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
-import com.omnibus.omnibus.data.network.OmnibusHttpClient
-import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.throwables.shouldNotThrowAny
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -32,497 +34,399 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import mockwebserver3.Dispatcher
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
-/**
- * Answers each request with the next scripted step: its hook runs first (it may write to the fake store, as a
- * concurrent save or queue would), then the step's response. A request with no step left gets a 500.
- */
-private class ScriptedDispatcher : Dispatcher() {
-    private val steps = ArrayDeque<Pair<(RecordedRequest) -> Unit, MockResponse>>()
-
-    fun answer(response: MockResponse, beforeAnswer: (RecordedRequest) -> Unit = {}) {
-        synchronized(steps) { steps.addLast(beforeAnswer to response) }
-    }
-
-    override fun dispatch(request: RecordedRequest): MockResponse {
-        val step = synchronized(steps) { steps.removeFirstOrNull() }
-            ?: return MockResponse.Builder().code(500).body("unscripted").build()
-        step.first(request)
-        return step.second
+/** Runs [block] with a scripted server and an application scope that flushes on the calling thread. */
+private inline fun withServer(block: (ScriptedServer, CoroutineScope) -> Unit) {
+    ScriptedServer().use { server ->
+        withScope { scope -> block(server, scope) }
     }
 }
 
-class DefaultListeningProgressRepositoryTest : DescribeSpec({
-
-    lateinit var server: MockWebServer
-    lateinit var script: ScriptedDispatcher
-    lateinit var store: TestAudioPositionStore
-    lateinit var connectivity: TestConnectivityMonitor
-    lateinit var applicationScope: CoroutineScope
-
-    val position = AudioPosition("book-1", 12.5, 11, 7)
-    val report = ListeningSessionReport("book-1", 988, 1000, 12, "c-1", 330, "Asia/Kolkata")
-
-    /**
-     * A repository for [baseUrl] (null means no server is saved), writing to [repositoryStore]. Every write
-     * flushes on the calling thread, so a test can assert right after the call.
-     */
-    fun repositoryFor(
-        baseUrl: HttpUrl?,
-        repositoryStore: AudioPositionStore = store,
-    ) = DefaultListeningProgressRepository(
-        ioDispatcher = Dispatchers.Unconfined,
-        omnibusHttpClient = OmnibusHttpClient(
-            baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
-            authTokenProvider = TestAuthTokenProvider(token = "secret"),
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        ),
-        store = repositoryStore,
-        connectivity = connectivity,
-        applicationScope = applicationScope,
-    )
-
-    /** The address of a server that has been shut down, so a request to it fails with an IOException. */
-    fun unreachableUrl(): HttpUrl {
-        val closed = MockWebServer().apply { start() }
-        return closed.url("/").also { closed.close() }
+private inline fun withScope(block: (CoroutineScope) -> Unit) {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    try {
+        block(scope)
+    } finally {
+        scope.cancel()
     }
+}
 
-    /** A JSON body with [records] for `GET api/progress/book-1`. */
-    fun progressBody(vararg records: String) =
-        """{"book_uuid":"book-1","records":[${records.joinToString(",")}],"furthest":null}"""
+/** A JSON body with [records] for the book's progress. */
+private fun progressBody(vararg records: String) = """{"book_uuid":"b","records":[${records.joinToString(",")}],"furthest":null}"""
+
+private fun audioRecord(seconds: Double, updatedAt: Long, clientUpdatedAt: Long?, file: Long = 11): String =
+    """{"book_uuid":"b","format":"audio","audio_position_seconds":$seconds,"updated_at":$updatedAt,
+        "client_updated_at":$clientUpdatedAt,"book_file_id":$file}"""
+
+class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
     beforeSpec { mockAndroidLog() }
 
     afterSpec { unmockAndroidLog() }
 
-    beforeEach {
-        script = ScriptedDispatcher()
-        server = MockWebServer().apply {
-            dispatcher = script
-            start()
-        }
-        store = TestAudioPositionStore()
-        connectivity = TestConnectivityMonitor(online = true)
-        applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    }
+    /** A repository for [baseUrl] (null means no server is saved). Every write flushes on the calling thread. */
+    fun sut(
+        scope: CoroutineScope,
+        baseUrl: HttpUrl? = null,
+        store: AudioPositionStore = TestAudioPositionStore(),
+        connectivity: ConnectivityMonitor = TestConnectivityMonitor(online = true),
+    ) = DefaultListeningProgressRepository(
+        ioDispatcher = Dispatchers.Unconfined,
+        omnibusHttpClient = httpClientFor(baseUrl),
+        store = store,
+        connectivity = connectivity,
+        applicationScope = scope,
+    )
 
-    afterEach {
-        applicationScope.cancel()
-        server.close()
-    }
+    describe("reading the server's position") {
 
-    describe("serverPosition") {
+        // TC-10
+        it("TC-10: asks for the book's audio format (I-RES-1)") {
+            withServer { server, scope ->
+                val book = randomString()
+                server.answer(200, progressBody())
 
-        it("TC-10: requests the audio format for the book (I-RES-1)") {
-            script.answer(
-                MockResponse.Builder().code(200).body(
-                    progressBody(
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":600.5,"updated_at":20,"client_updated_at":20,"book_file_id":11}""",
-                    ),
-                ).build(),
-            )
+                sut(scope, server.baseUrl).serverPosition(book)
 
-            repositoryFor(server.url("/")).serverPosition("book-1") shouldBe ServerAudioPosition(600.5, 11, 20)
-
-            val request = server.takeRequest()
-            request.method shouldBe "GET"
-            request.url.encodedPath shouldBe "/api/progress/book-1"
-            request.url.queryParameter("format") shouldBe "audio"
+                val request = server.takeRequest()
+                request.url.encodedPath shouldBe "/api/progress/$book"
+                request.url.queryParameter("format") shouldBe "audio"
+            }
         }
 
-        it("TC-11: picks the newest positive audio record by its ordering clock (I-RES-1)") {
-            val rows = listOf(
-                // The newest client clock wins: 50 s at 20 beats 100 s at 10.
-                Triple(
-                    progressBody(
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":100.0,"updated_at":10,"client_updated_at":10,"book_file_id":11}""",
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":50.0,"updated_at":20,"client_updated_at":20,"book_file_id":11}""",
+        // TC-11, TC-30: the client clock orders the records, or updated_at when a record has none
+        it("TC-11, TC-30: picks the newest positive audio record, for each mix of records (I-RES-1)") {
+            withServer { server, scope ->
+                checkAll(
+                    Exhaustive.of(
+                        progressBody(audioRecord(100.0, 10, 10), audioRecord(50.0, 20, 20)) to
+                            ServerAudioPosition(50.0, 11, 20),
+                        progressBody(audioRecord(100.0, 10, 10), audioRecord(70.0, 30, null)) to
+                            ServerAudioPosition(70.0, 11, 30),
+                        progressBody(
+                            audioRecord(0.0, 40, 40),
+                            """{"book_uuid":"b","format":"epub","epub_cfi":"epubcfi(/6/4)","updated_at":60,"client_updated_at":60}""",
+                        ) to null,
                     ),
-                    ServerAudioPosition(50.0, 11, 20),
-                    "two audio records",
-                ),
-                // No client clock: updated_at (30) orders the record, and it beats client 10.
-                Triple(
-                    progressBody(
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":100.0,"updated_at":10,"client_updated_at":10,"book_file_id":11}""",
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":70.0,"updated_at":30,"book_file_id":11}""",
-                    ),
-                    ServerAudioPosition(70.0, 11, 30),
-                    "updated_at fallback",
-                ),
-                // Only a zero, a null, or an epub record: no audio answer.
-                Triple(
-                    progressBody(
-                        """{"book_uuid":"book-1","format":"audio","audio_position_seconds":0,"updated_at":40,"client_updated_at":40,"book_file_id":11}""",
-                        """{"book_uuid":"book-1","format":"audio","updated_at":50,"client_updated_at":50,"book_file_id":11}""",
-                        """{"book_uuid":"book-1","format":"epub","epub_cfi":"epubcfi(/6/4)","updated_at":60,"client_updated_at":60}""",
-                    ),
-                    null,
-                    "no positive audio record",
-                ),
-            )
+                ) { (body, expected) ->
+                    server.answer(200, body)
 
-            rows.forEach { (body, expected, name) ->
-                withClue(name) {
-                    script.answer(MockResponse.Builder().code(200).body(body).build())
-                    repositoryFor(server.url("/")).serverPosition("book-1") shouldBe expected
+                    sut(scope, server.baseUrl).serverPosition(randomString()) shouldBe expected
                 }
             }
         }
 
-        it("TC-12: every failure is no server answer") {
-            val rows = listOf(
-                MockResponse.Builder().code(200).body("null").build() to "200 null",
-                MockResponse.Builder().code(404).build() to "404",
-                MockResponse.Builder().code(500).build() to "500",
-                MockResponse.Builder().code(401).build() to "401",
-                MockResponse.Builder().code(200).body("not json").build() to "not json",
-                MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build() to "closed socket",
-            )
+        // TC-12
+        it("TC-12: answers null for each kind of failed response") {
+            withServer { server, scope ->
+                checkAll(
+                    Exhaustive.of(
+                        reply(200, "null"),
+                        reply(404),
+                        reply(500),
+                        reply(401),
+                        reply(200, "not json"),
+                        droppedConnection(),
+                    ),
+                ) { response ->
+                    server.answer(response)
 
-            rows.forEach { (response, name) ->
-                withClue(name) {
-                    script.answer(response)
-                    shouldNotThrowAny {
-                        repositoryFor(server.url("/")).serverPosition("book-1").shouldBeNull()
-                    }
+                    sut(scope, server.baseUrl).serverPosition(randomString()).shouldBeNull()
                 }
-            }
-
-            withClue("no saved server") {
-                val before = server.requestCount
-                shouldNotThrowAny {
-                    repositoryFor(null).serverPosition("book-1").shouldBeNull()
-                }
-                server.requestCount shouldBe before
             }
         }
     }
 
-    describe("localCandidate") {
+    describe("reading the local candidate") {
 
-        it("TC-13: the newer of cached and pending, ties keep cached (I-RES-1)") {
-            fun at(seconds: Double, clock: Long) = AudioPosition("book-1", seconds, 11, clock)
-            val rows = listOf(
-                Triple(at(10.0, 10), at(20.0, 20), at(20.0, 20)) to "pending newer",
-                Triple(at(20.0, 20), at(10.0, 10), at(20.0, 20)) to "cached newer",
-                Triple(at(10.0, 10), at(11.0, 10), at(10.0, 10)) to "tie keeps cached",
-            )
+        // TC-13: a tie keeps the cached one
+        it("TC-13: answers the newer local position, for each cached-pending pair (I-RES-1)") {
+            val book = randomString()
+            val older = randomAudioPosition().copy(bookUuid = book, clientUpdatedAt = 10)
+            val newer = older.copy(clientUpdatedAt = 20)
+            val tied = older.copy(positionSeconds = older.positionSeconds + 1)
 
-            rows.forEach { (row, name) ->
-                withClue(name) {
-                    val (cached, pending, expected) = row
-                    val rowStore = TestAudioPositionStore(
-                        cached = mapOf("book-1" to cached),
-                        pending = mapOf("book-1" to pending),
+            checkAll(
+                Exhaustive.of(
+                    Triple(older, newer, newer),
+                    Triple(newer, older, newer),
+                    Triple(older, tied, older),
+                    Triple(older, null, older),
+                    Triple(null, newer, newer),
+                    Triple(null, null, null),
+                ),
+            ) { (cached, pending, expected) ->
+                withScope { scope ->
+                    val store = TestAudioPositionStore(
+                        cached = listOfNotNull(cached).associateBy { it.bookUuid },
+                        pending = listOfNotNull(pending).associateBy { it.bookUuid },
                     )
-                    repositoryFor(null, rowStore).localCandidate("book-1") shouldBe expected
-                }
-            }
 
-            withClue("only cached") {
-                val rowStore = TestAudioPositionStore(cached = mapOf("book-1" to at(10.0, 10)))
-                repositoryFor(null, rowStore).localCandidate("book-1") shouldBe at(10.0, 10)
-            }
-            withClue("only pending") {
-                val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to at(20.0, 20)))
-                repositoryFor(null, rowStore).localCandidate("book-1") shouldBe at(20.0, 20)
-            }
-            withClue("neither") {
-                repositoryFor(null, TestAudioPositionStore()).localCandidate("book-1").shouldBeNull()
+                    sut(scope, store = store).localCandidate(book) shouldBe expected
+                }
             }
         }
     }
 
-    describe("positions") {
+    describe("saving a position") {
 
-        it("TC-14: a local-only save sends nothing (I-SAVE-2)") {
-            repositoryFor(server.url("/")).save(position, push = false)
+        context("when it is not pushed") {
+            // TC-14
+            it("TC-14: sends nothing (I-SAVE-2)") {
+                withServer { server, scope ->
+                    sut(scope, server.baseUrl).save(randomAudioPosition(), push = false)
 
-            store.cachedPositions shouldBe mapOf("book-1" to position)
-            store.pendingPositions shouldBe mapOf("book-1" to position)
-            server.requestCount shouldBe 0
-        }
-
-        it("TC-15: the POST body has the audio shape (I-SAVE-1)") {
-            script.answer(MockResponse.Builder().code(200).build())
-
-            repositoryFor(server.url("/")).save(position, push = true)
-
-            server.requestCount shouldBe 1
-            val request = server.takeRequest()
-            request.method shouldBe "POST"
-            request.url.encodedPath shouldBe "/api/progress"
-            Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
-                """{"book_uuid":"book-1","format":"audio","epub_cfi":null,"audio_position_seconds":12.5,"client_updated_at":7,"book_file_id":11}""",
-            )
-        }
-
-        it("TC-16: a 2xx clears the pending write (I-SAVE-4)") {
-            script.answer(MockResponse.Builder().code(200).build())
-
-            repositoryFor(server.url("/")).save(position, push = true)
-
-            store.pendingPositions shouldBe emptyMap()
-            store.cachedPositions shouldBe mapOf("book-1" to position)
-        }
-
-        it("TC-17: a newer save made during a POST stays pending (I-SAVE-4)") {
-            val newer = AudioPosition("book-1", 40.0, 11, 9)
-            script.answer(MockResponse.Builder().code(200).build()) {
-                // A save from another thread lands while the POST for [position] is in flight.
-                runBlocking { store.save(newer) }
-            }
-
-            repositoryFor(server.url("/")).save(position, push = true)
-
-            store.pendingPositions shouldBe mapOf("book-1" to newer)
-        }
-
-        it("TC-18: 5xx, 401, 408, 429, IOException and no server keep the write (I-SAVE-4)") {
-            val rows = listOf(
-                MockResponse.Builder().code(500).build() to "500",
-                MockResponse.Builder().code(502).build() to "502",
-                MockResponse.Builder().code(401).build() to "401",
-                MockResponse.Builder().code(408).build() to "408",
-                MockResponse.Builder().code(429).build() to "429",
-            )
-
-            rows.forEach { (response, name) ->
-                withClue(name) {
-                    val rowStore = TestAudioPositionStore()
-                    script.answer(response)
-                    repositoryFor(server.url("/"), rowStore).save(position, push = true)
-                    rowStore.pendingPositions shouldBe mapOf("book-1" to position)
-                }
-            }
-
-            withClue("unreachable server") {
-                val rowStore = TestAudioPositionStore()
-                repositoryFor(unreachableUrl(), rowStore).save(position, push = true)
-                rowStore.pendingPositions shouldBe mapOf("book-1" to position)
-            }
-
-            withClue("no saved server") {
-                val rowStore = TestAudioPositionStore()
-                repositoryFor(null, rowStore).save(position, push = true)
-                rowStore.pendingPositions shouldBe mapOf("book-1" to position)
-            }
-        }
-
-        it("TC-19: any other 4xx drops the write (I-SAVE-4)") {
-            listOf(400, 403, 404, 422).forEach { code ->
-                withClue("$code") {
-                    val rowStore = TestAudioPositionStore()
-                    script.answer(MockResponse.Builder().code(code).build())
-                    repositoryFor(server.url("/"), rowStore).save(position, push = true)
-                    rowStore.pendingPositions.shouldBeEmpty()
-                    rowStore.cachedPositions shouldBe mapOf("book-1" to position)
+                    server.requestCount shouldBe 0
                 }
             }
         }
 
-        it("TC-20: a flush sends every pending write once (I-SAVE-4)") {
-            val books = listOf("book-a", "book-b", "book-c")
-            val pending = books.associateWith { AudioPosition(it, 5.0, 11, 3) }
-            val offlineStore = TestAudioPositionStore(pending = pending)
-            connectivity.isOnline.value = false
-            repositoryFor(server.url("/"), offlineStore)
-            books.forEach { _ -> script.answer(MockResponse.Builder().code(200).build()) }
+        context("when it is pushed") {
+            // TC-15
+            it("TC-15: posts the audio shape (I-SAVE-1)") {
+                withServer { server, scope ->
+                    val position = randomAudioPosition()
+                    server.answer(200)
 
-            connectivity.isOnline.value = true
+                    sut(scope, server.baseUrl).save(position, push = true)
 
-            server.requestCount shouldBe 3
-            val uuids = List(3) { server.takeRequest().body!!.utf8() }
-                .map { Json.parseToJsonElement(it).jsonObject["book_uuid"]!!.jsonPrimitive.content }
-            uuids shouldContainExactlyInAnyOrder books
-            offlineStore.pendingPositions.shouldBeEmpty()
-        }
+                    val request = server.takeRequest()
+                    request.url.encodedPath shouldBe "/api/progress"
+                    Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
+                        """{"book_uuid":"${position.bookUuid}","format":"audio","epub_cfi":null,
+                           "audio_position_seconds":${position.positionSeconds},
+                           "client_updated_at":${position.clientUpdatedAt},"book_file_id":${position.bookFileId}}""",
+                    )
+                }
+            }
 
-        it("TC-21: offline keeps writes pending until online (I-SAVE-4, AC5)") {
-            connectivity.isOnline.value = false
-            val repository = repositoryFor(server.url("/"))
-            script.answer(MockResponse.Builder().code(200).build())
+            // TC-16, TC-19: a 2xx is accepted, and any other 4xx can never succeed
+            it("TC-16, TC-19: clears the pending write on a 2xx or a final 4xx (I-SAVE-4)") {
+                withServer { server, scope ->
+                    checkAll(Exhaustive.of(200, 400, 403, 404, 422)) { code ->
+                        val store = TestAudioPositionStore()
+                        server.answer(code)
 
-            repository.save(position, push = true)
+                        sut(scope, server.baseUrl, store).save(randomAudioPosition(), push = true)
 
-            server.requestCount shouldBe 0
-            store.pendingPositions shouldBe mapOf("book-1" to position)
+                        store.pendingPositions.shouldBeEmpty()
+                    }
+                }
+            }
 
-            connectivity.isOnline.value = true
+            // TC-17
+            it("TC-17: keeps a newer save made during the POST (I-SAVE-4)") {
+                withServer { server, scope ->
+                    val store = TestAudioPositionStore()
+                    val position = randomAudioPosition()
+                    val newer = position.copy(clientUpdatedAt = position.clientUpdatedAt + 1)
+                    server.answer(reply(200)) { runBlocking { store.save(newer) } }
 
-            server.requestCount shouldBe 1
-            store.pendingPositions.shouldBeEmpty()
-        }
+                    sut(scope, server.baseUrl, store).save(position, push = true)
 
-        it("TC-22: construction flushes when online, else on reconnect (I-SAVE-4)") {
-            val rows = listOf(true to "built online", false to "built offline")
-            rows.forEach { (online, name) ->
-                withClue(name) {
-                    val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to position))
-                    connectivity.isOnline.value = online
-                    script.answer(MockResponse.Builder().code(200).build())
-                    val requestsBefore = server.requestCount
+                    store.pendingPositions shouldBe mapOf(position.bookUuid to newer)
+                }
+            }
 
-                    repositoryFor(server.url("/"), rowStore)
+            // TC-18
+            it("TC-18: keeps the write on each retryable status (I-SAVE-4)") {
+                withServer { server, scope ->
+                    checkAll(Exhaustive.of(500, 502, 401, 408, 429)) { code ->
+                        val store = TestAudioPositionStore()
+                        val position = randomAudioPosition()
+                        server.answer(code)
 
-                    if (online) {
-                        server.requestCount shouldBe requestsBefore + 1
-                        rowStore.pendingPositions.shouldBeEmpty()
-                    } else {
-                        server.requestCount shouldBe requestsBefore
-                        rowStore.pendingPositions shouldBe mapOf("book-1" to position)
-                        connectivity.isOnline.value = true
-                        server.requestCount shouldBe requestsBefore + 1
-                        rowStore.pendingPositions.shouldBeEmpty()
+                        sut(scope, server.baseUrl, store).save(position, push = true)
+
+                        store.pendingPositions shouldBe mapOf(position.bookUuid to position)
+                    }
+                }
+            }
+
+            // TC-18
+            it("TC-18: keeps the write with a missing or unreachable server (I-SAVE-4)") {
+                checkAll(Exhaustive.of(null, unreachableUrl())) { baseUrl ->
+                    withScope { scope ->
+                        val store = TestAudioPositionStore()
+                        val position = randomAudioPosition()
+
+                        sut(scope, baseUrl, store).save(position, push = true)
+
+                        store.pendingPositions shouldBe mapOf(position.bookUuid to position)
+                    }
+                }
+            }
+
+            context("when offline") {
+                // TC-21
+                it("TC-21: sends nothing (I-SAVE-4, AC5)") {
+                    withServer { server, scope ->
+                        val repository = sut(scope, server.baseUrl, connectivity = TestConnectivityMonitor(online = false))
+
+                        repository.save(randomAudioPosition(), push = true)
+
+                        server.requestCount shouldBe 0
                     }
                 }
             }
         }
 
-        it("TC-23: saves apply in call order (I-SAVE-4)") {
-            val first = AudioPosition("book-1", 10.0, 11, 1)
-            val second = AudioPosition("book-1", 20.0, 11, 2)
-            val third = AudioPosition("book-1", 30.0, 11, 3)
-            val gate = CompletableDeferred<Unit>()
-            store.saveGate = gate
-            val repository = repositoryFor(null)
-            val callers = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        // TC-23: the first save waits on the store, so the later ones must queue behind it
+        it("TC-23: applies saves in call order (I-SAVE-4)") {
+            withScope { scope ->
+                val store = TestAudioPositionStore()
+                val gate = CompletableDeferred<Unit>()
+                store.saveGate = gate
+                val repository = sut(scope, store = store)
+                val first = randomAudioPosition()
+                val last = first.copy(clientUpdatedAt = first.clientUpdatedAt + 1)
 
-            try {
-                // UNDISPATCHED starts each call in order, so the first reaches the mutex before the second, and so on.
-                val jobs = listOf(first, second, third).map { p ->
-                    callers.launch(start = CoroutineStart.UNDISPATCHED) { repository.save(p, push = false) }
+                val saves = listOf(first, last).map { position ->
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) { repository.save(position, push = false) }
                 }
                 gate.complete(Unit)
-                jobs.joinAll()
-            } finally {
-                callers.cancel()
-            }
+                saves.joinAll()
 
-            store.cachedPositions shouldBe mapOf("book-1" to third)
+                store.cachedPositions shouldBe mapOf(first.bookUuid to last)
+            }
         }
     }
 
-    describe("sessions") {
+    describe("flushing the outbox") {
 
-        it("TC-24: POSTs the reports as a JSON array (I-SESS-1)") {
-            script.answer(MockResponse.Builder().code(200).build())
+        context("when the device comes online") {
+            // TC-20
+            it("TC-20: sends each pending write (I-SAVE-4)") {
+                withServer { server, scope ->
+                    val books = listOf("book-a", "book-b", "book-c")
+                    val connectivity = TestConnectivityMonitor(online = false)
+                    val store = TestAudioPositionStore(pending = books.associateWith { randomAudioPosition().copy(bookUuid = it) })
+                    sut(scope, server.baseUrl, store, connectivity)
+                    books.forEach { _ -> server.answer(200) }
 
-            repositoryFor(server.url("/")).queueSession(report)
+                    connectivity.isOnline.value = true
 
-            server.requestCount shouldBe 1
-            val request = server.takeRequest()
-            request.method shouldBe "POST"
-            request.url.encodedPath shouldBe "/api/progress/sessions"
-            Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
-                """[{"book_uuid":"book-1","format":"audio","started_at":988,"ended_at":1000,"progress_units":12,"client_id":"c-1","utc_offset_minutes":330,"time_zone":"Asia/Kolkata"}]""",
-            )
-            store.sessions().shouldBeEmpty()
-        }
-
-        it("TC-25: 2xx removes, 400 and 422 drop, anything else keeps (I-SESS-3)") {
-            val rows = listOf(
-                MockResponse.Builder().code(200).build() to emptyList<ListeningSessionReport>(),
-                MockResponse.Builder().code(400).build() to emptyList(),
-                MockResponse.Builder().code(422).build() to emptyList(),
-                MockResponse.Builder().code(500).build() to listOf(report),
-                MockResponse.Builder().code(401).build() to listOf(report),
-            )
-
-            rows.forEach { (response, expected) ->
-                withClue("${response.code} expects ${expected.size} kept") {
-                    val rowStore = TestAudioPositionStore()
-                    script.answer(response)
-                    repositoryFor(server.url("/"), rowStore).queueSession(report)
-                    rowStore.sessions() shouldBe expected
+                    val sent = books.map { _ -> Json.parseToJsonElement(server.takeRequest().body!!.utf8()) }
+                    sent.map { it.jsonObject["book_uuid"]!!.jsonPrimitive.content } shouldContainExactlyInAnyOrder books
                 }
             }
+        }
 
-            withClue("unreachable server expects 1 kept") {
-                val rowStore = TestAudioPositionStore()
-                repositoryFor(unreachableUrl(), rowStore).queueSession(report)
-                rowStore.sessions() shouldBe listOf(report)
+        context("when the repository is built online") {
+            // TC-22
+            it("TC-22: sends what is pending (I-SAVE-4)") {
+                withServer { server, scope ->
+                    val position = randomAudioPosition()
+                    val store = TestAudioPositionStore(pending = mapOf(position.bookUuid to position))
+                    server.answer(200)
+
+                    sut(scope, server.baseUrl, store)
+
+                    store.pendingPositions.shouldBeEmpty()
+                }
+            }
+        }
+    }
+
+    describe("queueing a listening session") {
+
+        // TC-24
+        it("TC-24: posts the report in a JSON array (I-SESS-1)") {
+            withServer { server, scope ->
+                val report = randomListeningSessionReport()
+                server.answer(200)
+
+                sut(scope, server.baseUrl).queueSession(report)
+
+                val request = server.takeRequest()
+                request.url.encodedPath shouldBe "/api/progress/sessions"
+                Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
+                    """[{"book_uuid":"${report.bookUuid}","format":"audio","started_at":${report.startedAt},
+                        "ended_at":${report.endedAt},"progress_units":${report.progressUnits},
+                        "client_id":"${report.clientId}","utc_offset_minutes":${report.utcOffsetMinutes},
+                        "time_zone":"${report.timeZone}"}]""",
+                )
             }
         }
 
-        it("TC-26: offline reports are sent on reconnect (I-SESS-3)") {
-            connectivity.isOnline.value = false
-            val repository = repositoryFor(server.url("/"))
-            script.answer(MockResponse.Builder().code(200).build())
+        // TC-25
+        it("TC-25: removes the report on a 2xx, 400 or 422 (I-SESS-3)") {
+            withServer { server, scope ->
+                checkAll(Exhaustive.of(200, 400, 422)) { code ->
+                    val store = TestAudioPositionStore()
+                    server.answer(code)
 
-            repository.queueSession(report)
+                    sut(scope, server.baseUrl, store).queueSession(randomListeningSessionReport())
 
-            server.requestCount shouldBe 0
-            store.sessions() shouldBe listOf(report)
-
-            connectivity.isOnline.value = true
-
-            server.requestCount shouldBe 1
-            store.sessions().shouldBeEmpty()
-        }
-
-        it("TC-27: a batch is capped at 500 (I-SESS-3)") {
-            val reports = (1..501).map { ListeningSessionReport("book-1", 1, 2, 1, "c-$it", 0, "UTC") }
-            store.queueSessions(reports)
-            script.answer(MockResponse.Builder().code(200).build())
-            script.answer(MockResponse.Builder().code(200).build())
-            connectivity.isOnline.value = false
-            repositoryFor(server.url("/"))
-
-            connectivity.isOnline.value = true
-
-            server.requestCount shouldBe 2
-            Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray.size shouldBe 500
-            Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray.size shouldBe 1
-            store.sessions().shouldBeEmpty()
-        }
-
-        it("TC-28: a report queued during a POST survives and a retry reuses client_id (I-SESS-3)") {
-            val second = ListeningSessionReport("book-2", 500, 510, 10, "c-2", 0, "UTC")
-            val repository = repositoryFor(server.url("/"))
-            script.answer(MockResponse.Builder().code(500).build()) {
-                // A session queued while the POST for [report] is in flight.
-                runBlocking { store.queueSessions(listOf(second)) }
+                    store.sessions().shouldBeEmpty()
+                }
             }
-
-            repository.queueSession(report)
-
-            store.sessions() shouldBe listOf(report, second)
-
-            script.answer(MockResponse.Builder().code(200).build())
-            repository.requestFlush()
-
-            server.requestCount shouldBe 2
-            server.takeRequest()
-            val retry = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray
-            retry.size shouldBe 2
-            retry[0].jsonObject["client_id"]!!.jsonPrimitive.content shouldBe report.clientId
-            retry[1].jsonObject["client_id"]!!.jsonPrimitive.content shouldBe second.clientId
-            store.sessions().shouldBeEmpty()
         }
 
-        it("TC-29: a flush sends positions then sessions (I-SAVE-4, I-SESS-3)") {
-            connectivity.isOnline.value = false
-            val rowStore = TestAudioPositionStore(pending = mapOf("book-1" to position))
-            rowStore.queueSessions(listOf(report))
-            repositoryFor(server.url("/"), rowStore)
-            script.answer(MockResponse.Builder().code(200).build())
-            script.answer(MockResponse.Builder().code(200).build())
+        // TC-25
+        it("TC-25: keeps the report on each other status (I-SESS-3)") {
+            withServer { server, scope ->
+                checkAll(Exhaustive.of(500, 401)) { code ->
+                    val store = TestAudioPositionStore()
+                    val report = randomListeningSessionReport()
+                    server.answer(code)
 
-            connectivity.isOnline.value = true
+                    sut(scope, server.baseUrl, store).queueSession(report)
 
-            server.requestCount shouldBe 2
-            server.takeRequest().url.encodedPath shouldBe "/api/progress"
-            server.takeRequest().url.encodedPath shouldBe "/api/progress/sessions"
+                    store.sessions() shouldBe listOf(report)
+                }
+            }
+        }
+
+        // TC-27: the server rejects a larger POST with 422
+        it("TC-27: sends at most 500 reports in a POST (I-SESS-3)") {
+            withServer { server, scope ->
+                val store = TestAudioPositionStore()
+                store.queueSessions(List(501) { randomListeningSessionReport().copy(clientId = "c-$it") })
+                server.answer(200)
+                server.answer(200)
+
+                sut(scope, server.baseUrl, store)
+
+                val sizes = List(2) { Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray.size }
+                sizes shouldBe listOf(500, 1)
+            }
+        }
+
+        context("when another report is queued during a failing POST") {
+            // TC-28
+            it("TC-28: keeps both reports (I-SESS-3)") {
+                withServer { server, scope ->
+                    val store = TestAudioPositionStore()
+                    val report = randomListeningSessionReport()
+                    val second = randomListeningSessionReport()
+                    server.answer(reply(500)) { runBlocking { store.queueSessions(listOf(second)) } }
+
+                    sut(scope, server.baseUrl, store).queueSession(report)
+
+                    store.sessions() shouldBe listOf(report, second)
+                }
+            }
+        }
+
+        context("when a failed report is retried") {
+            // TC-28: the server drops a repeated client id, so a retry never counts twice
+            it("TC-28: reuses its client id (I-SESS-3)") {
+                withServer { server, scope ->
+                    val report = randomListeningSessionReport()
+                    val repository = sut(scope, server.baseUrl)
+                    server.answer(500)
+                    repository.queueSession(report)
+                    server.answer(200)
+
+                    repository.requestFlush()
+
+                    server.takeRequest()
+                    val retry = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray
+                    retry.single().jsonObject["client_id"]!!.jsonPrimitive.content shouldBe report.clientId
+                }
+            }
         }
     }
 })

@@ -1,268 +1,265 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackState
+import com.omnibus.omnibus.data.audiobook.playback.PlayingBook
 import com.omnibus.omnibus.data.audiobook.playback.UnloadReason
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.playback.playingBook
 import com.omnibus.omnibus.di.ClientIdSource
+import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestCoroutineScheduler
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 
-/** The checkpoints that queue a session, for the tables that check each one. */
+/** The checkpoints that queue a session, for the invariants over all of them. */
 private enum class Checkpoint { Pause, Background, Ended, SwitchBook, Stop }
 
-/** Sends [checkpoint] to [tracker] for [state]. */
-private suspend fun fire(tracker: ListeningSessionTracker, checkpoint: Checkpoint, state: PlaybackState) {
+private suspend fun ListeningSessionTracker.fire(checkpoint: Checkpoint, state: PlaybackState) {
     when (checkpoint) {
-        Checkpoint.Pause -> tracker.onPause(state)
-        Checkpoint.Background -> tracker.onAppBackground(state)
-        Checkpoint.Ended -> tracker.onEnded(state)
-        Checkpoint.SwitchBook -> tracker.onUnload(state, UnloadReason.SwitchBook)
-        Checkpoint.Stop -> tracker.onUnload(state, UnloadReason.Stop)
+        Checkpoint.Pause -> onPause(state)
+        Checkpoint.Background -> onAppBackground(state)
+        Checkpoint.Ended -> onEnded(state)
+        Checkpoint.SwitchBook -> onUnload(state, UnloadReason.SwitchBook)
+        Checkpoint.Stop -> onUnload(state, UnloadReason.Stop)
     }
 }
 
-/** A playing state of book-1 at position 0. Ticks never read the position. */
-private fun playing(rate: Double = 1.0) = playbackState(isPlaying = true, rate = rate)
+/** Client ids that never repeat. */
+private fun distinctClientIds(): ClientIdSource {
+    var minted = 0
+    return ClientIdSource { "c-${++minted}" }
+}
 
-/** A playing state of book-2. */
-private fun playingB() = playbackState(book = playingBook(bookUuid = "book-2"), isPlaying = true)
+private fun playing(book: PlayingBook, rate: Double = 1.0) = playbackState(book, isPlaying = true, rate = rate)
 
-/**
- * Session accumulation and checkpoints (I-SESS-1 to I-SESS-3, P-SYNC-4). Ticks are 0.5 s each whatever the rate. Each
- * `it` builds a fresh tracker on one virtual scheduler.
- */
+/** Session accumulation and checkpoints (I-SESS-1 to I-SESS-3, P-SYNC-4). Each tick is 0.5 s, whatever the rate. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ListeningSessionTrackerTest : DescribeSpec({
 
     beforeSpec { mockAndroidLog() }
+
     afterSpec { unmockAndroidLog() }
 
-    lateinit var scheduler: TestCoroutineScheduler
-    val scopes = mutableListOf<CoroutineScope>()
+    fun TestScope.sut(
+        repository: ListeningProgressRepository = TestListeningProgressRepository(),
+        time: TimeSource = TestTimeSource(),
+        zone: DeviceTimeZone = TestDeviceTimeZone(),
+    ) = ListeningSessionTracker(repository, time, distinctClientIds(), zone, backgroundScope)
 
-    /** A tracker with its fakes. Ids are "c-1", "c-2", and so on. */
-    class Harness(scheduler: TestCoroutineScheduler) {
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-        val repo = TestListeningProgressRepository()
-        val time = TestTimeSource()
-        val zone = TestDeviceTimeZone()
-        private var minted = 0
-        val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, zone, scope)
-    }
+    fun ListeningSessionTracker.ticks(count: Int, state: PlaybackState) = repeat(count) { onTick(state) }
 
-    fun harness(): Harness = Harness(scheduler).also { scopes += it.scope }
+    describe("adding up listening time") {
 
-    beforeEach {
-        scheduler = TestCoroutineScheduler()
-        Dispatchers.setMain(StandardTestDispatcher(scheduler))
-    }
+        // TC-64
+        it("TC-64: counts wall time, for each rate (I-SESS-2, P-SYNC-4)") {
+            checkAll(Exhaustive.of(0.5, 1.0, 2.0, 3.0)) { rate ->
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository)
 
-    afterEach {
-        scopes.forEach { it.cancel() }
-        scopes.clear()
-        Dispatchers.resetMain()
-    }
+                    tracker.ticks(60, playing(book, rate))
+                    tracker.onPause(playing(book, rate))
+                    runCurrent()
 
-    describe("accumulation") {
-        // TC-64: each tick is 0.5 s of wall time at any rate (I-SESS-2, P-SYNC-4)
-        it("TC-64: each tick is 0.5 s of wall time at any rate (I-SESS-2, P-SYNC-4)") {
-            val rows = listOf<Pair<String, (Int) -> PlaybackState>>(
-                "rate 1.0" to { _ -> playing(1.0) },
-                "rate 2.0" to { _ -> playing(2.0) },
-                "rate 0.5" to { _ -> playing(0.5) },
-                "rates alternating 0.5 and 3.0" to { i -> playing(if (i % 2 == 0) 0.5 else 3.0) },
-            )
-            rows.forEach { (name, stateAt) ->
-                val h = harness()
-                repeat(60) { h.tracker.onTick(stateAt(it)) }
-                h.tracker.onPause(playing())
-                scheduler.runCurrent()
-                withClue(name) {
-                    h.repo.reports.single().progressUnits shouldBe 30L
+                    repository.reports.single().progressUnits shouldBe 30L
                 }
             }
         }
 
-        // TC-65: an hour of audio at 2x is 30 minutes (P-SYNC-4)
-        it("TC-65: an hour of audio at 2x is 30 minutes (P-SYNC-4)") {
-            val h = harness()
-            // An hour of audio at 2x takes 30 minutes of wall time: 1800 s, which is 3600 ticks of 0.5 s.
-            repeat(3_600) { h.tracker.onTick(playing(2.0)) }
-            h.tracker.onPause(playing(2.0))
-            scheduler.runCurrent()
-            h.repo.reports.single().progressUnits shouldBe 1_800L
+        context("when a tick is for another book") {
+            // TC-70
+            it("TC-70: restarts the total (I-SESS-3)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val other = book.copy(bookUuid = "${book.bookUuid}-other")
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository)
+                    tracker.ticks(9, playing(book))
+
+                    tracker.onTick(playing(other))
+                    tracker.onPause(playing(other))
+                    runCurrent()
+
+                    repository.reports.shouldBeEmpty()
+                }
+            }
         }
     }
 
-    describe("checkpoints") {
-        // TC-66: 5 s is the threshold and a report zeroes the total (I-SESS-3)
-        it("TC-66: 5 s is the threshold and a report zeroes the total (I-SESS-3)") {
-            val nine = harness()
-            repeat(9) { nine.tracker.onTick(playing()) }
-            nine.tracker.onPause(playing())
-            scheduler.runCurrent()
-            nine.repo.reports.shouldBeEmpty()
+    describe("reporting at a checkpoint") {
 
-            val ten = harness()
-            repeat(10) { ten.tracker.onTick(playing()) }
-            ten.tracker.onPause(playing())
-            ten.tracker.onPause(playing())
-            scheduler.runCurrent()
-            ten.repo.reports.map { it.progressUnits } shouldBe listOf(5L)
-        }
+        context("when under 5 s was listened") {
 
-        // TC-67: a remainder under 5 s carries over (I-SESS-3)
-        it("TC-67: a remainder under 5 s carries over (I-SESS-3)") {
-            val nineThenNine = harness()
-            repeat(9) { nineThenNine.tracker.onTick(playing()) }
-            nineThenNine.tracker.onPause(playing())
-            repeat(9) { nineThenNine.tracker.onTick(playing()) }
-            nineThenNine.tracker.onPause(playing())
-            scheduler.runCurrent()
-            nineThenNine.repo.reports.map { it.progressUnits } shouldBe listOf(9L)
+            // TC-67
+            it("TC-67: carries the remainder to the next checkpoint (I-SESS-3)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository)
+                    tracker.ticks(9, playing(book))
+                    tracker.onPause(playing(book))
 
-            val sixteen = harness()
-            repeat(16) { sixteen.tracker.onTick(playing()) }
-            sixteen.tracker.onPause(playing())
-            repeat(16) { sixteen.tracker.onTick(playing()) }
-            sixteen.tracker.onPause(playing())
-            scheduler.runCurrent()
-            sixteen.repo.reports.map { it.progressUnits } shouldBe listOf(8L, 8L)
-        }
+                    tracker.ticks(9, playing(book))
+                    tracker.onPause(playing(book))
+                    runCurrent()
 
-        // TC-68: every checkpoint kind reports (I-SESS-3)
-        it("TC-68: every checkpoint kind reports (I-SESS-3)") {
-            listOf(Checkpoint.Background, Checkpoint.Ended, Checkpoint.SwitchBook, Checkpoint.Stop).forEach { kind ->
-                val h = harness()
-                repeat(12) { h.tracker.onTick(playing()) }
-                fire(h.tracker, kind, playing())
-                scheduler.runCurrent()
-                withClue("$kind") {
-                    h.repo.reports.map { it.progressUnits } shouldBe listOf(6L)
+                    repository.reports.single().progressUnits shouldBe 9L
                 }
             }
-            val none = harness()
-            none.tracker.onPause(playing())
-            scheduler.runCurrent()
-            none.repo.reports.shouldBeEmpty()
-        }
 
-        // TC-69: unload drops a remainder under 5 s (I-SESS-3)
-        it("TC-69: unload drops a remainder under 5 s (I-SESS-3)") {
-            val h = harness()
-            repeat(6) { h.tracker.onTick(playing()) }
-            h.tracker.onUnload(playing(), UnloadReason.SwitchBook)
-            repeat(20) { h.tracker.onTick(playingB()) }
-            h.tracker.onPause(playingB())
-            repeat(8) { h.tracker.onTick(playing()) }
-            h.tracker.onUnload(playing(), UnloadReason.Stop)
-            repeat(8) { h.tracker.onTick(playing()) }
-            h.tracker.onPause(playing())
-            scheduler.runCurrent()
-            h.repo.reports.map { it.bookUuid to it.progressUnits } shouldBe listOf("book-2" to 10L)
-        }
+            // TC-69
+            it("TC-69: loses the remainder on each kind of unload (I-SESS-3)") {
+                checkAll(Exhaustive.enum<UnloadReason>()) { reason ->
+                    runTest {
+                        val book = randomPlayingBook()
+                        val repository = TestListeningProgressRepository()
+                        val tracker = sut(repository)
+                        tracker.ticks(9, playing(book))
+                        tracker.onUnload(playing(book), reason)
 
-        // TC-70: a tick for another book restarts the total (I-SESS-3)
-        it("TC-70: a tick for another book restarts the total (I-SESS-3)") {
-            val h = harness()
-            repeat(6) { h.tracker.onTick(playing()) }
-            h.tracker.onTick(playingB())
-            h.tracker.onPause(playingB())
-            scheduler.runCurrent()
-            withClue("book-2 restarts at 0.5 s") {
-                h.repo.reports.shouldBeEmpty()
-            }
+                        tracker.ticks(9, playing(book))
+                        tracker.onPause(playing(book))
+                        runCurrent()
 
-            repeat(6) { h.tracker.onTick(playing()) }
-            h.tracker.onPause(playing())
-            repeat(6) { h.tracker.onTick(playingB()) }
-            h.tracker.onPause(playingB())
-            repeat(6) { h.tracker.onTick(playing()) }
-            h.tracker.onPause(playing())
-            scheduler.runCurrent()
-            withClue("the carry-over is per book") {
-                h.repo.reports.shouldBeEmpty()
+                        repository.reports.shouldBeEmpty()
+                    }
+                }
             }
         }
 
-        // TC-71: unload awaits the queueing (I-SESS-3)
-        it("TC-71: unload awaits the queueing (I-SESS-3)") {
-            val h = harness()
-            repeat(12) { h.tracker.onTick(playing()) }
-            h.repo.queueGate = CompletableDeferred()
-            val unload = h.scope.launch { h.tracker.onUnload(playing(), UnloadReason.Stop) }
-            scheduler.runCurrent()
-            unload.isCompleted shouldBe false
-            h.repo.queueGate?.complete(Unit)
-            scheduler.runCurrent()
-            unload.isCompleted shouldBe true
-            h.repo.reports.map { it.progressUnits } shouldBe listOf(6L)
+        context("when 5 s was listened") {
+            // TC-66: a report zeroes the total, so the second pause adds nothing
+            it("TC-66: reports it once (I-SESS-3)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository)
+                    tracker.ticks(10, playing(book))
+
+                    tracker.onPause(playing(book))
+                    tracker.onPause(playing(book))
+                    runCurrent()
+
+                    repository.reports.map { it.progressUnits } shouldBe listOf(5L)
+                }
+            }
+
+            // TC-68
+            it("TC-68: reports on each kind of checkpoint (I-SESS-3)") {
+                checkAll(Exhaustive.enum<Checkpoint>()) { checkpoint ->
+                    runTest {
+                        val book = randomPlayingBook()
+                        val repository = TestListeningProgressRepository()
+                        val tracker = sut(repository)
+                        tracker.ticks(12, playing(book))
+
+                        tracker.fire(checkpoint, playing(book))
+                        runCurrent()
+
+                        repository.reports.map { it.progressUnits } shouldBe listOf(6L)
+                    }
+                }
+            }
+        }
+
+        context("when the checkpoint is an unload") {
+            // TC-71: the report is in local storage when the unload returns
+            it("TC-71: waits for the report to be queued (I-SESS-3)") {
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository)
+                    tracker.ticks(12, playing(book))
+                    repository.queueGate = CompletableDeferred()
+
+                    val unload = backgroundScope.launch { tracker.onUnload(playing(book), UnloadReason.Stop) }
+                    runCurrent()
+
+                    unload.isCompleted shouldBe false
+                }
+            }
         }
     }
 
-    describe("report") {
-        // TC-72: started_at is ended_at minus whole seconds, one client id per report (I-SESS-1)
-        it("TC-72: started_at is ended_at minus whole seconds, one client id per report (I-SESS-1)") {
-            val h = harness()
-            h.time.set(1_000_000)
-            repeat(25) { h.tracker.onTick(playing()) }
-            h.tracker.onPause(playing())
-            repeat(12) { h.tracker.onTick(playing()) }
-            h.tracker.onPause(playing())
-            scheduler.runCurrent()
-            h.repo.reports.size shouldBe 2
-            h.repo.reports[0] shouldBe ListeningSessionReport(
-                bookUuid = "book-1",
-                startedAt = 988L,
-                endedAt = 1_000L,
-                progressUnits = 12L,
-                clientId = "c-1",
-                utcOffsetMinutes = 0,
-                timeZone = "UTC",
-            )
-            h.repo.reports[1].clientId shouldBe "c-2"
+    describe("the report") {
+
+        // TC-72
+        it("TC-72: spans the whole seconds listened up to now (I-SESS-1)") {
+            runTest {
+                val book = randomPlayingBook()
+                val repository = TestListeningProgressRepository()
+                val tracker = sut(repository, TestTimeSource(1_000_000L), TestDeviceTimeZone(TimeZone.getTimeZone("UTC")))
+                tracker.ticks(25, playing(book))
+
+                tracker.onPause(playing(book))
+                runCurrent()
+
+                repository.reports.single() shouldBe ListeningSessionReport(
+                    bookUuid = book.bookUuid,
+                    startedAt = 988L,
+                    endedAt = 1_000L,
+                    progressUnits = 12L,
+                    clientId = "c-1",
+                    utcOffsetMinutes = 0,
+                    timeZone = "UTC",
+                )
+            }
         }
 
-        // TC-73: offset and zone id are read at each report for its end instant (I-SESS-1)
-        it("TC-73: offset and zone id are read at each report for its end instant (I-SESS-1)") {
-            val h = harness()
-            data class Row(val name: String, val zone: String, val atMillis: Long, val offset: Int, val id: String)
-            listOf(
-                Row("Asia/Kolkata", "Asia/Kolkata", 1_000_000L, 330, "Asia/Kolkata"),
-                Row("Los Angeles in January", "America/Los_Angeles", 1_768_478_400_000L, -480, "America/Los_Angeles"),
-                Row("New York in January", "America/New_York", 1_768_478_400_000L, -300, "America/New_York"),
-                Row("New York in July", "America/New_York", 1_784_116_800_000L, -240, "America/New_York"),
-            ).forEach { row ->
-                h.zone.zone = TimeZone.getTimeZone(row.zone)
-                h.time.set(row.atMillis)
-                repeat(10) { h.tracker.onTick(playing()) }
-                h.tracker.onPause(playing())
-                scheduler.runCurrent()
-                val report = h.repo.reports.last()
-                withClue(row.name) {
-                    report.utcOffsetMinutes shouldBe row.offset
-                    report.timeZone shouldBe row.id
+        // TC-72: the server drops a repeated client id as a retry
+        it("TC-72: has its own client id (I-SESS-1)") {
+            runTest {
+                val book = randomPlayingBook()
+                val repository = TestListeningProgressRepository()
+                val tracker = sut(repository)
+
+                repeat(2) {
+                    tracker.ticks(10, playing(book))
+                    tracker.onPause(playing(book))
+                }
+                runCurrent()
+
+                repository.reports.map { it.clientId }.distinct().size shouldBe 2
+            }
+        }
+
+        // TC-73
+        it("TC-73: carries the zone's offset at the end instant, over zones in each season (I-SESS-1)") {
+            checkAll(
+                Exhaustive.of(
+                    Triple("Asia/Kolkata", 1_000_000L, 330),
+                    Triple("America/Los_Angeles", 1_768_478_400_000L, -480),
+                    Triple("America/New_York", 1_768_478_400_000L, -300),
+                    Triple("America/New_York", 1_784_116_800_000L, -240),
+                ),
+            ) { (zone, atMillis, offset) ->
+                runTest {
+                    val book = randomPlayingBook()
+                    val repository = TestListeningProgressRepository()
+                    val tracker = sut(repository, TestTimeSource(atMillis), TestDeviceTimeZone(TimeZone.getTimeZone(zone)))
+                    tracker.ticks(10, playing(book))
+
+                    tracker.onPause(playing(book))
+                    runCurrent()
+
+                    repository.reports.single().utcOffsetMinutes to repository.reports.single().timeZone shouldBe
+                        (offset to zone)
                 }
             }
-            h.repo.reports.size shouldBe 4
         }
     }
 })

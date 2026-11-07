@@ -2,10 +2,8 @@ package com.omnibus.omnibus.data.audiobook.crossformat
 
 import kotlinx.coroutines.CompletableDeferred
 
-/** A [CrossFormatRepository] with scripted answers, recorded calls and in-memory dismissed clocks. */
+/** A [CrossFormatRepository] with scripted answers and in-memory dismissed clocks. */
 class TestCrossFormatRepository(var result: CrossFormatAudioResult = CrossFormatAudioResult.NoCandidate) : CrossFormatRepository {
-    val audioResumeCalls = mutableListOf<String>()
-    val storedClocks = mutableListOf<Pair<String, Long>>()
     val dismissedClocks = mutableMapOf<String, Long>()
 
     /** When set, [dismissedClock] waits for it before answering. */
@@ -17,7 +15,6 @@ class TestCrossFormatRepository(var result: CrossFormatAudioResult = CrossFormat
         CompletableDeferred<CrossFormatAudioResult>().also { held.addLast(it) }
 
     override suspend fun audioResume(bookUuid: String): CrossFormatAudioResult {
-        audioResumeCalls += bookUuid
         return held.removeFirstOrNull()?.await() ?: result
     }
 
@@ -27,7 +24,6 @@ class TestCrossFormatRepository(var result: CrossFormatAudioResult = CrossFormat
     }
 
     override suspend fun storeDismissedClock(bookUuid: String, sourceClock: Long) {
-        storedClocks += bookUuid to sourceClock
         dismissedClocks[bookUuid] = sourceClock
     }
 }
