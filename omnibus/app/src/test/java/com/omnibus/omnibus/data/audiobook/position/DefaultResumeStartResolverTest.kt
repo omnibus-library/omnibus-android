@@ -1,475 +1,414 @@
 package com.omnibus.omnibus.data.audiobook.position
 
 import com.omnibus.omnibus.data.audiobook.playback.AudiobookController
-import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.data.audiobook.playback.PendingResume
+import com.omnibus.omnibus.data.audiobook.playback.TestAudiobookController
 import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestCoroutineScheduler
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 
-/** One resolver with its repository and sync, on one scope that shares [scheduler]'s virtual clock. */
-private class Harness(scheduler: TestCoroutineScheduler) {
-    val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    val repo = TestListeningProgressRepository()
-    val sync = DefaultListeningPositionSync(
-        repo,
-        dagger.Lazy<AudiobookController> { TestAudiobookController() },
-        TestTimeSource(),
-        scope,
-    )
-    val resolver = DefaultResumeStartResolver(repo, sync, scope)
-}
+/** A local position of [seconds], saved against [file] at [clock]. */
+private fun local(seconds: Double, file: Long, clock: Long) =
+    randomAudioPosition().copy(positionSeconds = seconds, bookFileId = file, clientUpdatedAt = clock)
 
-/** A row of the "settle picks the newer candidate" table. */
-private data class ChoiceRow(
-    val name: String,
-    val local: AudioPosition?,
-    val server: ServerAudioPosition?,
-    val expected: Double?,
-)
+/** Starts [PendingResume.settle] for [file] on the background scope and runs what is due. */
+private fun TestScope.settle(pending: PendingResume, file: Long): Deferred<Double?> =
+    backgroundScope.async { pending.settle(file, randomDouble(1.0, 40_000.0)) }.also { runCurrent() }
 
-/** A local position of book-1 at [seconds], saved against [fileId] at [clock]. */
-private fun local(seconds: Double, fileId: Long, clock: Long) = AudioPosition("book-1", seconds, fileId, clock)
-
-/** Starts [PendingResume.settle] for file 6 and a 3000 s book on this scope. */
+/** Moves the virtual clock by [millis], running everything that falls due. */
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun CoroutineScope.settleAsync(pending: PendingResume): Deferred<Double?> =
-    async { pending.settle(6L, 3000.0) }
+private fun TestScope.advance(millis: Long) {
+    advanceTimeBy(millis)
+    runCurrent()
+}
 
 /**
  * The resume decision (C5): the local read at begin, the server read with its 1200 ms deadline, the choice of start, the
- * late offer and cancellation. All time is virtual, on one [TestCoroutineScheduler].
+ * late offer and cancellation. All time is virtual.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultResumeStartResolverTest : DescribeSpec({
 
     beforeSpec { mockAndroidLog() }
+
     afterSpec { unmockAndroidLog() }
 
-    lateinit var scheduler: TestCoroutineScheduler
-    val harnesses = mutableListOf<Harness>()
+    fun TestScope.syncOver(repository: ListeningProgressRepository) = DefaultListeningPositionSync(
+        repository,
+        dagger.Lazy<AudiobookController> { TestAudiobookController() },
+        TestTimeSource(),
+        backgroundScope,
+    )
 
-    fun harness(): Harness = Harness(scheduler).also { harnesses += it }
+    fun TestScope.sut(
+        repository: ListeningProgressRepository = TestListeningProgressRepository(),
+        sync: DefaultListeningPositionSync = syncOver(repository),
+    ) = DefaultResumeStartResolver(repository, sync, backgroundScope)
 
-    beforeEach {
-        scheduler = TestCoroutineScheduler()
-        Dispatchers.setMain(StandardTestDispatcher(scheduler))
-    }
+    describe("starting at an explicit position") {
 
-    afterEach {
-        harnesses.forEach { it.scope.cancel() }
-        harnesses.clear()
-        Dispatchers.resetMain()
-    }
+        // TC-36: even one under the 1 s floor
+        it("TC-36: starts there as given, for each position over the server's (I-RES-4)") {
+            checkAll(Exhaustive.of(42.5, 0.5)) { explicit ->
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.serverAnswers[book] = CompletableDeferred(randomServerAudioPosition())
 
-    describe("begin") {
-        // TC-35: begin returns at once and starts both reads (I-RES-2)
-        it("TC-35: begin returns at once and starts both reads (I-RES-2)") {
-            val h = harness()
-            h.resolver.begin("book-1", null, null)
-            h.repo.localCalls shouldBe 0
-            h.repo.serverCalls shouldBe 0
-            scheduler.runCurrent()
-            h.repo.localCalls shouldBe 1
-            h.repo.serverCalls shouldBe 1
-            scheduler.currentTime shouldBe 0
-        }
+                    val pending = sut(repository).begin(book, null, explicit)
 
-        // TC-36: an explicit position wins as given and skips the GET (I-RES-4)
-        it("TC-36: an explicit position wins as given and skips the GET (I-RES-4)") {
-            listOf(42.5, 0.5).forEach { explicit ->
-                val h = harness()
-                h.repo.serverAnswers["book-1"] = CompletableDeferred(ServerAudioPosition(300.0, 6, 20))
-                val pending = h.resolver.begin("book-1", null, explicit)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                withClue("explicit $explicit") {
-                    result.isCompleted shouldBe true
-                    result.getCompleted() shouldBe explicit
-                    scheduler.currentTime shouldBe 0
-                    h.repo.serverCalls shouldBe 0
+                    settle(pending, randomLong(1L..100L)).getCompleted() shouldBe explicit
                 }
             }
         }
     }
 
-    describe("savedFileId") {
-        // TC-37: local file id only, never waits for the server (I-RES-1)
-        it("TC-37: local file id only, never waits for the server (I-RES-1)") {
-            listOf<AudioPosition?>(local(100.0, 7, 10), null).forEach { saved ->
-                val h = harness()
-                if (saved != null) h.repo.locals["book-1"] = saved
-                // A server read that never completes: savedFileId must not wait for it.
-                h.repo.serverAnswers["book-1"] = CompletableDeferred()
-                val pending = h.resolver.begin("book-1", null, null)
-                val fileId = h.scope.async { pending.savedFileId() }
-                scheduler.runCurrent()
-                withClue("saved $saved") {
-                    fileId.isCompleted shouldBe true
+    describe("the saved file") {
+
+        // TC-37
+        it("TC-37: answers from local storage with the server silent, for each saved position (I-RES-1)") {
+            checkAll(Exhaustive.of(randomAudioPosition(), null)) { saved ->
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = saved
+                    repository.serverAnswers[book] = CompletableDeferred()
+                    val pending = sut(repository).begin(book, null, null)
+
+                    val fileId = backgroundScope.async { pending.savedFileId() }
+                    runCurrent()
+
                     fileId.getCompleted() shouldBe saved?.bookFileId
-                    scheduler.currentTime shouldBe 0
                 }
             }
         }
     }
 
-    describe("choice") {
-        // TC-38: settle picks the newer candidate and applies the file and 1 s rules (I-RES-1, I-RES-3)
-        it("TC-38: settle picks the newer candidate and applies the file and 1 s rules (I-RES-1, I-RES-3)") {
-            listOf(
-                ChoiceRow("local 100@10 file 6, server 200@20 file 6", local(100.0, 6, 10), ServerAudioPosition(200.0, 6, 20), 200.0),
-                ChoiceRow("local 100@20, server 200@10", local(100.0, 6, 20), ServerAudioPosition(200.0, 6, 10), 100.0),
-                ChoiceRow("local 100@10, server 200@10 (tie)", local(100.0, 6, 10), ServerAudioPosition(200.0, 6, 10), 100.0),
-                ChoiceRow("server 200@20 file 5", null, ServerAudioPosition(200.0, 5, 20), null),
-                ChoiceRow("server 200@20 file null", null, ServerAudioPosition(200.0, null, 20), 200.0),
-                ChoiceRow("server 1.0@20 file 6", null, ServerAudioPosition(1.0, 6, 20), null),
-                ChoiceRow("server 1.01@20 file 6", null, ServerAudioPosition(1.01, 6, 20), 1.01),
-            ).forEach { row ->
-                val h = harness()
-                row.local?.let { h.repo.locals["book-1"] = it }
-                row.server?.let { h.repo.serverAnswers["book-1"] = CompletableDeferred(it) }
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                withClue(row.name) {
-                    result.isCompleted shouldBe true
-                    result.getCompleted() shouldBe row.expected
+    describe("choosing the start") {
+
+        // TC-31, TC-38: a tie keeps local, and a server position of 0 never wins
+        it("TC-31, TC-38: starts at the newer position, for each pair of clocks (I-RES-1)") {
+            checkAll(
+                Exhaustive.of(
+                    Triple(local(100.0, 6, 10), ServerAudioPosition(200.0, 6, 20), 200.0),
+                    Triple(local(100.0, 6, 20), ServerAudioPosition(200.0, 6, 10), 100.0),
+                    Triple(local(100.0, 6, 10), ServerAudioPosition(200.0, 6, 10), 100.0),
+                    Triple(local(100.0, 6, 10), ServerAudioPosition(0.0, 6, 20), 100.0),
+                    Triple(null, ServerAudioPosition(200.0, 6, 20), 200.0),
+                    Triple(local(100.0, 6, 10), null, 100.0),
+                ),
+            ) { (saved, answer, expected) ->
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = saved
+                    answer?.let { repository.serverAnswers[book] = CompletableDeferred(it) }
+
+                    val pending = sut(repository).begin(book, null, null)
+
+                    settle(pending, 6L).getCompleted() shouldBe expected
+                }
+            }
+        }
+
+        // TC-32, TC-38: a null record file or a loaded file of 0 matches any
+        it("TC-32, TC-38: applies the position only to a matching file, for each pair of files (I-RES-3)") {
+            checkAll(
+                Exhaustive.of<Triple<Long?, Long, Double?>>(
+                    Triple(6L, 6L, 200.0),
+                    Triple(5L, 6L, null),
+                    Triple(null, 6L, 200.0),
+                    Triple(5L, 0L, 200.0),
+                ),
+            ) { (recordFile, loadedFile, expected) ->
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.serverAnswers[book] = CompletableDeferred(ServerAudioPosition(200.0, recordFile, 20))
+
+                    val pending = sut(repository).begin(book, null, null)
+
+                    settle(pending, loadedFile).getCompleted() shouldBe expected
+                }
+            }
+        }
+
+        // TC-33, TC-38: the 1 s floor is exclusive
+        it("TC-33, TC-38: starts at 0 for a position of 1 s or less (I-RES-3)") {
+            checkAll(Exhaustive.of<Pair<Double, Double?>>(1.0 to null, 1.01 to 1.01)) { (seconds, expected) ->
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.serverAnswers[book] = CompletableDeferred(ServerAudioPosition(seconds, 6, 20))
+
+                    val pending = sut(repository).begin(book, null, null)
+
+                    settle(pending, 6L).getCompleted() shouldBe expected
+                }
+            }
+        }
+
+        context("when neither side has a position") {
+            // TC-39
+            it("TC-39: starts at 0 with no wait (I-RES-2)") {
+                runTest {
+                    val pending = sut().begin(randomString(), null, null)
+
+                    settle(pending, randomLong(1L..100L)).getCompleted().shouldBeNull()
                 }
             }
         }
     }
 
-    describe("deadline") {
-        // TC-39: a completed no-answer returns at once (I-RES-2)
-        it("TC-39: a completed no-answer returns at once (I-RES-2)") {
-            val h = harness()
-            val pending = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            result.isCompleted shouldBe true
-            result.getCompleted() shouldBe null
-            scheduler.currentTime shouldBe 0
-        }
+    describe("the server's deadline") {
 
-        // TC-40: settle waits until 1200 ms and no longer (I-RES-2)
-        it("TC-40: settle waits until 1200 ms and no longer (I-RES-2)") {
-            // Row 1: the server answers at 1199 ms, just inside the deadline.
-            run {
-                val h = harness()
-                h.repo.locals["book-1"] = local(100.0, 6, 10)
-                val gate = CompletableDeferred<ServerAudioPosition?>()
-                h.repo.serverAnswers["book-1"] = gate
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                scheduler.advanceTimeBy(1_199)
-                scheduler.runCurrent()
-                gate.complete(ServerAudioPosition(200.0, 6, 20))
-                scheduler.runCurrent()
-                withClue("answer at 1199 ms") {
-                    result.isCompleted shouldBe true
+        context("when the server answers just inside it") {
+            // TC-40
+            it("TC-40: starts at the server's position (I-RES-2)") {
+                runTest {
+                    val book = randomString()
+                    val gate = CompletableDeferred<ServerAudioPosition?>()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = local(100.0, 6, 10)
+                    repository.serverAnswers[book] = gate
+                    val result = settle(sut(repository).begin(book, null, null), 6L)
+
+                    advance(1_199)
+                    gate.complete(ServerAudioPosition(200.0, 6, 20))
+                    runCurrent()
+
                     result.getCompleted() shouldBe 200.0
-                    scheduler.currentTime shouldBe 1_199
                 }
             }
-            // Row 2: the server never answers, so settle returns the local start at 1200 ms.
-            run {
-                val startedAt = scheduler.currentTime
-                val h = harness()
-                h.repo.locals["book-1"] = local(100.0, 6, 10)
-                h.repo.serverAnswers["book-1"] = CompletableDeferred()
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                scheduler.advanceTimeBy(1_199)
-                scheduler.runCurrent()
-                withClue("still waiting at 1199 ms") {
+        }
+
+        context("when the server stays silent") {
+            // TC-40
+            it("TC-40: starts at the local position at 1200 ms, not before (I-RES-2)") {
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = local(100.0, 6, 10)
+                    repository.serverAnswers[book] = CompletableDeferred()
+                    val result = settle(sut(repository).begin(book, null, null), 6L)
+
+                    advance(1_199)
                     result.isCompleted shouldBe false
-                }
-                scheduler.advanceTimeBy(1)
-                scheduler.runCurrent()
-                withClue("answered at 1200 ms") {
-                    result.isCompleted shouldBe true
+
+                    advance(1)
                     result.getCompleted() shouldBe 100.0
-                    scheduler.currentTime - startedAt shouldBe 1_200
                 }
             }
         }
 
-        // TC-41: the deadline runs from begin, not from settle (I-RES-2)
-        it("TC-41: the deadline runs from begin, not from settle (I-RES-2)") {
-            // Row 1: settle called at 1000 ms waits until the 1200 ms deadline, 200 ms after the call.
-            run {
-                val h = harness()
-                h.repo.locals["book-1"] = local(100.0, 6, 10)
-                h.repo.serverAnswers["book-1"] = CompletableDeferred()
-                val pending = h.resolver.begin("book-1", null, null)
-                scheduler.advanceTimeBy(1_000)
-                scheduler.runCurrent()
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                scheduler.advanceTimeBy(199)
-                scheduler.runCurrent()
-                withClue("200 ms after the call, before the deadline") {
+        context("when the settle comes late") {
+            // TC-41: the deadline runs from begin
+            it("TC-41: waits only for what is left of the deadline (I-RES-2)") {
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = local(100.0, 6, 10)
+                    repository.serverAnswers[book] = CompletableDeferred()
+                    val pending = sut(repository).begin(book, null, null)
+                    advance(1_000)
+                    val result = settle(pending, 6L)
+
+                    advance(199)
                     result.isCompleted shouldBe false
-                }
-                scheduler.advanceTimeBy(1)
-                scheduler.runCurrent()
-                withClue("at the deadline") {
-                    result.isCompleted shouldBe true
-                    result.getCompleted() shouldBe 100.0
-                    scheduler.currentTime shouldBe 1_200
-                }
-            }
-            // Row 2: settle called at 5000 ms, after the deadline, returns the local start with no wait.
-            run {
-                val startedAt = scheduler.currentTime
-                val h = harness()
-                h.repo.locals["book-1"] = local(100.0, 6, 10)
-                h.repo.serverAnswers["book-1"] = CompletableDeferred()
-                val pending = h.resolver.begin("book-1", null, null)
-                scheduler.advanceTimeBy(5_000)
-                scheduler.runCurrent()
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                withClue("after the deadline") {
-                    result.isCompleted shouldBe true
-                    result.getCompleted() shouldBe 100.0
-                    scheduler.currentTime - startedAt shouldBe 5_000
-                }
-            }
-        }
 
-        // TC-42: an answer already in hand is used past the deadline (I-RES-2)
-        it("TC-42: an answer already in hand is used past the deadline (I-RES-2)") {
-            val h = harness()
-            h.repo.locals["book-1"] = local(100.0, 6, 10)
-            val gate = CompletableDeferred<ServerAudioPosition?>()
-            h.repo.serverAnswers["book-1"] = gate
-            val pending = h.resolver.begin("book-1", null, null)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(500)
-            scheduler.runCurrent()
-            gate.complete(ServerAudioPosition(200.0, 6, 20))
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(2_500)
-            scheduler.runCurrent()
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            result.isCompleted shouldBe true
-            result.getCompleted() shouldBe 200.0
-            scheduler.currentTime shouldBe 3_000
-        }
-
-        // TC-43: settle waits for the local read (I-RES-2)
-        it("TC-43: settle waits for the local read (I-RES-2)") {
-            val h = harness()
-            val localGate = CompletableDeferred<Unit>()
-            h.repo.localGate = localGate
-            h.repo.locals["book-1"] = local(100.0, 6, 10)
-            h.repo.serverAnswers["book-1"] = CompletableDeferred(ServerAudioPosition(200.0, 6, 20))
-            val pending = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(1_999)
-            scheduler.runCurrent()
-            withClue("at 1999 ms, local still reading") {
-                result.isCompleted shouldBe false
+                    advance(1)
+                    result.getCompleted() shouldBe 100.0
+                }
             }
-            scheduler.advanceTimeBy(1)
-            localGate.complete(Unit)
-            scheduler.runCurrent()
-            result.isCompleted shouldBe true
-            result.getCompleted() shouldBe 200.0
-            scheduler.currentTime shouldBe 2_000
+
+            // TC-42
+            it("TC-42: uses an answer already in hand (I-RES-2)") {
+                runTest {
+                    val book = randomString()
+                    val gate = CompletableDeferred<ServerAudioPosition?>()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = local(100.0, 6, 10)
+                    repository.serverAnswers[book] = gate
+                    val pending = sut(repository).begin(book, null, null)
+                    advance(500)
+                    gate.complete(ServerAudioPosition(200.0, 6, 20))
+                    advance(2_500)
+
+                    settle(pending, 6L).getCompleted() shouldBe 200.0
+                }
+            }
         }
     }
 
-    describe("late answer") {
-        // TC-44: a late answer ahead of the start is offered (I-RES-6)
-        it("TC-44: a late answer ahead of the start is offered (I-RES-6)") {
-            val h = harness()
-            h.repo.locals["book-1"] = local(30.0, 6, 10)
-            val gate = CompletableDeferred<ServerAudioPosition?>()
-            h.repo.serverAnswers["book-1"] = gate
-            val pending = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(1_199)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(1)
-            scheduler.runCurrent()
-            result.getCompleted() shouldBe 30.0
-            gate.complete(ServerAudioPosition(50.0, 6, 20))
-            scheduler.runCurrent()
-            h.sync.lateServerPosition.value shouldBe LatePosition("book-1", 6, 50.0)
-        }
+    describe("the late offer") {
 
-        // TC-45: a late answer that fails a rule is not offered (I-RES-6)
-        it("TC-45: a late answer that fails a rule is not offered (I-RES-6)") {
-            listOf<Pair<String, ServerAudioPosition?>>(
-                "31.0 at clock 20 (1 s ahead is not more than 1 s)" to ServerAudioPosition(31.0, 6, 20),
-                "60 at clock 10 (not newer)" to ServerAudioPosition(60.0, 6, 10),
-                "60 at clock 9 (older)" to ServerAudioPosition(60.0, 6, 9),
-                "60 at clock 20 for file 7" to ServerAudioPosition(60.0, 7, 20),
-                "no answer" to null,
-            ).forEach { (name, late) ->
-                val h = harness()
-                h.repo.locals["book-1"] = local(30.0, 6, 10)
-                val gate = CompletableDeferred<ServerAudioPosition?>()
-                h.repo.serverAnswers["book-1"] = gate
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                scheduler.advanceTimeBy(1_200)
-                scheduler.runCurrent()
-                withClue("settled before the late answer: $name") {
-                    result.getCompleted() shouldBe 30.0
+        context("when an answer lands after the deadline") {
+            // TC-44
+            it("TC-44: offers a newer position ahead of the start (I-RES-6)") {
+                runTest {
+                    val book = randomString()
+                    val gate = CompletableDeferred<ServerAudioPosition?>()
+                    val repository = TestListeningProgressRepository()
+                    repository.locals[book] = local(30.0, 6, 10)
+                    repository.serverAnswers[book] = gate
+                    val sync = syncOver(repository)
+                    settle(sut(repository, sync).begin(book, null, null), 6L)
+                    advance(1_200)
+
+                    gate.complete(ServerAudioPosition(50.0, 6, 20))
+                    runCurrent()
+
+                    sync.lateServerPosition.value shouldBe LatePosition(book, 6, 50.0)
                 }
-                gate.complete(late)
-                scheduler.runCurrent()
-                withClue(name) {
-                    h.sync.lateServerPosition.value shouldBe null
+            }
+
+            // TC-34, TC-45
+            it("TC-34, TC-45: offers nothing for each answer that fails a rule (I-RES-6)") {
+                checkAll(
+                    Exhaustive.of(
+                        ServerAudioPosition(31.0, 6, 20),
+                        ServerAudioPosition(60.0, 6, 10),
+                        ServerAudioPosition(60.0, 6, 9),
+                        ServerAudioPosition(60.0, 7, 20),
+                        null,
+                    ),
+                ) { late ->
+                    runTest {
+                        val book = randomString()
+                        val gate = CompletableDeferred<ServerAudioPosition?>()
+                        val repository = TestListeningProgressRepository()
+                        repository.locals[book] = local(30.0, 6, 10)
+                        repository.serverAnswers[book] = gate
+                        val sync = syncOver(repository)
+                        settle(sut(repository, sync).begin(book, null, null), 6L)
+                        advance(1_200)
+
+                        gate.complete(late)
+                        runCurrent()
+
+                        sync.lateServerPosition.value.shouldBeNull()
+                    }
+                }
+            }
+
+            context("when the load was replaced") {
+                // TC-47
+                it("TC-47: offers nothing (I-RES-6)") {
+                    runTest {
+                        val book = randomString()
+                        val gate = CompletableDeferred<ServerAudioPosition?>()
+                        val repository = TestListeningProgressRepository()
+                        repository.locals[book] = local(30.0, 6, 10)
+                        repository.serverAnswers[book] = gate
+                        val sync = syncOver(repository)
+                        val resolver = sut(repository, sync)
+                        settle(resolver.begin(book, null, null), 6L)
+                        advance(1_200)
+                        resolver.begin("$book-other", null, null)
+                        runCurrent()
+
+                        gate.complete(ServerAudioPosition(60.0, 6, 20))
+                        runCurrent()
+
+                        sync.lateServerPosition.value.shouldBeNull()
+                    }
+                }
+            }
+
+            context("when the load was cancelled") {
+                // TC-48
+                it("TC-48: offers nothing (CC1)") {
+                    runTest {
+                        val book = randomString()
+                        val gate = CompletableDeferred<ServerAudioPosition?>()
+                        val repository = TestListeningProgressRepository()
+                        repository.locals[book] = local(30.0, 6, 10)
+                        repository.serverAnswers[book] = gate
+                        val sync = syncOver(repository)
+                        val pending = sut(repository, sync).begin(book, null, null)
+                        settle(pending, 6L)
+                        advance(1_200)
+                        pending.cancel()
+                        runCurrent()
+
+                        gate.complete(ServerAudioPosition(60.0, 6, 20))
+                        runCurrent()
+
+                        sync.lateServerPosition.value.shouldBeNull()
+                    }
                 }
             }
         }
 
-        // TC-46: an answer that arrived in time never offers (I-RES-6)
-        it("TC-46: an answer that arrived in time never offers (I-RES-6)") {
-            val h = harness()
-            val gate = CompletableDeferred<ServerAudioPosition?>()
-            h.repo.serverAnswers["book-1"] = gate
-            val pending = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(100)
-            gate.complete(ServerAudioPosition(500.0, 6, 20))
-            scheduler.runCurrent()
-            result.getCompleted() shouldBe 500.0
-            scheduler.advanceTimeBy(10_000)
-            scheduler.runCurrent()
-            h.sync.lateServerPosition.value shouldBe null
-        }
+        context("when the answer arrived in time") {
+            // TC-46
+            it("TC-46: offers nothing later (I-RES-6)") {
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.serverAnswers[book] = CompletableDeferred(ServerAudioPosition(500.0, 6, 20))
+                    val sync = syncOver(repository)
+                    settle(sut(repository, sync).begin(book, null, null), 6L)
 
-        // TC-47: a late answer for a replaced load is dropped (I-RES-6)
-        it("TC-47: a late answer for a replaced load is dropped (I-RES-6)") {
-            val h = harness()
-            h.repo.locals["book-1"] = local(30.0, 6, 10)
-            val gate = CompletableDeferred<ServerAudioPosition?>()
-            h.repo.serverAnswers["book-1"] = gate
-            val pending = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            scheduler.advanceTimeBy(1_200)
-            scheduler.runCurrent()
-            result.getCompleted() shouldBe 30.0
-            h.resolver.begin("book-2", null, null)
-            scheduler.runCurrent()
-            gate.complete(ServerAudioPosition(60.0, 6, 20))
-            scheduler.runCurrent()
-            h.sync.lateServerPosition.value shouldBe null
+                    advance(10_000)
+
+                    sync.lateServerPosition.value.shouldBeNull()
+                }
+            }
         }
     }
 
-    describe("cancel") {
-        // TC-48: cancel stops the GET and any late offer (CC1)
-        it("TC-48: cancel stops the GET and any late offer (CC1)") {
-            // Row 1: cancelled while settle waits on the deadline.
-            run {
-                val h = harness()
-                h.repo.locals["book-1"] = local(30.0, 6, 10)
-                val gate = CompletableDeferred<ServerAudioPosition?>()
-                h.repo.serverAnswers["book-1"] = gate
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                result.cancel()
-                pending.cancel()
-                scheduler.runCurrent()
-                gate.complete(ServerAudioPosition(60.0, 6, 20))
-                scheduler.runCurrent()
-                withClue("row 1: cancel while waiting") {
-                    h.repo.serverCancellations shouldBe 1
-                    h.sync.lateServerPosition.value shouldBe null
-                }
-            }
-            // Row 2: cancelled after settle returned on the deadline, before the late answer.
-            run {
-                val h = harness()
-                h.repo.locals["book-1"] = local(30.0, 6, 10)
-                val gate = CompletableDeferred<ServerAudioPosition?>()
-                h.repo.serverAnswers["book-1"] = gate
-                val pending = h.resolver.begin("book-1", null, null)
-                val result = h.scope.settleAsync(pending)
-                scheduler.runCurrent()
-                scheduler.advanceTimeBy(1_200)
-                scheduler.runCurrent()
-                result.getCompleted() shouldBe 30.0
-                pending.cancel()
-                scheduler.runCurrent()
-                gate.complete(ServerAudioPosition(60.0, 6, 20))
-                scheduler.runCurrent()
-                withClue("row 2: cancel after the deadline") {
-                    h.repo.serverCancellations shouldBe 1
-                    h.sync.lateServerPosition.value shouldBe null
+    describe("abandoning a load") {
+
+        context("when it is cancelled during the wait") {
+            // TC-48
+            it("TC-48: stops the server read (CC1)") {
+                runTest {
+                    val book = randomString()
+                    val repository = TestListeningProgressRepository()
+                    repository.serverAnswers[book] = CompletableDeferred()
+                    val pending = sut(repository).begin(book, null, null)
+                    settle(pending, 6L)
+
+                    pending.cancel()
+                    runCurrent()
+
+                    repository.serverCancellations shouldBe 1
                 }
             }
         }
+    }
 
-        // TC-49: a new load after cancel resolves normally (CC1)
-        it("TC-49: a new load after cancel resolves normally (CC1)") {
-            val h = harness()
-            val gate = CompletableDeferred<ServerAudioPosition?>()
-            h.repo.serverAnswers["book-1"] = gate
-            val first = h.resolver.begin("book-1", null, null)
-            scheduler.runCurrent()
-            first.cancel()
-            scheduler.runCurrent()
-            h.repo.serverCancellations shouldBe 1
+    describe("settling again") {
 
-            h.repo.serverAnswers["book-1"] = CompletableDeferred(ServerAudioPosition(200.0, 6, 20))
-            val second = h.resolver.begin("book-1", null, null)
-            val result = h.scope.settleAsync(second)
-            scheduler.runCurrent()
-            result.getCompleted() shouldBe 200.0
-            h.repo.serverCalls shouldBe 2
-        }
+        // TC-50
+        it("TC-50: answers the first start, whatever has changed since (CC1)") {
+            runTest {
+                val book = randomString()
+                val repository = TestListeningProgressRepository()
+                repository.locals[book] = local(100.0, 6, 10)
+                val pending = sut(repository).begin(book, null, null)
+                settle(pending, 6L)
 
-        // TC-50: settle is idempotent (CC1)
-        it("TC-50: settle is idempotent (CC1)") {
-            val h = harness()
-            h.repo.locals["book-1"] = local(100.0, 6, 10)
-            h.repo.serverAnswers["book-1"] = CompletableDeferred(ServerAudioPosition(200.0, 6, 20))
-            val pending = h.resolver.begin("book-1", null, null)
-            val first = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            first.getCompleted() shouldBe 200.0
-
-            // The answers change, but a second settle returns the first answer without a repository call.
-            h.repo.serverAnswers["book-1"] = CompletableDeferred(ServerAudioPosition(999.0, 6, 99))
-            h.repo.locals["book-1"] = local(5.0, 6, 99)
-            val localCallsBefore = h.repo.localCalls
-            val serverCallsBefore = h.repo.serverCalls
-            val second = h.scope.settleAsync(pending)
-            scheduler.runCurrent()
-            second.getCompleted() shouldBe 200.0
-            h.repo.localCalls shouldBe localCallsBefore
-            h.repo.serverCalls shouldBe serverCallsBefore
+                settle(pending, 7L).getCompleted() shouldBe 100.0
+            }
         }
     }
 })

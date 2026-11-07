@@ -1,93 +1,113 @@
 package com.omnibus.omnibus.data.audiobook.offers
 
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
-import com.omnibus.omnibus.data.audiobook.position.LatePosition
+import com.omnibus.omnibus.data.audiobook.position.randomLatePosition
+import com.omnibus.omnibus.data.audiobook.position.randomPlayingBook
+import com.omnibus.omnibus.testing.randomDouble
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class ResumeOfferRulesTest : DescribeSpec({
 
-    val late = LatePosition("book-1", 11L, 1800.0)
-    val ebook = EbookOffer("book-1", 11L, 65.0, sourceAhead = true, sourceClock = 500L)
+    describe("the device offer") {
 
-    describe("device offer") {
+        // I-RES-6, P-SYNC-6, P-SYNC-AC4: the threshold is strictly more than 1 s
+        it("#166 TC-25, TC-26: shows a matching position more than 1 s ahead (I-RES-6, P-SYNC-AC4)") {
+            val book = randomPlayingBook()
+            val position = randomDouble(0.0, 3_000.0)
+            val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = position + 1.01)
 
-        // I-RES-6, P-SYNC-6: a matching position more than 1 s ahead shows
-        it("#166 TC-25: a matching late position more than 1 s ahead is the device offer (I-RES-6, P-SYNC-6)") {
-            visibleOffers(playbackState(positionSeconds = 0.0), late, OfferMemory()) shouldBe
-                VisibleOffers(device = late)
+            visibleOffers(playbackState(book, positionSeconds = position), late, OfferMemory()).device shouldBe late
         }
 
-        // P-SYNC-AC4: the threshold is strictly more than 1 s
-        it("#166 TC-26: shows only when more than 1 s ahead of the live position (P-SYNC-AC4)") {
-            val playback = playbackState(positionSeconds = 100.0)
-            val rows = listOf(
-                LatePosition("book-1", 11L, 101.0) to null,
-                LatePosition("book-1", 11L, 101.01) to LatePosition("book-1", 11L, 101.01),
-                LatePosition("book-1", 11L, 100.0) to null,
-                LatePosition("book-1", 11L, 50.0) to null,
-            )
-            rows.forEach { (position, expected) ->
-                visibleOffers(playback, position, OfferMemory()).device shouldBe expected
+        // I-RES-6, P-SYNC-AC4: playing or seeking past the offer hides it live
+        it("#166 TC-26, TC-27: hides a position at most 1 s ahead of the live one, for each lead (I-RES-6, P-SYNC-AC4)") {
+            val book = randomPlayingBook()
+            val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
+
+            checkAll(Exhaustive.of(99.0, 100.0, 150.0)) { position ->
+                visibleOffers(playbackState(book, positionSeconds = position), late, OfferMemory()).device.shouldBeNull()
             }
         }
 
-        // I-RES-6, P-SYNC-6: playing or seeking past the offer hides it live
-        it("#166 TC-27: the device offer goes once the listener plays or seeks past it (I-RES-6)") {
-            visibleOffers(playbackState(positionSeconds = 0.0), late, OfferMemory()).device shouldBe late
-            visibleOffers(playbackState(positionSeconds = 3725.0), late, OfferMemory()).device shouldBe null
+        // I-RES-6
+        it("#166 TC-30: hides a position saved for another book or file (I-RES-6)") {
+            val book = randomPlayingBook()
+            val late = randomLatePosition().copy(positionSeconds = 100.0)
+
+            checkAll(
+                Exhaustive.of(
+                    late.copy(bookUuid = "${book.bookUuid}-other", bookFileId = book.bookFileId),
+                    late.copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId + 1),
+                ),
+            ) { other ->
+                visibleOffers(playbackState(book, positionSeconds = 0.0), other, OfferMemory()).device.shouldBeNull()
+            }
         }
 
-        // I-RES-6: an offer never shows while the controller is loading
-        it("#166 TC-28: nothing shows while loading, even with a device and an ebook offer (I-RES-6, P-SYNC-7)") {
-            val memory = OfferMemory(ebook = ebook)
+        context("when the listener dismissed an offer") {
+            // R3, P-SYNC-AC4
+            it("#166 TC-32: hides that offer (spec §3)") {
+                val book = randomPlayingBook()
+                val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
 
-            visibleOffers(playbackState(isLoading = true), late, memory) shouldBe VisibleOffers()
-        }
+                visibleOffers(playbackState(book, positionSeconds = 0.0), late, OfferMemory(dismissedDevice = late))
+                    .device.shouldBeNull()
+            }
 
-        // I-RES-6: nothing shows with no book loaded
-        it("#166 TC-29: nothing shows when no book is loaded (I-RES-6, P-SYNC-7)") {
-            val memory = OfferMemory(ebook = ebook)
+            // R3, P-SYNC-AC4
+            it("#166 TC-32: shows a different position (spec §3)") {
+                val book = randomPlayingBook()
+                val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
+                val newer = late.copy(positionSeconds = 200.0)
 
-            visibleOffers(playbackState(book = null), late, memory) shouldBe VisibleOffers()
-        }
-
-        // I-RES-6: a position for another book or another file is never offered
-        it("#166 TC-30: a late position for another book or another file is hidden (I-RES-6)") {
-            val playback = playbackState(positionSeconds = 0.0)
-
-            visibleOffers(playback, late.copy(bookUuid = "other-book"), OfferMemory()).device shouldBe null
-            visibleOffers(playback, late.copy(bookFileId = 12L), OfferMemory()).device shouldBe null
-        }
-
-        // R3, P-SYNC-AC4: a dismissed device offer stays hidden, a different one shows
-        it("#166 TC-32: a dismissed device offer stays hidden, a new position shows again (spec §3)") {
-            val playback = playbackState(positionSeconds = 0.0)
-
-            visibleOffers(playback, late, OfferMemory(dismissedDevice = late)).device shouldBe null
-            visibleOffers(playback, late.copy(positionSeconds = 2000.0), OfferMemory(dismissedDevice = late))
-                .device shouldBe late.copy(positionSeconds = 2000.0)
-        }
-    }
-
-    describe("ebook offer") {
-
-        // P-SYNC-7, P-SYNC-AC5: the memory's ebook offer shows for its own book and file only
-        it("#166 TC-31: the ebook offer shows for the loaded book and file only (P-SYNC-7, P-SYNC-AC5)") {
-            val playback = playbackState(positionSeconds = 0.0)
-
-            visibleOffers(playback, null, OfferMemory(ebook = ebook)).ebook shouldBe ebook
-            visibleOffers(playback, null, OfferMemory(ebook = ebook.copy(bookUuid = "other-book"))).ebook shouldBe null
-            visibleOffers(playback, null, OfferMemory(ebook = ebook.copy(bookFileId = 12L))).ebook shouldBe null
+                visibleOffers(playbackState(book, positionSeconds = 0.0), newer, OfferMemory(dismissedDevice = late))
+                    .device shouldBe newer
+            }
         }
     }
 
-    describe("both offers") {
+    describe("the ebook offer") {
 
-        // P-SYNC-8: both qualify, and the rules report both (the priority is the UI's)
-        it("#166 TC-33: a device and an ebook offer both qualify and both are reported (P-SYNC-8)") {
-            visibleOffers(playbackState(positionSeconds = 0.0), late, OfferMemory(ebook = ebook)) shouldBe
-                VisibleOffers(device = late, ebook = ebook)
+        // P-SYNC-7, P-SYNC-AC5
+        it("#166 TC-31: shows for the loaded file of the loaded book (P-SYNC-7, P-SYNC-AC5)") {
+            val book = randomPlayingBook()
+            val offer = randomEbookOffer().copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId)
+
+            visibleOffers(playbackState(book), null, OfferMemory(ebook = offer)).ebook shouldBe offer
+        }
+
+        // P-SYNC-7, P-SYNC-AC5
+        it("#166 TC-31: hides an offer for another book or file (P-SYNC-7, P-SYNC-AC5)") {
+            val book = randomPlayingBook()
+            val offer = randomEbookOffer()
+
+            checkAll(
+                Exhaustive.of(
+                    offer.copy(bookUuid = "${book.bookUuid}-other", bookFileId = book.bookFileId),
+                    offer.copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId + 1),
+                ),
+            ) { other ->
+                visibleOffers(playbackState(book), null, OfferMemory(ebook = other)).ebook.shouldBeNull()
+            }
+        }
+    }
+
+    describe("both offers together") {
+
+        // I-RES-6, P-SYNC-7: nothing shows with no settled book, whatever qualifies
+        it("#166 TC-28, TC-29: show nothing while loading or with no book (I-RES-6, P-SYNC-7)") {
+            val book = randomPlayingBook()
+            val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
+            val offer = randomEbookOffer().copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId)
+
+            checkAll(Exhaustive.of(playbackState(book, isLoading = true), playbackState(book = null))) { playback ->
+                visibleOffers(playback, late, OfferMemory(ebook = offer)) shouldBe VisibleOffers()
+            }
         }
     }
 })

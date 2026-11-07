@@ -1,11 +1,9 @@
 package com.omnibus.omnibus.data.audiobook.rate
 
 import com.omnibus.omnibus.data.audiobook.rate.local.PlaybackRateCache
-import kotlinx.coroutines.CompletableDeferred
 
 /**
  * In-memory [PlaybackRateCache] with the same semantics as the DataStore one. [failWith] is thrown by every call when set.
- * [saveGate], when set, holds [saveLocal] until it completes, so a test can cancel a caller inside a save.
  */
 class TestPlaybackRateCache : PlaybackRateCache {
 
@@ -20,9 +18,6 @@ class TestPlaybackRateCache : PlaybackRateCache {
 
     /** Thrown by every call when set. */
     var failWith: Exception? = null
-
-    /** Holds [saveLocal] until completed, when set. */
-    var saveGate: CompletableDeferred<Unit>? = null
 
     override suspend fun cached(bookUuid: String): Double? {
         failWith?.let { throw it }
@@ -41,7 +36,6 @@ class TestPlaybackRateCache : PlaybackRateCache {
 
     override suspend fun saveLocal(bookUuid: String, rate: Double) {
         failWith?.let { throw it }
-        saveGate?.await()
         localWrites += bookUuid to rate
         cachedRates[bookUuid] = rate
         pendingRates[bookUuid] = rate
