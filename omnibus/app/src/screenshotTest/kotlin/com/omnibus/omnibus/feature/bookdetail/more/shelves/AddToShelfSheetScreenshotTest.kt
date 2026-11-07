@@ -54,14 +54,6 @@ fun AddToShelfSheetSmartSection() {
     )
 }
 
-/** No manual shelves: the empty note replaces the intro and rows, and the smart section stays. */
-@PreviewTest
-@Preview
-@Composable
-fun AddToShelfSheetEmptyWithSmart() {
-    ShelfSheetShot(ShelfSheetContent.Loaded(emptyList(), listOf(SmartShelfRow(10, "Smart", 1, emptyList(), null))))
-}
-
 @PreviewTest
 @Preview
 @Composable

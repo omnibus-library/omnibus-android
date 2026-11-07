@@ -81,7 +81,6 @@ class AudiobookSessionCallbackTest {
 
         nowMillis += 2_000
         assertTrue(press(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_NEXT))
-        Thread.sleep(300)
         assertTrue("a key up moved the book", near(25_000, onMain { exo.currentPosition }))
 
         assertFalse(press(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))

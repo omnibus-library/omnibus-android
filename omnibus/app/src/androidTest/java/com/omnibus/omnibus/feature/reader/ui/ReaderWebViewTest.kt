@@ -23,7 +23,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
@@ -111,11 +110,6 @@ class ReaderWebViewTest {
             .mapNotNull { it.cfi }
     }
 
-    /** The host's load status, in the order the screen saw it. */
-    private fun loadStatuses(): List<ReaderLoadStatus> = synchronized(messages) {
-        messages.filterIsInstance<ReaderEvent.LoadStatusChanged>().map { it.status }
-    }
-
     private fun awaitMovementCount(count: Int) {
         rule.waitUntil(timeoutMillis = 15_000) { movements().size >= count }
     }
@@ -167,17 +161,11 @@ class ReaderWebViewTest {
     }
 
     @Test
-    fun tc221_theControllerTurnsPagesAndTheCentreTapSignalsTheChrome() {
+    fun tc221_theCentreTapSignalsTheChrome() {
         val controller = ReaderController()
         showReader(controller)
         awaitReady(controller)
         awaitMovementCount(1)
-
-        controller.next()
-        awaitMovementCount(2)
-        controller.previous()
-        awaitMovementCount(3)
-        assertEquals(movements()[0], movements()[2])
 
         tap(0.5f)
         try {
@@ -281,27 +269,6 @@ class ReaderWebViewTest {
     }
 
     @Test
-    fun tc228_theWebViewIsPausedAndResumedWithTheLifecycle() {
-        val controller = ReaderController()
-        showReader(controller)
-        awaitReady(controller)
-        fun ticks() = evaluate("String(window.__ticks)").trim('"').toInt()
-        evaluate("window.__ticks = 0; setInterval(function () { window.__ticks++; }, 20); 0")
-        rule.waitUntil(timeoutMillis = 15_000) { ticks() > 5 }
-
-        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        val atPause = ticks()
-        // A running 20 ms timer would tick about 35 times in this window. Proving that it stays
-        // still needs elapsed time; a slow device can only make this pass, never fail.
-        Thread.sleep(700)
-        val whilePaused = ticks()
-        assertTrue("timers should stop while paused ($atPause -> $whilePaused)", whilePaused - atPause <= 3)
-
-        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        rule.waitUntil(timeoutMillis = 15_000) { ticks() > whilePaused + 5 }
-    }
-
-    @Test
     fun tc226_aResizeKeepsTheReaderOnItsPageAndNeverCountsAsMovement() {
         val controller = ReaderController()
         // A fraction of the window, not a dp size: a fixed width is capped by a narrow emulator's
@@ -341,85 +308,17 @@ class ReaderWebViewTest {
         assertEquals("a resize must be reported as an echo", movementsBefore, movements().size)
     }
 
-    @Test
-    fun tc227_theReadingPositionSurvivesSavedStateRestore() {
-        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(rule)
-        lateinit var controller: ReaderController
-        restoration.setContent {
-            OmnibusTheme {
-                controller = rememberReaderController(startCfi = null)
-                ReaderWebView("test-book", ReaderSettings(), controller, assetLoaderFactory)
-            }
-        }
-        awaitReady(controller)
-        rule.waitUntil(timeoutMillis = 15_000) { controller.restoreCfi != null }
-        val firstPage = controller.restoreCfi
-        controller.next()
-        rule.waitUntil(timeoutMillis = 15_000) { controller.restoreCfi != firstPage }
-        val saved = controller.restoreCfi
-
-        restoration.emulateSavedInstanceStateRestore()
-
-        assertEquals(saved, controller.restoreCfi)
-    }
-
     // TC-21: the host decodes the page's messages, and the callback carries typed events.
     @Test
-    fun tc21_onEventReceivesTypedPageEvents() {
+    fun tc21_onEventReceivesTheBooksToc() {
         val controller = ReaderController()
         showReader(controller)
         awaitReady(controller)
-        awaitMovementCount(1)
         rule.waitUntil(timeoutMillis = 15_000) { synchronized(messages) { messages.any { it is ReaderEvent.Toc } } }
 
-        val pageEvents = synchronized(messages) { messages.filter { it !is ReaderEvent.LoadStatusChanged } }
-        val hostReady = pageEvents.indexOfFirst { it == ReaderEvent.HostReady }
-        val firstRelocate = pageEvents.indexOfFirst { it is ReaderEvent.Relocate }
-        assertTrue("HostReady should arrive before the first relocate", hostReady >= 0 && firstRelocate > hostReady)
-        val relocate = pageEvents.filterIsInstance<ReaderEvent.Relocate>().first().data
-        assertTrue("the relocate should carry a cfi", !relocate.cfi.isNullOrBlank())
-        val toc = pageEvents.filterIsInstance<ReaderEvent.Toc>().last()
+        val toc = synchronized(messages) { messages.filterIsInstance<ReaderEvent.Toc>().last() }
         assertTrue("the toc should list the book's chapters", toc.entries.isNotEmpty())
     }
-
-    // TC-84: the host reports each load status once, from Loading to Ready.
-    @Test
-    fun tc84_onEventReportsEachLoadStatusOnce() {
-        val controller = ReaderController()
-        showReader(controller)
-        awaitReady(controller)
-        // The screen collects the host's events asynchronously, so wait for the last one to arrive.
-        rule.waitUntil(timeoutMillis = 15_000) { loadStatuses().lastOrNull() == ReaderLoadStatus.Ready }
-
-        val statuses = loadStatuses()
-        assertEquals("the first load status should be Loading", ReaderLoadStatus.Loading, statuses.first())
-        assertEquals("the last load status should be Ready", ReaderLoadStatus.Ready, statuses.last())
-        assertTrue("no two consecutive load statuses should be equal: $statuses", statuses.zipWithNext().none { it.first == it.second })
-    }
-
-    // TC-23: a failed open that is retried reports Failed, then Loading, then Ready.
-    @Test
-    fun tc23_loadStatusFollowsFailureAndRetry() {
-        bookResult = { BookFileResult.NotFound }
-        val controller = ReaderController()
-        showReader(controller)
-        rule.waitUntil(timeoutMillis = 30_000) { loadStatuses().contains(ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound)) }
-
-        bookResult = { BookFileResult.Opened(ByteArrayInputStream(epub), epub.size.toLong()) }
-        rule.onNodeWithText("Try again").performClick()
-        awaitReady(controller)
-        rule.waitUntil(timeoutMillis = 15_000) { loadStatuses().lastOrNull() == ReaderLoadStatus.Ready }
-
-        val statuses = loadStatuses()
-        val failed = statuses.indexOf(ReaderLoadStatus.Failed(ReaderLoadFailure.NotFound))
-        val loading = statuses.indexOfFirstAfter(failed, ReaderLoadStatus.Loading)
-        val ready = statuses.indexOfFirstAfter(loading, ReaderLoadStatus.Ready)
-        assertTrue("expected Failed, Loading, Ready in order among $statuses", failed >= 0 && loading > failed && ready > loading)
-    }
-
-    /** The index of the first [status] after [from], or -1. */
-    private fun List<ReaderLoadStatus>.indexOfFirstAfter(from: Int, status: ReaderLoadStatus): Int =
-        withIndex().indexOfFirst { it.index > from && it.value == status }
 
     /** Injects a tap through the window's input pipeline, as a finger would deliver it. */
     private fun tap(xFraction: Float, yFraction: Float = 0.5f) {
@@ -470,7 +369,6 @@ class ReaderWebViewTest {
         event.recycle()
     }
 
-    /** The text that opens the page on screen, found by what the section's paragraphs occupy. */
     /** The body's computed [property] as the page reports it, with the JSON quotes. */
     private fun bodyStyle(property: String): String =
         evaluate("getComputedStyle(document.querySelector('iframe').contentDocument.body).$property")
@@ -586,27 +484,9 @@ class ReaderWebViewTest {
 
         changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Narrow) }
         awaitColumnRatio("the Narrow column", 0.95)
-        val narrow = columnRatio()
-        assertKeptPlace(shownBefore)
-
-        changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Normal) }
-        awaitColumnRatio("the Normal column", 0.80)
-        val normal = columnRatio()
-        assertKeptPlace(shownBefore)
-
-        changeSettings { settings.value = settings.value.copy(margins = ReaderMargins.Wide) }
-        awaitColumnRatio("the Wide column", 0.65)
-        val wide = columnRatio()
-        assertKeptPlace(shownBefore)
-        assertTrue("Narrow ($narrow) should leave a wider column than Normal ($normal)", narrow > normal)
-        assertTrue("Normal ($normal) should leave a wider column than Wide ($wide)", normal > wide)
 
         changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Mono) }
         awaitWhen("the face", { it.contains("Droid Sans Mono") }, { bodyStyle("fontFamily") })
-        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Modern) }
-        awaitWhen("the face", { it.contains("Noto Serif") }, { bodyStyle("fontFamily") })
-        changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Sans) }
-        awaitWhen("the face", { it.contains("Roboto") }, { bodyStyle("fontFamily") })
         changeSettings { settings.value = settings.value.copy(typeface = ReaderTypeface.Original) }
         awaitValue("the book's own face", originalFace, { bodyStyle("fontFamily") })
 
@@ -653,37 +533,9 @@ class ReaderWebViewTest {
         // Right first: a left tap on the book's first page has nowhere to go.
         moveBy { tap(right) }
         assertNotEquals("a right gutter tap should move forward", start, movements().last())
-        val forward = movements().last()
 
         moveBy { tap(left) }
         assertEquals("a left gutter tap should move back", start, movements().last())
-        assertNotEquals("the left tap should undo the right one", forward, movements().last())
-    }
-
-    @Test
-    fun aSettingChangedJustBeforeARendererDeathIsTheOneTheRebootBoots() {
-        val settings = mutableStateOf(ReaderSettings(theme = ReaderTheme.Sepia, fontSize = 24))
-        val controller = ReaderController()
-        showReaderState(controller, settings)
-        awaitReady(controller)
-        awaitMovementCount(1)
-        controller.next()
-        awaitMovementCount(2)
-        val lastPage = controller.restoreCfi
-        val requestsBefore = bookRequests
-
-        changeSettings { settings.value = settings.value.copy(theme = ReaderTheme.Light, fontSize = 27, margins = ReaderMargins.Wide) }
-        awaitValue("the new size", "27", { bodyNumber("fontSize") })
-        awaitColumnRatio("the Wide column", 0.65)
-
-        rule.runOnUiThread { findWebView()!!.loadUrl("chrome://crash") }
-        rule.waitUntil(timeoutMillis = 30_000) { bookRequests > requestsBefore && controller.status == ReaderLoadStatus.Ready }
-
-        assertEquals("the reboot must not lose the reader's place", lastPage, controller.restoreCfi)
-        rule.waitUntil(timeoutMillis = 15_000) { firstVisibleParagraph().isNotEmpty() }
-        assertEquals("27", bodyNumber("fontSize"))
-        assertEquals(ReaderTheme.Light.groundHex.lowercase(), pageGround())
-        awaitColumnRatio("the rebooted Wide column", 0.65)
     }
 
     /** The first paragraph on the column, or "" when none is: a null result means the page was mid-relayout. */

@@ -53,7 +53,7 @@ class AudiobookPlayerFactoryTest {
 
             onMain { exo.seekTo(1_800) }
             awaitUntil("a seek to 1.8 s") { near(1_800, exo.currentPosition, 100) }
-            Thread.sleep(500)
+            awaitUntil("the parts to be ready after the seek") { exo.playbackState == Player.STATE_READY }
 
             val reasons = CopyOnWriteArrayList<Int>()
             onMain {

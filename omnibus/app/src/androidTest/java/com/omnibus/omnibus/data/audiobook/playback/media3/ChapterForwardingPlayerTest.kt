@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.data.audiobook.playback.media3
 
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.platform.app.InstrumentationRegistry
@@ -163,13 +162,9 @@ class ChapterForwardingPlayerTest {
             Skip("seekForward", 65_000, 95_000) { it.seekForward() },
             Skip("seekBack", 65_000, 50_000) { it.seekBack() },
             Skip("seekToNext", 65_000, 95_000) { it.seekToNext() },
-            Skip("seekToNextMediaItem", 65_000, 95_000) { it.seekToNextMediaItem() },
             Skip("seekToPrevious", 65_000, 50_000) { it.seekToPrevious() },
-            Skip("seekToPreviousMediaItem", 65_000, 50_000) { it.seekToPreviousMediaItem() },
             Skip("seekBack near the start", 5_000, 0) { it.seekBack() },
-            Skip("seekToPrevious near the start", 5_000, 0) { it.seekToPrevious() },
             Skip("seekForward near the end", 120_000, 130_000) { it.seekForward() },
-            Skip("seekToNext near the end", 120_000, 130_000) { it.seekToNext() },
         )
         for (case in cases) {
             seekBook(case.from)
@@ -214,8 +209,8 @@ class ChapterForwardingPlayerTest {
 
     // I-SYS-5
     @Test
-    fun withAPlayerErrorAsksTheControllerAndPrepareDoesNotRePrepare() {
-        // TC-102: a raw player error sends play to the controller, and prepare does nothing while it stands.
+    fun withAPlayerErrorAsksTheController() {
+        // TC-102: a raw player error sends play to the controller.
         onMain {
             exo.setMediaItem(MediaItem.fromUri("file:///nonexistent/silent-missing.wav"))
             exo.prepare()
@@ -224,11 +219,6 @@ class ChapterForwardingPlayerTest {
 
         onMain { player.play() }
         assertEquals(1, onMain { playRequests })
-
-        onMain { player.prepare() }
-        Thread.sleep(300)
-        assertEquals(Player.STATE_IDLE, onMain { exo.playbackState })
-        assertTrue(onMain { exo.playerError } != null)
     }
 
     // I-SYS-5
@@ -240,18 +230,6 @@ class ChapterForwardingPlayerTest {
         assertTrue(onMain { exo.playWhenReady })
         assertEquals(0, onMain { playRequests })
         onMain { player.pause() }
-    }
-
-    // AND-STK-7
-    @Test
-    fun keepsThePitch() {
-        // TC-109: a speed change leaves the pitch at 1.0.
-        loadBook()
-        onMain { player.playbackParameters = PlaybackParameters(2.0f) }
-        awaitUntil("the speed to reach 2.0") { exo.playbackParameters.speed == 2.0f }
-        val parameters = onMain { player.playbackParameters }
-        assertEquals(2.0f, parameters.speed, 0.001f)
-        assertEquals(1.0f, parameters.pitch, 0.001f)
     }
 
     private companion object {

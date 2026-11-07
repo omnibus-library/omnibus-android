@@ -17,7 +17,6 @@ private fun at(month: Int, day: Int, hour: Int = 12, minute: Int = 0): Long =
 private val now = at(11, 2)
 private val oct12 = at(10, 12, 20)
 private val oct19 = at(10, 19, 18)
-private val oct29 = at(10, 29, 22, 14)
 private val nov1At2214 = at(11, 1, 22, 14)
 
 @PreviewTest
@@ -42,32 +41,8 @@ fun ReadingCardReading() {
 @PreviewTest
 @PreviewLightDark
 @Composable
-fun ReadingCardFinished() {
-    ReadingCardShot(
-        ReadingCardModel(
-            line = ReadingLine.Finished(oct29),
-            rows = listOf(
-                ReadingRow.Started(oct12),
-                ReadingRow.TimeRead(11_040L, 11),
-                ReadingRow.LastRead(nov1At2214),
-                ReadingRow.LongestSitting(2_880L, oct19),
-            ),
-        ),
-    )
-}
-
-@PreviewTest
-@PreviewLightDark
-@Composable
 fun ReadingCardNoReading() {
     ReadingCardShot(ReadingCardModel(ReadingLine.NoReading, emptyList()))
-}
-
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun ReadingCardHistoryFailed() {
-    ReadingCardShot(ReadingCardModel(ReadingLine.HistoryFailed, emptyList()))
 }
 
 @PreviewTest

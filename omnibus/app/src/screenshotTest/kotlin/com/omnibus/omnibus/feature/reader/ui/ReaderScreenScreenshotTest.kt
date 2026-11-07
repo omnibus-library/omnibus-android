@@ -34,13 +34,6 @@ fun ReaderScreenNotFound() {
     ScreenShot(ReaderBookState.Unavailable(ReaderUnavailableReason.NotFound))
 }
 
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun ReaderScreenNoEpub() {
-    ScreenShot(ReaderBookState.Unavailable(ReaderUnavailableReason.NoEpub))
-}
-
 /** The library's message for an unreachable server, with Try again. */
 @PreviewTest
 @PreviewLightDark

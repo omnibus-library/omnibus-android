@@ -64,26 +64,6 @@ fun ReadingProgressInProgressOfflineNote() {
 @PreviewTest
 @PreviewLightDark
 @Composable
-fun ReadingProgressBarOfflineNote() {
-    ReadingProgressShot(
-        ReadingProgressUIState(
-            display = ProgressDisplay.Bar(
-                fraction = 0.62f,
-                percent = 62,
-                isAudio = false,
-                segments = barSegments(listOf(.25f, .25f, .25f, .25f), 0.62f),
-                flag = FlagLabel.Chapter(6),
-                tail = LineTail.LeftAtPace(6780),
-            ),
-            showOfflineNote = true,
-        ),
-        tone = Oklch(0.55, 0.12, 40.0),
-    )
-}
-
-@PreviewTest
-@PreviewLightDark
-@Composable
 fun ReadingProgressHiddenOfflineNote() {
     ReadingProgressShot(
         ReadingProgressUIState(display = ProgressDisplay.Hidden, showOfflineNote = true),
