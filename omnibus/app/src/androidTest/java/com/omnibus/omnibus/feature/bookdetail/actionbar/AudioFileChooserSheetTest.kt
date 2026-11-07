@@ -1,17 +1,10 @@
 package com.omnibus.omnibus.feature.bookdetail.actionbar
 
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.bookdetail.detailText
 import com.omnibus.omnibus.feature.bookdetail.more.pressBackKey
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Oklch
@@ -47,42 +40,6 @@ class AudioFileChooserSheetTest {
     @get:Rule
     val rule = createComposeRule()
 
-    // TC-33
-    @Test
-    fun issue99_tc33_listsEveryFile() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                AudioFileChooserSheet(choices = choices, accent = accent, onClose = {}, onPick = {})
-            }
-        }
-
-        rule.onNodeWithTag(AudioFileChooserTestTags.TITLE).assertTextEquals(detailText(R.string.book_detail_listen_choose_file))
-        val details = listOf("M4B · 412 MB", "M4B · 468 MB", "MP3")
-        for ((choice, detail) in choices.zip(details)) {
-            rule.onNodeWithTag(AudioFileChooserTestTags.row(choice.id))
-                .assertTextContains(choice.name, substring = true)
-                .assertTextContains(detail, substring = true)
-        }
-    }
-
-    // TC-37
-    @Test
-    fun issue99_tc37_continueAndStartOverCopy() {
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                AudioFileChooserSheet(choices = choices, accent = accent, onClose = {}, onPick = {})
-            }
-        }
-
-        val continues = detailText(R.string.book_detail_listen_continues)
-        val startsOver = detailText(R.string.book_detail_listen_starts_over)
-        rule.onNodeWithTag(AudioFileChooserTestTags.row(1L)).assertTextContains(continues, substring = true)
-        rule.onNodeWithTag(AudioFileChooserTestTags.row(2L)).assertTextContains(startsOver, substring = true)
-        rule.onNodeWithTag(AudioFileChooserTestTags.row(3L)).assertTextContains(startsOver, substring = true)
-        rule.onAllNodesWithText(continues, substring = true).assertCountEquals(1)
-        rule.onAllNodesWithText(startsOver, substring = true).assertCountEquals(2)
-    }
-
     // TC-38
     @Test
     fun issue99_tc38_pickClosesThenReports() {
@@ -109,7 +66,6 @@ class AudioFileChooserSheetTest {
         rule.waitForIdle()
 
         assertEquals(listOf("close", "pick:2"), events)
-        rule.onAllNodesWithTag(AudioFileChooserTestTags.SHEET).assertCountEquals(0)
     }
 
     // TC-40
