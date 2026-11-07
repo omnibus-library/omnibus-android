@@ -17,4 +17,5 @@ fun randomHighlight(): Highlight = Highlight(
     format = randomString().orNull(),
     createdAtMillis = randomLong().orNull(),
     fraction = randomDouble().toFloat().orNull(),
-)
+
+/** The server sends whole seconds, so the creation time is whole seconds in milliseconds. */

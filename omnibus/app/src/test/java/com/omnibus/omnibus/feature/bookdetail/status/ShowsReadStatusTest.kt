@@ -1,27 +1,33 @@
 package com.omnibus.omnibus.feature.bookdetail.status
 
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.of
 
 class ShowsReadStatusTest : DescribeSpec({
 
-    describe("showsReadStatus") {
+    describe("whether a book shows its read status") {
 
-        it("TC-77: a book shows the status unless it has no ebook, audiobook, physical copy or wishlist entry") {
-            for (ebook in listOf(false, true)) {
-                for (audiobook in listOf(false, true)) {
-                    for (physical in listOf(false, true)) {
-                        for (wishlisted in listOf(false, true)) {
-                            val formats = buildList {
-                                if (ebook) add("epub")
-                                if (audiobook) add("m4b")
-                            }
-                            val book = testBook(1).copy(formats = formats, hasPhysical = physical, isWishlisted = wishlisted)
+        context("when the book has an ebook or an audiobook") {
+            it("TC-77: shows it, regardless of a physical copy or wishlist entry") {
+                checkAll(Exhaustive.of("epub", "m4b"), Exhaustive.boolean(), Exhaustive.boolean()) { format, physical, wishlisted ->
+                    val book = randomBook().copy(formats = listOf(format), hasPhysical = physical, isWishlisted = wishlisted)
 
-                            showsReadStatus(book) shouldBe (ebook || audiobook || physical || wishlisted)
-                        }
-                    }
+                    showsReadStatus(book) shouldBe true
+                }
+            }
+        }
+
+        context("when the book has no file") {
+            it("TC-77: shows it only for a physical copy or wishlist entry") {
+                checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { physical, wishlisted ->
+                    val book = randomBook().copy(formats = emptyList(), hasPhysical = physical, isWishlisted = wishlisted)
+
+                    showsReadStatus(book) shouldBe (physical || wishlisted)
                 }
             }
         }

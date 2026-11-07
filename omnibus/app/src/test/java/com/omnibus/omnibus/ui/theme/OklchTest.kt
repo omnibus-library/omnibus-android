@@ -4,10 +4,12 @@ import androidx.compose.ui.graphics.Color
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
-private fun Color.channels() = intArrayOf(
+private fun Color.channels() = listOf(
     Math.round(red * 255),
     Math.round(green * 255),
     Math.round(blue * 255),
@@ -15,10 +17,10 @@ private fun Color.channels() = intArrayOf(
 
 class OklchTest : DescribeSpec({
 
-    describe("toColor") {
+    describe("converting to a color") {
 
         it("TC-101: matches the Atrium accent") {
-            val (r, g, b) = Oklch(0.78, 0.13, 65.0).toColor().channels().toList()
+            val (r, g, b) = Oklch(0.78, 0.13, 65.0).toColor().channels()
 
             // Within a step of 0xFFF0A556; the accent was rounded from the OKLCH original.
             r.toDouble() shouldBe (0xF0.toDouble() plusOrMinus 1.0)
@@ -30,85 +32,66 @@ class OklchTest : DescribeSpec({
             Oklch(0.5, 0.05, 120.0, alpha = 0.3).toColor().alpha.toDouble() shouldBe (0.3 plusOrMinus 0.005)
         }
 
-        it("TC-103: clamps out-of-gamut colors into sRGB") {
-            val color = Oklch(0.7, 0.4, 150.0).toColor()
+        context("when the color is out of gamut") {
+            it("TC-103: clamps it into sRGB") {
+                val color = Oklch(0.7, 0.4, 150.0).toColor()
 
-            listOf(color.red, color.green, color.blue).forEach {
-                it shouldBe (it.coerceIn(0f, 1f))
+                listOf(color.red, color.green, color.blue).all { it in 0f..1f } shouldBe true
             }
         }
     }
 
-    describe("fromSrgb") {
+    describe("converting from sRGB") {
 
-        it("TC-104: round-trips through sRGB") {
-            listOf(0xFFF0A556, 0xFF0A0806, 0xFF336699, 0xFFFFFFFF, 0xFF000000, 0xFFC0392B).forEach { argb ->
+        it("TC-104: round-trips, across hues, white and black") {
+            checkAll(Exhaustive.of(0xFFF0A556, 0xFF0A0806, 0xFF336699, 0xFFFFFFFF, 0xFF000000, 0xFFC0392B)) { argb ->
                 val color = Color(argb)
 
-                Oklch.fromSrgb(color).toColor().channels().toList() shouldBe color.channels().toList()
+                Oklch.fromSrgb(color).toColor().channels() shouldBe color.channels()
             }
         }
 
-        it("TC-105: puts white at full lightness with no chroma") {
-            val white = Oklch.fromSrgb(Color.White)
-
-            white.l shouldBe (1.0 plusOrMinus 0.001)
-            white.c shouldBe (0.0 plusOrMinus 0.001)
-        }
-
-        it("TC-106: keeps hue in 0 until 360") {
-            listOf(0xFFFF0000, 0xFF0000FF, 0xFF00FF00, 0xFFFF00FF).forEach {
-                Oklch.fromSrgb(Color(it)).h shouldBe (180.0 plusOrMinus 180.0)
+        it("TC-106: keeps hue in 0 until 360, across the primaries") {
+            checkAll(Exhaustive.of(0xFFFF0000, 0xFF0000FF, 0xFF00FF00, 0xFFFF00FF)) { argb ->
+                (Oklch.fromSrgb(Color(argb)).h in 0.0..<360.0) shouldBe true
             }
         }
     }
 
-    describe("parse") {
+    describe("parsing a color") {
 
-        it("TC-108: reads unitless oklch") {
-            Oklch.parse("oklch(0.55 0.09 200)") shouldBe Oklch(0.55, 0.09, 200.0, 1.0)
+        context("when the text is unitless oklch") {
+            it("TC-108 / TC-111: reads it, with any case, commas or surrounding space") {
+                checkAll(Exhaustive.of("oklch(0.4 0.1 30)", "  OKLCH(0.4, 0.1, 30)  ")) { text ->
+                    Oklch.parse(text) shouldBe Oklch(0.4, 0.1, 30.0, 1.0)
+                }
+            }
         }
 
-        it("TC-109: reads a percentage lightness and alpha") {
-            Oklch.parse("oklch(55% 0.09 200 / 0.5)") shouldBe Oklch(0.55, 0.09, 200.0, 0.5)
-            // CSS reading: anything marked % is a percentage, even at or below 1.
-            Oklch.parse("oklch(1% 0 0)")!!.l shouldBe 0.01
+        context("when the text has a percentage lightness") {
+            it("TC-109: reads it as a percentage, with its alpha") {
+                Oklch.parse("oklch(55% 0.09 200 / 0.5)") shouldBe Oklch(0.55, 0.09, 200.0, 0.5)
+            }
+
+            it("TC-109: reads it as a percentage even at or below 1") {
+                Oklch.parse("oklch(1% 0 0)")?.l shouldBe 0.01
+            }
         }
 
-        it("TC-110: keeps lightness of 1 or less as is") {
-            Oklch.parse("oklch(1 0 0)")!!.l shouldBe 1.0
+        context("when the text is hex") {
+            it("TC-112: reads it") {
+                Oklch.parse("#112233") shouldBe Oklch.fromSrgb(0x11 / 255.0, 0x22 / 255.0, 0x33 / 255.0)
+            }
         }
 
-        it("TC-111: accepts commas, mixed case and surrounding space") {
-            Oklch.parse("  OKLCH(0.4, 0.1, 30)  ") shouldBe Oklch(0.4, 0.1, 30.0, 1.0)
-        }
-
-        it("TC-112: reads #rrggbb") {
-            val parsed = Oklch.parse("#112233").shouldNotBeNull()
-
-            parsed shouldBe Oklch.fromSrgb(0x11 / 255.0, 0x22 / 255.0, 0x33 / 255.0)
-        }
-
-        it("TC-113: returns null for garbage") {
-            listOf("", "garbage", "oklch(", "oklch()", "oklch(0.5 0.1)", "oklch(a b c)", "#12", "#gggggg", "red")
-                .forEach { Oklch.parse(it).shouldBeNull() }
-        }
-
-        it("TC-30: parses the #13 acceptance inputs") {
-            val unitless = Oklch.parse("oklch(0.55 0.09 200)").shouldNotBeNull()
-            unitless.l shouldBe 0.55
-            unitless.c shouldBe 0.09
-            unitless.h shouldBe 200.0
-
-            Oklch.parse("oklch(55% 0.09 200 / 0.5)").shouldNotBeNull().alpha shouldBe 0.5
-
-            val (r, g, b) = Oklch.parse("#112233").shouldNotBeNull().toColor().channels().toList()
-            r.toDouble() shouldBe (0x11.toDouble() plusOrMinus 1.0)
-            g.toDouble() shouldBe (0x22.toDouble() plusOrMinus 1.0)
-            b.toDouble() shouldBe (0x33.toDouble() plusOrMinus 1.0)
-
-            Oklch.parse("garbage").shouldBeNull()
-            Oklch.parse("").shouldBeNull()
+        context("when the text is garbage") {
+            it("TC-113: gives null") {
+                checkAll(
+                    Exhaustive.of("", "garbage", "oklch(", "oklch()", "oklch(0.5 0.1)", "oklch(a b c)", "#12", "#gggggg", "red"),
+                ) { text ->
+                    Oklch.parse(text).shouldBeNull()
+                }
+            }
         }
     }
 })

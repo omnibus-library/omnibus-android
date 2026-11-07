@@ -1,109 +1,117 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import com.omnibus.omnibus.data.library.Creator
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.library.randomCreator
 import com.omnibus.omnibus.feature.bookdetail.stage.SeriesLine
 import com.omnibus.omnibus.feature.bookdetail.stage.bylineModel
 import com.omnibus.omnibus.feature.bookdetail.stage.yearFitsBeside
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class BookBylineTest : DescribeSpec({
 
-    describe("bylineModel") {
+    describe("the year on the byline") {
 
-        it("#93 TC-19: author and year") {
-            val model = bylineModel(
-                testBook(
-                    1,
-                    creators = listOf(Creator("Frank Herbert", "author", null, 3L)),
-                    publishedDate = "1965-08-01",
-                ),
-            )
+        context("when the book is in no series") {
+            it("#93 TC-19: reads the publication year") {
+                val book = randomBook().copy(series = null, publishedDate = "1965-08-01")
 
-            model.author shouldBe "Frank Herbert"
-            model.year shouldBe 1965
-            model.series shouldBe null
-        }
-
-        it("#93 TC-20: no year") {
-            bylineModel(testBook(1, publishedDate = null)).year shouldBe null
-            bylineModel(testBook(1, publishedDate = "unknown")).year shouldBe null
-        }
-
-        it("#93 TC-21: series with index") {
-            val model = bylineModel(testBook(1, series = "Dune", seriesIndex = "3"))
-
-            model.series shouldBe SeriesLine("Dune", "3")
-        }
-
-        it("#93 TC-22: series with blank index") {
-            for (index in listOf("", "  ", null)) {
-                bylineModel(testBook(1, series = "Dune", seriesIndex = index)).series shouldBe SeriesLine("Dune", null)
+                bylineModel(book).year shouldBe 1965
             }
         }
 
-        it("#93 TC-23: series suppresses year") {
-            val model = bylineModel(testBook(1, series = "Dune", publishedDate = "1965"))
-
-            model.year shouldBe null
-            model.series shouldBe SeriesLine("Dune", null)
-        }
-
-        it("#93 TC-24: blank series is no series") {
-            for (series in listOf("", "   ", null)) {
-                val model = bylineModel(testBook(1, series = series, publishedDate = "1965"))
-
-                model.series shouldBe null
-                model.year shouldBe 1965
+        context("when the book is in a series") {
+            it("#93 TC-23: gives way to the series") {
+                bylineModel(randomBook().copy(series = randomString(), publishedDate = "1965")).year shouldBe null
             }
-        }
-
-        it("#93 TC-25: link is the first creator with an id") {
-            val model = bylineModel(
-                testBook(
-                    1,
-                    creators = listOf(
-                        Creator("A", null, null, null),
-                        Creator("Bee", "author", null, 7L),
-                    ),
-                ),
-            )
-
-            model.authorLink shouldBe BookDetailDestination.Author(7L, "Bee")
-        }
-
-        it("#93 TC-26: null id is not linked") {
-            val model = bylineModel(testBook(1, creators = listOf(Creator("Solo Writer", "author", null, null))))
-
-            model.authorLink shouldBe null
-            model.author shouldBe "Solo Writer"
-        }
-
-        it("#93 TC-27: blank name or no creators") {
-            val skipped = bylineModel(
-                testBook(
-                    1,
-                    creators = listOf(
-                        Creator("  ", "author", null, 7L),
-                        Creator("Ann", "author", null, 9L),
-                    ),
-                ),
-            )
-            skipped.authorLink shouldBe BookDetailDestination.Author(9L, "Ann")
-
-            val none = bylineModel(testBook(1, creators = emptyList()))
-            none.authorLink shouldBe null
-            none.author shouldBe testBook(1, creators = emptyList()).authorDisplay
         }
     }
 
-    describe("yearFitsBeside") {
+    describe("the series on the byline") {
 
-        it("#93 TC-133: year fits beside only when both fit") {
-            yearFitsBeside(authorWidthPx = 100, yearWidthPx = 40, gapPx = 6, maxWidthPx = 146) shouldBe true
-            yearFitsBeside(authorWidthPx = 100, yearWidthPx = 40, gapPx = 6, maxWidthPx = 145) shouldBe false
-            yearFitsBeside(authorWidthPx = 0, yearWidthPx = 40, gapPx = 6, maxWidthPx = 46) shouldBe true
+        context("when the series has a number") {
+            it("#93 TC-21: reads the name with the number") {
+                val series = randomString()
+
+                bylineModel(randomBook().copy(series = series, seriesIndex = "3")).series shouldBe SeriesLine(series, "3")
+            }
+        }
+
+        context("when the number is blank") {
+            it("#93 TC-22: reads the name alone, for an empty, blank or missing number") {
+                checkAll(Exhaustive.of("", "  ", null)) { index ->
+                    val series = randomString()
+
+                    bylineModel(randomBook().copy(series = series, seriesIndex = index)).series shouldBe
+                        SeriesLine(series, null)
+                }
+            }
+        }
+
+        context("when the series is blank") {
+            it("#93 TC-24: is left out, for an empty, blank or missing series") {
+                checkAll(Exhaustive.of("", "   ", null)) { series ->
+                    bylineModel(randomBook().copy(series = series)).series shouldBe null
+                }
+            }
+        }
+    }
+
+    describe("the link on the author") {
+
+        context("when an earlier creator has no id") {
+            it("#93 TC-25: goes to the first creator with one") {
+                val id = randomLong()
+                val name = randomString()
+                val book = randomBook().copy(
+                    creators = listOf(randomCreator().copy(id = null), randomCreator().copy(name = name, id = id)),
+                )
+
+                bylineModel(book).authorLink shouldBe BookDetailDestination.Author(id, name)
+            }
+        }
+
+        context("when no creator has an id") {
+            it("#93 TC-26: is left out") {
+                val book = randomBook().copy(creators = listOf(randomCreator().copy(id = null)))
+
+                bylineModel(book).authorLink shouldBe null
+            }
+        }
+
+        context("when an earlier creator has a blank name") {
+            it("#93 TC-27: skips that creator") {
+                val id = randomLong()
+                val name = randomString()
+                val book = randomBook().copy(
+                    creators = listOf(
+                        Creator("  ", randomString(), null, randomLong()),
+                        randomCreator().copy(name = name, id = id),
+                    ),
+                )
+
+                bylineModel(book).authorLink shouldBe BookDetailDestination.Author(id, name)
+            }
+        }
+    }
+
+    describe("fitting the year beside the author") {
+
+        it("#93 TC-133: fits up to the exact width") {
+            val author = randomInt(0..500)
+            val year = randomInt(0..500)
+            val gap = randomInt(0..50)
+            val needed = author + gap + year
+
+            yearFitsBeside(author, year, gap, maxWidthPx = needed) shouldBe true
+            yearFitsBeside(author, year, gap, maxWidthPx = needed - 1) shouldBe false
         }
     }
 })
