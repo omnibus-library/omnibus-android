@@ -138,8 +138,7 @@ private fun OmnibusTabBarPreview() {
         OmnibusTabBar(
             items = listOf(
                 OmnibusTabBarItem("Library", R.drawable.ic_tab_library, R.drawable.ic_tab_library_filled),
-                OmnibusTabBarItem("Authors", R.drawable.ic_tab_authors, R.drawable.ic_tab_authors_filled),
-                OmnibusTabBarItem("Series", R.drawable.ic_tab_series, R.drawable.ic_tab_series_filled),
+                OmnibusTabBarItem("Search", R.drawable.ic_tab_search, R.drawable.ic_tab_search_filled),
                 OmnibusTabBarItem("Stats", R.drawable.ic_tab_stats, R.drawable.ic_tab_stats_filled),
                 OmnibusTabBarItem("You", R.drawable.ic_tab_you, R.drawable.ic_tab_you_filled),
             ),
