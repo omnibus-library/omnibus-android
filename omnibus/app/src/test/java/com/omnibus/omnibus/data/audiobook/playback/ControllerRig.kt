@@ -37,7 +37,7 @@ import io.kotest.assertions.withClue
  * `DefaultAudiobookController*Test` specs share it.
  *
  * It starts with "book-1" answering from the library and the repository, so a load succeeds unless a test changes an
- * answer first. Pass [order] to log the engine commands, the reads and the resume calls into one list, in the order they
+ * answer first. The book is [multiPartManifest]: 3000 s long, with chapters starting at 0, 700 and 1900 s. Pass [order] to log the engine commands, the reads and the resume calls into one list, in the order they
  * happen. Call [close] when the spec's test is done.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -129,33 +129,20 @@ class ControllerRig(
 class ScriptedResolver(
     private val savedFileId: Long? = null,
     private val settleAnswer: CompletableDeferred<Double?> = answering(null),
-    private val order: MutableList<String>? = null,
 ) : ResumeStartResolver {
 
     /** The `(bookUuid, explicitFileId, explicitPositionSeconds)` of each [begin], in call order. */
     val begins = mutableListOf<Triple<String, Long?, Double?>>()
 
-    /** The pending each [begin] returned, in call order. The controller's calls go to it through a logging wrapper. */
+    /** The pending each [begin] returned, in call order. */
     val pendings = mutableListOf<TestPendingResume>()
 
     override fun begin(bookUuid: String, explicitFileId: Long?, explicitPositionSeconds: Double?): PendingResume {
         begins += Triple(bookUuid, explicitFileId, explicitPositionSeconds)
-        order?.add("begin")
-        val fake = TestPendingResume().also {
+        return TestPendingResume().also {
             it.savedFileId = savedFileId
             it.settleAnswer = settleAnswer
-        }
-        pendings += fake
-        return object : PendingResume by fake {
-            override suspend fun settle(loadedFileId: Long, durationSeconds: Double): Double? {
-                order?.add("settle")
-                return fake.settle(loadedFileId, durationSeconds)
-            }
-
-            override fun cancel() {
-                order?.add("cancel")
-                fake.cancel()
-            }
+            pendings += it
         }
     }
 }
@@ -232,11 +219,10 @@ fun resumePoint(
     bookUuid: String,
     bookFileId: Long?,
     position: Double?,
-    format: ProgressFormat = ProgressFormat.Listening,
 ): ResumePoint = ResumePoint(
     record = ProgressRecord(
         bookUuid = bookUuid,
-        format = format,
+        format = ProgressFormat.Listening,
         epubCfi = null,
         audioPositionSeconds = position,
         progressPercent = null,
