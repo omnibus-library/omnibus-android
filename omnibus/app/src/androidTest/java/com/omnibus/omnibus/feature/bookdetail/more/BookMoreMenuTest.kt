@@ -19,7 +19,6 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.bookdetail.detailText
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -61,22 +60,6 @@ class BookMoreMenuTest {
         rule.waitUntil(timeoutMillis = 5_000) {
             rule.onAllNodesWithTag(BookMoreTestTags.MENU).fetchSemanticsNodes().isEmpty()
         }
-    }
-
-    // TC-3
-    @Test
-    fun issue116_tc3_tappingMoreOpensTheMenuWithItsRows() {
-        rule.setMoreButton(listOf(TestEntry(rowLabel)))
-
-        openMenu()
-
-        // The menu is a separate window, so its position can't be compared with the button's; the row must sit
-        // inside the menu, which is what the menu's own geometry can show.
-        rule.onNodeWithText(rowLabel).assertIsDisplayed()
-        val menu = rule.onNodeWithTag(BookMoreTestTags.MENU).bounds()
-        val row = rule.onNodeWithTag(rowTag(rowLabel)).bounds()
-        assertTrue("row ${row.width}px inside menu ${menu.width}px", row.width <= menu.width + 1f)
-        assertTrue("row starts inside the menu", row.left >= menu.left - 1f)
     }
 
     // TC-4

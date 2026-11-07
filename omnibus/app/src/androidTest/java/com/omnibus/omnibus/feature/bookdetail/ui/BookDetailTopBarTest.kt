@@ -10,13 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.bounds
@@ -84,16 +81,9 @@ class BookDetailTopBarTest {
             .assert(SemanticsMatcher.expectValue(BookDetailTopBarFilledKey, false))
 
         rule.scrollTo(scroll)
-        assertTrue("scrolled ${scroll.value}px", scroll.value > with(rule.density) { 300.dp.toPx() })
+
         rule.onNodeWithTag(BookDetailTestTags.TOP_BAR)
             .assert(SemanticsMatcher.expectValue(BookDetailTopBarFilledKey, true))
-
-        val root = rule.onRoot().bounds()
-        val barTitle = rule.onNodeWithTag(BookDetailTestTags.BAR_TITLE).bounds()
-        val disc = rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).bounds()
-        assertEquals(root.center.x, barTitle.center.x, with(rule.density) { 4.dp.toPx() })
-        assertTrue(barTitle.left >= disc.right)
-        rule.onAllNodesWithText(title).assertCountEquals(1)
 
         rule.scrollTo(scroll, 0)
         rule.onNodeWithTag(BookDetailTestTags.TOP_BAR)

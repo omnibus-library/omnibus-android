@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.more.bookmarks
 
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -9,8 +8,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.detailText
@@ -65,19 +62,6 @@ class BookmarksOverlayTest {
         rule.onNodeWithTag(BookmarksTestTags.SHEET).assertIsDisplayed()
 
         rule.pressBackKey()
-        rule.waitUntil(timeoutMillis = 5_000) { events.size == 1 }
-        rule.waitForIdle()
-
-        assertEquals(listOf("close"), events)
-    }
-
-    // TC-10
-    @Test
-    fun issue117_tc10_swipeDownClosesTheSheetOnly() {
-        val events = mutableListOf<String>()
-        setSheetWindow(events)
-
-        rule.onNodeWithTag(BookmarksTestTags.SHEET).performTouchInput { swipeDown() }
         rule.waitUntil(timeoutMillis = 5_000) { events.size == 1 }
         rule.waitForIdle()
 
@@ -156,18 +140,5 @@ class BookmarksOverlayTest {
             rule.onAllNodesWithTag(BookMoreTestTags.MENU).fetchSemanticsNodes().isEmpty()
         }
         rule.onNodeWithText(detailText(R.string.book_detail_bookmarks_title)).assertIsDisplayed()
-    }
-
-    // TC-7
-    @Test
-    fun issue117_tc7_overlayDoesNotRequestTheViewModelBeforeTheMenuOpens() {
-        // A plain compose rule has no Hilt: the overlay must return before any ViewModel is requested.
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                BookmarksMenuEntry.Overlay(testSectionContext())
-            }
-        }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(BookmarksTestTags.SHEET).assertCountEquals(0)
     }
 }

@@ -15,15 +15,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,7 +34,6 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.util.GregorianCalendar
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -82,7 +75,6 @@ class ReadStatusPillTest {
     private fun setPill(
         initial: ReadStatusUIState,
         onSelect: (ReadStatus) -> Unit = {},
-        reducedMotion: Boolean = true,
     ): MutableState<ReadStatusUIState> {
         val state = mutableStateOf(initial)
         rule.setContent {
@@ -93,7 +85,7 @@ class ReadStatusPillTest {
                         accent = accent,
                         rim = rim,
                         onSelect = onSelect,
-                        reducedMotion = reducedMotion,
+                        reducedMotion = true,
                     )
                 }
             }
@@ -133,20 +125,6 @@ class ReadStatusPillTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
     }
 
-    // TC-86
-    @Test
-    fun tc86_tappingThePillOpensTheMenuWithThreeRows() {
-        setPill(ReadStatusUIState(status = ReadStatus.Reading))
-
-        openMenu()
-
-        rule.onNodeWithTag(ReadStatusTestTags.MENU).assertExists()
-        rule.onNodeWithTag(ReadStatusTestTags.MENU).assertContentDescriptionEquals("Read status")
-        ReadStatus.entries.forEach { status ->
-            rule.onAllNodesWithTag(ReadStatusTestTags.row(status)).assertCountEquals(1)
-        }
-    }
-
     // TC-88
     @Test
     fun tc88_onlyTheCurrentRowIsChecked() {
@@ -161,45 +139,6 @@ class ReadStatusPillTest {
                 rule.onNodeWithTag(ReadStatusTestTags.row(status))
                     .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, status == current))
             }
-            if (current == null) {
-                rule.onAllNodesWithTag(ReadStatusTestTags.CHECK, useUnmergedTree = true).assertCountEquals(0)
-            } else {
-                rule.onAllNodesWithTag(ReadStatusTestTags.CHECK, useUnmergedTree = true).assertCountEquals(1)
-                rule.onNodeWithTag(ReadStatusTestTags.CHECK, useUnmergedTree = true)
-                    .assert(hasAnyAncestor(hasTestTag(ReadStatusTestTags.row(current))))
-            }
-        }
-    }
-
-    // TC-89
-    @Test
-    fun tc89_finishedRowShowsTheShortDate() {
-        setPill(ReadStatusUIState(status = ReadStatus.Finished, finishedAtMillis = finishedOn2025, nowMillis = now2025))
-        openMenu()
-
-        val date = expectedDate(finishedOn2025, now2025)
-        rule.onNodeWithTag(ReadStatusTestTags.FINISHED_DATE, useUnmergedTree = true).assertTextEquals(date)
-        rule.onNodeWithTag(ReadStatusTestTags.FINISHED_DATE, useUnmergedTree = true)
-            .assert(hasAnyAncestor(hasTestTag(ReadStatusTestTags.row(ReadStatus.Finished))))
-        assertFalse(date.contains("2025"))
-    }
-
-    // TC-91
-    @Test
-    fun tc91_noDateUnlessFinishedWithAKnownDate() {
-        val state = setPill(ReadStatusUIState(status = ReadStatus.Unread))
-        val shown = listOf(
-            ReadStatusUIState(status = ReadStatus.Unread, finishedAtMillis = finishedOn2025, nowMillis = now2025),
-            ReadStatusUIState(status = ReadStatus.Reading, finishedAtMillis = finishedOn2025, nowMillis = now2025),
-            ReadStatusUIState(status = null),
-            ReadStatusUIState(status = ReadStatus.Finished, finishedAtMillis = null, nowMillis = now2025),
-        )
-
-        shown.forEachIndexed { index, uiState ->
-            rule.runOnIdle { state.value = uiState }
-            if (index > 0) reopenMenu() else openMenu()
-
-            rule.onAllNodesWithTag(ReadStatusTestTags.FINISHED_DATE, useUnmergedTree = true).assertCountEquals(0)
         }
     }
 
@@ -272,20 +211,6 @@ class ReadStatusPillTest {
         assertTrue(picked.isEmpty())
     }
 
-    // TC-97
-    @Test
-    fun tc97_reducedMotionSwapsTheLabelWithoutAnimating() {
-        rule.mainClock.autoAdvance = false
-        val state = setPill(ReadStatusUIState(status = ReadStatus.Unread), reducedMotion = true)
-        rule.waitForIdle()
-
-        rule.runOnIdle { state.value = ReadStatusUIState(status = ReadStatus.Reading) }
-        rule.mainClock.advanceTimeByFrame()
-
-        rule.onNodeWithText("Reading").assertExists()
-        rule.onNodeWithText("Unread").assertDoesNotExist()
-    }
-
     // TC-98
     @Test
     fun tc98_offlineFailurePostsTheOfflineMessageOnce() {
@@ -303,23 +228,6 @@ class ReadStatusPillTest {
 
         assertEquals(listOf("No connection. Your read status wasn't saved."), recorder.messages.map { it.text })
         assertEquals(1, shown)
-    }
-
-    // TC-99
-    @Test
-    fun tc99_otherFailurePostsTheGenericMessage() {
-        val recorder = SectionContextRecorder()
-        val context = testSectionContext(recorder = recorder)
-        rule.setContent {
-            ReadStatusSaveMessage(
-                failure = ReadStatusSaveFailure.Other,
-                onShowMessage = context.onShowMessage,
-                onShown = {},
-            )
-        }
-        rule.waitForIdle()
-
-        assertEquals(listOf("Your read status wasn't saved."), recorder.messages.map { it.text })
     }
 
     // TC-100

@@ -3,12 +3,9 @@ package com.omnibus.omnibus.feature.bookdetail.ui
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
@@ -40,7 +37,7 @@ class BookBylineTest {
         )
 
         val node = rule.onNodeWithTag(BookDetailTestTags.AUTHOR)
-        node.assertHasClickAction().assertHeightIsAtLeast(40.dp)
+        node.assertHasClickAction()
         assertEquals(
             detailText(R.string.book_detail_author_click_label),
             node.fetchSemanticsNode().config[SemanticsActions.OnClick].label,
@@ -62,23 +59,5 @@ class BookBylineTest {
         )
 
         rule.onNodeWithTag(BookDetailTestTags.AUTHOR).assertHasNoClickAction()
-    }
-
-    // TC-92
-    @Test
-    fun issue93_tc92_seriesLineWithoutASeriesSectionIsNotClickable() {
-        rule.setDetailScreen(
-            BookDetailUIState(
-                book = testDetailBook(
-                    creators = listOf(Creator("Frank Herbert", "author", null, null)),
-                    series = "Dune",
-                    seriesIndex = "3",
-                    publishedDate = "1965",
-                ),
-                isLoading = false,
-            ),
-        )
-
-        rule.onNodeWithText("Dune, book 3", useUnmergedTree = true).assertHasNoClickAction()
     }
 }

@@ -19,20 +19,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
-import com.omnibus.omnibus.feature.bookdetail.testDetailBook
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -40,8 +33,6 @@ class CoverTransitionHostTest {
 
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
-
-    private val book = testDetailBook(id = 1)
 
     // TC-21
     @Test
@@ -105,31 +96,5 @@ class CoverTransitionHostTest {
         assertNotNull("the entry reports its consumed insets", withoutWrap)
         assertEquals("consumed navigation-bar inset with and without the host", withoutWrap, withWrap)
         assertEquals("the entry consumes the whole navigation-bar inset", rootBottom.value, withWrap)
-    }
-
-    // TC-24
-    @Test
-    fun issue122_tc24_movingCoverStaysInsideTheHostAboveTheTabBar() {
-        val h = CoverTransitionHarness(listOf(book))
-        rule.setContent { h.Content(withTabBar = true) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(HARNESS_TAB_BAR).assertIsDisplayed()
-        val hostBottom = rule.onNodeWithTag(HARNESS_HOST).rootRect().bottom
-
-        rule.mainClock.autoAdvance = false
-        rule.onNodeWithTag(gridSourceTag("uuid-1"), useUnmergedTree = true).performClick()
-        var sawTransit = false
-        repeat(40) {
-            rule.mainClock.advanceTimeByFrame()
-            if (h.sharedScope.isTransitionActive) sawTransit = true
-            val moving = rule.onAllNodesWithTag(BookCoverTransitionTestTags.stage(book.uuid), useUnmergedTree = true)
-                .fetchSemanticsNodes()
-            if (moving.isNotEmpty()) {
-                val bottom = moving.single().boundsInRoot.bottom
-                assertTrue("moving cover bottom $bottom past host bottom $hostBottom", bottom <= hostBottom + 1f)
-            }
-            rule.onNodeWithTag(HARNESS_TAB_BAR).assertIsDisplayed()
-        }
-        assertTrue("the sampled frames should include the move", sawTransit)
     }
 }

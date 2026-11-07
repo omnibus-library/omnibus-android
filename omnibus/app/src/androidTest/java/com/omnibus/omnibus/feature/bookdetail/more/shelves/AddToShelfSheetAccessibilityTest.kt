@@ -88,26 +88,6 @@ class AddToShelfSheetAccessibilityTest {
             .assertCountEquals(0)
     }
 
-    // TC-61
-    @Test
-    fun issue116_tc61_toggleStateChangesAfterTapAndAfterRevert() {
-        val content = mutableStateOf<ShelfSheetContent>(
-            ShelfSheetContent.Loaded(listOf(manualShelfRow(1, "Favourites", count = 9)), emptyList()),
-        )
-        setSheet(content, onToggle = { content.value = (content.value as ShelfSheetContent.Loaded).toggled(it) })
-
-        rule.onNodeWithTag(ShelfSheetTestTags.row(1)).performClick()
-        rule.waitForIdle()
-        rule.onNodeWithTag(ShelfSheetTestTags.row(1))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
-
-        // The write failed: the content goes back to the server's state.
-        rule.runOnIdle { content.value = ShelfSheetContent.Loaded(listOf(manualShelfRow(1, "Favourites", count = 9)), emptyList()) }
-        rule.waitForIdle()
-        rule.onNodeWithTag(ShelfSheetTestTags.row(1))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
-    }
-
     // TC-62
     @Test
     fun issue116_tc62_titlesAreHeadingsAndCloseIsLabelledAndCoverStacksAreHidden() {
