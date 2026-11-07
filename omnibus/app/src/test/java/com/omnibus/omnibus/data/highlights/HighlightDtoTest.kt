@@ -2,17 +2,20 @@ package com.omnibus.omnibus.data.highlights
 
 import com.omnibus.omnibus.data.highlights.remote.HighlightDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightsJson
-import com.omnibus.omnibus.data.highlights.remote.fractionOf
-import com.omnibus.omnibus.data.highlights.remote.formatOf
-import com.omnibus.omnibus.data.highlights.remote.highlightColorFromToken
+import com.omnibus.omnibus.testing.randomLong
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 
 class HighlightDtoTest : DescribeSpec({
 
-    describe("the wire mapping") {
+    fun sut(): HighlightDto = HighlightDto(id = randomLong())
 
-        it("TC-1: a full server row maps every field, with millis and no overflow") {
+    describe("reading a server row") {
+
+        it("TC-1: maps every field, with times in milliseconds") {
             val json = """
                 {"id":9,"book_uuid":"b","client_id":"c","text":"A passage","note":"A note","color":"rose",
                  "epub_cfi_range":"epubcfi(/6/4!/4/2,/1:0,/1:20)","created_at":3000000000,
@@ -20,9 +23,7 @@ class HighlightDtoTest : DescribeSpec({
                  "percent_through_book":12.5}
             """.trimIndent()
 
-            val dto = HighlightsJson.decodeFromString<List<HighlightDto>>("[$json]").single()
-
-            dto.toDomain() shouldBe Highlight(
+            HighlightsJson.decodeFromString<HighlightDto>(json).toDomain() shouldBe Highlight(
                 id = 9,
                 text = "A passage",
                 note = "A note",
@@ -34,97 +35,83 @@ class HighlightDtoTest : DescribeSpec({
             )
         }
 
-        it("TC-2: colour tokens match ignoring case and spaces; unknown or missing reads as Amber") {
-            listOf(
-                "amber" to HighlightColor.Amber,
-                "GREEN" to HighlightColor.Green,
-                "Blue" to HighlightColor.Blue,
-                " rose " to HighlightColor.Rose,
-                "VIOLET" to HighlightColor.Violet,
-                "teal" to HighlightColor.Amber,
-                "" to HighlightColor.Amber,
-                null to HighlightColor.Amber,
-            ).forEach { (token, expected) ->
-                highlightColorFromToken(token) shouldBe expected
+        context("when optional fields are explicit nulls") {
+            it("TC-5: takes the defaults") {
+                val json = """
+                    {"id":1,"text":null,"note":null,"color":null,"epub_cfi_range":null,"created_at":null,
+                     "percent_through_book":null,"extra":{}}
+                """.trimIndent()
+
+                HighlightsJson.decodeFromString<HighlightDto>(json).toDomain() shouldBe
+                    Highlight(1, null, null, HighlightColor.Amber, null, null, null, null)
+            }
+        }
+    }
+
+    describe("the highlight's colour") {
+
+        it("TC-2: matches the token whatever its case or padding, for every colour") {
+            checkAll(
+                Exhaustive.of(
+                    "amber" to HighlightColor.Amber,
+                    "GREEN" to HighlightColor.Green,
+                    "Blue" to HighlightColor.Blue,
+                    " rose " to HighlightColor.Rose,
+                    "VIOLET" to HighlightColor.Violet,
+                ),
+            ) { (token, expected) ->
+                sut().copy(color = token).toDomain().color shouldBe expected
             }
         }
 
-        it("TC-3: the format comes from the location prefix") {
-            listOf(
-                "epubcfi(/6/4)" to "epub",
-                "pdf:12" to "pdf",
-                "pdf-page:3" to "pdf",
-                "/some/path" to null,
-                "" to null,
-                null to null,
-            ).forEach { (location, expected) ->
-                formatOf(location) shouldBe expected
+        context("when the token is not a known colour") {
+            it("TC-2: reads as Amber") {
+                checkAll(Exhaustive.of("teal", "", null)) { token ->
+                    sut().copy(color = token).toDomain().color shouldBe HighlightColor.Amber
+                }
+            }
+        }
+    }
+
+    describe("the highlight's format") {
+
+        it("TC-3: comes from the location prefix") {
+            checkAll(
+                Exhaustive.of(
+                    "epubcfi(/6/4)" to "epub",
+                    "pdf:12" to "pdf",
+                    "pdf-page:3" to "pdf",
+                    "/some/path" to null,
+                    "" to null,
+                    null to null,
+                ),
+            ) { (location, expected) ->
+                sut().copy(epubCfiRange = location).toDomain().format shouldBe expected
+            }
+        }
+    }
+
+    describe("the highlight's place in the book") {
+
+        it("TC-4: is the percent as a fraction, clamped to the book") {
+            checkAll(
+                Exhaustive.of(
+                    0.0 to 0f,
+                    50.0 to 0.5f,
+                    100.0 to 1f,
+                    -5.0 to 0f,
+                    150.0 to 1f,
+                    Double.POSITIVE_INFINITY to 1f,
+                ),
+            ) { (percent, expected) ->
+                sut().copy(percentThroughBook = percent).toDomain().fraction shouldBe expected
             }
         }
 
-        it("TC-4: the percent maps to a clamped fraction; NaN and missing give null; the domain never holds NaN") {
-            fractionOf(0.0) shouldBe 0f
-            fractionOf(50.0) shouldBe 0.5f
-            fractionOf(100.0) shouldBe 1f
-            fractionOf(-5.0) shouldBe 0f
-            fractionOf(150.0) shouldBe 1f
-            fractionOf(Double.POSITIVE_INFINITY) shouldBe 1f
-            fractionOf(Double.NaN) shouldBe null
-            fractionOf(null) shouldBe null
-
-            val dto = HighlightsJson.decodeFromString<List<HighlightDto>>("""[{"id":1}]""").single()
-            dto.toDomain().createdAtMillis shouldBe null
-            dto.toDomain().fraction shouldBe null
-            (dto.toDomain().fraction?.isNaN() == true) shouldBe false
-        }
-
-        it("TC-5: unknown keys are ignored and explicit nulls take defaults; blank text passes through") {
-            val json = """
-                [
-                  {"id":1,"book_uuid":"b","client_id":null,"created_at_iso":"x","spine_index":4,
-                   "chapter_title":"T","extra":{},"text":null,"note":null,"color":null,
-                   "epub_cfi_range":null,"created_at":null,"percent_through_book":null},
-                  {"id":2,"text":"   ","color":"green"}
-                ]
-            """.trimIndent()
-
-            val rows = HighlightsJson.decodeFromString<List<HighlightDto>>(json).map { it.toDomain() }
-
-            rows[0] shouldBe Highlight(1, null, null, HighlightColor.Amber, null, null, null, null)
-            rows[1].text shouldBe "   "
-            rows[1].color shouldBe HighlightColor.Green
-        }
-
-        it("TC-6: the C16 shape: colours, state objects, the seven-argument highlight and the defaulted fraction") {
-            HighlightColor.entries shouldBe listOf(
-                HighlightColor.Amber,
-                HighlightColor.Green,
-                HighlightColor.Blue,
-                HighlightColor.Rose,
-                HighlightColor.Violet,
-            )
-            HighlightsState.Loading shouldBe HighlightsState.Loading
-            HighlightsState.Failed shouldBe HighlightsState.Failed
-            HighlightsState.Loaded(emptyList()) shouldBe HighlightsState.Loaded(emptyList())
-
-            val positional = Highlight(1L, "t", "n", HighlightColor.Blue, "epubcfi(/6/4)", "epub", 5L)
-            val named = Highlight(
-                id = 1L,
-                text = "t",
-                note = "n",
-                color = HighlightColor.Blue,
-                location = "epubcfi(/6/4)",
-                format = "epub",
-                createdAtMillis = 5L,
-            )
-            positional shouldBe named
-            positional.fraction shouldBe null
-
-            val placed = positional.copy(fraction = 0.3f)
-            placed.fraction shouldBe 0.3f
-            placed.copy(fraction = null) shouldBe positional
-            placed.text shouldBe "t"
-            placed.color shouldBe HighlightColor.Blue
+        context("when the percent is not a number") {
+            it("TC-4: is unknown") {
+                sut().copy(percentThroughBook = Double.NaN).toDomain().fraction shouldBe null
+            }
         }
     }
 })

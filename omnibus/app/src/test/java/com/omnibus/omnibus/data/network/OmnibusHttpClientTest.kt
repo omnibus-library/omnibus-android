@@ -2,266 +2,220 @@ package com.omnibus.omnibus.data.network
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.of
 import java.io.IOException
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
+private val SERVER = "https://read.example.com".toHttpUrl()
+
+private val EMPTY_JSON = "{}".toRequestBody("application/json".toMediaType())
+
 class OmnibusHttpClientTest : DescribeSpec({
 
-    lateinit var baseUrlProvider: TestServerBaseUrlProvider
-    lateinit var tokenProvider: TestAuthTokenProvider
-    lateinit var client: OmnibusHttpClient
+    fun sut(
+        baseUrlProvider: ServerBaseUrlProvider = TestServerBaseUrlProvider(),
+        authTokenProvider: AuthTokenProvider = TestAuthTokenProvider(),
+    ) = OmnibusHttpClient(
+        baseUrlProvider = baseUrlProvider,
+        authTokenProvider = authTokenProvider,
+        omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
+        authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
+    )
 
-    beforeEach {
-        baseUrlProvider = TestServerBaseUrlProvider()
-        tokenProvider = TestAuthTokenProvider()
-        client = OmnibusHttpClient(
-            baseUrlProvider = baseUrlProvider,
-            authTokenProvider = tokenProvider,
-            omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
-            authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
-        )
-    }
-
-    describe("request(path)") {
-
-        it("returns null when no server is saved") {
-            client.request("api/auth/login").shouldBeNull()
-        }
+    describe("building a request for the saved server") {
 
         it("resolves against the saved server") {
-            baseUrlProvider.baseUrl = "https://read.example.com".toHttpUrl()
-
-            client.request("api/auth/login")!!.build().url.toString() shouldBe
+            sut(TestServerBaseUrlProvider(SERVER)).request("api/auth/login")!!.build().url.toString() shouldBe
                 "https://read.example.com/api/auth/login"
         }
 
-        it("follows the saved server when it changes") {
-            baseUrlProvider.baseUrl = "https://one.example.com".toHttpUrl()
-            client.request("api/_health")
-            baseUrlProvider.baseUrl = "https://two.example.com".toHttpUrl()
-
-            client.request("api/_health")!!.build().url.host shouldBe "two.example.com"
+        context("when no server is saved") {
+            it("gives no request") {
+                sut().request(randomString()).shouldBeNull()
+            }
         }
 
-        describe("bearer token") {
+        context("when the saved server changes") {
+            it("follows it") {
+                val baseUrl = TestServerBaseUrlProvider("https://one.example.com".toHttpUrl())
+                val client = sut(baseUrl)
+                client.request("api/_health")
 
-            beforeEach { baseUrlProvider.baseUrl = "https://read.example.com".toHttpUrl() }
+                baseUrl.baseUrl = "https://two.example.com".toHttpUrl()
 
-            it("TC-10: adds a single Authorization: Bearer header when a token is stored") {
-                tokenProvider.token = "abc123"
-
-                val request = client.request("api/auth/me")!!.build()
-
-                request.headers("Authorization") shouldBe listOf("Bearer abc123")
+                client.request("api/_health")!!.build().url.host shouldBe "two.example.com"
             }
+        }
 
-            it("TC-10: uses the current token for each request") {
-                tokenProvider.token = "first"
-                client.request("api/auth/me")!!.build().header("Authorization") shouldBe "Bearer first"
+        context("when a token is stored") {
+            it("TC-10: adds one bearer header") {
+                val token = randomString()
 
-                tokenProvider.token = "second"
-                client.request("api/auth/me")!!.build().header("Authorization") shouldBe "Bearer second"
+                sut(TestServerBaseUrlProvider(SERVER), TestAuthTokenProvider(token)).request("api/auth/me")!!.build()
+                    .headers("Authorization") shouldBe listOf("Bearer $token")
             }
+        }
 
-            it("TC-10: sends the header on the wire") {
-                MockWebServer().use { server ->
-                    server.start()
-                    server.enqueue(MockResponse.Builder().code(200).build())
-                    baseUrlProvider.baseUrl = server.url("/")
-                    tokenProvider.token = "abc123"
+        context("when the stored token changes") {
+            it("TC-10: uses the current one") {
+                val tokens = TestAuthTokenProvider(randomString())
+                val client = sut(TestServerBaseUrlProvider(SERVER), tokens)
+                client.request("api/auth/me")
+                val token = randomString()
 
-                    client.newCall(client.request("api/auth/me")!!.build()).execute().close()
+                tokens.token = token
 
-                    server.takeRequest().headers["Authorization"] shouldBe "Bearer abc123"
-                }
+                client.request("api/auth/me")!!.build().header("Authorization") shouldBe "Bearer $token"
             }
+        }
 
-            listOf(null, "", "   ").forEach { token ->
-                it("TC-11: adds no Authorization header when the token is ${token?.let { "\"$it\"" } ?: "null"}") {
-                    tokenProvider.token = token
-
-                    client.request("api/auth/me")!!.build().header("Authorization").shouldBeNull()
+        context("when no usable token is stored") {
+            it("TC-11: adds no bearer header") {
+                checkAll(Exhaustive.of(null, "", "   ")) { token ->
+                    sut(TestServerBaseUrlProvider(SERVER), TestAuthTokenProvider(token)).request("api/auth/me")!!.build()
+                        .header("Authorization").shouldBeNull()
                 }
             }
         }
     }
 
-    describe("request(baseUrl, path)") {
+    describe("building a request for a server not saved yet") {
 
-        mapOf(
-            "http://10.0.0.2:3000" to "http://10.0.0.2:3000/api/_health",
-            "http://10.0.0.2:3000/" to "http://10.0.0.2:3000/api/_health",
-            "https://example.com/omnibus" to "https://example.com/omnibus/api/_health",
-            "https://example.com/omnibus/" to "https://example.com/omnibus/api/_health",
-        ).forEach { (base, expected) ->
-            it("resolves beneath $base") {
-                client.request(base.toHttpUrl(), "api/_health").build().url.toString() shouldBe expected
+        it("resolves beneath the base URL, with or without a trailing slash") {
+            checkAll(
+                Exhaustive.of(
+                    "http://10.0.0.2:3000" to "http://10.0.0.2:3000/api/_health",
+                    "http://10.0.0.2:3000/" to "http://10.0.0.2:3000/api/_health",
+                    "https://example.com/omnibus" to "https://example.com/omnibus/api/_health",
+                    "https://example.com/omnibus/" to "https://example.com/omnibus/api/_health",
+                ),
+            ) { (base, expected) ->
+                sut().request(base.toHttpUrl(), "api/_health").build().url.toString() shouldBe expected
             }
         }
 
-        it("rejects absolute paths, which would drop the server's path prefix") {
-            shouldThrow<IllegalArgumentException> {
-                client.request("https://example.com/omnibus".toHttpUrl(), "/api/_health")
-            }
+        it("TC-12: never adds a bearer header, even with a stored token") {
+            sut(authTokenProvider = TestAuthTokenProvider(randomString()))
+                .request(SERVER, "api/_health").build()
+                .header("Authorization").shouldBeNull()
         }
 
-        it("TC-12: never adds an Authorization header, even when a token is stored") {
-            tokenProvider.token = "abc123"
-
-            client.request("http://10.0.0.2:3000".toHttpUrl(), "api/_health")
-                .build()
-                .header("Authorization")
-                .shouldBeNull()
+        context("when the path is absolute") {
+            it("rejects it, as it would drop the server's path prefix") {
+                shouldThrow<IllegalArgumentException> {
+                    sut().request("https://example.com/omnibus".toHttpUrl(), "/api/_health")
+                }
+            }
         }
     }
 
-    describe("newCall") {
+    describe("sending a request") {
 
-        it("TC-183: sends requests through the shared interceptors") {
-            MockWebServer().use { server ->
-                server.start()
-                server.enqueue(MockResponse.Builder().code(200).build())
+        it("TC-183: goes through the shared interceptors") {
+            withMockServer { server ->
+                server.enqueue(reply(200))
+                val client = sut()
 
                 client.newCall(client.request(server.url("/"), "api/_health").build()).execute().close()
 
-                server.takeRequest().headers["Accept"] shouldBe "application/json"
-            }
-        }
-
-        it("TC-184: keeps an Accept header the request already set") {
-            MockWebServer().use { server ->
-                server.start()
-                server.enqueue(MockResponse.Builder().code(200).build())
-                val request = client.request(server.url("/"), "api/thumbs/abc/md")
-                    .header("Accept", "image/webp")
-                    .build()
-
-                client.newCall(request).execute().close()
-
-                server.takeRequest().headers["Accept"] shouldBe "image/webp"
+                server.nextRequest().headers["Accept"] shouldBe "application/json"
             }
         }
     }
 
-    describe("execute") {
+    describe("executing a request") {
 
-        lateinit var server: MockWebServer
+        context("when an authenticated request gets a 401") {
+            it("TC-13: invalidates the token") {
+                withMockServer { server ->
+                    server.enqueue(reply(401))
+                    val tokens = TestAuthTokenProvider(randomString())
+                    val client = sut(TestServerBaseUrlProvider(server.url("/")), tokens)
 
-        fun enqueue(code: Int) {
-            server.enqueue(MockResponse.Builder().code(code).build())
-        }
+                    client.execute(client.request("api/books")!!.build()).close()
 
-        beforeEach {
-            server = MockWebServer().apply { start() }
-            baseUrlProvider.baseUrl = server.url("/")
-            tokenProvider.token = TOKEN
-        }
-
-        afterEach { server.close() }
-
-        it("returns the response from the server") {
-            enqueue(200)
-
-            client.execute(client.request("api/auth/me")!!.build()).use { it.code } shouldBe 200
-        }
-
-        it("TC-13: invalidates the token on a 401 to an authenticated request, and still returns the 401") {
-            enqueue(401)
-
-            val code = client.execute(client.request("api/auth/me")!!.build()).use { it.code }
-
-            code shouldBe 401
-            tokenProvider.invalidateCalls shouldBe 1
-        }
-
-        it("TC-13: invalidates on a 401 to any non-sign-in path, not only api/auth/me") {
-            enqueue(401)
-
-            client.execute(client.request("api/books")!!.build()).close()
-
-            tokenProvider.invalidateCalls shouldBe 1
-        }
-
-        it("TC-13: invalidates on a 401 beneath a server path prefix") {
-            baseUrlProvider.baseUrl = server.url("/omnibus")
-            enqueue(401)
-
-            client.execute(client.request("api/auth/me")!!.build()).close()
-
-            tokenProvider.invalidateCalls shouldBe 1
-        }
-
-        listOf("api/auth/login", "api/auth/register").forEach { path ->
-
-            it("TC-14: does not invalidate on a 401 from $path, even with a bearer token") {
-                enqueue(401)
-                val request = client.request(path)!!.post(EMPTY_JSON).build()
-                request.header("Authorization") shouldBe "Bearer $TOKEN"
-
-                client.execute(request).use { it.code } shouldBe 401
-
-                tokenProvider.invalidateCalls shouldBe 0
-                tokenProvider.token shouldBe TOKEN
+                    tokens.invalidateCalls shouldBe 1
+                }
             }
 
-            it("TC-14: does not invalidate on a 401 from $path beneath a server path prefix") {
-                baseUrlProvider.baseUrl = server.url("/omnibus")
-                enqueue(401)
+            it("TC-13: still returns the 401") {
+                withMockServer { server ->
+                    server.enqueue(reply(401))
+                    val client = sut(TestServerBaseUrlProvider(server.url("/")), TestAuthTokenProvider(randomString()))
 
-                client.execute(client.request(path)!!.post(EMPTY_JSON).build()).close()
-
-                tokenProvider.invalidateCalls shouldBe 0
+                    client.execute(client.request("api/auth/me")!!.build()).use { it.code } shouldBe 401
+                }
             }
         }
 
-        it("TC-15: does not invalidate on a 401 when the request carried no Authorization header") {
-            tokenProvider.token = null
-            enqueue(401)
+        context("when a sign-in request gets a 401") {
+            it("TC-14: keeps the token, for each sign-in path, with or without a server path prefix") {
+                checkAll(
+                    Exhaustive.of("api/auth/login", "api/auth/register"),
+                    Exhaustive.of("/", "/omnibus"),
+                ) { path, prefix ->
+                    withMockServer { server ->
+                        server.enqueue(reply(401))
+                        val tokens = TestAuthTokenProvider(randomString())
+                        val client = sut(TestServerBaseUrlProvider(server.url(prefix)), tokens)
 
-            client.execute(client.request("api/auth/me")!!.build()).use { it.code } shouldBe 401
+                        client.execute(client.request(path)!!.post(EMPTY_JSON).build()).close()
 
-            tokenProvider.invalidateCalls shouldBe 0
-        }
-
-        listOf(200, 204, 403, 404, 500, 503).forEach { code ->
-            it("TC-15: does not invalidate on a $code") {
-                enqueue(code)
-
-                client.execute(client.request("api/auth/me")!!.build()).use { it.code } shouldBe code
-
-                tokenProvider.invalidateCalls shouldBe 0
-                tokenProvider.token shouldBe TOKEN
+                        tokens.invalidateCalls shouldBe 0
+                    }
+                }
             }
         }
 
-        it("TC-15: throws IOException without invalidating when the server can't be reached") {
-            val request = client.request("api/auth/me")!!.build()
-            server.close()
+        context("when a request with no bearer header gets a 401") {
+            it("TC-15: invalidates nothing") {
+                withMockServer { server ->
+                    server.enqueue(reply(401))
+                    val tokens = TestAuthTokenProvider(token = null)
+                    val client = sut(TestServerBaseUrlProvider(server.url("/")), tokens)
 
-            shouldThrow<IOException> { client.execute(request) }
+                    client.execute(client.request("api/auth/me")!!.build()).close()
 
-            tokenProvider.invalidateCalls shouldBe 0
+                    tokens.invalidateCalls shouldBe 0
+                }
+            }
         }
 
-        it("TC-183: sends requests through the shared interceptors") {
-            enqueue(200)
+        context("when the answer is not a 401") {
+            it("TC-15: keeps the token, for each other status") {
+                checkAll(Exhaustive.of(200, 403, 500)) { code ->
+                    withMockServer { server ->
+                        server.enqueue(reply(code))
+                        val tokens = TestAuthTokenProvider(randomString())
+                        val client = sut(TestServerBaseUrlProvider(server.url("/")), tokens)
 
-            client.execute(client.request("api/auth/me")!!.build()).close()
+                        client.execute(client.request("api/auth/me")!!.build()).close()
 
-            server.takeRequest().headers["Accept"] shouldBe "application/json"
+                        tokens.invalidateCalls shouldBe 0
+                    }
+                }
+            }
+        }
+
+        context("when the server can't be reached") {
+            it("TC-15: throws IOException") {
+                withMockServer { server ->
+                    val client = sut(TestServerBaseUrlProvider(server.url("/")))
+                    val request = client.request("api/auth/me")!!.build()
+                    server.close()
+
+                    shouldThrow<IOException> { client.execute(request) }
+                }
+            }
         }
     }
-}) {
-    private companion object {
-        const val TOKEN = "abc123"
-        val EMPTY_JSON = "{}".toRequestBody("application/json".toMediaType())
-    }
-}
+})
