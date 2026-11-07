@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/omnibus-library/omnibus-android/compare/v0.1.2...v0.1.3) (2026-11-07)
+
+
+### Features
+
+* retract the tab ribbon while the tabs are pinned ([#195](https://github.com/omnibus-library/omnibus-android/issues/195)) ([f99a3b0](https://github.com/omnibus-library/omnibus-android/commit/f99a3b00e9e3431edbfe150fb94152e46e1438a0))
+
+
+### Bug Fixes
+
+* **reader:** show the real percent on the menu's Contents row ([#203](https://github.com/omnibus-library/omnibus-android/issues/203)) ([7fb6ce7](https://github.com/omnibus-library/omnibus-android/commit/7fb6ce7d6e71b3c065da34df4bac060cca2d81e2))
+* **reader:** use the book's cover accent in the reader sheets ([#204](https://github.com/omnibus-library/omnibus-android/issues/204)) ([d3e29a7](https://github.com/omnibus-library/omnibus-android/commit/d3e29a7b4a5d6b03929ee119e072e8c3340142d0))
+
 ## [0.1.2](https://github.com/omnibus-library/omnibus-android/compare/v0.1.1...v0.1.2) (2026-11-05)
 
 
