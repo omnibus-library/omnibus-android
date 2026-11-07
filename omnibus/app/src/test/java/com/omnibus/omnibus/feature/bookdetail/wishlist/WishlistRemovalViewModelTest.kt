@@ -150,7 +150,9 @@ class WishlistRemovalViewModelTest : DescribeSpec({
 
         context("when the outcome has been shown") {
             it("#119 TC-31: clears it") {
-                val vm = sutWithEntry()
+                val repo = TestWishlistRepository()
+                repo.removalResults.addLast(WishlistRemovalResult.Failed(WishlistError.Unreachable))
+                val vm = sutWithEntry(repo)
                 vm.confirmRemoval()
 
                 vm.outcomeShown(1)
@@ -163,6 +165,7 @@ class WishlistRemovalViewModelTest : DescribeSpec({
             it("#119 TC-31: keeps the newer one") {
                 val repo = TestWishlistRepository()
                 repo.removalResults.addLast(WishlistRemovalResult.Failed(WishlistError.Unreachable))
+                repo.removalResults.addLast(WishlistRemovalResult.Removed(bookDeleted = false))
                 val vm = sutWithEntry(repo)
                 vm.confirmRemoval()
                 vm.confirmRemoval()

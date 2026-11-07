@@ -9,7 +9,10 @@ import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
@@ -17,8 +20,6 @@ import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl
 
 /** [value] as a JSON string, or JSON null. */
@@ -36,8 +37,6 @@ private fun SeriesMember.toJson(): String =
 private fun bookWithIndex(uuid: String, seriesIndex: String?): String =
     randomSeriesMember().copy(uuid = uuid, seriesIndex = seriesIndex).toJson()
 
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
 class DefaultSeriesRepositoryTest : DescribeSpec({
 
     fun sut(baseUrl: HttpUrl? = null): DefaultSeriesRepository = DefaultSeriesRepository(
@@ -51,8 +50,7 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
     )
 
     /** The members the server's answer [body] reads as. */
-    suspend fun membersOf(body: String): List<SeriesMember> = MockWebServer().use { server ->
-        server.start()
+    suspend fun membersOf(body: String): List<SeriesMember> = withMockServer { server ->
         server.enqueue(reply(200, body))
         sut(server.url("/")).getSeries(randomLong()).shouldBeTypeOf<SeriesResult.Success>().members
     }
@@ -164,8 +162,7 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
         }
 
         it("#104 TC-9: asks for the series by its id") {
-            MockWebServer().use { server ->
-                server.start()
+            withMockServer { server ->
                 val id = randomLong()
                 server.enqueue(reply(200, "{}"))
 
@@ -178,8 +175,7 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
         }
 
         it("#104 TC-10, TC-11, TC-12: reports each failure status as its own error") {
-            MockWebServer().use { server ->
-                server.start()
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(
                         401 to SeriesError.SessionExpired,
@@ -198,18 +194,12 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
         context("when the server cannot be reached") {
 
             it("#104 TC-13: reports Unreachable") {
-                val closed = MockWebServer().use { server ->
-                    server.start()
-                    server.url("/")
-                }
-
-                sut(closed).getSeries(randomLong()) shouldBe SeriesResult.Failure(SeriesError.Unreachable)
+                sut(unreachableUrl()).getSeries(randomLong()) shouldBe SeriesResult.Failure(SeriesError.Unreachable)
             }
         }
 
         it("#104 TC-14: reports UnexpectedResponse regardless of how the body is unreadable") {
-            MockWebServer().use { server ->
-                server.start()
+            withMockServer { server ->
                 checkAll(Exhaustive.of("not json", "[]", "", """{"books":"nope"}""")) { body ->
                     server.enqueue(reply(200, body))
 

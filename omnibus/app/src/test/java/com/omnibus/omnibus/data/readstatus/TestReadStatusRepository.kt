@@ -1,6 +1,9 @@
 package com.omnibus.omnibus.data.readstatus
 
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -11,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  *
  * Unlike production, collecting [getReadStatusFlow] does not fetch. Call [seed] or [refresh] first.
  */
-class TestReadStatusRepository(private val now: () -> Long = { 0L }) : ReadStatusRepository {
+class TestReadStatusRepository(private val now: () -> Long = { randomLong() }) : ReadStatusRepository {
 
     /** One book's state, with the same bookkeeping as production's entry. */
     private class Entry {
@@ -26,10 +29,10 @@ class TestReadStatusRepository(private val now: () -> Long = { 0L }) : ReadStatu
 
     private fun entry(uuid: String): Entry = entries.getOrPut(uuid) { Entry() }
 
-    /** The next GET's outcome. When empty, a GET answers the confirmed state if it is Known, else the server's `null` (Unread). */
+    /** The next GET's outcome. When empty, a GET answers the state [seed] set, and otherwise never answers. */
     val readResults = ArrayDeque<ReadStatusState>()
 
-    /** The next PUT's outcome. When empty, a PUT answers `Saved` with the optimistic record. */
+    /** The next PUT's outcome. */
     val writeResults = ArrayDeque<ReadStatusWriteResult>()
 
     /** When non-empty, the next write waits on the head after its optimistic apply, before taking its result. */
@@ -64,7 +67,7 @@ class TestReadStatusRepository(private val now: () -> Long = { 0L }) : ReadStatu
         val entry = entry(bookUuid)
         val outcome = readResults.removeFirstOrNull()
             ?: entry.confirmed.takeIf { it is ReadStatusState.Known }
-            ?: ReadStatusState.Known(ReadStatusRecord(ReadStatus.Unread, null, null))
+            ?: awaitCancellation()
         val seqAtStart = entry.writeSeq
         if (outcome is ReadStatusState.Known) {
             if (seqAtStart >= entry.confirmedSeq) {
@@ -91,7 +94,7 @@ class TestReadStatusRepository(private val now: () -> Long = { 0L }) : ReadStatu
         entry.state.value = ReadStatusState.Known(optimisticRecord)
 
         writeGates.removeFirstOrNull()?.await()
-        val result = writeResults.removeFirstOrNull() ?: ReadStatusWriteResult.Saved(optimisticRecord)
+        val result = writeResults.removeFirstOrNull() ?: unscripted("setStatus")
 
         entry.pendingWrites--
         if (result is ReadStatusWriteResult.Saved && seq >= entry.confirmedSeq) {

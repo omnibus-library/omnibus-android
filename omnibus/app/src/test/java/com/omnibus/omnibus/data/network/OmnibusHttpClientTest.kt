@@ -2,7 +2,10 @@ package com.omnibus.omnibus.data.network
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -16,8 +19,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 private val SERVER = "https://read.example.com".toHttpUrl()
-
-private val EMPTY_JSON = "{}".toRequestBody("application/json".toMediaType())
 
 class OmnibusHttpClientTest : DescribeSpec({
 
@@ -159,6 +160,8 @@ class OmnibusHttpClientTest : DescribeSpec({
 
         context("when a sign-in request gets a 401") {
             it("TC-14: keeps the token, for each sign-in path, with or without a server path prefix") {
+                val emptyJson = "{}".toRequestBody("application/json".toMediaType())
+
                 checkAll(
                     Exhaustive.of("api/auth/login", "api/auth/register"),
                     Exhaustive.of("/", "/omnibus"),
@@ -168,7 +171,7 @@ class OmnibusHttpClientTest : DescribeSpec({
                         val tokens = TestAuthTokenProvider(randomString())
                         val client = sut(TestServerBaseUrlProvider(server.url(prefix)), tokens)
 
-                        client.execute(client.request(path)!!.post(EMPTY_JSON).build()).close()
+                        client.execute(client.request(path)!!.post(emptyJson).build()).close()
 
                         tokens.invalidateCalls shouldBe 0
                     }

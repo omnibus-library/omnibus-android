@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.data.progress
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 
 /**
@@ -22,16 +24,13 @@ class TestProgressRepository : ProgressRepository {
     val completedSaves = mutableListOf<Save>()
 
     /** What [savePosition] returns for a push. */
-    var pushResult: PositionSaveResult = PositionSaveResult.Pushed
+    var pushResult: PositionSaveResult? = null
 
     /** When set, [savePosition] suspends on it after recording the call, to hold it in flight. */
     var holdSaves: CompletableDeferred<Unit>? = null
 
-    /** When set, [getLocalPosition] suspends on it before answering. */
-    var pendingLocal: CompletableDeferred<Unit>? = null
-
     /** What [getServerPosition] returns, unless [serverAnswer] is set. */
-    var serverResult: ServerPositionResult = ServerPositionResult.None
+    var serverResult: ServerPositionResult? = null
 
     /** Virtual milliseconds [getServerPosition] takes before answering. */
     var serverDelayMillis = 0L
@@ -43,7 +42,6 @@ class TestProgressRepository : ProgressRepository {
     val serverReads = mutableListOf<String>()
 
     override suspend fun getLocalPosition(bookUuid: String): ReadingPosition? {
-        pendingLocal?.await()
         return stored[bookUuid]
     }
 
@@ -53,12 +51,12 @@ class TestProgressRepository : ProgressRepository {
         stored[position.bookUuid] = position
         holdSaves?.await()
         completedSaves += save
-        return if (push) pushResult else PositionSaveResult.NotPushed
+        return if (push) pushResult ?: unscripted("savePosition with a push") else PositionSaveResult.NotPushed
     }
 
     override suspend fun getServerPosition(bookUuid: String): ServerPositionResult {
         serverReads += bookUuid
         if (serverDelayMillis > 0) delay(serverDelayMillis)
-        return serverAnswer?.await() ?: serverResult
+        return serverAnswer?.await() ?: serverResult ?: awaitCancellation()
     }
 }

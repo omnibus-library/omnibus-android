@@ -129,6 +129,7 @@ class ReviewSheetViewModelTest : DescribeSpec({
             val rig = Rig().openOn(randomReview().copy(rating = 4f, privateNotes = "N"))
             rig.vm.setRating(3f)
             rig.vm.setNotes("Notes two")
+            rig.reviews.writeGates += CompletableDeferred<Unit>()
 
             rig.vm.save()
 
@@ -150,14 +151,12 @@ class ReviewSheetViewModelTest : DescribeSpec({
         context("when a save is in flight") {
             it("TC-41: sends once") {
                 val rig = changedRig()
-                val gate = CompletableDeferred<Unit>()
-                rig.reviews.writeGates += gate
+                rig.reviews.writeGates += CompletableDeferred<Unit>()
 
                 rig.vm.save()
                 rig.vm.save()
 
                 rig.reviews.updateCalls.size shouldBe 1
-                gate.complete(Unit)
             }
         }
 
@@ -177,6 +176,7 @@ class ReviewSheetViewModelTest : DescribeSpec({
                 checkAll(Exhaustive.of(3f, null)) { rating ->
                     val rig = Rig().openOn(randomReview().copy(rating = 4f))
                     rig.vm.setRating(rating)
+                    rig.reviews.writeResults += ReviewWriteResult.Saved(randomReview())
 
                     rig.vm.save()
 
@@ -189,6 +189,7 @@ class ReviewSheetViewModelTest : DescribeSpec({
             it("TC-45: does not pulse") {
                 val rig = Rig().openOn(randomReview())
                 rig.vm.setText("${randomString()}!")
+                rig.reviews.writeResults += ReviewWriteResult.Saved(randomReview())
 
                 rig.vm.save()
 
@@ -264,13 +265,11 @@ class ReviewSheetViewModelTest : DescribeSpec({
         context("when the sheet's own save is in flight") {
             it("TC-52: are none") {
                 val rig = changedRig()
-                val gate = CompletableDeferred<Unit>()
-                rig.reviews.writeGates += gate
+                rig.reviews.writeGates += CompletableDeferred<Unit>()
 
                 rig.vm.save()
 
                 rig.vm.uiState.value.conflicts.shouldBeEmpty()
-                gate.complete(Unit)
             }
         }
     }

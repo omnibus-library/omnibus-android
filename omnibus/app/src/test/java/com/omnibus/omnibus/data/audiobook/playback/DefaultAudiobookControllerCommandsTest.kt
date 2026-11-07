@@ -45,8 +45,10 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
                 val fileId = randomLong(1L..1_000L)
                 val position = randomDouble(1.0, 3_000.0)
                 val rig = sut()
+                rig.availability.answer = true
                 rig.recent.points = listOf(resumePoint(bookUuid, fileId, position))
 
+                rig.stageBook()
                 rig.controller.play()
                 rig.settle()
 
@@ -63,8 +65,10 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
                     val fileId = randomLong(1L..1_000L)
                     val resolver = ScriptedResolver()
                     val rig = sut(resolver = resolver)
+                    rig.availability.answer = true
                     rig.recent.points = listOf(resumePoint(bookUuid, fileId, randomDouble(1.0, 3_000.0)))
 
+                    rig.stageBook()
                     rig.controller.play()
                     rig.settle()
 
@@ -78,6 +82,7 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
                     val rig = sut()
                     val held = CompletableDeferred<List<ResumePoint>>()
                     rig.recent.pending = held
+                    rig.stageBook()
                     rig.controller.play()
                     rig.settle()
 
@@ -98,6 +103,7 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
                 rig.availability.answer = false
                 rig.recent.points = listOf(resumePoint(randomString(), randomLong(), 120.0))
 
+                rig.stageBook()
                 rig.controller.play()
                 rig.settle()
 
@@ -329,6 +335,7 @@ class DefaultAudiobookControllerCommandsTest : DescribeSpec({
             it("applies after the load's reset (C2)") {
                 val rig = sut()
                 rig.engine.ready = CompletableDeferred()
+                rig.stageBook()
                 rig.controller.load("book-1", null, null, autoplay = false)
 
                 rig.controller.setRate(2.0, persist = false)

@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.library
 
 import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomInt
 import com.omnibus.omnibus.testing.randomLong
@@ -56,3 +57,41 @@ fun randomBook(): Book = Book(
 
 fun randomLibrarySortPreference(): LibrarySortPreference =
     LibrarySortPreference(sort = randomEnum<LibrarySort>(), direction = randomEnum<SortDirection>())
+
+fun randomResolvedPosition(): ResolvedPosition = ResolvedPosition(
+    chapterOrdinal = randomInt(1..50),
+    chaptersTotal = randomInt(1..50),
+    chapterTitle = randomString().orNull(),
+    percentThroughBook = randomDouble(0.0, 100.0).orNull(),
+    confidence = randomEnum<PositionConfidence>(),
+)
+
+fun randomProgressRecord(): ProgressRecord = ProgressRecord(
+    bookUuid = randomString(),
+    format = randomEnum<ProgressFormat>(),
+    epubCfi = randomString().orNull(),
+    audioPositionSeconds = randomDouble(0.0, 10_000.0).orNull(),
+    progressPercent = randomDouble(0.0, 100.0).orNull(),
+    updatedAt = randomLong(),
+    clientUpdatedAt = randomLong().orNull(),
+    bookFileId = randomLong().orNull(),
+    totalDurationSeconds = randomDouble(0.0, 10_000.0).orNull(),
+    resolved = randomResolvedPosition().orNull(),
+)
+
+/** A point whose record names its book, as the server's does. */
+fun randomResumePoint(): ResumePoint = randomBook().let { book ->
+    ResumePoint(
+        record = randomProgressRecord().copy(bookUuid = book.uuid),
+        book = book,
+        audioPart = randomInt(1..10).orNull(),
+        audioPartCount = randomInt(1..10).orNull(),
+        playbackRate = randomDouble(0.5, 3.0).orNull(),
+    )
+}
+
+/** This point about [book], with its record naming that book. */
+fun ResumePoint.about(book: Book): ResumePoint = copy(book = book, record = record.copy(bookUuid = book.uuid))
+
+/** This point with [change] applied to its record. */
+fun ResumePoint.withRecord(change: ProgressRecord.() -> ProgressRecord): ResumePoint = copy(record = record.change())

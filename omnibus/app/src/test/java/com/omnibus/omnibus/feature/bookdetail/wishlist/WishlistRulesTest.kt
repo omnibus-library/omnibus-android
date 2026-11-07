@@ -23,12 +23,6 @@ private fun present() = WishlistState.Present(randomWishlistEntry())
 
 private val NOT_PRESENT = listOf(WishlistState.Unknown, WishlistState.Absent, WishlistState.Failed)
 
-/** Formats that make no readable copy: none, or none the app knows. */
-private val FILELESS_FORMATS = listOf(emptyList(), listOf("djvu"))
-
-/** Formats that make a readable copy. */
-private val READABLE_FORMATS = listOf(listOf("epub"), listOf("m4b"), listOf("epub", "m4b"))
-
 class WishlistRulesTest : DescribeSpec({
 
     describe("whether a book is wishlist-only") {
@@ -36,7 +30,9 @@ class WishlistRulesTest : DescribeSpec({
         context("when the book is on the wishlist") {
             context("when it has no readable copy") {
                 it("#119 TC-16: is, for no format or an unknown format") {
-                    checkAll(Exhaustive.collection(FILELESS_FORMATS)) { formats ->
+                    val filelessFormats = listOf(emptyList(), listOf("djvu"))
+
+                    checkAll(Exhaustive.collection(filelessFormats)) { formats ->
                         isWishlistOnly(randomBook().copy(formats = formats), present()) shouldBe true
                     }
                 }
@@ -44,7 +40,9 @@ class WishlistRulesTest : DescribeSpec({
 
             context("when it has a readable copy") {
                 it("#119 TC-16: is not, for an ebook, an audiobook or both") {
-                    checkAll(Exhaustive.collection(READABLE_FORMATS)) { formats ->
+                    val readableFormats = listOf(listOf("epub"), listOf("m4b"), listOf("epub", "m4b"))
+
+                    checkAll(Exhaustive.collection(readableFormats)) { formats ->
                         isWishlistOnly(randomBook().copy(formats = formats), present()) shouldBe false
                     }
                 }

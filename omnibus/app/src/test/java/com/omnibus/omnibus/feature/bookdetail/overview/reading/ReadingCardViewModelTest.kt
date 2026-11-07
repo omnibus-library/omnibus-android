@@ -127,6 +127,7 @@ class ReadingCardViewModelTest : DescribeSpec({
                 val bookUuid = randomString()
                 val progress = TestBookProgressRepository().apply {
                     progressOf(bookUuid) { BookProgressResult.Success(it, fromServer = randomBoolean()) }
+                    sessionsResults.addLast(success())
                 }
                 val vm = sut(bookUuid, progress, reading(bookUuid))
 
@@ -160,7 +161,8 @@ class ReadingCardViewModelTest : DescribeSpec({
                 val bookUuid = randomString()
                 val finishedAt = randomLong()
                 val status = reading(bookUuid)
-                val vm = sut(bookUuid, status = status)
+                val progress = TestBookProgressRepository().apply { sessionsResults.addLast(success()) }
+                val vm = sut(bookUuid, progress, status)
 
                 vm.whileCollected {
                     vm.reload(0)

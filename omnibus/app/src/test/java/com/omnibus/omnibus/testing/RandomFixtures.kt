@@ -33,3 +33,9 @@ fun randomDuration(range: LongRange = 0L..86_400_000L): Duration = randomLong(ra
 fun <T> randomOf(values: Collection<T>): T = values.random(TEST_RANDOM)
 
 inline fun <reified T : Enum<T>> randomEnum(): T = randomOf(enumValues<T>().toList())
+
+/**
+ * Stands in for a write a test did not script, which has no neutral answer. A read does: a double leaves it unanswered
+ * with `awaitCancellation()`, which satisfies no precondition and still lets a test ignore a read it doesn't depend on.
+ */
+fun unscripted(call: String): Nothing = throw AssertionError("$call was called, but the test did not script it")

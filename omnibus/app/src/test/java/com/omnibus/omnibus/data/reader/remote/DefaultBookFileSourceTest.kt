@@ -10,7 +10,10 @@ import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.local.LocalBookFiles
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -20,9 +23,6 @@ import io.kotest.property.exhaustive.of
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
 class DefaultBookFileSourceTest : DescribeSpec({
@@ -38,7 +38,6 @@ class DefaultBookFileSourceTest : DescribeSpec({
         localBookFiles = LocalBookFiles { localFile },
     )
 
-    fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
     /** Runs [test] with a downloaded copy holding [content], and deletes it afterwards. */
     suspend fun withDownloadedCopy(content: String, test: suspend (File) -> Unit) {
@@ -59,8 +58,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
         context("when there is no downloaded copy") {
 
             it("TC-214: streams the server's bytes with their length") {
-                MockWebServer().use { server ->
-                    server.start()
+                withMockServer { server ->
                     val content = randomString()
                     server.enqueue(reply(200, content))
 
@@ -72,8 +70,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
             }
 
             it("TC-214: asks the server for that book's file") {
-                MockWebServer().use { server ->
-                    server.start()
+                withMockServer { server ->
                     val uuid = randomString()
                     server.enqueue(reply(200))
 
@@ -84,8 +81,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
             }
 
             it("TC-216, TC-217, TC-218: reports each failure status as its own failure") {
-                MockWebServer().use { server ->
-                    server.start()
+                withMockServer { server ->
                     checkAll(
                         Exhaustive.of(
                             401 to BookFileResult.Unauthenticated,
@@ -104,12 +100,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
             context("when the connection drops") {
 
                 it("TC-220: reports an error instead of throwing") {
-                    MockWebServer().use { server ->
-                        server.start()
-                        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
-
-                        sut(server.url("/")).open(randomString()) shouldBe BookFileResult.Error
-                    }
+                    sut(unreachableUrl()).open(randomString()) shouldBe BookFileResult.Error
                 }
             }
 
@@ -135,8 +126,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
             }
 
             it("TC-221: never asks the server") {
-                MockWebServer().use { server ->
-                    server.start()
+                withMockServer { server ->
                     withDownloadedCopy(randomString()) { file ->
                         sut(server.url("/"), file).open(randomString())
                             .shouldBeInstanceOf<BookFileResult.Opened>().stream.close()
@@ -149,8 +139,7 @@ class DefaultBookFileSourceTest : DescribeSpec({
             context("when the copy has gone missing") {
 
                 it("TC-222: falls back to the server") {
-                    MockWebServer().use { server ->
-                        server.start()
+                    withMockServer { server ->
                         val content = randomString()
                         server.enqueue(reply(200, content))
 

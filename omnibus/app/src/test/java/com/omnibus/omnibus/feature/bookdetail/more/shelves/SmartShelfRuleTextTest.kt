@@ -53,7 +53,6 @@ private fun summary(mode: ShelfMatchMode?, vararg rules: ShelfRule): String? =
 
 private val tagIsA = rule(ShelfRuleField.Tag, ShelfRuleOp.Is, "A")
 private val authorIsB = rule(ShelfRuleField.Author, ShelfRuleOp.Is, "B")
-private val yearIsC = rule(ShelfRuleField.Year, ShelfRuleOp.Is, "1901")
 
 class SmartShelfRuleTextTest : DescribeSpec({
 
@@ -92,6 +91,8 @@ class SmartShelfRuleTextTest : DescribeSpec({
             }
 
             it("#116 TC-52: reads three or more as the first plus a count") {
+                val yearIsC = rule(ShelfRuleField.Year, ShelfRuleOp.Is, "1901")
+
                 val tag = "${ShelfRuleField.Tag.wire} ${ShelfRuleOp.Is.wire} A"
 
                 summary(randomEnum<ShelfMatchMode>(), tagIsA, authorIsB, yearIsC) shouldBe "$tag + 2 more"

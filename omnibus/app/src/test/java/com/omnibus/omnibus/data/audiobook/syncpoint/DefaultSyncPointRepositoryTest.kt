@@ -10,7 +10,10 @@ import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
@@ -26,21 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.serialization.json.Json
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-/** A transport failure: the socket closes after the request arrives. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
-
-/** A started server that gives each of [responses] to one request, in order. */
-private fun serverAnswering(vararg responses: MockResponse) = MockWebServer().apply {
-    responses.forEach { enqueue(it) }
-    start()
-}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultSyncPointRepositoryTest : DescribeSpec({
@@ -65,7 +54,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
             val bookUuid = randomString()
             val fileId = randomLong()
             val seconds = randomDouble(1.0, 10_000.0)
-            serverAnswering(reply(204)).use { server ->
+            withMockServer(reply(204)) { server ->
                 sut(server.url("/")).declareAudioSyncPoint(bookUuid, fileId, seconds)
 
                 val request = server.takeRequest()
@@ -80,7 +69,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
         // TC39: the body of a 2xx answer is never read.
         it("TC39: reports declared for a 200 with a body or a 204 with none") {
             checkAll(Exhaustive.of(reply(200, "{\"ignored\":true}"), reply(204))) { response ->
-                serverAnswering(response).use { server ->
+                withMockServer(response) { server ->
                     sut(server.url("/")).declareAudioSyncPoint(randomString(), randomLong(), randomDouble()) shouldBe
                         SyncPointResult.Declared
                 }
@@ -90,7 +79,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
         context("when the uuid has reserved characters") {
             // TC40, R11
             it("TC40: keeps the uuid in one path segment") {
-                serverAnswering(reply(204)).use { server ->
+                withMockServer(reply(204)) { server ->
                     sut(server.url("/")).declareAudioSyncPoint("a/b c", randomLong(), randomDouble())
 
                     server.takeRequest().url.encodedPathSegments shouldBe listOf("api", "books", "a%2Fb%20c", "sync-point")
@@ -101,7 +90,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
             // TC40, R11: the server has no answer queued, so a request would time out and report something else.
             it("TC40: reports the book as not found without asking the server") {
-                serverAnswering().use { server ->
+                withMockServer { server ->
                     sut(server.url("/")).declareAudioSyncPoint("  ", randomLong(), randomDouble()) shouldBe
                         SyncPointResult.Failed(SyncPointError.BookNotFound)
                 }
@@ -122,7 +111,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
                         418 to SyncPointError.Http(418),
                     ),
                 ) { (code, error) ->
-                    serverAnswering(reply(code)).use { server ->
+                    withMockServer(reply(code)) { server ->
                         sut(server.url("/")).declareAudioSyncPoint(randomString(), randomLong(), randomDouble()) shouldBe
                             SyncPointResult.Failed(error)
                     }
@@ -131,7 +120,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
 
             // TC41
             it("TC41: does not retry") {
-                serverAnswering(reply(500), reply(500)).use { server ->
+                withMockServer(reply(500), reply(500)) { server ->
                     sut(server.url("/")).declareAudioSyncPoint(randomString(), randomLong(), randomDouble())
 
                     server.requestCount shouldBe 1
@@ -150,10 +139,8 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
         context("when the connection drops") {
             // TC43
             it("TC43: reports Unreachable") {
-                serverAnswering(dropped()).use { server ->
-                    sut(server.url("/")).declareAudioSyncPoint(randomString(), randomLong(), randomDouble()) shouldBe
-                        SyncPointResult.Failed(SyncPointError.Unreachable)
-                }
+                sut(unreachableUrl()).declareAudioSyncPoint(randomString(), randomLong(), randomDouble()) shouldBe
+                    SyncPointResult.Failed(SyncPointError.Unreachable)
             }
         }
 
@@ -162,7 +149,7 @@ class DefaultSyncPointRepositoryTest : DescribeSpec({
             // if it runs on the application scope.
             it("TC46: still sends the request") {
                 val scheduler = TestCoroutineScheduler()
-                serverAnswering(reply(204)).use { server ->
+                withMockServer(reply(204)) { server ->
                     val repository = sut(server.url("/"), ioDispatcher = StandardTestDispatcher(scheduler))
                     val caller = CoroutineScope(Dispatchers.Unconfined).async {
                         repository.declareAudioSyncPoint(randomString(), randomLong(), randomDouble())

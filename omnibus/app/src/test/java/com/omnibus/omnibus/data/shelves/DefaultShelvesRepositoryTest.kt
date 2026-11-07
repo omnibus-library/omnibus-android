@@ -9,7 +9,10 @@ import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldHaveLength
@@ -20,11 +23,8 @@ import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.HttpUrl
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
 /** This shelf as the server writes it. */
 private fun ShelfSummary.toJson(): String =
@@ -42,20 +42,6 @@ private fun healthyRoutes(uuid: String): Map<String, MockResponse> = mapOf(
     "/api/shelves/containing/$uuid" to reply(200, "[]"),
     "/api/shelves/containing/$uuid/smart" to reply(200, "[]"),
 )
-
-/** A running server, closed afterwards. */
-private suspend fun withServer(test: suspend (MockWebServer) -> Unit) {
-    MockWebServer().use { server ->
-        server.start()
-        test(server)
-    }
-}
-
-/** A base URL with nothing listening on it. */
-private fun closedServerUrl(): HttpUrl = MockWebServer().use { server ->
-    server.start()
-    server.url("/")
-}
 
 private val add: suspend DefaultShelvesRepository.(String) -> ShelfWriteResult = { addBook(randomLong(), it) }
 
@@ -80,7 +66,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
     describe("reading a book's shelves") {
 
         it("#116 TC-18: combines the three reads") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 val shelves = listOf(randomShelfSummary(), randomShelfSummary())
                 val member = randomLong()
@@ -99,7 +85,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-19: leaves out a shelf of a kind it does not know") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 val shelf = randomShelfSummary()
                 val unknownKind = randomShelfSummary().toJson().replace(Regex(""""kind":"\w+""""), """"kind":"series"""")
@@ -112,7 +98,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-19: tolerates a missing cover list along with unknown keys") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 val shelf = randomShelfSummary().copy(coverUuids = emptyList())
                 val sparse = """{"id":${shelf.id},"owner_user_id":${shelf.ownerUserId},"kind":"${shelf.kind.name.lowercase()}",""" +
@@ -126,7 +112,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-20: fails regardless of which required read goes wrong, or how") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
 
                 checkAll(
@@ -147,13 +133,13 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         context("when the server cannot be reached") {
 
             it("#116 TC-20: reports Unreachable") {
-                sut(closedServerUrl()).getBookShelves(randomString()) shouldBe
+                sut(unreachableUrl()).getBookShelves(randomString()) shouldBe
                     BookShelvesResult.Failure(ShelvesError.Unreachable)
             }
         }
 
         it("#116 TC-21: degrades to no smart shelves regardless of how the smart read goes wrong") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 val member = randomLong()
 
@@ -174,7 +160,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("#116 TC-22: reports NotFound without asking the server, regardless of the blank") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of("", "   ")) { uuid ->
                         sut(server.url("/")).getBookShelves(uuid) shouldBe BookShelvesResult.Failure(ShelvesError.NotFound)
 
@@ -185,7 +171,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-22: encodes an unsafe uuid as one path segment") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = "a/../b c"
                 server.dispatcher = object : Dispatcher() {
                     override fun dispatch(request: RecordedRequest): MockResponse = reply(200, "[]")
@@ -213,7 +199,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
     describe("reading a shelf's rules") {
 
         it("#116 TC-23: keeps a rule with a token it does not know, leaving that token empty") {
-            withServer { server ->
+            withMockServer { server ->
                 val shelf = randomLong()
                 server.enqueue(
                     reply(
@@ -242,7 +228,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-23: reads the match mode, defaulting to none") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(
                         """{"match_mode":"all"}""" to ShelfMatchMode.All,
@@ -259,7 +245,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-23: reports each failure as its own error") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(
                         reply(404) to ShelvesError.NotFound,
@@ -285,7 +271,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
     describe("adding a book to a shelf") {
 
         it("#116 TC-24: posts the book's uuid to the shelf") {
-            withServer { server ->
+            withMockServer { server ->
                 val shelf = randomLong()
                 val uuid = randomString()
                 server.enqueue(reply(204))
@@ -301,7 +287,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-24: succeeds regardless of which 2xx the server answers") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(Exhaustive.of(200, 204)) { code ->
                     server.enqueue(reply(code))
 
@@ -314,7 +300,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
     describe("removing a book from a shelf") {
 
         it("#116 TC-25: deletes the book from the shelf") {
-            withServer { server ->
+            withMockServer { server ->
                 val shelf = randomLong()
                 val uuid = randomString()
                 server.enqueue(reply(204))
@@ -331,7 +317,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
     describe("writing to a shelf") {
 
         it("#116 TC-26: reports each failure status as its own error, regardless of the write") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(add, remove),
                     Exhaustive.of(
@@ -350,7 +336,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-26: reads the server's message from whichever key or plain text it used") {
-            withServer { server ->
+            withMockServer { server ->
                 val message = randomString()
 
                 checkAll(
@@ -369,7 +355,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         }
 
         it("#116 TC-26: caps a long plain-text message") {
-            withServer { server ->
+            withMockServer { server ->
                 server.enqueue(reply(500, "x".repeat(1_000)))
 
                 val result = sut(server.url("/")).addBook(randomLong(), randomString())
@@ -391,7 +377,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         context("when the server cannot be reached") {
 
             it("#116 TC-26: reports Unreachable regardless of the write") {
-                val closed = closedServerUrl()
+                val closed = unreachableUrl()
 
                 checkAll(Exhaustive.of(add, remove)) { write ->
                     sut(closed).write(randomString()) shouldBe ShelfWriteResult.Failure(ShelvesError.Unreachable)
@@ -402,7 +388,7 @@ class DefaultShelvesRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("#116 TC-26: reports NotFound without asking the server, regardless of the write") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of(add, remove)) { write ->
                         sut(server.url("/")).write(" ") shouldBe ShelfWriteResult.Failure(ShelvesError.NotFound)
 

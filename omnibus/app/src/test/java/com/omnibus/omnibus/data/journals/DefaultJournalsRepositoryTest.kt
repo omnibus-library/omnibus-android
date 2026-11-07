@@ -1,15 +1,16 @@
 package com.omnibus.omnibus.data.journals
 
 import app.cash.turbine.test
-import com.omnibus.omnibus.data.network.droppedConnection
-import com.omnibus.omnibus.data.network.nextRequest
-import com.omnibus.omnibus.data.network.pausedDispatcher
-import com.omnibus.omnibus.data.network.reply
-import com.omnibus.omnibus.data.network.testOmnibusHttpClient
-import com.omnibus.omnibus.data.network.withMockServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
+import com.omnibus.omnibus.testing.pausedDispatcher
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
@@ -147,11 +148,11 @@ class DefaultJournalsRepositoryTest : DescribeSpec({
                         reply(200, """[{"id":"abc","author_id":7}]"""),
                         reply(200, """[{"author_id":7}]"""),
                         reply(200, """[{"id":1}]"""),
-                        droppedConnection(),
+                        dropped(),
                     ),
                 ) { answer ->
-                    withMockServer { server ->
-                        server.enqueue(answer)
+                    withScriptedServer {
+                        script.answer(answer)
 
                         sut(server).getJournalsFlow(randomString()).first() shouldBe JournalsState.Failed
                     }

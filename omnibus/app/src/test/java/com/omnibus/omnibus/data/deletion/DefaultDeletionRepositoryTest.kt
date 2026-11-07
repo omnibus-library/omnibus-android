@@ -6,10 +6,14 @@ import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -33,7 +37,6 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
 /** A manifest body with two files, one copy and some impact, in the server's field names. */
@@ -52,16 +55,6 @@ private const val FULL_MANIFEST = """
   }
 }
 """
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-private fun disconnect(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
-
-private inline fun <T> withServer(block: (MockWebServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(server)
-    }
 
 private fun MockWebServer.nextRequest(): RecordedRequest =
     checkNotNull(takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
@@ -89,7 +82,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
     describe("reading the deletion manifest") {
         it("#121 TC-18: GETs the book's deletion manifest") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 server.enqueue(reply(200, "{}"))
 
@@ -103,7 +96,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the server answers with a full body") {
             it("#121 TC-18: maps the files, copies and impact") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(200, FULL_MANIFEST))
 
                     val result = sut(server.url("/")).fetchManifest(randomString())
@@ -130,7 +123,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the body has unknown keys with fields missing") {
             it("#121 TC-19: takes the defaults") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(
                         reply(
                             200,
@@ -152,7 +145,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the body is an empty object") {
             it("#121 TC-19: gives an empty manifest") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(200, "{}"))
 
                     val manifest = sut(server.url("/")).fetchManifest(randomString())
@@ -165,7 +158,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the uuid has reserved characters") {
             it("#121 TC-20: sends it as one encoded path segment") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(200, "{}"))
 
                     sut(server.url("/")).fetchManifest("a/b c")
@@ -185,16 +178,16 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the read fails") {
             it("#121 TC-23: maps each status and dropped connection to its error") {
-                withServer { server ->
+                withScriptedServer {
                     val failures = listOf(
                         reply(401) to DeletionError.SessionExpired,
                         reply(403) to DeletionError.Forbidden,
                         reply(404) to DeletionError.BookNotFound,
                         reply(500) to DeletionError.Http(500),
-                        disconnect() to DeletionError.Unreachable,
+                        dropped() to DeletionError.Unreachable,
                     )
                     checkAll(Exhaustive.collection(failures)) { (failure, error) ->
-                        server.enqueue(failure)
+                        script.answer(failure)
 
                         sut(server.url("/")).fetchManifest(randomString()) shouldBe DeletionManifestResult.Failed(error)
                     }
@@ -204,7 +197,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when a 200 doesn't decode") {
             it("#121 TC-25: fails with UnexpectedResponse for each bad body") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of("not json", """{"files":3}""")) { body ->
                         server.enqueue(reply(200, body))
 
@@ -224,7 +217,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
     describe("deleting files and copies") {
         it("#121 TC-21: POSTs JSON to the book's delete-files path") {
-            withServer { server ->
+            withMockServer { server ->
                 val uuid = randomString()
                 server.enqueue(reply(200, "{}"))
 
@@ -238,7 +231,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
         }
 
         it("#121 TC-21: sends both keys with sorted ids, for files only, copies only and neither") {
-            withServer { server ->
+            withMockServer { server ->
                 val bodies = listOf(
                     Triple(setOf(2L, 1L), emptySet<Long>(), """{"file_ids":[1,2],"copy_ids":[]}"""),
                     Triple(emptySet<Long>(), setOf(5L), """{"file_ids":[],"copy_ids":[5]}"""),
@@ -256,7 +249,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the server answers 2xx") {
             it("#121 TC-22: maps the deleted ids and book_deleted, across full, extended and empty bodies") {
-                withServer { server ->
+                withMockServer { server ->
                     val answers = listOf(
                         """{"deleted_file_ids":[1,2],"deleted_copy_ids":[5],"book_deleted":true}""" to
                             DeleteItemsResult.Deleted(listOf(1, 2), listOf(5), bookDeleted = true),
@@ -275,7 +268,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the uuid has reserved characters") {
             it("#121 TC-20: sends it as one encoded path segment") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(200, "{}"))
 
                     sut(server.url("/")).deleteItems("a/b c", setOf(randomLong()), emptySet())
@@ -296,17 +289,17 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the delete fails") {
             it("#121 TC-24: maps each status and dropped connection to its error") {
-                withServer { server ->
+                withScriptedServer {
                     val failures = listOf(
                         reply(401) to DeletionError.SessionExpired,
                         reply(403) to DeletionError.Forbidden,
                         reply(404) to DeletionError.BookNotFound,
                         reply(422) to DeletionError.ItemNotFound,
                         reply(500) to DeletionError.Http(500),
-                        disconnect() to DeletionError.Unreachable,
+                        dropped() to DeletionError.Unreachable,
                     )
                     checkAll(Exhaustive.collection(failures)) { (failure, error) ->
-                        server.enqueue(failure)
+                        script.answer(failure)
 
                         sut(server.url("/")).deleteItems(randomString(), setOf(randomLong()), emptySet()) shouldBe
                             DeleteItemsResult.Failed(error)
@@ -317,7 +310,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when a 2xx doesn't decode") {
             it("#121 TC-25: fails with UnexpectedResponse for each bad body") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of("not json", """{"deleted_file_ids":3}""")) { body ->
                         server.enqueue(reply(200, body))
 
@@ -337,7 +330,7 @@ class DefaultDeletionRepositoryTest : DescribeSpec({
 
         context("when the caller is cancelled mid-request") {
             it("#121 TC-26: lets the POST finish in the application scope") {
-                withServer { server ->
+                withMockServer { server ->
                     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
                     val callerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
                     try {

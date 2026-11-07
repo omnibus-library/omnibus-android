@@ -3,7 +3,7 @@ package com.omnibus.omnibus.data.audiobook.playback
 import com.omnibus.omnibus.data.audiobook.AudiobookManifestError
 import com.omnibus.omnibus.data.audiobook.AudiobookManifestResult
 import com.omnibus.omnibus.data.library.BookResult
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.core.spec.style.DescribeSpec
@@ -80,7 +80,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
                     it("is the first audio file by ordinal (I-LOAD-1)") {
                         val rig = sut()
                         rig.library.bookResult = BookResult.Success(
-                            testBook(
+                            randomBook().copy(
                                 id = 1,
                                 bookFiles = listOf(bookFile(id = 9L, format = "m4b", ordinal = 2), bookFile(id = 8L, format = "mp3", ordinal = 1)),
                             ),
@@ -97,7 +97,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
                     // TC-3
                     it("is 0 (I-LOAD-1)") {
                         val rig = sut()
-                        rig.library.bookResult = BookResult.Success(testBook(id = 1, bookFiles = emptyList()))
+                        rig.library.bookResult = BookResult.Success(randomBook().copy(id = 1, bookFiles = emptyList()))
                         rig.repository.result = AudiobookManifestResult.Success(multiPartManifest(bookFileId = 0L))
 
                         rig.loadAndSettle()
@@ -140,7 +140,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
             it("says it does (C1)") {
                 val rig = sut()
                 rig.library.bookResult = BookResult.Success(
-                    testBook(id = 1, formats = listOf("m4b"), bookFiles = listOf(bookFile(id = 5L, format = "epub", ordinal = 1))),
+                    randomBook().copy(id = 1, formats = listOf("m4b"), bookFiles = listOf(bookFile(id = 5L, format = "epub", ordinal = 1))),
                 )
 
                 rig.loadAndSettle()
@@ -153,7 +153,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
             // TC-22: the flag gates the epub reader, so a pdf does not count.
             it("says it does not (C1)") {
                 val rig = sut()
-                rig.library.bookResult = BookResult.Success(testBook(id = 1, formats = listOf("pdf")))
+                rig.library.bookResult = BookResult.Success(randomBook().copy(id = 1, formats = listOf("pdf"), bookFiles = emptyList()))
 
                 rig.loadAndSettle()
 
@@ -169,6 +169,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
                 val rig = sut()
                 rig.repository.pending = CompletableDeferred()
 
+                rig.stageBook()
                 rig.controller.load("book-1", 33L, null, true)
 
                 rig.controller.state.value.book shouldBe PlayingBook("book-1", 33L, "", null, false)
@@ -214,6 +215,7 @@ class DefaultAudiobookControllerLoadTest : DescribeSpec({
                 val rig = sut()
                 val late = CompletableDeferred<AudiobookManifestResult>()
                 rig.repository.pending = late
+                rig.stageBook()
                 rig.controller.load("book-A", null, null, true)
                 rig.settle()
                 rig.repository.pending = null

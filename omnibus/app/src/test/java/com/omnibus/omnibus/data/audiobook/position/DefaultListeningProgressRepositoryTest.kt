@@ -1,17 +1,19 @@
 package com.omnibus.omnibus.data.audiobook.position
 
-import com.omnibus.omnibus.data.audiobook.ScriptedServer
-import com.omnibus.omnibus.data.audiobook.httpClientFor
 import com.omnibus.omnibus.data.audiobook.position.local.AudioPositionStore
 import com.omnibus.omnibus.data.audiobook.position.local.TestAudioPositionStore
-import com.omnibus.omnibus.data.audiobook.droppedConnection
-import com.omnibus.omnibus.data.audiobook.reply
-import com.omnibus.omnibus.data.audiobook.unreachableUrl
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
+import com.omnibus.omnibus.testing.ScriptedServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -37,9 +39,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
 
 /** Runs [block] with a scripted server and an application scope that flushes on the calling thread. */
-private inline fun withServer(block: (ScriptedServer, CoroutineScope) -> Unit) {
-    ScriptedServer().use { server ->
-        withScope { scope -> block(server, scope) }
+private inline fun withServer(block: ScriptedServer.(CoroutineScope) -> Unit) {
+    withScriptedServer {
+        withScope { scope -> block(scope) }
     }
 }
 
@@ -73,7 +75,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         connectivity: ConnectivityMonitor = TestConnectivityMonitor(online = true),
     ) = DefaultListeningProgressRepository(
         ioDispatcher = Dispatchers.Unconfined,
-        omnibusHttpClient = httpClientFor(baseUrl),
+        omnibusHttpClient = testOmnibusHttpClient(baseUrl),
         store = store,
         connectivity = connectivity,
         applicationScope = scope,
@@ -83,13 +85,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-10
         it("TC-10: asks for the book's audio format (I-RES-1)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 val book = randomString()
-                server.answer(200, progressBody())
+                script.answer(200, progressBody())
 
-                sut(scope, server.baseUrl).serverPosition(book)
+                sut(scope, url).serverPosition(book)
 
-                val request = server.takeRequest()
+                val request = nextRequest()
                 request.url.encodedPath shouldBe "/api/progress/$book"
                 request.url.queryParameter("format") shouldBe "audio"
             }
@@ -97,7 +99,7 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-11, TC-30: the client clock orders the records, or updated_at when a record has none
         it("TC-11, TC-30: picks the newest positive audio record, for each mix of records (I-RES-1)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 checkAll(
                     Exhaustive.of(
                         progressBody(audioRecord(100.0, 10, 10), audioRecord(50.0, 20, 20)) to
@@ -110,16 +112,16 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                         ) to null,
                     ),
                 ) { (body, expected) ->
-                    server.answer(200, body)
+                    script.answer(200, body)
 
-                    sut(scope, server.baseUrl).serverPosition(randomString()) shouldBe expected
+                    sut(scope, url).serverPosition(randomString()) shouldBe expected
                 }
             }
         }
 
         // TC-12
         it("TC-12: answers null for each kind of failed response") {
-            withServer { server, scope ->
+            withServer { scope ->
                 checkAll(
                     Exhaustive.of(
                         reply(200, "null"),
@@ -127,12 +129,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
                         reply(500),
                         reply(401),
                         reply(200, "not json"),
-                        droppedConnection(),
+                        dropped(),
                     ),
                 ) { response ->
-                    server.answer(response)
+                    script.answer(response)
 
-                    sut(scope, server.baseUrl).serverPosition(randomString()).shouldBeNull()
+                    sut(scope, url).serverPosition(randomString()).shouldBeNull()
                 }
             }
         }
@@ -174,8 +176,8 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when it is not pushed") {
             // TC-14
             it("TC-14: sends nothing (I-SAVE-2)") {
-                withServer { server, scope ->
-                    sut(scope, server.baseUrl).save(randomAudioPosition(), push = false)
+                withServer { scope ->
+                    sut(scope, url).save(randomAudioPosition(), push = false)
 
                     server.requestCount shouldBe 0
                 }
@@ -185,13 +187,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when it is pushed") {
             // TC-15
             it("TC-15: posts the audio shape (I-SAVE-1)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val position = randomAudioPosition()
-                    server.answer(200)
+                    script.answer(200)
 
-                    sut(scope, server.baseUrl).save(position, push = true)
+                    sut(scope, url).save(position, push = true)
 
-                    val request = server.takeRequest()
+                    val request = nextRequest()
                     request.url.encodedPath shouldBe "/api/progress"
                     Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
                         """{"book_uuid":"${position.bookUuid}","format":"audio","epub_cfi":null,
@@ -203,12 +205,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
             // TC-16, TC-19: a 2xx is accepted, and any other 4xx can never succeed
             it("TC-16, TC-19: clears the pending write on a 2xx or a final 4xx (I-SAVE-4)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     checkAll(Exhaustive.of(200, 400, 403, 404, 422)) { code ->
                         val store = TestAudioPositionStore()
-                        server.answer(code)
+                        script.answer(code)
 
-                        sut(scope, server.baseUrl, store).save(randomAudioPosition(), push = true)
+                        sut(scope, url, store).save(randomAudioPosition(), push = true)
 
                         store.pendingPositions.shouldBeEmpty()
                     }
@@ -217,13 +219,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
             // TC-17
             it("TC-17: keeps a newer save made during the POST (I-SAVE-4)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val store = TestAudioPositionStore()
                     val position = randomAudioPosition()
                     val newer = position.copy(clientUpdatedAt = position.clientUpdatedAt + 1)
-                    server.answer(reply(200)) { runBlocking { store.save(newer) } }
+                    script.answer(reply(200)) { runBlocking { store.save(newer) } }
 
-                    sut(scope, server.baseUrl, store).save(position, push = true)
+                    sut(scope, url, store).save(position, push = true)
 
                     store.pendingPositions shouldBe mapOf(position.bookUuid to newer)
                 }
@@ -231,13 +233,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
             // TC-18
             it("TC-18: keeps the write on each retryable status (I-SAVE-4)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     checkAll(Exhaustive.of(500, 502, 401, 408, 429)) { code ->
                         val store = TestAudioPositionStore()
                         val position = randomAudioPosition()
-                        server.answer(code)
+                        script.answer(code)
 
-                        sut(scope, server.baseUrl, store).save(position, push = true)
+                        sut(scope, url, store).save(position, push = true)
 
                         store.pendingPositions shouldBe mapOf(position.bookUuid to position)
                     }
@@ -261,8 +263,8 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
             context("when offline") {
                 // TC-21
                 it("TC-21: sends nothing (I-SAVE-4, AC5)") {
-                    withServer { server, scope ->
-                        val repository = sut(scope, server.baseUrl, connectivity = TestConnectivityMonitor(online = false))
+                    withServer { scope ->
+                        val repository = sut(scope, url, connectivity = TestConnectivityMonitor(online = false))
 
                         repository.save(randomAudioPosition(), push = true)
 
@@ -298,16 +300,16 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when the device comes online") {
             // TC-20
             it("TC-20: sends each pending write (I-SAVE-4)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val books = listOf("book-a", "book-b", "book-c")
                     val connectivity = TestConnectivityMonitor(online = false)
                     val store = TestAudioPositionStore(pending = books.associateWith { randomAudioPosition().copy(bookUuid = it) })
-                    sut(scope, server.baseUrl, store, connectivity)
-                    books.forEach { _ -> server.answer(200) }
+                    sut(scope, url, store, connectivity)
+                    books.forEach { _ -> script.answer(200) }
 
                     connectivity.isOnline.value = true
 
-                    val sent = books.map { _ -> Json.parseToJsonElement(server.takeRequest().body!!.utf8()) }
+                    val sent = books.map { _ -> Json.parseToJsonElement(nextRequest().body!!.utf8()) }
                     sent.map { it.jsonObject["book_uuid"]!!.jsonPrimitive.content } shouldContainExactlyInAnyOrder books
                 }
             }
@@ -316,12 +318,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when the repository is built online") {
             // TC-22
             it("TC-22: sends what is pending (I-SAVE-4)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val position = randomAudioPosition()
                     val store = TestAudioPositionStore(pending = mapOf(position.bookUuid to position))
-                    server.answer(200)
+                    script.answer(200)
 
-                    sut(scope, server.baseUrl, store)
+                    sut(scope, url, store)
 
                     store.pendingPositions.shouldBeEmpty()
                 }
@@ -333,13 +335,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-24
         it("TC-24: posts the report in a JSON array (I-SESS-1)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 val report = randomListeningSessionReport()
-                server.answer(200)
+                script.answer(200)
 
-                sut(scope, server.baseUrl).queueSession(report)
+                sut(scope, url).queueSession(report)
 
-                val request = server.takeRequest()
+                val request = nextRequest()
                 request.url.encodedPath shouldBe "/api/progress/sessions"
                 Json.parseToJsonElement(request.body!!.utf8()) shouldBe Json.parseToJsonElement(
                     """[{"book_uuid":"${report.bookUuid}","format":"audio","started_at":${report.startedAt},
@@ -352,12 +354,12 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-25
         it("TC-25: removes the report on a 2xx, 400 or 422 (I-SESS-3)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 checkAll(Exhaustive.of(200, 400, 422)) { code ->
                     val store = TestAudioPositionStore()
-                    server.answer(code)
+                    script.answer(code)
 
-                    sut(scope, server.baseUrl, store).queueSession(randomListeningSessionReport())
+                    sut(scope, url, store).queueSession(randomListeningSessionReport())
 
                     store.sessions().shouldBeEmpty()
                 }
@@ -366,13 +368,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-25
         it("TC-25: keeps the report on each other status (I-SESS-3)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 checkAll(Exhaustive.of(500, 401)) { code ->
                     val store = TestAudioPositionStore()
                     val report = randomListeningSessionReport()
-                    server.answer(code)
+                    script.answer(code)
 
-                    sut(scope, server.baseUrl, store).queueSession(report)
+                    sut(scope, url, store).queueSession(report)
 
                     store.sessions() shouldBe listOf(report)
                 }
@@ -381,15 +383,15 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
 
         // TC-27: the server rejects a larger POST with 422
         it("TC-27: sends at most 500 reports in a POST (I-SESS-3)") {
-            withServer { server, scope ->
+            withServer { scope ->
                 val store = TestAudioPositionStore()
                 store.queueSessions(List(501) { randomListeningSessionReport().copy(clientId = "c-$it") })
-                server.answer(200)
-                server.answer(200)
+                script.answer(200)
+                script.answer(200)
 
-                sut(scope, server.baseUrl, store)
+                sut(scope, url, store)
 
-                val sizes = List(2) { Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray.size }
+                val sizes = List(2) { Json.parseToJsonElement(nextRequest().body!!.utf8()).jsonArray.size }
                 sizes shouldBe listOf(500, 1)
             }
         }
@@ -397,13 +399,13 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when another report is queued during a failing POST") {
             // TC-28
             it("TC-28: keeps both reports (I-SESS-3)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val store = TestAudioPositionStore()
                     val report = randomListeningSessionReport()
                     val second = randomListeningSessionReport()
-                    server.answer(reply(500)) { runBlocking { store.queueSessions(listOf(second)) } }
+                    script.answer(reply(500)) { runBlocking { store.queueSessions(listOf(second)) } }
 
-                    sut(scope, server.baseUrl, store).queueSession(report)
+                    sut(scope, url, store).queueSession(report)
 
                     store.sessions() shouldBe listOf(report, second)
                 }
@@ -413,17 +415,17 @@ class DefaultListeningProgressRepositoryTest : DescribeSpec({
         context("when a failed report is retried") {
             // TC-28: the server drops a repeated client id, so a retry never counts twice
             it("TC-28: reuses its client id (I-SESS-3)") {
-                withServer { server, scope ->
+                withServer { scope ->
                     val report = randomListeningSessionReport()
-                    val repository = sut(scope, server.baseUrl)
-                    server.answer(500)
+                    val repository = sut(scope, url)
+                    script.answer(500)
                     repository.queueSession(report)
-                    server.answer(200)
+                    script.answer(200)
 
                     repository.requestFlush()
 
-                    server.takeRequest()
-                    val retry = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonArray
+                    nextRequest()
+                    val retry = Json.parseToJsonElement(nextRequest().body!!.utf8()).jsonArray
                     retry.single().jsonObject["client_id"]!!.jsonPrimitive.content shouldBe report.clientId
                 }
             }

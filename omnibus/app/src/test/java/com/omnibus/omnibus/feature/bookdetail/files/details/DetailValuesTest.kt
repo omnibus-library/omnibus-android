@@ -8,7 +8,6 @@ import io.kotest.property.exhaustive.of
 import java.util.Locale
 import java.util.TimeZone
 
-private val UTC: TimeZone = TimeZone.getTimeZone("UTC")
 private val PACIFIC: TimeZone = TimeZone.getTimeZone("America/Los_Angeles")
 
 private fun languageName(code: String?) = languageName(code, Locale.US, "Unknown")
@@ -66,7 +65,9 @@ class DetailValuesTest : DescribeSpec({
 
         context("when the value is not a timestamp") {
             it("#114: shows it as sent") {
-                addedText("yesterday", Locale.US, UTC) shouldBe "yesterday"
+                val utc: TimeZone = TimeZone.getTimeZone("UTC")
+
+                addedText("yesterday", Locale.US, utc) shouldBe "yesterday"
             }
         }
     }

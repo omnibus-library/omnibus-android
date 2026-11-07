@@ -12,7 +12,10 @@ import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomBoolean
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -29,21 +32,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
-
-private inline fun <T> withServer(block: (MockWebServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(server)
-    }
-
-/** The address of a server that has shut down, so connecting to it fails. */
-private fun unreachableUrl(): HttpUrl = withServer { it.url("/") }
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
 private fun droppedMidBody(body: String): MockResponse =
     MockResponse.Builder().code(200).body(body).onResponseBody(SocketEffect.CloseSocket()).build()
@@ -100,7 +91,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     suspend fun signInAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
-    ): AuthSignInResult = withServer { server ->
+    ): AuthSignInResult = withMockServer { server ->
         server.enqueue(response)
         sut(server.url("/"), tokenStore).signIn(randomString(), randomString())
     }
@@ -108,7 +99,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     suspend fun registerAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
-    ): AuthRegisterResult = withServer { server ->
+    ): AuthRegisterResult = withMockServer { server ->
         server.enqueue(response)
         sut(server.url("/"), tokenStore).register(randomString(), randomString())
     }
@@ -116,7 +107,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     suspend fun verifyAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = storeHolding(),
-    ): AuthSessionResult = withServer { server ->
+    ): AuthSessionResult = withMockServer { server ->
         server.enqueue(response)
         sut(server.url("/"), tokenStore).verifySession()
     }
@@ -145,7 +136,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             it("POSTs the credentials as JSON to the login path") {
-                withServer { server ->
+                withMockServer { server ->
                     val username = randomString()
                     val password = randomString()
                     server.enqueue(reply(200, acceptedBody()))
@@ -267,7 +258,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             it("TC-47: POSTs the credentials as JSON to the register path") {
-                withServer { server ->
+                withMockServer { server ->
                     val username = randomString()
                     val password = randomString()
                     server.enqueue(reply(200, acceptedBody()))
@@ -507,7 +498,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
                 }
 
                 it("TC-23: sends GET api/auth/me with the bearer token") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val token = randomString()
                         server.enqueue(reply(200))
 
@@ -554,7 +545,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     describe("observing the current user") {
         context("when a session check succeeds") {
             it("TC-16: exposes the reported user with lowercase hidden formats") {
-                withServer { server ->
+                withMockServer { server ->
                     val id = randomLong()
                     server.enqueue(reply(200, userJson(id, """, "hidden_formats": ["CBZ"], "stack_series": true""")))
                     val repository = sut(server.url("/"), storeHolding())
@@ -572,7 +563,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             it("#93 TC-12: exposes the admin flag, the download permission and the Kindle address") {
-                withServer { server ->
+                withMockServer { server ->
                     val isAdmin = randomBoolean()
                     val canDownload = randomBoolean()
                     val kindleEmail = "${randomString()}@kindle.com"
@@ -602,7 +593,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
         context("when a session check body can't be read") {
             it("TC-16: is null") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(200, "not json"))
                     val repository = sut(server.url("/"), storeHolding())
 
@@ -615,7 +606,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
         context("when registering succeeds") {
             it("TC-16: is the registered user") {
-                withServer { server ->
+                withMockServer { server ->
                     val id = randomLong()
                     server.enqueue(reply(200, acceptedBody(user = userJson(id))))
                     val repository = sut(server.url("/"))
@@ -629,7 +620,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
         context("when signing in succeeds") {
             it("TC-16: is the signed-in user") {
-                withServer { server ->
+                withMockServer { server ->
                     val id = randomLong()
                     server.enqueue(reply(200, acceptedBody(user = userJson(id))))
                     val repository = sut(server.url("/"))
@@ -642,7 +633,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
             context("when the user then signs out") {
                 it("TC-16: is null") {
-                    withServer { server ->
+                    withMockServer { server ->
                         server.enqueue(reply(200, acceptedBody()))
                         val repository = sut(server.url("/"))
                         repository.signIn(randomString(), randomString())
@@ -656,7 +647,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
             context("when the session is then rejected") {
                 it("TC-16: is null") {
-                    withServer { server ->
+                    withMockServer { server ->
                         server.enqueue(reply(200, acceptedBody()))
                         server.enqueue(reply(401))
                         val repository = sut(server.url("/"))
@@ -671,7 +662,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
             context("when the token is then cleared elsewhere") {
                 it("TC-16: is null") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val tokenStore = TestAuthTokenStore()
                         server.enqueue(reply(200, acceptedBody()))
                         val repository = sut(server.url("/"), tokenStore)

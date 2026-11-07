@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.bookprogress
 
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -7,7 +8,7 @@ import kotlinx.coroutines.flow.onStart
 
 /**
  * In-memory [BookProgressRepository] for the ViewModel tests. Progress is live: set [progressFor] to emit, and each
- * collection is recorded. Chapters and sessions answer from scripted queues, then from empty successes.
+ * collection is recorded. Chapters and sessions answer from scripted queues, and never answer when those are empty.
  */
 class TestBookProgressRepository : BookProgressRepository {
 
@@ -20,13 +21,13 @@ class TestBookProgressRepository : BookProgressRepository {
     /** The uuid of every collection of [getBookProgressFlow], in order. */
     val progressCollections = mutableListOf<String>()
 
-    /** The next [getChapters] answers. When empty, an empty Success. */
+    /** The next [getChapters] answers. */
     val chaptersResults = ArrayDeque<BookChaptersResult>()
 
     /** The uuid of every [getChapters] call, in call order. */
     val chaptersCalls = mutableListOf<String>()
 
-    /** The next [getSessions] answers. When empty, Success with no sessions. */
+    /** The next [getSessions] answers. */
     val sessionsResults = ArrayDeque<ReadingSessionsResult>()
 
     /** The uuid of every [getSessions] call, in call order. */
@@ -37,11 +38,11 @@ class TestBookProgressRepository : BookProgressRepository {
 
     override suspend fun getChapters(bookUuid: String): BookChaptersResult {
         chaptersCalls += bookUuid
-        return chaptersResults.removeFirstOrNull() ?: BookChaptersResult.Success(emptyList(), emptyList(), null, null)
+        return chaptersResults.removeFirstOrNull() ?: awaitCancellation()
     }
 
     override suspend fun getSessions(bookUuid: String): ReadingSessionsResult {
         sessionsCalls += bookUuid
-        return sessionsResults.removeFirstOrNull() ?: ReadingSessionsResult.Success(emptyList())
+        return sessionsResults.removeFirstOrNull() ?: awaitCancellation()
     }
 }

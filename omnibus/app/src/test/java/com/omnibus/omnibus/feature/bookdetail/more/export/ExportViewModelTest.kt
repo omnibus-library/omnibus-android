@@ -49,6 +49,8 @@ private fun TestExportRepository.answerSave(result: ExportSaveResult) {
     saveGates.addLast(CompletableDeferred(result))
 }
 
+private fun online() = TestConnectivityMonitor(online = true)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExportViewModelTest : DescribeSpec({
 
@@ -79,7 +81,7 @@ class ExportViewModelTest : DescribeSpec({
             it("#118 TC-16: starts the Kindle row afresh, for a sent or failed send") {
                 checkAll(Exhaustive.of(KindleSendResult.Sent, KindleSendResult.Unreachable)) { result ->
                     val repo = TestExportRepository().apply { answerKindle(result) }
-                    val vm = sut(repo = repo)
+                    val vm = sut(repo = repo, monitor = online())
                     vm.sendToKindle()
 
                     vm.openSheet()
@@ -92,7 +94,7 @@ class ExportViewModelTest : DescribeSpec({
         context("when a send is in flight") {
             it("#118 TC-16: keeps showing it") {
                 val repo = TestExportRepository().apply { holdKindle() }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
                 vm.sendToKindle()
 
                 vm.openSheet()
@@ -104,7 +106,7 @@ class ExportViewModelTest : DescribeSpec({
         context("when the last save failed") {
             it("#118 TC-16: clears the error") {
                 val repo = TestExportRepository().apply { answerSave(ExportSaveResult.Forbidden) }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
                 vm.save(ExportSave.Kobo, bookWithEveryFile())
 
                 vm.openSheet()
@@ -118,7 +120,7 @@ class ExportViewModelTest : DescribeSpec({
         context("when a send is in flight") {
             it("#118 TC-17: stays open") {
                 val repo = TestExportRepository().apply { holdKindle() }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
                 vm.openSheet()
                 vm.sendToKindle()
 
@@ -130,7 +132,7 @@ class ExportViewModelTest : DescribeSpec({
 
         context("when the user taps through to Kindle settings") {
             it("#118 TC-17, TC-21: closes") {
-                val vm = sut()
+                val vm = sut(monitor = online())
                 vm.openSheet()
 
                 vm.kindleSettingsTapped()
@@ -143,7 +145,7 @@ class ExportViewModelTest : DescribeSpec({
             it("#118 TC-26: cancels it, so it requests no share") {
                 val repo = TestExportRepository()
                 val gate = repo.holdSave()
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
                 vm.openSheet()
                 vm.save(randomEnum(), bookWithEveryFile())
 
@@ -161,7 +163,7 @@ class ExportViewModelTest : DescribeSpec({
             val uuid = randomString()
             val repo = TestExportRepository()
             val gate = repo.holdKindle()
-            val vm = sut(uuid, repo)
+            val vm = sut(uuid, repo, monitor = online())
 
             vm.sendToKindle()
             vm.uiState.value.kindle shouldBe KindlePhase.Sending
@@ -186,7 +188,7 @@ class ExportViewModelTest : DescribeSpec({
                 ),
             ) { (result, expected) ->
                 val repo = TestExportRepository().apply { answerKindle(result) }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
 
                 vm.sendToKindle()
 
@@ -198,7 +200,7 @@ class ExportViewModelTest : DescribeSpec({
             it("#118 TC-20: ignores another send") {
                 val repo = TestExportRepository()
                 val gate = repo.holdKindle()
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
 
                 vm.sendToKindle()
                 vm.sendToKindle()
@@ -216,7 +218,7 @@ class ExportViewModelTest : DescribeSpec({
                     answerKindle(KindleSendResult.Unreachable)
                     answerKindle(KindleSendResult.Sent)
                 }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
 
                 vm.sendToKindle()
                 vm.sendToKindle()
@@ -242,7 +244,7 @@ class ExportViewModelTest : DescribeSpec({
                 ),
             ) { (kind, call) ->
                 val repo = TestExportRepository().apply { holdSave() }
-                val vm = sut(uuid, repo)
+                val vm = sut(uuid, repo, monitor = online())
 
                 vm.save(kind, book)
 
@@ -254,7 +256,7 @@ class ExportViewModelTest : DescribeSpec({
         context("when a save is in flight") {
             it("#118 TC-23: ignores another save") {
                 val repo = TestExportRepository().apply { holdSave() }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
 
                 vm.save(ExportSave.Kobo, bookWithEveryFile())
                 vm.save(ExportSave.Ebook, bookWithEveryFile())
@@ -268,7 +270,7 @@ class ExportViewModelTest : DescribeSpec({
             it("#118 TC-24: requests a share of its files") {
                 val files = savedFiles()
                 val repo = TestExportRepository().apply { answerSave(ExportSaveResult.Saved(files)) }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
 
                 vm.save(randomEnum(), bookWithEveryFile())
 
@@ -281,7 +283,7 @@ class ExportViewModelTest : DescribeSpec({
                     answerSave(ExportSaveResult.Saved(savedFiles()))
                     answerSave(ExportSaveResult.Saved(savedFiles()))
                 }
-                val vm = sut(repo = repo)
+                val vm = sut(repo = repo, monitor = online())
                 vm.save(randomEnum(), bookWithEveryFile())
                 val first = checkNotNull(vm.uiState.value.share)
                 vm.save(randomEnum(), bookWithEveryFile())
@@ -308,7 +310,7 @@ class ExportViewModelTest : DescribeSpec({
                     ),
                 ) { (result, expected) ->
                     val repo = TestExportRepository().apply { answerSave(result) }
-                    val vm = sut(repo = repo)
+                    val vm = sut(repo = repo, monitor = online())
 
                     vm.save(randomEnum(), bookWithEveryFile())
 
@@ -323,7 +325,7 @@ class ExportViewModelTest : DescribeSpec({
                 val files = savedFiles()
                 val repo = TestExportRepository()
                 val gate = repo.holdSave()
-                val monitor = TestConnectivityMonitor()
+                val monitor = online()
                 val vm = sut(repo = repo, monitor = monitor)
                 vm.save(randomEnum(), bookWithEveryFile())
 

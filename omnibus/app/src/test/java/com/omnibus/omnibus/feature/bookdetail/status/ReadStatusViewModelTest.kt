@@ -18,6 +18,7 @@ import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -152,6 +153,7 @@ class ReadStatusViewModelTest : DescribeSpec({
                 val uuid = randomString()
                 val repository = TestReadStatusRepository()
                 repository.seed(uuid, known(ReadStatus.Reading))
+                repository.writeGates += CompletableDeferred<Unit>()
 
                 collecting(sut(uuid, repository)) {
                     selectStatus(ReadStatus.Finished)

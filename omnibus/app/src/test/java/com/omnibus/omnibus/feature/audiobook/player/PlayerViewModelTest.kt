@@ -103,7 +103,7 @@ class PlayerViewModelTest : DescribeSpec({
             val position = randomDouble(0.0, 10_000.0)
             val controller = TestAudiobookController()
 
-            sut(uuid, controller, fileId = fileId, position = position)
+            sut(uuid, controller, TestBookAvailability(answer = true), fileId = fileId, position = position)
 
             controller.commands shouldBe listOf(Command.Load(uuid, fileId, position, autoplay = true))
         }
@@ -112,7 +112,7 @@ class PlayerViewModelTest : DescribeSpec({
         it("#165 TC-18: never reloads on a state update") {
             val uuid = randomString()
             val controller = TestAudiobookController()
-            sut(uuid, controller)
+            sut(uuid, controller, TestBookAvailability(answer = true))
 
             controller.state.value = holding(uuid)
             controller.state.value = holding(uuid)

@@ -18,6 +18,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -57,6 +58,7 @@ class MyReviewViewModelTest : DescribeSpec({
             checkAll(Exhaustive.of(4.5f, null)) { rating ->
                 withHarness {
                     seedMine(randomReview().copy(rating = 4f))
+                    reviews.writeGates += CompletableDeferred<Unit>()
 
                     vm.rate(rating)
 
@@ -130,6 +132,7 @@ class MyReviewViewModelTest : DescribeSpec({
             it("TC-46: deletes it") {
                 withHarness {
                     seedMine(randomReview())
+                    reviews.writeGates += CompletableDeferred<Unit>()
 
                     vm.delete()
 

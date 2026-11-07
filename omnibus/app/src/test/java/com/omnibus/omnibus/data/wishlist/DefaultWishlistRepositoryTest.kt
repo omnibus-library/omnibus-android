@@ -7,18 +7,22 @@ import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
+import com.omnibus.omnibus.testing.ScriptedServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomBoolean
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -26,16 +30,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
 /** This entry as the server writes it, with its time in seconds. */
@@ -45,62 +44,10 @@ private fun WishlistEntry.toBody(): String = listOfNotNull(
     source?.let { "\"source\":\"${it.name.lowercase()}\"" },
 ).joinToString(prefix = "{", postfix = "}", separator = ",")
 
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
 private fun reply(entry: WishlistEntry): MockResponse = reply(200, entry.toBody())
 
 /** A successful removal's answer. */
 private fun removed(): MockResponse = reply(200, """{"book_deleted":${randomBoolean()}}""")
-
-/** A connection dropped before any response, which the client reports as an IOException. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
-
-/**
- * Answers requests from a script, per HTTP method, in order. A step can hold its response until the test releases
- * [CountDownLatch]. A request with no step gets a 500, so an unexpected call fails the test instead of hanging.
- */
-private class ScriptedDispatcher : Dispatcher() {
-    private class Step(val response: MockResponse, val gate: CountDownLatch?)
-
-    private val steps = mutableMapOf<String, ArrayDeque<Step>>()
-
-    fun answer(method: String, response: MockResponse, gate: CountDownLatch? = null) {
-        synchronized(steps) { steps.getOrPut(method) { ArrayDeque() }.addLast(Step(response, gate)) }
-    }
-
-    override fun dispatch(request: RecordedRequest): MockResponse {
-        val method = request.method.orEmpty()
-        val step = synchronized(steps) { steps[method]?.removeFirstOrNull() }
-            ?: return reply(500, "unscripted $method")
-        step.gate?.await(5, TimeUnit.SECONDS)
-        return step.response
-    }
-}
-
-/** A running server that answers from [script], and [scope], a place for work that outlives one call. */
-private class TestServer(val server: MockWebServer, val script: ScriptedDispatcher, val scope: CoroutineScope) {
-
-    val url: HttpUrl get() = server.url("/")
-
-    /** Waits for the next request the server received, in arrival order. */
-    fun nextRequest(): RecordedRequest =
-        checkNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
-}
-
-/** Runs [test] against a new [TestServer], and closes it afterwards. */
-private suspend fun withServer(test: suspend TestServer.() -> Unit) {
-    val script = ScriptedDispatcher()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    MockWebServer().use { server ->
-        server.dispatcher = script
-        server.start()
-        try {
-            TestServer(server, script, scope).test()
-        } finally {
-            scope.cancel()
-        }
-    }
-}
 
 class DefaultWishlistRepositoryTest : DescribeSpec({
 
@@ -121,10 +68,10 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
     )
 
     /** A [sut] that runs HTTP on real threads, which lets a test hold a request open. */
-    fun TestServer.threadedSut(): DefaultWishlistRepository = sut(url, scope, Dispatchers.IO)
+    fun ScriptedServer.threadedSut(): DefaultWishlistRepository = sut(url, scope, Dispatchers.IO)
 
     /** Reads [entry] for [uuid], so the book is on the wishlist, and takes that request from the server's queue. */
-    suspend fun TestServer.load(repository: WishlistRepository, uuid: String, entry: WishlistEntry) {
+    suspend fun ScriptedServer.load(repository: WishlistRepository, uuid: String, entry: WishlistEntry) {
         script.answer("GET", reply(entry))
         repository.refresh(uuid)
         nextRequest()
@@ -139,7 +86,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when nothing is known") {
 
             it("#119 TC-1: emits Unknown, then the server's answer") {
-                withServer {
+                withScriptedServer {
                     val entry = randomWishlistEntry()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(entry), gate)
@@ -156,7 +103,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the server's answer is null") {
 
             it("#119 TC-2: is Absent") {
-                withServer {
+                withScriptedServer {
                     script.answer("GET", reply(200, "null"))
 
                     sut(url).getWishlistFlow(randomString()).first() shouldBe WishlistState.Absent
@@ -165,7 +112,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
 
         it("#119 TC-3: reads a source token regardless of its case, leaving any other as no source") {
-            withServer {
+            withScriptedServer {
                 val entry = randomWishlistEntry()
 
                 checkAll(
@@ -188,7 +135,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
 
         it("#119 TC-3: maps the time from seconds to milliseconds, leaving a missing one as none") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         randomWishlistEntry().copy(addedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L),
@@ -203,7 +150,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
 
         it("#119 TC-4: is Failed regardless of how the read goes wrong") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         reply(401),
@@ -231,7 +178,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("#119 TC-5: is Failed without asking the server, regardless of the blank") {
-                withServer {
+                withScriptedServer {
                     checkAll(Exhaustive.of("", "   ")) { uuid ->
                         sut(url).getWishlistFlow(uuid).first() shouldBe WishlistState.Failed
 
@@ -242,7 +189,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
 
         it("#119 TC-6: asks for the book with its uuid as one encoded path segment") {
-            withServer {
+            withScriptedServer {
                 script.answer("GET", reply(randomWishlistEntry()))
 
                 sut(url).refresh("book one")
@@ -256,7 +203,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when a read is in flight") {
 
             it("#119 TC-7, TC-9: shares it with another caller") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(randomWishlistEntry()), gate)
@@ -276,7 +223,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the entry is known") {
 
             it("#119 TC-7: reads nothing more from the server for a new collector") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, randomWishlistEntry())
@@ -288,7 +235,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             }
 
             it("#119 TC-9: takes the new answer on a refresh") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, randomWishlistEntry())
@@ -303,7 +250,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             context("when a refresh fails") {
 
                 it("#119 TC-9: keeps it") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val entry = randomWishlistEntry()
                         val repository = sut(url)
@@ -321,7 +268,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the last read failed") {
 
             it("#119 TC-8: reads again for a new collector") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val entry = randomWishlistEntry()
                     val repository = sut(url)
@@ -337,7 +284,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the collector is cancelled") {
 
             it("#119 TC-15: lets the read finish") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val entry = randomWishlistEntry()
                     val gate = CountDownLatch(1)
@@ -361,7 +308,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when nothing has been read") {
 
             it("is Unknown without asking the server") {
-                withServer {
+                withScriptedServer {
                     sut(url).cachedState(randomString()) shouldBe WishlistState.Unknown
 
                     server.requestCount shouldBe 0
@@ -372,7 +319,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when an entry has been read") {
 
             it("is that entry") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val entry = randomWishlistEntry()
                     val repository = sut(url)
@@ -387,7 +334,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
     describe("removing from the wishlist") {
 
         it("#119 TC-6: sends a DELETE with the uuid as one encoded path segment") {
-            withServer {
+            withScriptedServer {
                 script.answer("DELETE", removed())
 
                 sut(url).removeFromWishlist("book one")
@@ -399,7 +346,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
 
         it("#119 TC-10, TC-11: reads whether the book was deleted, defaulting to not") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         """{"book_deleted":true}""" to true,
@@ -417,7 +364,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the removal succeeds") {
 
             it("#119 TC-10: moves the state to Absent") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, randomWishlistEntry())
@@ -433,7 +380,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the removal fails") {
 
             it("#119 TC-12: reports each failure as its own error") {
-                withServer {
+                withScriptedServer {
                     checkAll(
                         Exhaustive.of(
                             reply(401) to WishlistError.SessionExpired,
@@ -451,7 +398,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
             }
 
             it("#119 TC-12: leaves the entry in place") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val entry = randomWishlistEntry()
                     val repository = sut(url)
@@ -475,7 +422,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("fails with BookNotFound without asking the server") {
-                withServer {
+                withScriptedServer {
                     sut(url).removeFromWishlist(" ") shouldBe WishlistRemovalResult.Failed(WishlistError.BookNotFound)
 
                     server.requestCount shouldBe 0
@@ -486,7 +433,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when a read started before the removal") {
 
             it("#119 TC-13: does not bring the entry back") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(randomWishlistEntry()), gate)
@@ -507,7 +454,7 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         context("when the caller is cancelled") {
 
             it("#119 TC-14: lets the removal finish") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     val repository = threadedSut()

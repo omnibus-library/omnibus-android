@@ -43,7 +43,7 @@ class ServerConfigurationViewModelTest : DescribeSpec({
     describe("submitting an address") {
         it("validates the address as entered") {
             val address = randomString()
-            val repository = TestServerConfigurationRepository()
+            val repository = TestServerConfigurationRepository().apply { validationGate = CompletableDeferred() }
 
             sut(repository).submitServerUrl(address)
 

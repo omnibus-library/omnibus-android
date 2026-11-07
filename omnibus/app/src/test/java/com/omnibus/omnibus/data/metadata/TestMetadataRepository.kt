@@ -1,7 +1,8 @@
 package com.omnibus.omnibus.data.metadata
 
-import com.omnibus.omnibus.data.library.testBook
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 
 /** In-memory [MetadataRepository] for tests. Records every call and answers from scripts. */
 class TestMetadataRepository : MetadataRepository {
@@ -15,12 +16,10 @@ class TestMetadataRepository : MetadataRepository {
     /** Every [getVocabulary] call, in order. */
     val vocabularyRequests = mutableListOf<MetadataListKind>()
 
-    /** Answers a write that is not held. By default the server saves the list as sent. */
-    var writeResult: (Write) -> MetadataWriteResult = { write ->
-        MetadataWriteResult.Saved(testBook(1).withValues(write.kind, write.values))
-    }
+    /** Answers a write that is not held. */
+    var writeResult: (Write) -> MetadataWriteResult = { unscripted("replaceList") }
 
-    /** The answer to [getVocabulary] per kind. Kinds not set answer an empty list. */
+    /** The answer to [getVocabulary] per kind. A kind not set never answers. */
     val vocabulary = mutableMapOf<MetadataListKind, VocabularyResult>()
 
     private val writeHolds = ArrayDeque<CompletableDeferred<MetadataWriteResult>>()
@@ -48,6 +47,6 @@ class TestMetadataRepository : MetadataRepository {
     override suspend fun getVocabulary(kind: MetadataListKind): VocabularyResult {
         vocabularyRequests += kind
         vocabularyHolds.remove(kind)?.let { return it.await() }
-        return vocabulary[kind] ?: VocabularyResult.Success(emptyList())
+        return vocabulary[kind] ?: awaitCancellation()
     }
 }

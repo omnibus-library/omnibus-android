@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.auth.remote
 
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
@@ -20,12 +21,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 private val JSON = "application/json; charset=utf-8".toMediaType()
-
-private inline fun <T> withServer(block: (MockWebServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(server)
-    }
 
 private fun credentials(): String = """{"username":"${randomString()}","password":"${randomString()}"}"""
 
@@ -56,7 +51,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
     describe("annotating auth requests") {
         context("when a POST goes to an auth path") {
             it("adds the client metadata to the original fields on both the login and register paths") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of("/api/auth/login", "/api/auth/register")) { path ->
                         val device = randomString()
                         val version = randomString()
@@ -84,7 +79,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
             }
 
             it("keeps the request's content type") {
-                withServer { server ->
+                withMockServer { server ->
                     send(server, "/api/auth/login").headers["Content-Type"]!! shouldStartWith
                         "application/json; charset=utf-8"
                 }
@@ -92,7 +87,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
 
             context("when the server has a path prefix") {
                 it("adds the client metadata") {
-                    withServer { server ->
+                    withMockServer { server ->
                         send(server, "/omnibus/api/auth/login").json()["client_kind"] shouldBe JsonPrimitive("android")
                     }
                 }
@@ -100,7 +95,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
 
             context("when the body isn't a JSON object") {
                 it("passes it through unchanged") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val body = randomString()
 
                         send(
@@ -116,7 +111,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
 
         context("when a POST goes to another path") {
             it("leaves the body unchanged") {
-                withServer { server ->
+                withMockServer { server ->
                     val body = credentials()
 
                     send(server, "/api/books", body = body).bodyText() shouldBe body
@@ -126,7 +121,7 @@ class AuthClientMetadataInterceptorTest : DescribeSpec({
 
         context("when a request to an auth path isn't a POST") {
             it("leaves the body unchanged") {
-                withServer { server ->
+                withMockServer { server ->
                     val body = credentials()
 
                     send(server, "/api/auth/login", method = "PUT", body = body).bodyText() shouldBe body

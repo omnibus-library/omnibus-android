@@ -72,6 +72,8 @@ class DefaultSleepTimerEndOfChapterTest : DescribeSpec({
                     chapters = chapters(600.0, 1200.0, 1000.0),
                     positionSeconds = 2600.0,
                     durationSeconds = 2700.0,
+                    isLoading = false,
+                    rate = 1.0,
                 )
                 sut(state).use { rig ->
                     rig.timer.set(EndOfChapter)

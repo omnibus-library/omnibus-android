@@ -1,12 +1,11 @@
 package com.omnibus.omnibus.data.series
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 
 /**
  * In-memory [SeriesRepository] for tests. A call takes its result from [results] *before* it
- * waits on the head of [gates], so a gated call still returns the result it queued. An empty
- * [results] queue answers [SeriesResult.NoServer], the "nothing happened" result, so a section
- * under test simply shows nothing.
+ * waits on the head of [gates], so a gated call still returns the result it queued. A call with no result never answers.
  */
 class TestSeriesRepository : SeriesRepository {
 
@@ -21,7 +20,7 @@ class TestSeriesRepository : SeriesRepository {
 
     override suspend fun getSeries(seriesId: Long): SeriesResult {
         calls += seriesId
-        val result = results.removeFirstOrNull() ?: SeriesResult.NoServer
+        val result = results.removeFirstOrNull() ?: awaitCancellation()
         gates.removeFirstOrNull()?.await()
         return result
     }

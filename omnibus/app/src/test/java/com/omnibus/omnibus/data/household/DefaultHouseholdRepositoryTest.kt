@@ -1,23 +1,23 @@
 package com.omnibus.omnibus.data.household
 
-import com.omnibus.omnibus.data.network.nextRequest
-import com.omnibus.omnibus.data.network.reply
-import com.omnibus.omnibus.data.network.testOmnibusHttpClient
-import com.omnibus.omnibus.data.network.withMockServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomInt
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
 
 class DefaultHouseholdRepositoryTest : DescribeSpec({
 
@@ -115,11 +115,11 @@ class DefaultHouseholdRepositoryTest : DescribeSpec({
                         reply(500),
                         reply(200, "not json"),
                         reply(200, "{\"id\":1}"),
-                        MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build(),
+                        dropped(),
                     ),
                 ) { answer ->
-                    withMockServer { server ->
-                        server.enqueue(answer)
+                    withScriptedServer {
+                        script.answer(answer)
 
                         sut(server).getHousehold(randomString()) shouldBe HouseholdResult.Failed
                     }

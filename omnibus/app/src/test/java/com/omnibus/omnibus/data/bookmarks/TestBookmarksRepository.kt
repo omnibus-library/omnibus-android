@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.bookmarks
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -13,7 +14,7 @@ class TestBookmarksRepository : BookmarksRepository {
     private val states = mutableMapOf<String, MutableStateFlow<BookmarksState>>()
 
     private fun stateFor(uuid: String): MutableStateFlow<BookmarksState> =
-        states.getOrPut(uuid) { MutableStateFlow(BookmarksState.Loaded(emptyList())) }
+        states.getOrPut(uuid) { MutableStateFlow(BookmarksState.Loading) }
 
     /** The uuid of every [getBookmarksFlow] call, in call order. */
     val flowRequests = mutableListOf<String>()
@@ -27,11 +28,11 @@ class TestBookmarksRepository : BookmarksRepository {
     /** Every bookmark passed to [removeBookmark], in call order. */
     val removed = mutableListOf<Bookmark>()
 
-    /** Answers an add. The default is a failure, so a test that does not script it sees no saved row. */
-    var onAdd: suspend (BookmarkDraft) -> BookmarkWriteResult = { BookmarkWriteResult.Failed(BookmarkError.NoServer) }
+    /** Answers an add. */
+    var onAdd: suspend (BookmarkDraft) -> BookmarkWriteResult = { unscripted("addBookmark") }
 
-    /** Answers a remove. The default is a removal. */
-    var onRemove: suspend (Bookmark) -> BookmarkWriteResult = { BookmarkWriteResult.Removed }
+    /** Answers a remove. */
+    var onRemove: suspend (Bookmark) -> BookmarkWriteResult = { unscripted("removeBookmark") }
 
     /** Sets [bookUuid]'s state as if the server had answered it. */
     fun seed(bookUuid: String, state: BookmarksState) {

@@ -24,9 +24,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.job
 
-private val SORT = stringPreferencesKey("library.sort")
-private val DIRECTION = stringPreferencesKey("library.sortDirection")
-
 class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
 
     fun sut(dataStore: DataStore<Preferences> = TestPreferencesDataStore()) =
@@ -67,7 +64,11 @@ class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
 
         context("when values are already stored") {
             it("TC-118: reads them from the stored format") {
-                val stored = preferencesOf(SORT to "title", DIRECTION to "asc")
+                val directionKey = stringPreferencesKey("library.sortDirection")
+
+                val sortKey = stringPreferencesKey("library.sort")
+
+                val stored = preferencesOf(sortKey to "title", directionKey to "asc")
 
                 sut(TestPreferencesDataStore(stored)).preference.first() shouldBe
                     LibrarySortPreference(LibrarySort.Title, SortDirection.Asc)

@@ -12,9 +12,12 @@ import com.omnibus.omnibus.data.progress.ReadingPosition
 import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.feature.bookdetail.progress.BookChapter
 import com.omnibus.omnibus.feature.bookdetail.progress.ReadingSession
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
@@ -25,11 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.toList
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
 private const val SESSIONS = "/api/stats/sessions"
@@ -51,17 +50,12 @@ private fun serverReading(uuid: String) = readingRecord(40.0, 100, cfi = "y", uu
 
 /** The audio record [progressBody] decodes to. */
 private fun serverListening(uuid: String) =
-    listeningRecord(60.0, 90, totalSeconds = 600.0, clientUpdatedAt = null, uuid = uuid)
+    listeningRecord(60.0, 90, totalSeconds = 600.0, bookFileId = 7, clientUpdatedAt = null, uuid = uuid)
 
 private const val ALIGNMENT_ONE_FILE = """{"audio_files":[{"book_file_id":7,"duration_seconds":1000.0,"chapter_starts":[0.0,250.0]}]}"""
 
 private const val ALIGNMENT_TWO_FILES = """{"book_file_id":7,"duration_seconds":1000.0,"chapter_starts":[0.0,250.0]},
     {"book_file_id":8,"duration_seconds":2000.0,"chapter_starts":[0.0,500.0]}"""
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-/** A response whose connection drops before any byte of it arrives. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 /** A session page with one session and the cursor [next]. */
 private fun sessionPage(uuid: String, next: String?): String {
@@ -77,29 +71,6 @@ private fun readFailures(): List<Pair<MockResponse, BookProgressError>> = listOf
     dropped() to BookProgressError.Unreachable,
     reply(200, "{bad") to BookProgressError.UnexpectedResponse,
 )
-
-/** Answers each path's requests from its own queue, in order. A request with nothing queued gets a 500. */
-private class ScriptedDispatcher : Dispatcher() {
-    private val steps = mutableMapOf<String, ArrayDeque<MockResponse>>()
-
-    fun answer(path: String, response: MockResponse) {
-        synchronized(steps) { steps.getOrPut(path) { ArrayDeque() }.addLast(response) }
-    }
-
-    override fun dispatch(request: RecordedRequest): MockResponse {
-        val path = request.url.encodedPath
-        return synchronized(steps) { steps[path]?.removeFirstOrNull() } ?: reply(500, "unscripted $path")
-    }
-}
-
-private inline fun <T> withServer(block: (MockWebServer, ScriptedDispatcher) -> T): T {
-    val script = ScriptedDispatcher()
-    return MockWebServer().use { server ->
-        server.dispatcher = script
-        server.start()
-        block(server, script)
-    }
-}
 
 class DefaultBookProgressRepositoryTest : DescribeSpec({
 
@@ -124,7 +95,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
     describe("observing a book's progress") {
         context("when the device has a position") {
             it("TC-52: emits the device position, then the server's records merged with it") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     val device = TestProgressRepository().apply {
                         stored[uuid] = ReadingPosition(uuid, cfi = "x", percent = 50, clientUpdatedAt = 200)
@@ -157,7 +128,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
         }
 
         it("TC-52: reads api/progress/{uuid} for every format") {
-            withServer { server, script ->
+            withScriptedServer {
                 val uuid = randomString()
                 script.answer(progressPath(uuid), reply(200, progressBody(uuid)))
 
@@ -171,7 +142,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the server has no record of the book") {
             it("TC-53: gives no records") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(progressPath(uuid), reply(200, "null"))
 
@@ -183,7 +154,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when a record has a format the app doesn't know") {
             it("TC-53: drops that record") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     val body = """{"book_uuid":"$uuid","records":[
                         {"book_uuid":"$uuid","format":"mobi","updated_at":5},
@@ -201,10 +172,11 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when an earlier read succeeded") {
             it("TC-55: starts from the last known records") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(server.url("/"))
                     script.answer(progressPath(uuid), reply(200, progressBody(uuid)))
+                    script.answer(progressPath(uuid), reply(500))
                     repository.getBookProgressFlow(uuid).toList()
 
                     repository.getBookProgressFlow(uuid).first() shouldBe BookProgressResult.Success(
@@ -216,7 +188,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
             context("when the next read fails") {
                 it("TC-55: reports the failure with the last known records") {
-                    withServer { server, script ->
+                    withScriptedServer {
                         val uuid = randomString()
                         val repository = sut(server.url("/"))
                         script.answer(progressPath(uuid), reply(200, progressBody(uuid)))
@@ -234,7 +206,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the read fails") {
             it("TC-56: maps each status and unusable body to its error") {
-                withServer { server, script ->
+                withScriptedServer {
                     checkAll(Exhaustive.collection(readFailures())) { (response, error) ->
                         val uuid = randomString()
                         script.answer(progressPath(uuid), response)
@@ -259,7 +231,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
     describe("reading a book's chapters") {
         context("when the book has only an ebook") {
             it("TC-58: gives the alignment's chapters in order, with blank titles as null") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(
                         alignmentPath(uuid),
@@ -285,7 +257,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the alignment names a listened file") {
             it("TC-59: gives the audio chapters from that file's manifest") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(
                         alignmentPath(uuid),
@@ -316,7 +288,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the alignment names no listened file") {
             it("TC-59: reads the manifest of the first file") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(alignmentPath(uuid), reply(200, """{"audio_files":[$ALIGNMENT_TWO_FILES]}"""))
                     script.answer(manifestPath(uuid), reply(404))
@@ -331,7 +303,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the manifest gives no usable chapters") {
             it("TC-60: falls back to the alignment's file for each failure and chapterless manifest") {
-                withServer { server, script ->
+                withScriptedServer {
                     val manifests = listOf(
                         reply(404),
                         reply(500),
@@ -356,7 +328,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the alignment read fails") {
             it("TC-61: maps each status and unusable body to its error") {
-                withServer { server, script ->
+                withScriptedServer {
                     checkAll(Exhaustive.collection(readFailures())) { (response, error) ->
                         val uuid = randomString()
                         script.answer(alignmentPath(uuid), response)
@@ -383,7 +355,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
     describe("reading a book's sessions") {
         context("when the server has one page") {
             it("TC-62: maps each session in the server's order, with negative seconds as zero") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(
                         SESSIONS,
@@ -406,7 +378,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
             }
 
             it("TC-62: asks for the book's sessions at the page limit") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(SESSIONS, reply(200, sessionPage(uuid, null)))
 
@@ -422,7 +394,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the server has several pages") {
             it("TC-63: follows each cursor to the last page") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     val firstCursor = randomString()
                     val secondCursor = randomString()
@@ -441,7 +413,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the server never stops offering pages") {
             it("TC-63: stops reading at 12 pages") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     repeat(13) { script.answer(SESSIONS, reply(200, sessionPage(uuid, randomString()))) }
 
@@ -454,7 +426,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when a later page fails") {
             it("TC-65: fails the whole read") {
-                withServer { server, script ->
+                withScriptedServer {
                     val uuid = randomString()
                     script.answer(SESSIONS, reply(200, sessionPage(uuid, randomString())))
                     script.answer(SESSIONS, reply(500))
@@ -467,7 +439,7 @@ class DefaultBookProgressRepositoryTest : DescribeSpec({
 
         context("when the first page fails") {
             it("TC-65: maps each status and unusable body to its error") {
-                withServer { server, script ->
+                withScriptedServer {
                     checkAll(Exhaustive.collection(readFailures())) { (response, error) ->
                         script.answer(SESSIONS, response)
 

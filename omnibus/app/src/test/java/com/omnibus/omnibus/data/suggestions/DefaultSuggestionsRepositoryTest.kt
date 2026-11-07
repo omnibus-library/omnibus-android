@@ -9,7 +9,10 @@ import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomInt
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeTypeOf
@@ -18,11 +21,8 @@ import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl
 import okio.Buffer
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
 
 /** A 200 cover response carrying [bytes]. */
 private fun coverReply(bytes: ByteArray): MockResponse.Builder =
@@ -35,20 +35,6 @@ private fun BookSuggestion.toJson(): String =
 
 /** A path the app accepts as a suggestion cover. */
 private fun randomCoverPath(): String = "/api/suggestions/${randomString()}/${randomInt()}/cover"
-
-/** A base URL with nothing listening on it. */
-private fun closedServerUrl(): HttpUrl = MockWebServer().use { server ->
-    server.start()
-    server.url("/")
-}
-
-/** A running server, closed afterwards. */
-private suspend fun withServer(test: suspend (MockWebServer) -> Unit) {
-    MockWebServer().use { server ->
-        server.start()
-        test(server)
-    }
-}
 
 class DefaultSuggestionsRepositoryTest : DescribeSpec({
 
@@ -71,7 +57,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server is ready") {
 
             it("#106 TC-1: gives the items in the server's order") {
-                withServer { server ->
+                withMockServer { server ->
                     val items = listOf(randomBookSuggestion(), randomBookSuggestion())
                     val body = items.joinToString(",", """{"status":"ready","items":[""", "]}") { it.toJson() }
                     server.enqueue(reply(200, body))
@@ -82,7 +68,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
             }
 
             it("#106 TC-2: fills in the fields an item leaves out") {
-                withServer { server ->
+                withMockServer { server ->
                     val url = randomString()
                     server.enqueue(reply(200, """{"status":"ready","items":[{"hardcover_url":"$url"}]}"""))
 
@@ -93,7 +79,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
             }
 
             it("#106 TC-4: is an empty answer regardless of how the items are absent") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(Exhaustive.of("""{"status":"ready","items":[]}""", """{"status":"ready"}""")) { body ->
                         server.enqueue(reply(200, body))
 
@@ -105,7 +91,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         }
 
         it("#106 TC-3: reads each status the server can still answer with") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(
                         "pending" to SuggestionsAnswer.Pending,
@@ -121,7 +107,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         }
 
         it("#106 TC-5, TC-6: asks for the book with its uuid as one encoded path segment") {
-            withServer { server ->
+            withMockServer { server ->
                 server.enqueue(reply(200, """{"status":"pending"}"""))
 
                 sut(server.url("/")).getSuggestions("a/b c")
@@ -133,7 +119,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         }
 
         it("#106 TC-7, TC-8: reports UnexpectedResponse regardless of how the body is unreadable") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(Exhaustive.of("""{"status":"archived"}""", """{"items":[]}""", "<html>", "[]")) { body ->
                     server.enqueue(reply(200, body))
 
@@ -144,7 +130,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         }
 
         it("#106 TC-9: reports each failure status as its own error") {
-            withServer { server ->
+            withMockServer { server ->
                 checkAll(
                     Exhaustive.of(
                         401 to SuggestionsError.SessionExpired,
@@ -162,7 +148,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server cannot be reached") {
 
             it("#106 TC-10: reports Unreachable") {
-                sut(closedServerUrl()).getSuggestions(randomString()) shouldBe
+                sut(unreachableUrl()).getSuggestions(randomString()) shouldBe
                     SuggestionsResult.Failure(SuggestionsError.Unreachable)
             }
         }
@@ -178,7 +164,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
     describe("reading a suggestion's cover") {
 
         it("#106 TC-13: asks for the same path regardless of a leading slash") {
-            withServer { server ->
+            withMockServer { server ->
                 val path = randomCoverPath()
 
                 checkAll(Exhaustive.of(path, path.removePrefix("/"))) { asked ->
@@ -194,7 +180,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server sits behind a path prefix") {
 
             it("#106 TC-14: keeps the prefix") {
-                withServer { server ->
+                withMockServer { server ->
                     val path = randomCoverPath()
                     server.enqueue(coverReply(ByteArray(1)).build())
 
@@ -208,7 +194,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server has the cover") {
 
             it("#106 TC-15: gives the cover") {
-                withServer { server ->
+                withMockServer { server ->
                     val bytes = randomString().encodeToByteArray()
                     val type = "image/${randomString()}"
                     server.enqueue(coverReply(bytes).addHeader("Content-Type", type).build())
@@ -223,7 +209,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
             context("when the server names no type") {
 
                 it("#106 TC-15: gives no type") {
-                    withServer { server ->
+                    withMockServer { server ->
                         server.enqueue(coverReply(ByteArray(1)).removeHeader("Content-Type").build())
 
                         val found = sut(server.url("/")).getCover(randomCoverPath()).shouldBeTypeOf<SuggestionCoverResult.Found>()
@@ -237,7 +223,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server has no such cover") {
 
             it("#106 TC-16: reports NotFound") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(404))
 
                     sut(server.url("/")).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.NotFound
@@ -248,7 +234,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server fails") {
 
             it("#106 TC-17: reports Failure") {
-                withServer { server ->
+                withMockServer { server ->
                     server.enqueue(reply(500))
 
                     sut(server.url("/")).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
@@ -259,7 +245,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the server cannot be reached") {
 
             it("#106 TC-17: reports Failure") {
-                sut(closedServerUrl()).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
+                sut(unreachableUrl()).getCover(randomCoverPath()) shouldBe SuggestionCoverResult.Failure
             }
         }
 
@@ -273,7 +259,7 @@ class DefaultSuggestionsRepositoryTest : DescribeSpec({
         context("when the path is not a suggestion cover") {
 
             it("#106 TC-18: reports NotFound without asking the server, regardless of the path") {
-                withServer { server ->
+                withMockServer { server ->
                     checkAll(
                         Exhaustive.of(
                             "https://evil/x",

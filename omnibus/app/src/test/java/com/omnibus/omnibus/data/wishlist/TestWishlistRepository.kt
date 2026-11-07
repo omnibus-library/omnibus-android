@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.wishlist
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +30,7 @@ class TestWishlistRepository : WishlistRepository {
     /** The next refresh's answer. A refresh applies the head when present, and otherwise leaves the state alone. */
     val refreshResults = ArrayDeque<WishlistState>()
 
-    /** The next removal's result. When empty, a removal succeeds with `bookDeleted = false`. */
+    /** The next removal's result. */
     val removalResults = ArrayDeque<WishlistRemovalResult>()
 
     /** When non-empty, the next removal waits on the head before taking its result. */
@@ -55,7 +56,7 @@ class TestWishlistRepository : WishlistRepository {
     override suspend fun removeFromWishlist(bookUuid: String): WishlistRemovalResult {
         removeCalls += bookUuid
         removalGates.removeFirstOrNull()?.await()
-        val result = removalResults.removeFirstOrNull() ?: WishlistRemovalResult.Removed(bookDeleted = false)
+        val result = removalResults.removeFirstOrNull() ?: unscripted("removeFromWishlist")
         if (result is WishlistRemovalResult.Removed) stateFor(bookUuid).value = WishlistState.Absent
         return result
     }

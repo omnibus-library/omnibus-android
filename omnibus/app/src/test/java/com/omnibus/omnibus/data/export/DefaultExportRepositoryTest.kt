@@ -8,10 +8,13 @@ import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.TEST_RANDOM
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
@@ -60,13 +63,6 @@ private fun audioPath(uuid: String) = "/api/audiobooks/$uuid/download"
 
 private fun randomFileBytes(): ByteArray = randomString().toByteArray()
 
-private fun json(code: Int, body: String): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-private fun notFound(): MockResponse = MockResponse.Builder().code(404).build()
-
-/** Closes the socket before any response, so the client sees a dropped connection. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
-
 /** A 200 response carrying [body] and the given headers. */
 private fun file(body: ByteArray, vararg headers: Pair<String, String>): MockResponse {
     val builder = MockResponse.Builder().code(200)
@@ -94,7 +90,7 @@ private class RecordingServer(private val server: MockWebServer) {
     val requests = ConcurrentLinkedQueue<RecordedRequest>()
 
     @Volatile
-    var respond: (RecordedRequest) -> MockResponse = { notFound() }
+    var respond: (RecordedRequest) -> MockResponse = { reply(404) }
 
     val url: HttpUrl get() = server.url("/")
 
@@ -110,15 +106,12 @@ private class RecordingServer(private val server: MockWebServer) {
     /** Answers by `METHOD encodedPath`. A request not in [routes] gets a 404. */
     fun on(vararg routes: Pair<String, () -> MockResponse>) {
         val table = routes.toMap()
-        respond = { request -> table["${request.method} ${request.url.encodedPath}"]?.invoke() ?: notFound() }
+        respond = { request -> table["${request.method} ${request.url.encodedPath}"]?.invoke() ?: reply(404) }
     }
 }
 
 private inline fun <T> withServer(block: (RecordingServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(RecordingServer(server))
-    }
+    withMockServer { server -> block(RecordingServer(server)) }
 
 /** Runs [block] with a [TestExportFileStore] under a temp directory, removed afterwards. */
 private inline fun <T> withStore(usable: Long = Long.MAX_VALUE, block: (TestExportFileStore) -> T): T {
@@ -195,7 +188,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
         it("#118 TC-36: POSTs the book as JSON") {
             withServer { server ->
                 val uuid = randomString()
-                server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { json(200, SENT) })
+                server.on("POST $SEND" to { reply(200, TASK_7) }, "GET $STATUS" to { reply(200, SENT) })
 
                 sut(server.url).sendToKindle(uuid)
 
@@ -211,8 +204,8 @@ class DefaultExportRepositoryTest : DescribeSpec({
             it("#118 TC-36: polls the task until it is sent") {
                 withServer { server ->
                     server.on(
-                        "POST $SEND" to { json(200, TASK_7) },
-                        "GET $STATUS" to seq(json(200, PENDING), json(200, PENDING), json(200, SENT)),
+                        "POST $SEND" to { reply(200, TASK_7) },
+                        "GET $STATUS" to seq(reply(200, PENDING), reply(200, PENDING), reply(200, SENT)),
                     )
 
                     sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Sent
@@ -225,7 +218,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
         context("when the send stays pending") {
             it("#118 TC-38: is unconfirmed once the poll budget is spent") {
                 withServer { server ->
-                    server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { json(200, PENDING) })
+                    server.on("POST $SEND" to { reply(200, TASK_7) }, "GET $STATUS" to { reply(200, PENDING) })
 
                     sut(server.url).sendToKindle(randomString()) shouldBe KindleSendResult.Unconfirmed
                 }
@@ -236,19 +229,19 @@ class DefaultExportRepositoryTest : DescribeSpec({
             it("#118 TC-37: maps each status answer to its outcome") {
                 withServer { server ->
                     val cases = listOf(
-                        json(200, """{"status":"failed","message":"Mailbox rejected"}""") to
+                        reply(200, """{"status":"failed","message":"Mailbox rejected"}""") to
                             KindleSendResult.Rejected("Mailbox rejected"),
-                        json(200, """{"status":"failed","message":"  "}""") to KindleSendResult.Rejected(null),
-                        json(200, """{"status":"failed"}""") to KindleSendResult.Rejected(null),
-                        json(200, """{"status":"failed","message":null}""") to KindleSendResult.Rejected(null),
-                        notFound() to KindleSendResult.Unconfirmed,
+                        reply(200, """{"status":"failed","message":"  "}""") to KindleSendResult.Rejected(null),
+                        reply(200, """{"status":"failed"}""") to KindleSendResult.Rejected(null),
+                        reply(200, """{"status":"failed","message":null}""") to KindleSendResult.Rejected(null),
+                        reply(404) to KindleSendResult.Unconfirmed,
                         dropped() to KindleSendResult.Unconfirmed,
-                        json(500, "boom") to KindleSendResult.Failed,
-                        json(200, """{"status":"weird"}""") to KindleSendResult.Failed,
-                        json(200, "not json") to KindleSendResult.Failed,
+                        reply(500, "boom") to KindleSendResult.Failed,
+                        reply(200, """{"status":"weird"}""") to KindleSendResult.Failed,
+                        reply(200, "not json") to KindleSendResult.Failed,
                     )
                     checkAll(Exhaustive.collection(cases)) { (status, expected) ->
-                        server.on("POST $SEND" to { json(200, TASK_7) }, "GET $STATUS" to { status })
+                        server.on("POST $SEND" to { reply(200, TASK_7) }, "GET $STATUS" to { status })
 
                         sut(server.url).sendToKindle(randomString()) shouldBe expected
                     }
@@ -260,12 +253,12 @@ class DefaultExportRepositoryTest : DescribeSpec({
             it("#118 TC-39: maps each answer to its result") {
                 withServer { server ->
                     val cases = listOf(
-                        json(409, "email delivery is not configured on this server") to KindleSendResult.NotConfigured,
-                        json(422, "add a Kindle address") to KindleSendResult.NoAddress,
-                        notFound() to KindleSendResult.NotFound,
-                        json(500, "boom") to KindleSendResult.Failed,
-                        json(401, "") to KindleSendResult.Failed,
-                        json(200, "not json") to KindleSendResult.Failed,
+                        reply(409, "email delivery is not configured on this server") to KindleSendResult.NotConfigured,
+                        reply(422, "add a Kindle address") to KindleSendResult.NoAddress,
+                        reply(404) to KindleSendResult.NotFound,
+                        reply(500, "boom") to KindleSendResult.Failed,
+                        reply(401, "") to KindleSendResult.Failed,
+                        reply(200, "not json") to KindleSendResult.Failed,
                         dropped() to KindleSendResult.Unreachable,
                     )
                     checkAll(Exhaustive.collection(cases)) { (answer, expected) ->
@@ -340,7 +333,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
                     checkAll(Exhaustive.collection(failedSaves())) { (kind, code, expected) ->
                         withStore { store ->
                             val uuid = randomString()
-                            server.on("GET ${pathOf(kind, uuid)}" to { json(code, "") })
+                            server.on("GET ${pathOf(kind, uuid)}" to { reply(code) })
 
                             sut(server.url, store).save(kind, uuid) shouldBe expected
                         }
@@ -353,7 +346,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
                     checkAll(Exhaustive.collection(failedSaves())) { (kind, code, _) ->
                         withStore { store ->
                             val uuid = randomString()
-                            server.on("GET ${pathOf(kind, uuid)}" to { json(code, "") })
+                            server.on("GET ${pathOf(kind, uuid)}" to { reply(code) })
 
                             sut(server.url, store).save(kind, uuid)
 
@@ -545,7 +538,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
             fun RecordingServer.serveParts(uuid: String) {
                 respond = { request ->
                     if (request.url.encodedPath == manifestPath(uuid)) {
-                        json(200, MANIFEST_3)
+                        reply(200, MANIFEST_3)
                     } else {
                         file(request.url.queryParameter("part")!!.toByteArray(), "Content-Disposition" to ATTACH_P_M4B)
                     }
@@ -596,7 +589,7 @@ class DefaultExportRepositoryTest : DescribeSpec({
                             val title = randomString()
                             server.requests.clear()
                             server.on(
-                                "GET ${manifestPath(uuid)}" to { json(200, manifest) },
+                                "GET ${manifestPath(uuid)}" to { reply(200, manifest) },
                                 "GET ${audioPath(uuid)}" to { file(randomFileBytes(), "Content-Disposition" to ATTACH_P_M4B) },
                             )
 
@@ -615,10 +608,10 @@ class DefaultExportRepositoryTest : DescribeSpec({
             it("#118 TC-53: maps each status and unreadable body, before any audio request") {
                 withServer { server ->
                     val cases = listOf(
-                        notFound() to ExportSaveResult.NotFound,
-                        json(403, "") to ExportSaveResult.Forbidden,
-                        json(500, "boom") to ExportSaveResult.Failed,
-                        json(200, "not json") to ExportSaveResult.Failed,
+                        reply(404) to ExportSaveResult.NotFound,
+                        reply(403, "") to ExportSaveResult.Forbidden,
+                        reply(500, "boom") to ExportSaveResult.Failed,
+                        reply(200, "not json") to ExportSaveResult.Failed,
                     )
                     checkAll(Exhaustive.collection(cases)) { (manifest, expected) ->
                         withStore { store ->
@@ -639,8 +632,8 @@ class DefaultExportRepositoryTest : DescribeSpec({
             fun RecordingServer.failSecondPart(uuid: String) {
                 respond = { request ->
                     when {
-                        request.url.encodedPath == manifestPath(uuid) -> json(200, MANIFEST_3)
-                        request.url.queryParameter("part") == "2" -> notFound()
+                        request.url.encodedPath == manifestPath(uuid) -> reply(200, MANIFEST_3)
+                        request.url.queryParameter("part") == "2" -> reply(404)
                         else -> file(randomFileBytes(), "Content-Disposition" to ATTACH_P_M4B)
                     }
                 }

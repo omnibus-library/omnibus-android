@@ -1,13 +1,14 @@
 package com.omnibus.omnibus.data.audiobook.crossformat
 
-import com.omnibus.omnibus.data.audiobook.ScriptedServer
 import com.omnibus.omnibus.data.audiobook.crossformat.local.CrossFormatDismissStore
-import com.omnibus.omnibus.data.audiobook.httpClientFor
-import com.omnibus.omnibus.data.audiobook.unreachableUrl
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -43,7 +44,7 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
     fun sut(baseUrl: HttpUrl?, dismissStore: CrossFormatDismissStore = TestCrossFormatDismissStore()) =
         DefaultCrossFormatRepository(
             ioDispatcher = Dispatchers.Unconfined,
-            omnibusHttpClient = httpClientFor(baseUrl),
+            omnibusHttpClient = testOmnibusHttpClient(baseUrl),
             dismissStore = dismissStore,
         )
 
@@ -51,10 +52,10 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
 
         // I-RES-7, P-SYNC-7
         it("#166 TC-5: maps a candidate's fields, over the follow value crossed with the source-ahead value (I-RES-7, P-SYNC-AC5)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { follow, ahead ->
                     val candidate = randomCandidate().copy(follow = follow, sourceAhead = ahead)
-                    server.answer(
+                    script.answer(
                         200,
                         """{"state":"candidate","follow":$follow,"candidate":{
                           "source_client_updated_at":${candidate.sourceClock},
@@ -63,20 +64,20 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
                           "source_ahead":$ahead}}""",
                     )
 
-                    sut(server.baseUrl).audioResume(randomString()) shouldBe candidate
+                    sut(url).audioResume(randomString()) shouldBe candidate
                 }
             }
         }
 
         // I-RES-7, P-SYNC-7
         it("#166 TC-5: asks for the book's audio target (I-RES-7)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 val book = randomString()
-                server.answer(200, candidateBody())
+                script.answer(200, candidateBody())
 
-                sut(server.baseUrl).audioResume(book)
+                sut(url).audioResume(book)
 
-                val request = server.takeRequest()
+                val request = nextRequest()
                 request.url.encodedPath shouldBe "/api/books/$book/cross-format-resume"
                 request.url.queryParameter("target") shouldBe "audio"
             }
@@ -84,11 +85,11 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
 
         // P-SYNC-AC5, R6
         it("#166 TC-7: treats an absent or null source_ahead as ahead (P-SYNC-AC5)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(Exhaustive.of("", ""","source_ahead":null""")) { field ->
-                    server.answer(200, candidateBody(field))
+                    script.answer(200, candidateBody(field))
 
-                    sut(server.baseUrl).audioResume(randomString())
+                    sut(url).audioResume(randomString())
                         .shouldBeInstanceOf<CrossFormatAudioResult.Candidate>().sourceAhead shouldBe true
                 }
             }
@@ -96,11 +97,11 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
 
         // R4
         it("#166 TC-11: leaves the file to the holder, for a null or absent book_file_id (I-RES-7)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(Exhaustive.of("", ""","book_file_id":null""")) { field ->
-                    server.answer(200, candidateBody(field))
+                    script.answer(200, candidateBody(field))
 
-                    sut(server.baseUrl).audioResume(randomString())
+                    sut(url).audioResume(randomString())
                         .shouldBeInstanceOf<CrossFormatAudioResult.Candidate>().bookFileId.shouldBeNull()
                 }
             }
@@ -108,18 +109,18 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
 
         // I-RES-7, R4: every state other than candidate is no offer, including one the app doesn't know yet
         it("#166 TC-8, TC-9: answers NoCandidate for each state other than candidate (I-RES-7)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(Exhaustive.of("not_linked", "link_stale", "nothing_newer", "aligned", "something_new")) { state ->
-                    server.answer(200, candidateBody(state = state))
+                    script.answer(200, candidateBody(state = state))
 
-                    sut(server.baseUrl).audioResume(randomString()) shouldBe CrossFormatAudioResult.NoCandidate
+                    sut(url).audioResume(randomString()) shouldBe CrossFormatAudioResult.NoCandidate
                 }
             }
         }
 
         // R4
         it("#166 TC-10: answers NoCandidate for each candidate with no position (I-RES-7)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         """{"state":"candidate","candidate":{"source_client_updated_at":42,"audio_position_seconds":null}}""",
@@ -127,22 +128,22 @@ class DefaultCrossFormatRepositoryTest : DescribeSpec({
                         """{"state":"candidate"}""",
                     ),
                 ) { body ->
-                    server.answer(200, body)
+                    script.answer(200, body)
 
-                    sut(server.baseUrl).audioResume(randomString()) shouldBe CrossFormatAudioResult.NoCandidate
+                    sut(url).audioResume(randomString()) shouldBe CrossFormatAudioResult.NoCandidate
                 }
             }
         }
 
         // R4: never thrown
         it("#166 TC-12, TC-13: answers Failed for each HTTP error or unreadable body (I-RES-7)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(404 to "", 500 to "", 200 to "not json", 200 to "", 200 to "[]", 200 to "\"x\""),
                 ) { (code, body) ->
-                    server.answer(code, body)
+                    script.answer(code, body)
 
-                    sut(server.baseUrl).audioResume(randomString()) shouldBe CrossFormatAudioResult.Failed
+                    sut(url).audioResume(randomString()) shouldBe CrossFormatAudioResult.Failed
                 }
             }
         }

@@ -60,7 +60,7 @@ class LoginViewModelTest : DescribeSpec({
             it("sends the entered credentials") {
                 val username = randomString()
                 val password = randomString()
-                val auth = TestAuthRepository()
+                val auth = TestAuthRepository().apply { signInGate = CompletableDeferred() }
 
                 sut(auth, savedServer()).attemptLogin(username, password)
 
@@ -145,7 +145,7 @@ class LoginViewModelTest : DescribeSpec({
             it("TC-53: sends the entered credentials") {
                 val username = randomString()
                 val password = randomString()
-                val auth = TestAuthRepository()
+                val auth = TestAuthRepository().apply { registerGate = CompletableDeferred() }
 
                 sut(auth, savedServer()).attemptRegister(username, password)
 

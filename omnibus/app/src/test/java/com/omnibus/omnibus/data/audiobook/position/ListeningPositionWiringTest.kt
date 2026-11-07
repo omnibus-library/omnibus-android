@@ -4,7 +4,6 @@ import com.omnibus.omnibus.data.audiobook.AudiobookManifestError
 import com.omnibus.omnibus.data.audiobook.AudiobookManifestResult
 import com.omnibus.omnibus.data.audiobook.playback.CallRecorder
 import com.omnibus.omnibus.data.audiobook.playback.ControllerRig
-import com.omnibus.omnibus.data.audiobook.playback.PlaybackListener
 import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.di.ClientIdSource
 import com.omnibus.omnibus.di.TimeSource
@@ -36,21 +35,16 @@ private class Wiring(order: MutableList<String>? = null) : AutoCloseable {
     private val time = TimeSource { scheduler.currentTime }
     private var minted = 0
     val repo = TestListeningProgressRepository(order)
-    lateinit var rig: ControllerRig
     val sync = DefaultListeningPositionSync(repo, dagger.Lazy { rig.controller }, time, scope)
     val recorder = CallRecorder()
-
-    init {
-        val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, TestDeviceTimeZone(), scope)
-        val marker = ReadStatusMarker(TestReadStatusRepository(), scope)
-        val listeners: Set<PlaybackListener> = linkedSetOf(sync, tracker, marker, recorder)
-        rig = ControllerRig(
-            scheduler,
-            resolver = DefaultResumeStartResolver(repo, sync, scope),
-            listeners = listeners,
-            order = order,
-        )
-    }
+    private val tracker = ListeningSessionTracker(repo, time, ClientIdSource { "c-${++minted}" }, TestDeviceTimeZone(), scope)
+    private val marker = ReadStatusMarker(TestReadStatusRepository(), scope)
+    val rig: ControllerRig = ControllerRig(
+        scheduler,
+        resolver = DefaultResumeStartResolver(repo, sync, scope),
+        listeners = linkedSetOf(sync, tracker, marker, recorder),
+        order = order,
+    )
 
     override fun close() {
         rig.close()
@@ -86,6 +80,7 @@ class ListeningPositionWiringTest : DescribeSpec({
                 Wiring().use { w ->
                     w.repo.locals["book-1"] = randomAudioPosition().copy(positionSeconds = 90.0, bookFileId = 11L)
                     w.repo.serverAnswers["book-1"] = CompletableDeferred()
+                    w.rig.stageBook()
                     w.rig.controller.load("book-1", null, null, true)
 
                     w.rig.advance(1_199)
@@ -101,6 +96,7 @@ class ListeningPositionWiringTest : DescribeSpec({
                 it("TC-82: keeps the server read going (CC1)") {
                     Wiring().use { w ->
                         w.repo.serverAnswers["book-1"] = CompletableDeferred()
+                        w.rig.stageBook()
                         w.rig.controller.load("book-1", null, null, true)
                         w.rig.settle()
 
@@ -119,18 +115,21 @@ class ListeningPositionWiringTest : DescribeSpec({
                 Exhaustive.of<(Wiring) -> Unit>(
                     { w ->
                         w.rig.repository.pending = CompletableDeferred()
+                        w.rig.stageBook()
                         w.rig.controller.load("book-1", null, null, true)
                         w.rig.settle()
                         w.rig.controller.stop()
                     },
                     { w ->
                         w.rig.repository.pending = CompletableDeferred()
+                        w.rig.stageBook()
                         w.rig.controller.load("book-1", null, null, true)
                         w.rig.settle()
                         w.rig.controller.load(randomString(), null, null, true)
                     },
                     { w ->
                         w.rig.repository.result = AudiobookManifestResult.Failure(AudiobookManifestError.Unreachable)
+                        w.rig.stageBook()
                         w.rig.controller.load("book-1", null, null, true)
                     },
                 ),
@@ -155,6 +154,7 @@ class ListeningPositionWiringTest : DescribeSpec({
                 val gate = CompletableDeferred<ServerAudioPosition?>()
                 w.repo.locals["book-1"] = randomAudioPosition().copy(positionSeconds = 30.0, bookFileId = 11L, clientUpdatedAt = 10L)
                 w.repo.serverAnswers["book-1"] = gate
+                w.rig.stageBook()
                 w.rig.controller.load("book-1", null, null, true)
                 w.rig.advance(1_200)
 

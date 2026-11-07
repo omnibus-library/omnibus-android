@@ -8,11 +8,16 @@ import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.testing.ScriptedServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -30,17 +35,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 
 /** This record as the server writes it, with its times in seconds. */
@@ -50,62 +50,10 @@ private fun ReadStatusRecord.toBody(): String = listOfNotNull(
     finishedAtMillis?.let { "\"finished_at\":${it / 1_000L}" },
 ).joinToString(prefix = "{", postfix = "}", separator = ",")
 
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
 private fun reply(record: ReadStatusRecord): MockResponse = reply(200, record.toBody())
-
-/** A connection dropped before any response, which the client reports as an IOException. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 /** A random record of [status], so a test states only the status it depends on. */
 private fun recordOf(status: ReadStatus): ReadStatusRecord = randomReadStatusRecord().copy(status = status)
-
-/**
- * Answers requests from a script, per HTTP method, in order. A step can hold its response until the test releases
- * [CountDownLatch]. A request with no step gets a 500, so an unexpected call fails the test instead of hanging.
- */
-private class ScriptedDispatcher : Dispatcher() {
-    private class Step(val response: MockResponse, val gate: CountDownLatch?)
-
-    private val steps = mutableMapOf<String, ArrayDeque<Step>>()
-
-    fun answer(method: String, response: MockResponse, gate: CountDownLatch? = null) {
-        synchronized(steps) { steps.getOrPut(method) { ArrayDeque() }.addLast(Step(response, gate)) }
-    }
-
-    override fun dispatch(request: RecordedRequest): MockResponse {
-        val method = request.method.orEmpty()
-        val step = synchronized(steps) { steps[method]?.removeFirstOrNull() }
-            ?: return reply(500, "unscripted $method")
-        step.gate?.await(5, TimeUnit.SECONDS)
-        return step.response
-    }
-}
-
-/** A running server that answers from [script], and [scope], a place for work that outlives one call. */
-private class TestServer(val server: MockWebServer, val script: ScriptedDispatcher, val scope: CoroutineScope) {
-
-    val url: HttpUrl get() = server.url("/")
-
-    /** Waits for the next request the server received, in arrival order. */
-    fun nextRequest(): RecordedRequest =
-        checkNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
-}
-
-/** Runs [test] against a new [TestServer], and closes it afterwards. */
-private suspend fun withServer(test: suspend TestServer.() -> Unit) {
-    val script = ScriptedDispatcher()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    MockWebServer().use { server ->
-        server.dispatcher = script
-        server.start()
-        try {
-            TestServer(server, script, scope).test()
-        } finally {
-            scope.cancel()
-        }
-    }
-}
 
 /** Waits until the shared state for [uuid] is [expected]. */
 private suspend fun ReadStatusRepository.awaitState(uuid: String, expected: ReadStatusState) {
@@ -133,11 +81,11 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
     )
 
     /** A [sut] that runs HTTP on real threads, which lets a test hold a request open. */
-    fun TestServer.threadedSut(now: Long = randomLong()): DefaultReadStatusRepository =
+    fun ScriptedServer.threadedSut(now: Long = randomLong()): DefaultReadStatusRepository =
         sut(url, now, scope, Dispatchers.IO)
 
     /** Reads [record] for [uuid], so its state is Known, and takes that request from the server's queue. */
-    suspend fun TestServer.load(repository: ReadStatusRepository, uuid: String, record: ReadStatusRecord) {
+    suspend fun ScriptedServer.load(repository: ReadStatusRepository, uuid: String, record: ReadStatusRecord) {
         script.answer("GET", reply(record))
         repository.fetchStatus(uuid)
         nextRequest()
@@ -152,7 +100,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the server has a record") {
 
             it("TC-1, TC-2: maps its times from seconds to milliseconds") {
-                withServer {
+                withScriptedServer {
                     val record = randomReadStatusRecord().copy(
                         updatedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L,
                         finishedAtMillis = randomLong(0L..2_000_000_000L) * 1_000L,
@@ -167,7 +115,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the server has no record") {
 
             it("TC-3: reads as a known Unread") {
-                withServer {
+                withScriptedServer {
                     script.answer("GET", reply(200, "null"))
 
                     sut(url).fetchStatus(randomString()) shouldBe
@@ -177,7 +125,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         }
 
         it("TC-4: reads a token regardless of its case, reading anything else as Unread") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         """{"status":"abandoned"}""" to ReadStatus.Unread,
@@ -194,7 +142,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         }
 
         it("TC-5, TC-6, TC-8: is Failed regardless of how the read goes wrong") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         reply(401),
@@ -223,7 +171,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("TC-9: fails without asking the server, regardless of the blank") {
-                withServer {
+                withScriptedServer {
                     checkAll(Exhaustive.of("", "   ")) { uuid ->
                         sut(url).fetchStatus(uuid) shouldBe ReadStatusState.Failed
 
@@ -234,7 +182,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         }
 
         it("TC-10: asks for the book with its uuid as one encoded path segment") {
-            withServer {
+            withScriptedServer {
                 script.answer("GET", reply(randomReadStatusRecord()))
 
                 sut(url).fetchStatus("book one")
@@ -246,7 +194,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the read fails after an earlier answer") {
 
             it("TC-13: keeps the earlier answer as the state") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val record = randomReadStatusRecord()
                     val repository = sut(url)
@@ -263,7 +211,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when a read is in flight") {
 
             it("TC-12: shares it with another caller") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(randomReadStatusRecord()), gate)
@@ -283,7 +231,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the last read has completed") {
 
             it("TC-12: reads again on a refresh") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val latest = randomReadStatusRecord()
                     val repository = sut(url)
@@ -303,7 +251,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when nothing is known") {
 
             it("TC-11: emits Unknown, then the server's answer") {
-                withServer {
+                withScriptedServer {
                     val record = randomReadStatusRecord()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(record), gate)
@@ -320,7 +268,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the status is already known") {
 
             it("TC-11: reads nothing more from the server") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, randomReadStatusRecord())
@@ -335,7 +283,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the first read fails") {
 
             it("TC-14: moves to Failed, then recovers on a refresh") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val record = randomReadStatusRecord()
                     val gate = CountDownLatch(1)
@@ -359,7 +307,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
     describe("setting the status") {
 
         it("TC-15: sends the lowercase token for the book as JSON, regardless of the status") {
-            withServer {
+            withScriptedServer {
                 checkAll(Exhaustive.enum<ReadStatus>()) { status ->
                     val uuid = randomString()
                     script.answer("PUT", reply(recordOf(status)))
@@ -379,7 +327,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("TC-16: fails with BookNotFound without asking the server") {
-                withServer {
+                withScriptedServer {
                     sut(url).setStatus("", randomEnum()) shouldBe ReadStatusWriteResult.Failed(ReadStatusError.BookNotFound)
 
                     server.requestCount shouldBe 0
@@ -390,7 +338,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the server is still answering") {
 
             it("TC-17: shows the new status with the time now") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val now = randomLong()
                     val gate = CountDownLatch(1)
@@ -412,7 +360,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             context("when moving out of Finished") {
 
                 it("TC-20: clears the finish time regardless of the new status") {
-                    withServer {
+                    withScriptedServer {
                         checkAll(Exhaustive.of(ReadStatus.Reading, ReadStatus.Unread)) { status ->
                             val uuid = randomString()
                             val now = randomLong()
@@ -435,7 +383,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             context("when moving into Finished") {
 
                 it("TC-21: takes the time now as the finish time") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val now = randomLong()
                         val gate = CountDownLatch(1)
@@ -459,7 +407,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the server accepts the write") {
 
             it("TC-18: replaces the shown status with the server's record") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val record = randomReadStatusRecord()
                     script.answer("PUT", reply(record))
@@ -475,7 +423,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the status is already the known one") {
 
             it("TC-22: answers Unchanged without asking the server, regardless of the status") {
-                withServer {
+                withScriptedServer {
                     checkAll(Exhaustive.enum<ReadStatus>()) { status ->
                         val uuid = randomString()
                         val repository = sut(url)
@@ -493,7 +441,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when nothing is known yet") {
 
             it("TC-23: sends the write regardless of the status") {
-                withServer {
+                withScriptedServer {
                     checkAll(Exhaustive.enum<ReadStatus>()) { status ->
                         val record = recordOf(status)
                         script.answer("PUT", reply(record))
@@ -507,7 +455,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the write fails") {
 
             it("TC-24: reports each failure as its own error") {
-                withServer {
+                withScriptedServer {
                     checkAll(
                         Exhaustive.of(
                             dropped() to ReadStatusError.Unreachable,
@@ -527,7 +475,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             }
 
             it("TC-25: shows the new status, then restores the exact previous record") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val now = randomLong()
                     val previous = recordOf(ReadStatus.Finished)
@@ -560,7 +508,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             context("when the older write succeeds") {
 
                 it("TC-26: keeps the newer write's value") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val now = randomLong()
                         val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, now, now))
@@ -588,7 +536,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             context("when the older write fails") {
 
                 it("TC-27: keeps the newer write's value") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val now = randomLong()
                         val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Finished, now, now))
@@ -614,7 +562,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             }
 
             it("TC-28: rolls back to the older write's record once the newer one fails") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val confirmed = recordOf(ReadStatus.Reading)
                     val gateA = CountDownLatch(1)
@@ -634,7 +582,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             }
 
             it("TC-29: holds the newer write back until the older one is answered") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gateA = CountDownLatch(1)
                     val repository = threadedSut()
@@ -656,7 +604,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when a read started before the write") {
 
             it("TC-30: keeps the write's record as the state") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val written = recordOf(ReadStatus.Finished)
                     val gate = CountDownLatch(1)
@@ -678,7 +626,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when a read lands during the write") {
 
             it("TC-103: keeps showing the write's value") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val now = randomLong()
                     val optimistic = ReadStatusState.Known(ReadStatusRecord(ReadStatus.Reading, now, null))
@@ -702,7 +650,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             }
 
             it("TC-103: falls back to the read's record once the write fails") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val read = recordOf(ReadStatus.Finished)
                     val readGate = CountDownLatch(1)
@@ -728,7 +676,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when the caller is cancelled") {
 
             it("TC-31: lets the write finish") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val record = recordOf(ReadStatus.Finished)
                     val gate = CountDownLatch(1)
@@ -748,7 +696,7 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
         context("when another book has a known status") {
 
             it("TC-32: leaves that book's status alone") {
-                withServer {
+                withScriptedServer {
                     val other = randomString()
                     val record = randomReadStatusRecord()
                     val repository = sut(url)

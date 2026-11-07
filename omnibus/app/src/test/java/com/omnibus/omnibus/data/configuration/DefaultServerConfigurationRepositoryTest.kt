@@ -15,6 +15,7 @@ import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -32,12 +33,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-
-private inline fun <T> withServer(block: (MockWebServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(server)
-    }
 
 /** Runs [block] with an empty preferences store on a temp file, removed afterwards. */
 private suspend inline fun <T> withPreferences(block: (DataStore<Preferences>) -> T): T {
@@ -57,7 +52,7 @@ private suspend inline fun <T> withPreferences(block: (DataStore<Preferences>) -
 }
 
 private suspend inline fun <T> withServerAndPreferences(block: (MockWebServer, DataStore<Preferences>) -> T): T =
-    withServer { server -> withPreferences { preferences -> block(server, preferences) } }
+    withMockServer { server -> withPreferences { preferences -> block(server, preferences) } }
 
 private fun ok(): MockResponse = MockResponse.Builder().code(200).build()
 
@@ -260,7 +255,7 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
         context("when the server can't be reached") {
             it("returns ServerNotFound") {
                 withPreferences { preferences ->
-                    val closed = withServer { it.url("/").toString() }
+                    val closed = withMockServer { it.url("/").toString() }
 
                     sut(preferences).validateServerAddress(closed) shouldBe ServerValidationResult.ServerNotFound
                 }

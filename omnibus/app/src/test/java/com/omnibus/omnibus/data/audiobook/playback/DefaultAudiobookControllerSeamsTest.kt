@@ -34,6 +34,7 @@ class DefaultAudiobookControllerSeamsTest : DescribeSpec({
             val rig = sut(resolver = resolver)
             rig.repository.pending = CompletableDeferred()
 
+            rig.stageBook()
             rig.controller.load("book-1", 33L, 120.0, true)
             rig.settle()
 

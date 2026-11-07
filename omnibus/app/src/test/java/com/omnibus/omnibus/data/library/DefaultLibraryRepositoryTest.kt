@@ -1,13 +1,13 @@
 package com.omnibus.omnibus.data.library
 
-import com.omnibus.omnibus.data.network.nextRequest
-import com.omnibus.omnibus.data.network.reply
-import com.omnibus.omnibus.data.network.testOmnibusHttpClient
-import com.omnibus.omnibus.data.network.withMockServer
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe

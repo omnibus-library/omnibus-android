@@ -18,6 +18,7 @@ import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -55,7 +56,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
                 val uuid = randomString()
                 val cfi = randomCfi()
                 val title = randomString()
-                val bookmarks = TestBookmarksRepository()
+                val bookmarks = TestBookmarksRepository().apply { onAdd = { awaitCancellation() } }
                 val vm = sut(bookUuid = uuid, bookmarksRepository = bookmarks)
                 vm.relocateTo(cfi, chapterTitle = title)
 
@@ -88,6 +89,7 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
                 val elsewhere = randomBookmark().copy(position = randomCfi())
                 val bookmarks = TestBookmarksRepository().apply {
                     seed(uuid, BookmarksState.Loaded(listOf(first, second, elsewhere)))
+                    onRemove = { awaitCancellation() }
                 }
                 val vm = sut(bookUuid = uuid, bookmarksRepository = bookmarks)
                 vm.relocateTo(cfi)

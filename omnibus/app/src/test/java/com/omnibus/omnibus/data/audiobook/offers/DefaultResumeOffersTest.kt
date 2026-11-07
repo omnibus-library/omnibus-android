@@ -58,7 +58,7 @@ private inline fun withScope(block: (CoroutineScope) -> Unit) {
     }
 }
 
-private fun controllerHolding(book: PlayingBook) = TestAudiobookController(playbackState(book))
+private fun controllerHolding(book: PlayingBook) = TestAudiobookController(playbackState(book, positionSeconds = 0.0, isLoading = false))
 
 /** A candidate for [book]'s file, to offer rather than to follow. */
 private fun offerableCandidate(book: PlayingBook) = randomCandidate().copy(bookFileId = book.bookFileId, follow = false)
@@ -240,8 +240,8 @@ class DefaultResumeOffersTest : DescribeSpec({
 
             checkAll(
                 Exhaustive.of(
-                    playbackState(book.copy(bookUuid = "${book.bookUuid}-other")),
-                    playbackState(book.copy(bookFileId = book.bookFileId + 1)),
+                    playbackState(book.copy(bookUuid = "${book.bookUuid}-other"), isLoading = false),
+                    playbackState(book.copy(bookFileId = book.bookFileId + 1), isLoading = false),
                     playbackState(book, isLoading = true),
                 ),
             ) { moved ->

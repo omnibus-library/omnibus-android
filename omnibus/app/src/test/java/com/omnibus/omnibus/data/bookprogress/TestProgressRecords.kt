@@ -4,12 +4,14 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.ProgressRecord
 import com.omnibus.omnibus.data.library.ResolvedPosition
 import com.omnibus.omnibus.feature.bookdetail.progress.BookChapter
+import com.omnibus.omnibus.testing.randomLong
+import com.omnibus.omnibus.testing.randomString
 
 /** An epub progress record at [percent] (0 to 100, or null for a CFI-only record) with ordering clock [clock]. */
 fun readingRecord(
     percent: Double?,
     clock: Long,
-    cfi: String? = "epubcfi(/6/4)",
+    cfi: String? = randomString(),
     resolved: ResolvedPosition? = null,
     updatedAt: Long = clock,
     clientUpdatedAt: Long? = clock,
@@ -32,7 +34,7 @@ fun listeningRecord(
     positionSeconds: Double?,
     clock: Long,
     totalSeconds: Double? = null,
-    bookFileId: Long? = 7L,
+    bookFileId: Long? = randomLong(),
     updatedAt: Long = clock,
     clientUpdatedAt: Long? = clock,
     uuid: String = "book-1",

@@ -1,15 +1,17 @@
 package com.omnibus.omnibus.data.progress
 
-import com.omnibus.omnibus.data.network.nextRequest
-import com.omnibus.omnibus.data.network.pausedDispatcher
-import com.omnibus.omnibus.data.network.reply
-import com.omnibus.omnibus.data.network.testOmnibusHttpClient
-import com.omnibus.omnibus.data.network.withMockServer
 import com.omnibus.omnibus.data.progress.local.ReadingPositionStore
 import com.omnibus.omnibus.data.progress.local.TestReadingPositionStore
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
+import com.omnibus.omnibus.testing.pausedDispatcher
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
@@ -23,11 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
-
-private fun onConnectDrop(): MockResponse = MockResponse.Builder().onRequestStart(SocketEffect.CloseSocket()).build()
 
 class DefaultProgressRepositoryTest : DescribeSpec({
 
@@ -110,11 +108,11 @@ class DefaultProgressRepositoryTest : DescribeSpec({
                         Exhaustive.of(
                             reply(500) to ProgressError.Http(500),
                             reply(401) to ProgressError.SessionExpired,
-                            onConnectDrop() to ProgressError.Unreachable,
+                            dropped() to ProgressError.Unreachable,
                         ),
                     ) { (answer, error) ->
-                        withMockServer { server ->
-                            server.enqueue(answer)
+                        withScriptedServer {
+                            script.answer(answer)
 
                             sut(server).savePosition(randomReadingPosition(), push = true) shouldBe
                                 PositionSaveResult.Failed(error)
@@ -256,9 +254,9 @@ class DefaultProgressRepositoryTest : DescribeSpec({
 
         context("when the read fails") {
             it("TC-53: is Error, for every kind of failure") {
-                checkAll(Exhaustive.of(reply(500), onConnectDrop(), reply(200, "{not json"))) { answer ->
-                    withMockServer { server ->
-                        server.enqueue(answer)
+                checkAll(Exhaustive.of(reply(500), dropped(), reply(200, "{not json"))) { answer ->
+                    withScriptedServer {
+                        script.answer(answer)
 
                         sut(server).getServerPosition(randomString()) shouldBe ServerPositionResult.Error
                     }

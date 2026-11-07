@@ -5,7 +5,9 @@ import com.omnibus.omnibus.data.library.ProgressFormat.Listening
 import com.omnibus.omnibus.data.library.ProgressFormat.Reading
 import com.omnibus.omnibus.data.library.ResolvedPosition
 import com.omnibus.omnibus.data.library.randomBook
-import com.omnibus.omnibus.data.library.testResumePoint
+import com.omnibus.omnibus.data.library.about
+import com.omnibus.omnibus.data.library.randomResumePoint
+import com.omnibus.omnibus.data.library.withRecord
 import com.omnibus.omnibus.feature.library.PositionLabel.Chapter
 import com.omnibus.omnibus.feature.library.PositionLabel.InProgress
 import com.omnibus.omnibus.feature.library.PositionLabel.Part
@@ -26,13 +28,10 @@ class ContinueCardsTest : DescribeSpec({
     /** A book with a uuid of its own, in the given [formats]. */
     fun book(vararg formats: String) = randomBook().copy(uniqueIdentifier = randomString(8..16), formats = formats.toList())
 
-    fun listeningPoint(position: Double? = 600.0, total: Double? = 3600.0, rate: Double? = null) = testResumePoint(
-        book = book("m4b"),
-        format = Listening,
-        audioPositionSeconds = position,
-        totalDurationSeconds = total,
-        playbackRate = rate,
-    )
+    fun listeningPoint(position: Double? = 600.0, total: Double? = 3600.0, rate: Double? = null) = randomResumePoint()
+        .about(book("m4b"))
+        .copy(playbackRate = rate, audioPart = null, audioPartCount = null)
+        .withRecord { copy(format = Listening, audioPositionSeconds = position, totalDurationSeconds = total, resolved = null) }
 
     describe("the medium a card presents") {
         it("#22 TC-5: is the requested one unless the book lacks it, for each format mix") {
@@ -70,14 +69,14 @@ class ContinueCardsTest : DescribeSpec({
         context("when reading") {
             it("#22 TC-6: is the percent, clamped at both ends") {
                 checkAll(Exhaustive.of(42.0 to 0.42, 140.0 to 1.0, -5.0 to 0.0)) { (percent, fraction) ->
-                    testResumePoint(progressPercent = percent).fraction(Reading) shouldBe fraction
+                    randomResumePoint().withRecord { copy(format = Reading, progressPercent = percent) }.fraction(Reading) shouldBe fraction
                 }
             }
         }
 
         context("when presented as another medium") {
             it("#22 TC-6: is null") {
-                testResumePoint(progressPercent = 50.0, totalDurationSeconds = 1200.0, audioPositionSeconds = 300.0)
+                randomResumePoint().withRecord { copy(format = Reading, totalDurationSeconds = 1200.0, audioPositionSeconds = 300.0) }
                     .fraction(Listening) shouldBe null
             }
         }
@@ -92,14 +91,9 @@ class ContinueCardsTest : DescribeSpec({
             confidence = PositionConfidence.High,
         )
 
-        fun listeningWith(resolved: ResolvedPosition? = null, part: Int? = null, partCount: Int? = null) = testResumePoint(
-            format = Listening,
-            audioPositionSeconds = 600.0,
-            totalDurationSeconds = 3600.0,
-            resolved = resolved,
-            audioPart = part,
-            audioPartCount = partCount,
-        )
+        fun listeningWith(resolved: ResolvedPosition? = null, part: Int? = null, partCount: Int? = null) = randomResumePoint()
+            .copy(audioPart = part, audioPartCount = partCount, playbackRate = null)
+            .withRecord { copy(format = Listening, audioPositionSeconds = 600.0, totalDurationSeconds = 3600.0, resolved = resolved) }
 
         context("when listening") {
             it("#22 TC-7: prefers a confident chapter over the part") {
@@ -143,7 +137,8 @@ class ContinueCardsTest : DescribeSpec({
         context("when reading") {
             it("#22 TC-7: rounds to a whole percent read") {
                 checkAll(Exhaustive.of(42.4 to 42, 99.6 to 100, 0.0 to 0)) { (percent, read) ->
-                    positionLabelOf(testResumePoint(progressPercent = percent), Reading) shouldBe PercentRead(read)
+                    positionLabelOf(randomResumePoint().withRecord { copy(format = Reading, progressPercent = percent) }, Reading) shouldBe
+                        PercentRead(read)
                 }
             }
         }
@@ -153,7 +148,7 @@ class ContinueCardsTest : DescribeSpec({
                 checkAll(
                     Exhaustive.of(
                         listeningPoint(total = null) to Listening,
-                        testResumePoint(epubCfi = randomString()) to Reading,
+                        randomResumePoint().withRecord { copy(format = Reading, progressPercent = null) } to Reading,
                         listeningPoint() to Reading,
                     ),
                 ) { (point, presented) ->
@@ -223,8 +218,8 @@ class ContinueCardsTest : DescribeSpec({
 
                 val cards = continueCardsOf(
                     listOf(
-                        testResumePoint(book = both, format = Reading),
-                        testResumePoint(book = both, format = Listening),
+                        randomResumePoint().about(both).withRecord { copy(format = Reading) },
+                        randomResumePoint().about(both).withRecord { copy(format = Listening) },
                     ),
                     randomNow(),
                 )
@@ -237,9 +232,10 @@ class ContinueCardsTest : DescribeSpec({
         context("with repeated points for one card") {
             it("#22 TC-10: keeps the first") {
                 val same = book("epub")
-                val first = testResumePoint(book = same, progressPercent = 10.0)
+                fun pointAt(percent: Double) = randomResumePoint().about(same).withRecord { copy(format = Reading, progressPercent = percent) }
+                val first = pointAt(10.0)
 
-                val cards = continueCardsOf(listOf(first, testResumePoint(book = same, progressPercent = 20.0)), randomNow())
+                val cards = continueCardsOf(listOf(first, pointAt(20.0)), randomNow())
 
                 cards.single().fraction shouldBe first.fraction(Reading)
             }
@@ -247,7 +243,7 @@ class ContinueCardsTest : DescribeSpec({
 
         context("with more points than the carousel shows") {
             it("#22 TC-11: keeps the first five in server order") {
-                val points = List(7) { testResumePoint(book = book("epub")) }
+                val points = List(7) { randomResumePoint().about(book("epub")) }
 
                 continueCardsOf(points, randomNow()).map { it.id } shouldBe points.take(5).map { it.cardId }
             }
@@ -255,13 +251,13 @@ class ContinueCardsTest : DescribeSpec({
 
         context("with a saved file") {
             it("#22 TC-12: carries it on a card of the record's own medium") {
-                val point = testResumePoint(book = book("m4b"), format = Listening, bookFileId = 20L)
+                val point = randomResumePoint().about(book("m4b")).withRecord { copy(format = Listening, bookFileId = 20L) }
 
                 continueCardsOf(listOf(point), randomNow()).single().resumeFileId shouldBe 20L
             }
 
             it("#22 TC-12: carries no file on a card of the other medium") {
-                val point = testResumePoint(book = book("m4b"), format = Reading, bookFileId = 7L)
+                val point = randomResumePoint().about(book("m4b")).withRecord { copy(format = Reading, bookFileId = 7L) }
 
                 continueCardsOf(listOf(point), randomNow()).single().resumeFileId shouldBe null
             }

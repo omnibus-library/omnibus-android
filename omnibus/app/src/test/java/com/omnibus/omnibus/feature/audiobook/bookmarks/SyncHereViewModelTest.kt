@@ -46,6 +46,8 @@ private fun randomFailure(): SyncPointResult = SyncPointResult.Failed(
     ),
 )
 
+private fun online() = TestConnectivityMonitor(online = true)
+
 class SyncHereViewModelTest : DescribeSpec({
 
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
@@ -101,7 +103,7 @@ class SyncHereViewModelTest : DescribeSpec({
             val sync = TestSyncPointRepository()
             val gate = CompletableDeferred<SyncPointResult>()
             sync.onDeclare = { _, _, _ -> gate.await() }
-            val vm = sut(uuid, controller, sync = sync)
+            val vm = sut(uuid, controller, connectivity = online(), sync = sync)
 
             vm.onSyncHere()
             controller.state.value = state.copy(positionSeconds = state.positionSeconds + 1)
@@ -140,7 +142,7 @@ class SyncHereViewModelTest : DescribeSpec({
                 val sync = TestSyncPointRepository()
                 val gate = CompletableDeferred<SyncPointResult>()
                 sync.onDeclare = { _, _, _ -> gate.await() }
-                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), sync = sync)
+                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
 
                 vm.onSyncHere()
                 vm.onSyncHere()
@@ -154,7 +156,8 @@ class SyncHereViewModelTest : DescribeSpec({
             it("TC32 TC35: sends again on the next tap") {
                 val uuid = randomString()
                 val sync = TestSyncPointRepository()
-                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), sync = sync)
+                sync.onDeclare = { _, _, _ -> randomOf(listOf(SyncPointResult.Declared, randomFailure())) }
+                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
 
                 vm.onSyncHere()
                 vm.onSyncHere()
@@ -167,7 +170,9 @@ class SyncHereViewModelTest : DescribeSpec({
             // TC33, R9, P-BMK-4, AC3: a declared sync point turns the label into Synced
             it("TC33: reads as synced") {
                 val uuid = randomString()
-                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)))
+                val sync = TestSyncPointRepository()
+                sync.onDeclare = { _, _, _ -> SyncPointResult.Declared }
+                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
 
                 vm.onSyncHere()
 
@@ -181,7 +186,7 @@ class SyncHereViewModelTest : DescribeSpec({
                 val uuid = randomString()
                 val sync = TestSyncPointRepository()
                 sync.onDeclare = { _, _, _ -> randomFailure() }
-                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), sync = sync)
+                val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
 
                 vm.onSyncHere()
 
@@ -193,7 +198,8 @@ class SyncHereViewModelTest : DescribeSpec({
                 it("TC35: stays synced") {
                     val uuid = randomString()
                     val sync = TestSyncPointRepository()
-                    val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), sync = sync)
+                    sync.onDeclare = { _, _, _ -> SyncPointResult.Declared }
+                    val vm = sut(uuid, TestAudiobookController(ebookState(uuid)), connectivity = online(), sync = sync)
                     vm.onSyncHere()
                     sync.onDeclare = { _, _, _ -> randomFailure() }
 

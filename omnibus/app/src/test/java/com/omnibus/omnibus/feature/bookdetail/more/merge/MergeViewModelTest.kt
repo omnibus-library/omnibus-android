@@ -66,10 +66,10 @@ private fun runCase(
     }
 }
 
-/** Runs one case signed in as an admin, the only user who can open the sheet. */
+/** Runs one case signed in as an admin and online, the only user who can open the sheet. */
 private fun runAsAdmin(
     repo: ScriptedMergeRepository = ScriptedMergeRepository(),
-    monitor: TestConnectivityMonitor = TestConnectivityMonitor(),
+    monitor: TestConnectivityMonitor = TestConnectivityMonitor(online = true),
     block: suspend TestScope.(Subject) -> Unit,
 ) = runCase(
     repo = repo,
@@ -309,7 +309,7 @@ class MergeViewModelTest : DescribeSpec({
             context("when the sheet is searching") {
                 it("#120 TC-29: runs the query it could not send") {
                     val query = randomString()
-                    val monitor = TestConnectivityMonitor()
+                    val monitor = TestConnectivityMonitor(online = true)
 
                     runAsAdmin(monitor = monitor) { s ->
                         s.vm.openSheet()
@@ -387,7 +387,7 @@ class MergeViewModelTest : DescribeSpec({
 
         context("when the device is offline") {
             it("#120 TC-37: sends nothing") {
-                val monitor = TestConnectivityMonitor()
+                val monitor = TestConnectivityMonitor(online = true)
 
                 runAsAdmin(monitor = monitor) { s ->
                     s.vm.openSheet()

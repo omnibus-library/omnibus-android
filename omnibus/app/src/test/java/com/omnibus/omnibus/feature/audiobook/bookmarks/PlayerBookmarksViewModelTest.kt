@@ -22,6 +22,7 @@ import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -68,7 +69,7 @@ class PlayerBookmarksViewModelTest : DescribeSpec({
         it("TC16: adds one draft of the state at the tap") {
             val uuid = randomString()
             val controller = TestAudiobookController()
-            val repository = TestBookmarksRepository()
+            val repository = TestBookmarksRepository().apply { onAdd = { awaitCancellation() } }
             val vm = sut(uuid, controller, repository)
             val state = holding(uuid).copy(isLoading = false)
 
@@ -139,7 +140,7 @@ class PlayerBookmarksViewModelTest : DescribeSpec({
         it("TC23: removes a row's bookmark") {
             val uuid = randomString()
             val bookmark = randomBookmark().copy(bookUuid = uuid)
-            val repository = TestBookmarksRepository()
+            val repository = TestBookmarksRepository().apply { onRemove = { awaitCancellation() } }
 
             sut(uuid, repository = repository).onBookmarkRemoved(playerBookmarkRows(uuid, listOf(bookmark)).single())
 

@@ -11,23 +11,22 @@ class ProcessLifecycleAppBackgroundSignalTest : DescribeSpec({
     describe("signalling that the app went to the background") {
         // TC-89
         it("emits each time the app stops (R10)") {
-            lateinit var registry: LifecycleRegistry
+            // The registry holds its owner weakly, so the test keeps the owner and reaches the registry through it.
             val owner = object : LifecycleOwner {
-                override val lifecycle: Lifecycle get() = registry
+                override val lifecycle = LifecycleRegistry.createUnsafe(this)
             }
-            registry = LifecycleRegistry.createUnsafe(owner)
 
-            ProcessLifecycleAppBackgroundSignal(registry).backgrounded.test {
-                registry.currentState = Lifecycle.State.STARTED
+            ProcessLifecycleAppBackgroundSignal(owner.lifecycle).backgrounded.test {
+                owner.lifecycle.currentState = Lifecycle.State.STARTED
                 expectNoEvents()
 
-                registry.currentState = Lifecycle.State.CREATED
+                owner.lifecycle.currentState = Lifecycle.State.CREATED
                 awaitItem()
 
-                registry.currentState = Lifecycle.State.STARTED
+                owner.lifecycle.currentState = Lifecycle.State.STARTED
                 expectNoEvents()
 
-                registry.currentState = Lifecycle.State.CREATED
+                owner.lifecycle.currentState = Lifecycle.State.CREATED
                 awaitItem()
             }
         }

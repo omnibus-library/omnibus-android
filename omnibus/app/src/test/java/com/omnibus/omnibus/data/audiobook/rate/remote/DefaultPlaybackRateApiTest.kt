@@ -1,12 +1,13 @@
 package com.omnibus.omnibus.data.audiobook.rate.remote
 
-import com.omnibus.omnibus.data.audiobook.ScriptedServer
-import com.omnibus.omnibus.data.audiobook.httpClientFor
-import com.omnibus.omnibus.data.audiobook.unreachableUrl
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
@@ -24,33 +25,33 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
 
     /** An API for [baseUrl], or with no server saved when it is null. */
     fun sut(baseUrl: HttpUrl?) =
-        DefaultPlaybackRateApi(ioDispatcher = Dispatchers.Unconfined, omnibusHttpClient = httpClientFor(baseUrl))
+        DefaultPlaybackRateApi(ioDispatcher = Dispatchers.Unconfined, omnibusHttpClient = testOmnibusHttpClient(baseUrl))
 
     describe("reading a rate") {
 
         // R13: a separator in the uuid cannot change the path
         it("#168 TC-16b: encodes the uuid as one path segment (I-SPD-1)") {
-            ScriptedServer().use { server ->
-                server.answer(200, "null")
+            withScriptedServer {
+                script.answer(200, "null")
 
-                sut(server.baseUrl).fetch("a b/c")
+                sut(url).fetch("a b/c")
 
-                server.takeRequest().url.encodedPath shouldBe "/api/audiobooks/a%20b%2Fc/playback-rate"
+                nextRequest().url.encodedPath shouldBe "/api/audiobooks/a%20b%2Fc/playback-rate"
             }
         }
 
         // I-SPD-1, R13: unknown keys are ignored, and an integer rate decodes as a double
         it("#168 TC-16, TC-18: answers the rate for each shape of record (I-SPD-1, R13)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         """{"book_uuid":"b","playback_rate":1.25,"extra":{},"updated_at":1730000000}""" to 1.25,
                         """{"playback_rate":1}""" to 1.0,
                     ),
                 ) { (body, rate) ->
-                    server.answer(200, body)
+                    script.answer(200, body)
 
-                    sut(server.baseUrl).fetch(randomString()) shouldBe RateFetch.Found(rate)
+                    sut(url).fetch(randomString()) shouldBe RateFetch.Found(rate)
                 }
             }
         }
@@ -58,22 +59,22 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
         context("when the listener never set a rate") {
             // I-SPD-4: the server answers the JSON literal null
             it("#168 TC-17: answers Unset (I-SPD-4)") {
-                ScriptedServer().use { server ->
-                    server.answer(200, "null")
+                withScriptedServer {
+                    script.answer(200, "null")
 
-                    sut(server.baseUrl).fetch(randomString()) shouldBe RateFetch.Unset
+                    sut(url).fetch(randomString()) shouldBe RateFetch.Unset
                 }
             }
         }
 
         // R13
         it("#168 TC-19: answers Failed for each HTTP error or unreadable body (R13)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(Exhaustive.of(404 to "", 500 to "", 401 to "", 200 to "not json", 200 to """{"book_uuid":"b"}""")) {
                         (code, body) ->
-                    server.answer(code, body)
+                    script.answer(code, body)
 
-                    sut(server.baseUrl).fetch(randomString()) shouldBe RateFetch.Failed
+                    sut(url).fetch(randomString()) shouldBe RateFetch.Failed
                 }
             }
         }
@@ -90,14 +91,14 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
 
         // R13, I-SPD-1: the body is exactly the one field
         it("#168 TC-21: puts the rate as JSON at the book's rate path (R13)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 val book = randomString()
                 val rate = randomDouble(0.5, 3.0)
-                server.answer(200, "{}")
+                script.answer(200, "{}")
 
-                sut(server.baseUrl).put(book, rate)
+                sut(url).put(book, rate)
 
-                val request = server.takeRequest()
+                val request = nextRequest()
                 request.method shouldBe "PUT"
                 request.url.encodedPath shouldBe "/api/audiobooks/$book/playback-rate"
                 request.headers["Content-Type"]!! shouldStartWith "application/json"
@@ -107,7 +108,7 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
 
         // R13, I-SPD-3
         it("#168 TC-21, TC-22, TC-23: classifies each status for the outbox (R13, I-SPD-3)") {
-            ScriptedServer().use { server ->
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         200 to PutOutcome.Sent,
@@ -121,9 +122,9 @@ class DefaultPlaybackRateApiTest : DescribeSpec({
                         503 to PutOutcome.Keep,
                     ),
                 ) { (code, outcome) ->
-                    server.answer(code)
+                    script.answer(code)
 
-                    sut(server.baseUrl).put(randomString(), randomDouble(0.5, 3.0)) shouldBe outcome
+                    sut(url).put(randomString(), randomDouble(0.5, 3.0)) shouldBe outcome
                 }
             }
         }

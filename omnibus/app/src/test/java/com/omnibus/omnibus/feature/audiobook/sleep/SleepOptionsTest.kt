@@ -19,7 +19,7 @@ class SleepOptionsTest : DescribeSpec({
 
     fun timer(option: SleepTimerOption) = SleepTimerState(option, randomDouble(1.0, 7_200.0))
 
-    fun loaded(positionSeconds: Double = 100.0) = playbackState(book = randomPlayingBook(), positionSeconds = positionSeconds)
+    fun loaded(positionSeconds: Double = 100.0) = playbackState(book = randomPlayingBook(), positionSeconds = positionSeconds, isLoading = false)
 
     describe("the choices") {
         // R10: Off, the seven presets, then the chapter cell last, numbered from 1
@@ -41,10 +41,10 @@ class SleepOptionsTest : DescribeSpec({
         it("#169 TC-29: have no chapter cell for no chapters, nothing loaded, a load in flight or a chapter of length 0 (P-SLP-1)") {
             checkAll(
                 Exhaustive.of(
-                    playbackState(book = randomPlayingBook(), chapters = emptyList()),
+                    playbackState(book = randomPlayingBook(), chapters = emptyList(), isLoading = false),
                     PlaybackState(),
                     playbackState(book = randomPlayingBook(), isLoading = true),
-                    playbackState(book = randomPlayingBook(), chapters = chapters(600.0, 0.0), positionSeconds = 700.0, durationSeconds = 2700.0),
+                    playbackState(book = randomPlayingBook(), chapters = chapters(600.0, 0.0), positionSeconds = 700.0, durationSeconds = 2700.0, isLoading = false),
                 ),
             ) { state ->
                 sleepChoices(state).map { it is SleepChoice.EndOfChapter } shouldNotContain true
@@ -56,7 +56,7 @@ class SleepOptionsTest : DescribeSpec({
             val reordered = chapters(600.0, 1200.0).mapIndexed { index, chapter ->
                 chapter.copy(ordinal = listOf(7L, 3L)[index])
             }
-            val state = playbackState(book = randomPlayingBook(), chapters = reordered, positionSeconds = 700.0)
+            val state = playbackState(book = randomPlayingBook(), chapters = reordered, positionSeconds = 700.0, isLoading = false)
 
             sleepChoices(state).last() shouldBe SleepChoice.EndOfChapter(2)
         }
@@ -66,7 +66,7 @@ class SleepOptionsTest : DescribeSpec({
         // R11: the running option marks its cell; a timer with no cell marks none
         it("#169 TC-31: is the running option's cell, or nothing for an option with no cell (P-SLP-5)") {
             val nine = sleepChoices(loaded())
-            val eight = sleepChoices(playbackState(book = randomPlayingBook(), chapters = emptyList()))
+            val eight = sleepChoices(playbackState(book = randomPlayingBook(), chapters = emptyList(), isLoading = false))
 
             checkAll(
                 Exhaustive.of(

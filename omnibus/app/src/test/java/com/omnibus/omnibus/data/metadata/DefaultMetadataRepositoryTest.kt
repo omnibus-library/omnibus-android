@@ -1,15 +1,14 @@
 package com.omnibus.omnibus.data.metadata
 
-import com.omnibus.omnibus.data.network.droppedConnection
-import com.omnibus.omnibus.data.network.nextRequest
-import com.omnibus.omnibus.data.network.pausedDispatcher
-import com.omnibus.omnibus.data.network.reply
-import com.omnibus.omnibus.data.network.testOmnibusHttpClient
-import com.omnibus.omnibus.data.network.withMockServer
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
+import com.omnibus.omnibus.testing.pausedDispatcher
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
+import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -138,9 +137,7 @@ class DefaultMetadataRepositoryTest : DescribeSpec({
         context("when the connection drops") {
             it("TC-15: gives Unreachable") {
                 withMockServer { server ->
-                    // Two drops, in case the HTTP client retries the POST once on a dropped connection.
-                    server.enqueue(droppedConnection())
-                    server.enqueue(droppedConnection())
+                    server.close()
 
                     sut(server).replaceList(randomString(), randomEnum(), randomValues()) shouldBe
                         MetadataWriteResult.Failure(MetadataError.Unreachable)

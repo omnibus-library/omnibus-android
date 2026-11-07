@@ -87,7 +87,7 @@ class ChipEditViewModelTest : DescribeSpec({
 
         context("when a kind's save has settled") {
             it("TC-48: reseeds that kind") {
-                val vm = editing()
+                val vm = editing(repository = TestMetadataRepository().apply { writeResult = { saved() } })
                 val fresh = bookWith()
                 vm.add(Genres, newChip())
 
@@ -102,7 +102,7 @@ class ChipEditViewModelTest : DescribeSpec({
         it("TC-37: saves the full list") {
             val book = bookWith()
             val bookUuid = randomString()
-            val repository = TestMetadataRepository()
+            val repository = TestMetadataRepository().apply { holdWrite() }
             val chip = newChip()
 
             editing(book, repository, bookUuid).add(Genres, chip)
@@ -126,7 +126,7 @@ class ChipEditViewModelTest : DescribeSpec({
         context("when it is the last one") {
             it("TC-38: saves an empty list") {
                 val book = bookWith(genres = chips(1))
-                val repository = TestMetadataRepository()
+                val repository = TestMetadataRepository().apply { holdWrite() }
 
                 editing(book, repository).remove(Genres, book.genres.single())
 

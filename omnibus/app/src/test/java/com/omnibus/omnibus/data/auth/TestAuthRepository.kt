@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.data.auth
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -18,7 +20,7 @@ class TestAuthRepository : AuthRepository {
     val currentUserState = MutableStateFlow<CurrentUser?>(null)
 
     /** Returned by [signIn]. */
-    var signInResult: AuthSignInResult = AuthSignInResult.Success(authToken = "token")
+    var signInResult: AuthSignInResult? = null
 
     /** When set, [signIn] suspends until this completes, to observe pending state. */
     var signInGate: CompletableDeferred<Unit>? = null
@@ -27,7 +29,7 @@ class TestAuthRepository : AuthRepository {
     val signInAttempts = mutableListOf<Pair<String, String>>()
 
     /** Returned by [register]. */
-    var registerResult: AuthRegisterResult = AuthRegisterResult.Success(authToken = "token")
+    var registerResult: AuthRegisterResult? = null
 
     /** When set, [register] suspends until this completes, to observe pending state. */
     var registerGate: CompletableDeferred<Unit>? = null
@@ -36,10 +38,10 @@ class TestAuthRepository : AuthRepository {
     val registerAttempts = mutableListOf<Pair<String, String>>()
 
     /** Returned by [signOut]. */
-    var signOutResult: AuthSignOutResult = AuthSignOutResult.Success
+    var signOutResult: AuthSignOutResult? = null
 
     /** Returned by [verifySession]. */
-    var verifySessionResult: AuthSessionResult = AuthSessionResult.Valid
+    var verifySessionResult: AuthSessionResult? = null
 
     /** How many times [verifySession] has been called. */
     var verifySessionCalls = 0
@@ -55,19 +57,19 @@ class TestAuthRepository : AuthRepository {
     override suspend fun signIn(username: String, password: String): AuthSignInResult {
         signInAttempts += username to password
         signInGate?.await()
-        return signInResult
+        return signInResult ?: unscripted("signIn")
     }
 
     override suspend fun register(username: String, password: String): AuthRegisterResult {
         registerAttempts += username to password
         registerGate?.await()
-        return registerResult
+        return registerResult ?: unscripted("register")
     }
 
-    override suspend fun signOut(): AuthSignOutResult = signOutResult
+    override suspend fun signOut(): AuthSignOutResult = signOutResult ?: unscripted("signOut")
 
     override suspend fun verifySession(): AuthSessionResult {
         verifySessionCalls++
-        return verifySessionResult
+        return verifySessionResult ?: awaitCancellation()
     }
 }

@@ -11,10 +11,6 @@ import io.kotest.property.exhaustive.of
 import java.util.Locale
 import java.util.TimeZone
 
-/** 2026-10-24 12:00 UTC, and 2026-10-24 00:30 UTC, in epoch millis. */
-private const val OCT_24_NOON_2026 = 1_792_843_200_000L
-private const val OCT_24_0030_2026 = 1_792_801_800_000L
-
 /** 2026-11-02 12:00 UTC, the "now" of these tests. */
 private const val NOW_NOV_2_2026 = 1_793_620_800_000L
 
@@ -80,10 +76,12 @@ class HighlightFooterTest : DescribeSpec({
     describe("the footer") {
 
         it("TC-23: joins the parts it has, for chapter and date, either alone, or neither") {
+            val octoberNoon = 1_792_843_200_000L // 2026-10-24 12:00 UTC
+
             checkAll(
                 Exhaustive.of(
-                    Triple(3, OCT_24_NOON_2026, "Chapter 3 · Oct 24"),
-                    Triple(null, OCT_24_NOON_2026, "Oct 24"),
+                    Triple(3, octoberNoon, "Chapter 3 · Oct 24"),
+                    Triple(null, octoberNoon, "Oct 24"),
                     Triple(3, null, "Chapter 3"),
                     Triple(null, null, null),
                 ),
@@ -94,8 +92,10 @@ class HighlightFooterTest : DescribeSpec({
 
         context("when the zone moves the date") {
             it("TC-24: dates it in the supplied zone") {
+                val octoberEarly = 1_792_801_800_000L // 2026-10-24 00:30 UTC
+
                 highlightFooter(
-                    null, OCT_24_0030_2026, NOW_NOV_2_2026, Locale.US, TimeZone.getTimeZone("America/Los_Angeles"),
+                    null, octoberEarly, NOW_NOV_2_2026, Locale.US, TimeZone.getTimeZone("America/Los_Angeles"),
                 ) shouldBe "Oct 23"
             }
         }

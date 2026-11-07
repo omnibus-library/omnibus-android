@@ -7,9 +7,13 @@ import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
@@ -17,21 +21,7 @@ import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-/** A response whose connection drops before any byte of it arrives. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
-
-/** A started server that gives [response] to the first request. */
-private fun serverAnswering(response: MockResponse) = MockWebServer().apply {
-    enqueue(response)
-    start()
-}
 
 /** Two listening points, newest first, as the server writes them. */
 private const val TWO_POINTS = """[
@@ -59,7 +49,7 @@ class DefaultRecentListeningSourceTest : DescribeSpec({
     describe("reading the recent listening points") {
         // TC-48
         it("asks the server for its recent audio points (I-SYS-5)") {
-            serverAnswering(reply(200, "[]")).use { server ->
+            withMockServer(reply(200, "[]")) { server ->
                 sut(server.url("/")).recentAudio()
 
                 val request = server.takeRequest()
@@ -71,7 +61,7 @@ class DefaultRecentListeningSourceTest : DescribeSpec({
 
         // TC-48
         it("gives the server's points in order (I-SYS-5)") {
-            serverAnswering(reply(200, TWO_POINTS)).use { server ->
+            withMockServer(reply(200, TWO_POINTS)) { server ->
                 val points = sut(server.url("/")).recentAudio()
 
                 points.map { it.record.bookUuid } shouldBe listOf("book-1", "book-2")
@@ -84,8 +74,10 @@ class DefaultRecentListeningSourceTest : DescribeSpec({
         // TC-48
         it("gives no points for an error status, a dropped connection or a bad body (I-SYS-5)") {
             checkAll(Exhaustive.of(reply(401), dropped(), reply(200, "{bad"))) { response ->
-                serverAnswering(response).use { server ->
-                    sut(server.url("/")).recentAudio().shouldBeEmpty()
+                withScriptedServer {
+                    script.answer(response)
+
+                    sut(url).recentAudio().shouldBeEmpty()
                 }
             }
         }

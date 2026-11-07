@@ -6,6 +6,8 @@ import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
 import com.omnibus.omnibus.data.readstatus.ReadStatus
 import com.omnibus.omnibus.data.readstatus.ReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusRepository
+import com.omnibus.omnibus.data.readstatus.ReadStatusWriteResult
+import com.omnibus.omnibus.data.readstatus.randomReadStatusRecord
 import com.omnibus.omnibus.data.readstatus.ReadStatusState
 import com.omnibus.omnibus.data.readstatus.TestReadStatusRepository
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -48,6 +50,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                     val state = playbackState(book, isPlaying = true)
                     val readStatus = TestReadStatusRepository()
                     readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
                     val marker = sut(readStatus)
                     marker.onSettled(state, randomDouble())
 
@@ -111,6 +114,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                     val state = playbackState(book, isPlaying = true)
                     val readStatus = TestReadStatusRepository()
                     readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
                     val marker = sut(readStatus)
                     marker.onSettled(state, randomDouble())
                     marker.onPlay(state)
@@ -131,6 +135,8 @@ class ReadStatusMarkerTest : DescribeSpec({
                     val state = playbackState(book, isPlaying = true)
                     val readStatus = TestReadStatusRepository()
                     readStatus.seed(book.bookUuid, known(ReadStatus.Unread))
+                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
+                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
                     val marker = sut(readStatus)
                     marker.onSettled(state, randomDouble())
                     marker.onPlay(state)
@@ -156,6 +162,7 @@ class ReadStatusMarkerTest : DescribeSpec({
                     val book = randomPlayingBook()
                     val readStatus = TestReadStatusRepository()
                     readStatus.readResults.addLast(known(status))
+                    readStatus.writeResults.addLast(ReadStatusWriteResult.Saved(randomReadStatusRecord()))
 
                     sut(readStatus).onEnded(playbackState(book))
                     runCurrent()

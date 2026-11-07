@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.configuration
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,9 +12,8 @@ class TestServerConfigurationRepository(initialAddress: String? = null) :
 
     val savedAddress = MutableStateFlow(initialAddress)
 
-    /** Returned by [validateServerAddress]. Defaults to accepting the address unchanged. */
-    var validationResult: (address: String) -> ServerValidationResult =
-        { ServerValidationResult.Success(serverAddress = it) }
+    /** Returned by [validateServerAddress]. */
+    var validationResult: (address: String) -> ServerValidationResult = { unscripted("validateServerAddress") }
 
     /** When set, [validateServerAddress] suspends until this completes, to observe pending state. */
     var validationGate: CompletableDeferred<Unit>? = null

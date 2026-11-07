@@ -21,7 +21,7 @@ class ResumeOfferRulesTest : DescribeSpec({
             val position = randomDouble(0.0, 3_000.0)
             val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = position + 1.01)
 
-            visibleOffers(playbackState(book, positionSeconds = position), late, OfferMemory()).device shouldBe late
+            visibleOffers(playbackState(book, positionSeconds = position, isLoading = false), late, OfferMemory()).device shouldBe late
         }
 
         // I-RES-6, P-SYNC-AC4: playing or seeking past the offer hides it live
@@ -30,7 +30,7 @@ class ResumeOfferRulesTest : DescribeSpec({
             val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
 
             checkAll(Exhaustive.of(99.0, 100.0, 150.0)) { position ->
-                visibleOffers(playbackState(book, positionSeconds = position), late, OfferMemory()).device.shouldBeNull()
+                visibleOffers(playbackState(book, positionSeconds = position, isLoading = false), late, OfferMemory()).device.shouldBeNull()
             }
         }
 
@@ -45,7 +45,7 @@ class ResumeOfferRulesTest : DescribeSpec({
                     late.copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId + 1),
                 ),
             ) { other ->
-                visibleOffers(playbackState(book, positionSeconds = 0.0), other, OfferMemory()).device.shouldBeNull()
+                visibleOffers(playbackState(book, positionSeconds = 0.0, isLoading = false), other, OfferMemory()).device.shouldBeNull()
             }
         }
 
@@ -55,7 +55,7 @@ class ResumeOfferRulesTest : DescribeSpec({
                 val book = randomPlayingBook()
                 val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
 
-                visibleOffers(playbackState(book, positionSeconds = 0.0), late, OfferMemory(dismissedDevice = late))
+                visibleOffers(playbackState(book, positionSeconds = 0.0, isLoading = false), late, OfferMemory(dismissedDevice = late))
                     .device.shouldBeNull()
             }
 
@@ -65,7 +65,7 @@ class ResumeOfferRulesTest : DescribeSpec({
                 val late = randomLatePosition().copy(book.bookUuid, book.bookFileId, positionSeconds = 100.0)
                 val newer = late.copy(positionSeconds = 200.0)
 
-                visibleOffers(playbackState(book, positionSeconds = 0.0), newer, OfferMemory(dismissedDevice = late))
+                visibleOffers(playbackState(book, positionSeconds = 0.0, isLoading = false), newer, OfferMemory(dismissedDevice = late))
                     .device shouldBe newer
             }
         }
@@ -78,7 +78,7 @@ class ResumeOfferRulesTest : DescribeSpec({
             val book = randomPlayingBook()
             val offer = randomEbookOffer().copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId)
 
-            visibleOffers(playbackState(book), null, OfferMemory(ebook = offer)).ebook shouldBe offer
+            visibleOffers(playbackState(book, isLoading = false), null, OfferMemory(ebook = offer)).ebook shouldBe offer
         }
 
         // P-SYNC-7, P-SYNC-AC5
@@ -92,7 +92,7 @@ class ResumeOfferRulesTest : DescribeSpec({
                     offer.copy(bookUuid = book.bookUuid, bookFileId = book.bookFileId + 1),
                 ),
             ) { other ->
-                visibleOffers(playbackState(book), null, OfferMemory(ebook = other)).ebook.shouldBeNull()
+                visibleOffers(playbackState(book, isLoading = false), null, OfferMemory(ebook = other)).ebook.shouldBeNull()
             }
         }
     }

@@ -15,11 +15,16 @@ import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.testing.TestTimeSource
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.unreachableUrl
+import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
@@ -44,25 +49,14 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
 import okio.ByteString.Companion.encodeUtf8
 
 private const val WINDOW = CoverCacheKeys.REVALIDATE_AFTER_MILLIS
 
-private inline fun <T> withServer(block: (MockWebServer) -> T): T =
-    MockWebServer().use { server ->
-        server.start()
-        block(server)
-    }
-
 private fun MockWebServer.enqueueReply(code: Int, body: String = "", etag: String? = null) {
     enqueue(MockResponse.Builder().code(code).body(body).apply { etag?.let { addHeader("ETag", it) } }.build())
 }
-
-private fun reply(code: Int): MockResponse = MockResponse.Builder().code(code).build()
-
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 private fun randomEtag(): String = "\"${randomString()}\""
 
@@ -142,7 +136,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
         timeSource = timeSource,
     )
 
-    suspend fun thumbnailAnswering(response: MockResponse): CoverImageResult = withServer { server ->
+    suspend fun thumbnailAnswering(response: MockResponse): CoverImageResult = withMockServer { server ->
         server.enqueue(response)
         sut(server.url("/")).thumbnail(randomString(), randomEnum<CoverSize>())
     }
@@ -154,7 +148,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
     describe("loading a thumbnail") {
         context("when nothing is cached") {
             it("TC-147: returns the requested size from the server") {
-                withServer { server ->
+                withMockServer { server ->
                     val uuid = randomString()
                     val size = randomEnum<CoverSize>()
                     val body = randomString()
@@ -167,7 +161,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             }
 
             it("TC-148: stores the bytes with their validator and fetch time") {
-                withServer { server ->
+                withMockServer { server ->
                     val uuid = randomString()
                     val size = randomEnum<CoverSize>()
                     val body = randomString()
@@ -196,7 +190,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
             context("when the server can't be reached") {
                 it("TC-153: fails") {
-                    thumbnailAnswering(dropped()) shouldBe CoverImageResult.Error
+                    sut(unreachableUrl()).thumbnail(randomString(), randomEnum<CoverSize>()) shouldBe CoverImageResult.Error
                 }
             }
 
@@ -209,7 +203,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when the bytes can't be cached") {
             it("TC-154: still returns them") {
-                withServer { server ->
+                withMockServer { server ->
                     val size = randomEnum<CoverSize>()
                     val body = randomString()
                     val diskStore = TestCoverDiskStore().apply { writeFailure = IOException("disk full") }
@@ -223,7 +217,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when the cache can't be read") {
             it("TC-176: loads from the server") {
-                withServer { server ->
+                withMockServer { server ->
                     val size = randomEnum<CoverSize>()
                     val body = randomString()
                     val diskStore = TestCoverDiskStore().apply { readFailure = IOException("corrupt entry") }
@@ -237,7 +231,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when the cache write is cancelled") {
             it("TC-180: rethrows the cancellation") {
-                withServer { server ->
+                withMockServer { server ->
                     val diskStore = TestCoverDiskStore().apply { writeFailure = CancellationException("cancelled") }
                     server.enqueueReply(200, randomString())
 
@@ -250,7 +244,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when the requested size is missing") {
             it("TC-155: tries the other sizes largest first, for each requested size") {
-                withServer { server ->
+                withMockServer { server ->
                     val orders = listOf(
                         CoverSize.Sm to listOf("sm", "lg", "md"),
                         CoverSize.Md to listOf("md", "lg", "sm"),
@@ -269,7 +263,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             }
 
             it("TC-156: serves the first fall-back that exists") {
-                withServer { server ->
+                withMockServer { server ->
                     val body = randomString()
                     server.enqueueReply(404)
                     server.enqueueReply(200, body)
@@ -282,7 +276,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             context("when no size exists") {
                 context("when one size was stale in the cache") {
                     it("TC-178: reports NotFound") {
-                        withServer { server ->
+                        withMockServer { server ->
                             val uuid = randomString()
                             val size = randomEnum<CoverSize>()
                             val time = TestTimeSource(randomLong())
@@ -298,7 +292,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
             context("when the requested size was stale in the cache") {
                 it("TC-160: forgets it") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val uuid = randomString()
                         val time = TestTimeSource(randomLong())
                         val diskStore = storeWith(uuid, CoverSize.Md, staleCover(time))
@@ -316,7 +310,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
         context("when the server fails for the requested size") {
             context("when another size is cached") {
                 it("TC-159: serves the cached size") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val uuid = randomString()
                         val time = TestTimeSource(randomLong())
                         val cover = randomCachedCover().copy(storedAtMillis = time.currentMillis)
@@ -332,7 +326,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when the cached copy is younger than the revalidation window") {
             it("TC-161: serves it without asking the server, with or without a validator") {
-                withServer { server ->
+                withMockServer { server ->
                     val etags = listOf(randomEtag(), null)
                     checkAll(Exhaustive.collection(etags)) { etag ->
                         val uuid = randomString()
@@ -355,7 +349,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
         context("when the cached copy has reached the revalidation window") {
             context("when the copy has a validator") {
                 it("TC-163: revalidates with If-None-Match") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val uuid = randomString()
                         val size = randomEnum<CoverSize>()
                         val etag = randomEtag()
@@ -371,7 +365,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
                 context("when the server answers 304") {
                     it("TC-163: reuses the cached bytes") {
-                        withServer { server ->
+                        withMockServer { server ->
                             val uuid = randomString()
                             val size = randomEnum<CoverSize>()
                             val time = TestTimeSource(randomLong())
@@ -385,7 +379,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
                     }
 
                     it("TC-164: restarts the freshness window") {
-                        withServer { server ->
+                        withMockServer { server ->
                             val uuid = randomString()
                             val size = randomEnum<CoverSize>()
                             val time = TestTimeSource(randomLong())
@@ -402,7 +396,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
                 context("when the server sends a new copy") {
                     it("TC-165: replaces the cached copy") {
-                        withServer { server ->
+                        withMockServer { server ->
                             val uuid = randomString()
                             val size = randomEnum<CoverSize>()
                             val body = randomString()
@@ -421,7 +415,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
             context("when the copy has no validator") {
                 it("TC-166: fetches unconditionally") {
-                    withServer { server ->
+                    withMockServer { server ->
                         val uuid = randomString()
                         val size = randomEnum<CoverSize>()
                         val time = TestTimeSource(randomLong())
@@ -437,17 +431,17 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
             context("when the server can't answer") {
                 it("TC-167: serves the stale copy for a dropped connection and a server error") {
-                    withServer { server ->
-                        val answers = listOf(dropped(), MockResponse.Builder().code(503).build())
+                    withScriptedServer {
+                        val answers = listOf(dropped(), reply(503))
                         checkAll(Exhaustive.collection(answers)) { answer ->
                             val uuid = randomString()
                             val size = randomEnum<CoverSize>()
                             val time = TestTimeSource(randomLong())
                             val cover = staleCover(time)
                             val diskStore = storeWith(uuid, size, cover)
-                            server.enqueue(answer)
+                            script.answer(answer)
 
-                            sut(server.url("/"), diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
+                            sut(url, diskStore, timeSource = time).thumbnail(uuid, size) shouldBe
                                 foundCached(cover, size)
                         }
                     }
@@ -501,7 +495,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when a fetch is already in flight") {
             it("TC-173: returns its bytes") {
-                withServer { server ->
+                withMockServer { server ->
                     val uuid = randomString()
                     val size = randomEnum<CoverSize>()
                     val body = randomString()
@@ -513,7 +507,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
             }
 
             it("TC-173: refuses to store them") {
-                withServer { server ->
+                withMockServer { server ->
                     val uuid = randomString()
                     val size = randomEnum<CoverSize>()
                     val diskStore = TestCoverDiskStore()
@@ -584,7 +578,7 @@ class DefaultCoverRepositoryTest : DescribeSpec({
 
         context("when a fetch is already in flight") {
             it("TC-179: refuses to store them") {
-                withServer { server ->
+                withMockServer { server ->
                     val uuid = randomString()
                     val size = randomEnum<CoverSize>()
                     val diskStore = TestCoverDiskStore()

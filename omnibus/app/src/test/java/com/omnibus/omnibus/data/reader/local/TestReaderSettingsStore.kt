@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.reader.local
 
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.data.reader.randomReaderSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,7 +13,7 @@ import kotlinx.coroutines.flow.flow
  *
  * @param initial The settings present before any [save] call.
  */
-class TestReaderSettingsStore(initial: ReaderSettings = ReaderSettings()) : ReaderSettingsStore {
+class TestReaderSettingsStore(initial: ReaderSettings = randomReaderSettings()) : ReaderSettingsStore {
 
     private val state = MutableStateFlow(initial)
 
@@ -24,9 +25,6 @@ class TestReaderSettingsStore(initial: ReaderSettings = ReaderSettings()) : Read
 
     /** When non-null, [save] waits for this after recording, to hold a write in flight. */
     var holdSaves: CompletableDeferred<Unit>? = null
-
-    /** When true, [save] records the attempt but stores nothing, like the real store after a swallowed failure. */
-    var saveFails = false
 
     override val settings: Flow<ReaderSettings> = flow {
         holdFirstEmission?.await()
@@ -41,6 +39,6 @@ class TestReaderSettingsStore(initial: ReaderSettings = ReaderSettings()) : Read
     override suspend fun save(settings: ReaderSettings) {
         saves += settings
         holdSaves?.await()
-        if (!saveFails) state.value = settings
+        state.value = settings
     }
 }

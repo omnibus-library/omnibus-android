@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.reviews
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,7 @@ class TestReviewsRepository : ReviewsRepository {
     /** The uuid of every refresh, in call order. */
     val refreshCalls = mutableListOf<String>()
 
-    /** The next write's outcomes, in order. When empty, an update answers `Saved` with its optimistic review. */
+    /** The next write's outcomes, in order. */
     val writeResults = ArrayDeque<ReviewWriteResult>()
 
     /** When non-empty, the next write waits on the head after its optimistic apply, before taking its result. */
@@ -66,7 +67,7 @@ class TestReviewsRepository : ReviewsRepository {
         if (patch.isNoOpFor(current.reviews.mine)) return ReviewWriteResult.Unchanged
 
         updateCalls += bookUuid to patch
-        return write(bookUuid, optimistic = current.reviews.mine.applying(patch)) { ReviewWriteResult.Saved(it) }
+        return write(bookUuid, optimistic = current.reviews.mine.applying(patch))
     }
 
     override suspend fun deleteMyReview(bookUuid: String): ReviewWriteResult {
@@ -74,18 +75,14 @@ class TestReviewsRepository : ReviewsRepository {
         if (entry(bookUuid).state.value !is ReviewsState.Loaded) return ReviewWriteResult.Failed(ReviewError.NotLoaded)
 
         deleteCalls += bookUuid
-        return write(bookUuid, optimistic = null) { ReviewWriteResult.Saved(null) }
+        return write(bookUuid, optimistic = null)
     }
 
     /**
-     * Applies [optimistic] at once, then takes the scripted result, or [default] when none is scripted. The bookkeeping
-     * is production's: a result replaces the confirmed value, and only the latest write sets the visible state.
+     * Applies [optimistic] at once, then takes the scripted result. The bookkeeping is production's: a result replaces
+     * the confirmed value, and only the latest write sets the visible state.
      */
-    private suspend fun write(
-        bookUuid: String,
-        optimistic: Review?,
-        default: (Review?) -> ReviewWriteResult,
-    ): ReviewWriteResult {
+    private suspend fun write(bookUuid: String, optimistic: Review?): ReviewWriteResult {
         val entry = entry(bookUuid)
         val current = entry.state.value as ReviewsState.Loaded
         entry.pendingWrites++
@@ -93,7 +90,7 @@ class TestReviewsRepository : ReviewsRepository {
         entry.state.value = ReviewsState.Loaded(current.reviews.copy(mine = optimistic))
 
         writeGates.removeFirstOrNull()?.await()
-        val result = writeResults.removeFirstOrNull() ?: default(optimistic)
+        val result = writeResults.removeFirstOrNull() ?: unscripted("a review write")
 
         entry.pendingWrites--
         val confirmed = entry.confirmed

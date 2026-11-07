@@ -10,11 +10,16 @@ import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.feature.bookdetail.format.BookDetailFormat
+import com.omnibus.omnibus.testing.ScriptedServer
+import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
+import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomOf
 import com.omnibus.omnibus.testing.randomString
+import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.unmockAndroidLog
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
@@ -32,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -42,17 +46,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import mockwebserver3.Dispatcher
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
-import mockwebserver3.SocketEffect
 import okhttp3.HttpUrl
-
-private fun reply(code: Int, body: String = ""): MockResponse = MockResponse.Builder().code(code).body(body).build()
-
-/** A connection dropped before any response, which the client reports as an IOException. */
-private fun dropped(): MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 /** A JSON object from pairs, where null is JSON null and a Kotlin value is wrapped as a primitive. */
 private fun obj(vararg fields: Pair<String, Any?>): JsonObject = JsonObject(
@@ -107,53 +101,6 @@ private fun reviewsOf(state: ReviewsState): BookReviews = (state as ReviewsState
 
 private fun ratingPatch(rating: Float?): ReviewPatch = ReviewPatch(rating = Patch.Set(rating))
 
-/**
- * Answers requests from a script, per HTTP method, in order. A step can hold its response until the test releases
- * [CountDownLatch]. A request with no step gets a 500, so an unexpected call fails the test instead of hanging.
- */
-private class ScriptedDispatcher : Dispatcher() {
-    private class Step(val response: MockResponse, val gate: CountDownLatch?)
-
-    private val steps = mutableMapOf<String, ArrayDeque<Step>>()
-
-    fun answer(method: String, response: MockResponse, gate: CountDownLatch? = null) {
-        synchronized(steps) { steps.getOrPut(method) { ArrayDeque() }.addLast(Step(response, gate)) }
-    }
-
-    override fun dispatch(request: RecordedRequest): MockResponse {
-        val method = request.method.orEmpty()
-        val step = synchronized(steps) { steps[method]?.removeFirstOrNull() }
-            ?: return reply(500, "unscripted $method")
-        step.gate?.await(5, TimeUnit.SECONDS)
-        return step.response
-    }
-}
-
-/** A running server that answers from [script], and [scope], a place for work that outlives one call. */
-private class TestServer(val server: MockWebServer, val script: ScriptedDispatcher, val scope: CoroutineScope) {
-
-    val url: HttpUrl get() = server.url("/")
-
-    /** Waits for the next request the server received, in arrival order. */
-    fun nextRequest(): RecordedRequest =
-        checkNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request reached the server" }
-}
-
-/** Runs [test] against a new [TestServer], and closes it afterwards. */
-private suspend fun withServer(test: suspend TestServer.() -> Unit) {
-    val script = ScriptedDispatcher()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    MockWebServer().use { server ->
-        server.dispatcher = script
-        server.start()
-        try {
-            TestServer(server, script, scope).test()
-        } finally {
-            scope.cancel()
-        }
-    }
-}
-
 /** Waits until the shared state for [uuid] is [expected]. */
 private suspend fun ReviewsRepository.awaitState(uuid: String, expected: ReviewsState) {
     withTimeout(5_000) { getReviewsFlow(uuid).first { it == expected } }
@@ -181,11 +128,11 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
     )
 
     /** A [sut] that runs HTTP on real threads, which lets a test hold a request open. */
-    fun TestServer.threadedSut(monitor: ConnectivityMonitor = TestConnectivityMonitor()): DefaultReviewsRepository =
+    fun ScriptedServer.threadedSut(monitor: ConnectivityMonitor = TestConnectivityMonitor()): DefaultReviewsRepository =
         sut(url, monitor, scope, Dispatchers.IO)
 
     /** Loads [body] for [uuid], and takes that request from the server's queue. */
-    suspend fun TestServer.load(repository: ReviewsRepository, uuid: String, body: String) {
+    suspend fun ScriptedServer.load(repository: ReviewsRepository, uuid: String, body: String) {
         script.answer("GET", reply(200, body))
         repository.refresh(uuid)
         nextRequest()
@@ -200,7 +147,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when nothing has loaded") {
 
             it("TC-1: emits Loading, then the server's reviews") {
-                withServer {
+                withScriptedServer {
                     val mine = randomMine()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(200, reviewsBody(mine)), gate)
@@ -217,7 +164,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the reviews have loaded") {
 
             it("TC-1: reads nothing more from the server for a new collector") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, reviewsBody())
@@ -231,7 +178,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when a refresh fails") {
 
                 it("TC-4: keeps them, regardless of how it fails") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val mine = randomMine()
                         val repository = sut(url, TestConnectivityMonitor(online = false))
@@ -252,7 +199,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when a read is in flight") {
 
             it("TC-2: shares it with another caller") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     script.answer("GET", reply(200, reviewsBody()), gate)
@@ -270,7 +217,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-3: asks for the book with its uuid as one path segment") {
-            withServer {
+            withScriptedServer {
                 val uuid = "a b/c"
                 script.answer("GET", reply(200, reviewsBody()))
 
@@ -281,7 +228,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-5: keeps others in the server's order, without rows that have no user id") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val repository = sut(url)
                 val rows = listOf(
@@ -297,7 +244,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-6: maps my review with no attribution") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val mine = randomMine()
                 val repository = sut(url)
@@ -308,7 +255,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-6: maps another reader's review without private notes, trimming the name") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val name = randomString()
                 val repository = sut(url)
@@ -322,7 +269,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-7: keeps a rating only inside 0.5 to 5") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val repository = sut(url)
                 val rows = listOf(0.5, 5, 0, 5.5).map { obj("user_id" to randomLong(), "stars" to it) } + obj("user_id" to randomLong())
@@ -334,7 +281,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-7: reads blank text as none, regardless of the blank") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val text = randomString()
                 val repository = sut(url)
@@ -346,7 +293,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-8: prefers the seconds for the change time, then the ISO string, then none") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val seconds = randomLong(0L..2_000_000_000L)
                 val iso = "2025-10-29T21:24:05Z"
@@ -364,7 +311,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-9: has a summary only with at least one rating") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         obj("average_stars" to 4.5, "ratings" to 3) to ReviewSummary(4.5f, 3),
@@ -385,7 +332,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the connection drops") {
 
             it("TC-10: is Offline or Failed according to whether the device is online") {
-                withServer {
+                withScriptedServer {
                     checkAll(Exhaustive.of(false to ReviewsState.Offline, true to ReviewsState.Failed)) { (online, state) ->
                         script.answer("GET", dropped())
 
@@ -396,7 +343,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-11: is Failed regardless of what else goes wrong") {
-            withServer {
+            withScriptedServer {
                 checkAll(Exhaustive.of(reply(401), reply(404), reply(500), reply(200, "not json"))) { failure ->
                     script.answer("GET", failure)
 
@@ -415,7 +362,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the uuid is blank") {
 
             it("TC-11: fails without asking the server") {
-                withServer {
+                withScriptedServer {
                     sut(url).getReviewsFlow("  ").first() shouldBe ReviewsState.Failed
 
                     server.requestCount shouldBe 0
@@ -426,7 +373,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the last read failed") {
 
             it("TC-12: shows Loading again during the next read") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     val repository = threadedSut()
@@ -450,7 +397,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the state is Offline") {
 
             it("TC-13: reads again") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val monitor = TestConnectivityMonitor(online = false)
@@ -471,7 +418,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when nothing is collecting the state") {
 
                 it("TC-15: reads nothing") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val monitor = TestConnectivityMonitor(online = false)
                         val repository = sut(url, monitor)
@@ -488,7 +435,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         }
 
         it("TC-13, TC-15: reads nothing regardless of whether the state is Failed or Loaded") {
-            withServer {
+            withScriptedServer {
                 checkAll(
                     Exhaustive.of(
                         reply(500) to ReviewsState.Failed,
@@ -516,12 +463,13 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
     describe("writing my review") {
 
         it("TC-14: sends the patch to the book's path") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val rating = randomRating()
                 val repository = sut(url)
                 load(repository, uuid, reviewsBody())
                 script.answer("PATCH", reply(200, randomMine().toJson().toString()))
+                script.answer("GET", reply(500))
 
                 repository.updateMyReview(uuid, ratingPatch(rating))
 
@@ -535,7 +483,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the patch changes nothing") {
 
             it("TC-17: answers Unchanged without asking the server") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val repository = sut(url)
@@ -551,7 +499,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the server is still answering") {
 
             it("TC-18: shows the patched review, then the server's") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val rating = otherRating(mine.rating)
@@ -575,11 +523,12 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the patch leaves nothing") {
 
             it("TC-19: reads the server's JSON null as no review") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val repository = sut(url)
                     load(repository, uuid, reviewsBody(randomMine().copy(text = null, privateNotes = null)))
                     script.answer("PATCH", reply(200, "null"))
+                    script.answer("GET", reply(500))
 
                     repository.updateMyReview(uuid, ratingPatch(null)) shouldBe ReviewWriteResult.Saved(null)
                 }
@@ -589,7 +538,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when a save succeeds") {
 
             it("TC-21: reads the household's part again, keeping my saved review") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val saved = randomMine()
@@ -611,7 +560,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when a read started after the write") {
 
                 it("TC-21: joins that read instead of starting another") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val saved = randomMine()
                         val patchGate = CountDownLatch(1)
@@ -638,7 +587,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when the read that follows it fails") {
 
                 it("TC-22: keeps my saved review, regardless of how the read fails") {
-                    withServer {
+                    withScriptedServer {
                         checkAll(Exhaustive.of(reply(500), dropped())) { failure ->
                             val uuid = randomString()
                             val saved = randomMine()
@@ -659,7 +608,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the write fails") {
 
             it("TC-23: reports each failure as its own error") {
-                withServer {
+                withScriptedServer {
                     checkAll(
                         Exhaustive.of(
                             reply(400) to ReviewError.Http(400),
@@ -681,7 +630,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
 
             context("when the server is gone") {
                 it("TC-23: reports the server as unreachable") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val repository = sut(url)
                         load(repository, uuid, reviewsBody())
@@ -694,7 +643,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             }
 
             it("TC-24: shows the patched review, then restores the exact previous state") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val rating = otherRating(mine.rating)
@@ -719,7 +668,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the saved server has been forgotten") {
 
             it("TC-23: fails with NoServer regardless of the write") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val provider = TestServerBaseUrlProvider(baseUrl = url)
                     val repository = sut(baseUrlProvider = provider)
@@ -744,7 +693,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the reviews have not loaded") {
 
             it("TC-29: fails with NotLoaded regardless of the reason or the write") {
-                withServer {
+                withScriptedServer {
                     checkAll(
                         Exhaustive.of(
                             null to true,
@@ -774,7 +723,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when the older write succeeds") {
 
                 it("TC-25: keeps the newer write's value") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val mine = randomMine()
                         val (older, newer) = twoOtherRatings(mine.rating)
@@ -785,6 +734,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                         load(repository, uuid, reviewsBody(mine))
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateA)
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateB)
+                        script.answer("GET", reply(500))
 
                         val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
                         nextRequest()
@@ -803,7 +753,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             context("when the older write fails") {
 
                 it("TC-26: keeps the newer write's value") {
-                    withServer {
+                    withScriptedServer {
                         val uuid = randomString()
                         val mine = randomMine()
                         val (older, newer) = twoOtherRatings(mine.rating)
@@ -830,7 +780,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             }
 
             it("TC-27: holds the newer write back until the older one is answered") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val (older, newer) = twoOtherRatings(mine.rating)
@@ -839,6 +789,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                     load(repository, uuid, reviewsBody(mine))
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()), gate)
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()))
+                    script.answer("GET", reply(500))
 
                     val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
                     nextRequest()
@@ -855,7 +806,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the caller is cancelled") {
 
             it("TC-28: lets the write finish") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val saved = randomMine()
                     val gate = CountDownLatch(1)
@@ -877,7 +828,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when a read started before the save") {
 
             it("TC-30: keeps my saved review") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val saved = randomMine()
                     val staleGate = CountDownLatch(1)
@@ -900,7 +851,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             }
 
             it("TC-30: reads once more for the household's part") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val saved = randomMine()
                     val staleGate = CountDownLatch(1)
@@ -926,7 +877,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when a read lands during the write") {
 
             it("TC-31: keeps showing the write's value") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val rating = otherRating(mine.rating)
@@ -951,7 +902,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             }
 
             it("TC-31: falls back to the read's answer once the write fails") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val read = randomMine()
                     val getGate = CountDownLatch(1)
@@ -978,7 +929,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when another book has loaded") {
 
             it("TC-32: leaves that book's state alone") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val other = randomString()
                     val otherMine = randomMine()
@@ -986,6 +937,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                     load(repository, other, reviewsBody(otherMine))
                     load(repository, uuid, reviewsBody())
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()))
+                    script.answer("GET", reply(500))
 
                     repository.updateMyReview(uuid, ratingPatch(randomRating()))
 
@@ -998,11 +950,12 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
     describe("deleting my review") {
 
         it("TC-20: deletes through the book's path") {
-            withServer {
+            withScriptedServer {
                 val uuid = randomString()
                 val repository = sut(url)
                 load(repository, uuid, reviewsBody(randomMine()))
                 script.answer("DELETE", reply(204))
+                script.answer("GET", reply(500))
 
                 repository.deleteMyReview(uuid) shouldBe ReviewWriteResult.Saved(null)
 
@@ -1015,7 +968,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the server is still answering") {
 
             it("TC-20: shows no review") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val gate = CountDownLatch(1)
                     val repository = threadedSut()
@@ -1035,7 +988,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
         context("when the delete fails") {
 
             it("TC-23: restores the review") {
-                withServer {
+                withScriptedServer {
                     val uuid = randomString()
                     val mine = randomMine()
                     val repository = sut(url)

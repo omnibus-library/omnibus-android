@@ -22,16 +22,12 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 private class TimerWiring : AutoCloseable {
     private val scheduler = TestCoroutineScheduler()
     private val timerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(scheduler))
-    private lateinit var lateRig: ControllerRig
     private val timer = DefaultSleepTimer(
-        dagger.Lazy<AudiobookController> { lateRig.controller },
+        dagger.Lazy<AudiobookController> { rig.controller },
         TimeSource { scheduler.currentTime },
         timerScope,
     )
-    val rig = ControllerRig(scheduler, sleepTimer = timer).also {
-        lateRig = it
-        it.loadAndSettle()
-    }
+    val rig: ControllerRig = ControllerRig(scheduler, sleepTimer = timer).also { it.loadAndSettle() }
 
     fun enginePauses(): Int = rig.engine.calls.count { it == "pause" }
 
@@ -61,6 +57,7 @@ class SleepTimerWiringTest : DescribeSpec({
                     w.rig.controller.setSleepTimer(After(15))
                     w.rig.settle()
 
+                    w.rig.stageBook()
                     w.rig.controller.load("book-2", null, null, true)
                     w.rig.settle()
 

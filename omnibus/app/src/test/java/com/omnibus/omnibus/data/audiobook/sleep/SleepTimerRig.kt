@@ -27,11 +27,9 @@ internal class SleepTimerRig(initial: PlaybackState, clock: TimeSource? = null) 
     /** The timer's state at each pause, in call order. */
     val seenAtPause = mutableListOf<SleepTimerState?>()
 
-    private lateinit var timerRef: DefaultSleepTimer
-
     private val controller: AudiobookController = object : AudiobookController by fake {
         override fun pause() {
-            seenAtPause += timerRef.state.value
+            seenAtPause += timer.state.value
             fake.pause()
         }
     }
@@ -40,7 +38,7 @@ internal class SleepTimerRig(initial: PlaybackState, clock: TimeSource? = null) 
         dagger.Lazy<AudiobookController> { controller },
         clock ?: TimeSource { scheduler.currentTime },
         scope,
-    ).also { timerRef = it }
+    )
 
     /** Runs whatever is due now, without moving the clock. */
     fun settle() = scheduler.runCurrent()

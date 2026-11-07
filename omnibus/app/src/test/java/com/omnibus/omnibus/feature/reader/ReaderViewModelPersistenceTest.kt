@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.progress.PositionSaveResult
 import com.omnibus.omnibus.data.progress.ProgressError
 import com.omnibus.omnibus.data.progress.ReadingPosition
+import com.omnibus.omnibus.data.progress.ServerPositionResult
 import com.omnibus.omnibus.data.progress.TestProgressRepository
 import com.omnibus.omnibus.data.progress.randomReadingPosition
 import com.omnibus.omnibus.di.TimeSource
@@ -29,6 +30,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+
+/** A repository whose pushes succeed. */
+private fun pushing() = TestProgressRepository().apply { pushResult = PositionSaveResult.Pushed }
 
 /** The reader's position persistence: what is written, pushed and flushed, and when. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,7 +59,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         it("TC-22: writes a movement with its cfi, percent and a seconds clock") {
             val uuid = randomString()
             val now = randomLong()
-            val progress = TestProgressRepository()
+            val progress = pushing()
             val vm = sut(bookUuid = uuid, progressRepository = progress, timeSource = TimeSource { now })
             vm.relocateTo(randomCfi())
             val cfi = randomCfi()
@@ -67,7 +71,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         }
 
         it("TC-25: skips the landing, a blank cfi or an unmoved cfi") {
-            val progress = TestProgressRepository()
+            val progress = pushing()
             val vm = sut(progressRepository = progress)
             val cfi = randomCfi()
 
@@ -82,7 +86,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         }
 
         it("TC-27: writes every movement locally, however fast they come") {
-            val progress = TestProgressRepository()
+            val progress = pushing()
             val vm = sut(progressRepository = progress)
             vm.relocateTo(randomCfi())
 
@@ -92,7 +96,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
         }
 
         it("TC-28: never writes an echo") {
-            val progress = TestProgressRepository()
+            val progress = pushing()
             val vm = sut(progressRepository = progress)
             vm.relocateTo(randomCfi())
 
@@ -109,7 +113,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 checkAll(
                     Exhaustive.of<(ReaderViewModel) -> Unit>({ it.onReaderClosed() }, { it.onReaderStopped() }),
                 ) { leave ->
-                    val progress = TestProgressRepository()
+                    val progress = pushing()
                     val vm = sut(progressRepository = progress)
                     vm.landAndPush()
                     val cfi = randomCfi()
@@ -122,7 +126,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
             }
 
             it("TC-32: pushes it only once") {
-                val progress = TestProgressRepository()
+                val progress = pushing()
                 val vm = sut(progressRepository = progress)
                 vm.landAndPush()
                 vm.relocateTo(randomCfi())
@@ -137,7 +141,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
             context("when the view model is cleared without a close") {
                 it("TC-34: still pushes it") {
-                    val progress = TestProgressRepository()
+                    val progress = pushing()
                     val store = ViewModelStore()
                     val vm = store.sut(progress)
                     vm.relocateTo(randomCfi())
@@ -153,7 +157,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
 
         context("with a push in flight when the view model is cleared") {
             it("TC-34: completes the push") {
-                val progress = TestProgressRepository()
+                val progress = pushing()
                 val store = ViewModelStore()
                 val vm = store.sut(progress)
                 vm.relocateTo(randomCfi())
@@ -200,6 +204,7 @@ class ReaderViewModelPersistenceTest : DescribeSpec({
                 val cfi = randomCfi()
                 val progress = TestProgressRepository().apply {
                     stored[uuid] = randomReadingPosition().copy(bookUuid = uuid, cfi = cfi)
+                    serverResult = ServerPositionResult.None
                 }
                 val library = TestLibraryRepository().apply { pendingBook = CompletableDeferred() }
 

@@ -38,6 +38,8 @@ private fun itemsManifest() = DeletionManifest(
 
 private fun admin() = TestAuthRepository().apply { currentUserState.value = randomCurrentUser().copy(isAdmin = true) }
 
+private fun online() = TestConnectivityMonitor(online = true)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class DeleteBookViewModelTest : DescribeSpec({
 
@@ -58,7 +60,7 @@ class DeleteBookViewModelTest : DescribeSpec({
         bookUuid: String = randomString(),
     ): DeleteBookViewModel {
         repo.manifestResult = DeletionManifestResult.Success(manifest)
-        return sut(bookUuid, repo, admin()).apply { openSheet(hasFiles = randomBoolean()) }
+        return sut(bookUuid, repo, admin(), online()).apply { openSheet(hasFiles = randomBoolean()) }
     }
 
     /** An admin's ViewModel, on the confirm step for the first file of [manifest]. */
@@ -132,7 +134,7 @@ class DeleteBookViewModelTest : DescribeSpec({
                 val repo = TestDeletionRepository().apply {
                     manifestResult = DeletionManifestResult.Failed(DeletionError.Unreachable)
                 }
-                val vm = sut(repo = repo, auth = admin())
+                val vm = sut(repo = repo, auth = admin(), monitor = online())
                 vm.openSheet(hasFiles = randomBoolean())
                 vm.uiState.value.sheet shouldBe DeleteSheet.LoadFailed
 
@@ -244,7 +246,7 @@ class DeleteBookViewModelTest : DescribeSpec({
         it("#121 TC-36: sends the picked ids for this book") {
             val uuid = randomString()
             val manifest = itemsManifest()
-            val repo = TestDeletionRepository()
+            val repo = TestDeletionRepository().apply { deleteGate = CompletableDeferred() }
             val vm = confirming(manifest, repo, uuid)
 
             vm.confirmDelete()
@@ -289,7 +291,10 @@ class DeleteBookViewModelTest : DescribeSpec({
             }
 
             it("#121 TC-38: clears the outcome only for its own id") {
-                val vm = confirming()
+                val repo = TestDeletionRepository().apply {
+                    deleteResult = DeleteItemsResult.Deleted(emptyList(), emptyList(), randomBoolean())
+                }
+                val vm = confirming(repo = repo)
                 vm.confirmDelete()
                 val outcome = checkNotNull(vm.uiState.value.outcome)
 

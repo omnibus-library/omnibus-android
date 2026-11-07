@@ -18,8 +18,9 @@ import com.omnibus.omnibus.data.library.local.TestLibrarySortPreferenceStore
 import com.omnibus.omnibus.data.library.page
 import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.library.randomLibrarySortPreference
-import com.omnibus.omnibus.data.library.testBook
-import com.omnibus.omnibus.data.library.testResumePoint
+import com.omnibus.omnibus.data.library.about
+import com.omnibus.omnibus.data.library.randomResumePoint
+import com.omnibus.omnibus.data.library.withRecord
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
@@ -136,7 +137,7 @@ class LibraryViewModelTest : DescribeSpec({
         }
 
         it("TC-63: picks Loading, then Error, then Empty, then Content, by first match") {
-            val book = testBook(1)
+            val book = randomBook()
 
             checkAll(
                 Exhaustive.of(
@@ -239,7 +240,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val viewModel = sutWithSixtyBooks(repository)
                 val first = viewModel.uiState.value.books.first { it.id == 59L }
                 repository.enqueue(
-                    LibraryPageResult.Success(BooksPage(listOf(testBook(59, title = randomString()), testBook(61)), "c2", null, null)),
+                    LibraryPageResult.Success(BooksPage(listOf(randomBook().copy(id = 59), randomBook().copy(id = 61)), "c2", null, null)),
                 )
 
                 viewModel.loadMoreIfNeeded(59)
@@ -559,7 +560,7 @@ class LibraryViewModelTest : DescribeSpec({
     describe("#22 the Continue cards") {
         fun bookIn(vararg formats: String) = randomBook().copy(uniqueIdentifier = randomString(8..16), formats = formats.toList())
 
-        fun reading() = testResumePoint(book = bookIn("epub"), progressPercent = 10.0)
+        fun reading() = randomResumePoint().about(bookIn("epub")).withRecord { copy(format = ProgressFormat.Reading) }
 
         fun success(vararg points: ResumePoint) = RecentProgressResult.Success(points.toList())
 
@@ -669,7 +670,7 @@ class LibraryViewModelTest : DescribeSpec({
             context("when its book can open") {
                 it("#22 TC-25: opens the reader for a reading card") {
                     val point = reading()
-                    val viewModel = TestLibraryRepository().shown(point)
+                    val viewModel = TestLibraryRepository().shown(point, availability = TestBookAvailability(answer = true))
 
                     viewModel.resume(point.cardId)
 
@@ -677,8 +678,8 @@ class LibraryViewModelTest : DescribeSpec({
                 }
 
                 it("#22 TC-25: opens the player at the saved file for a listening card") {
-                    val point = testResumePoint(book = bookIn("m4b"), format = ProgressFormat.Listening, bookFileId = 20L)
-                    val viewModel = TestLibraryRepository().shown(point)
+                    val point = randomResumePoint().about(bookIn("m4b")).withRecord { copy(format = ProgressFormat.Listening, bookFileId = 20L) }
+                    val viewModel = TestLibraryRepository().shown(point, availability = TestBookAvailability(answer = true))
 
                     viewModel.resume(point.cardId)
 

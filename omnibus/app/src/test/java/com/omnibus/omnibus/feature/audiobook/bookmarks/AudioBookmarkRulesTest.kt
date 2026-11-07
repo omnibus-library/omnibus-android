@@ -68,6 +68,7 @@ class AudioBookmarkRulesTest : DescribeSpec({
                 book = book,
                 chapters = chapters(50.0, 500.0, titles = listOf(randomString(), title)),
                 positionSeconds = 125.4,
+                isLoading = false,
             )
 
             audioBookmarkDraft(book.bookUuid, state) shouldBe BookmarkDraft.create(book.bookUuid, "125.4", title)
@@ -77,7 +78,7 @@ class AudioBookmarkRulesTest : DescribeSpec({
             // TC6, C15: a book without chapters has no chapter title
             it("TC6: has no title") {
                 val book = randomPlayingBook()
-                val state = playbackState(book = book, chapters = emptyList(), positionSeconds = 90.0)
+                val state = playbackState(book = book, chapters = emptyList(), positionSeconds = 90.0, isLoading = false)
 
                 audioBookmarkDraft(book.bookUuid, state) shouldBe BookmarkDraft.create(book.bookUuid, "90", null)
             }
