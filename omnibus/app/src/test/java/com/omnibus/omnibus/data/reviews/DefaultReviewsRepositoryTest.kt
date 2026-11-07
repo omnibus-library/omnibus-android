@@ -730,11 +730,14 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                         val optimistic = loaded(mine.copy(rating = newer))
                         val gateA = CountDownLatch(1)
                         val gateB = CountDownLatch(1)
+                        val getGate = CountDownLatch(1)
                         val repository = threadedSut()
                         load(repository, uuid, reviewsBody(mine))
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateA)
                         script.answer("PATCH", reply(200, randomMine().toJson().toString()), gateB)
-                        script.answer("GET", reply(500))
+                        // Held until both writes are saved, so the second joins this read. Answered early, it would
+                        // start a second GET, which nothing scripts.
+                        script.answer("GET", reply(500), getGate)
 
                         val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
                         nextRequest()
@@ -746,6 +749,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                         repository.getReviewsFlow(uuid).first() shouldBe optimistic
                         gateB.countDown()
                         b.await()
+                        getGate.countDown()
                     }
                 }
             }
@@ -785,11 +789,14 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                     val mine = randomMine()
                     val (older, newer) = twoOtherRatings(mine.rating)
                     val gate = CountDownLatch(1)
+                    val getGate = CountDownLatch(1)
                     val repository = threadedSut()
                     load(repository, uuid, reviewsBody(mine))
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()), gate)
                     script.answer("PATCH", reply(200, randomMine().toJson().toString()))
-                    script.answer("GET", reply(500))
+                    // Held until both writes are saved, so the second joins this read. Answered early, it would
+                    // start a second GET, which nothing scripts.
+                    script.answer("GET", reply(500), getGate)
 
                     val a = scope.async { repository.updateMyReview(uuid, ratingPatch(older)) }
                     nextRequest()
@@ -799,6 +806,7 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
                     server.takeRequest(300, TimeUnit.MILLISECONDS).shouldBeNull()
                     gate.countDown()
                     listOf(a, b).awaitAll()
+                    getGate.countDown()
                 }
             }
         }
