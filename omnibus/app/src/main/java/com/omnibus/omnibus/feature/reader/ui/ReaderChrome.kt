@@ -7,7 +7,6 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,17 +14,23 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -44,7 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
@@ -54,36 +62,32 @@ import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
- * The reader's chrome: the title and page labels, the close and menu buttons, the menu rows and, while the
- * menu is open, the bookmark quick action beside the menu button.
- * It is drawn over the page in the bands `#stage` reserves, and never resizes it.
+ * The context mode chrome: the top bar (back, title, bookmark toggle, more) and the flat dropdown under the more
+ * button. It is drawn over the page and never resizes it. The page labels are drawn separately by [ReaderPageLabels].
  *
  * Stateless. The screen owns the state and passes plain values in.
  *
- * @param indicators The top and bottom labels.
- * @param chromeVisible Whether the buttons are shown. The labels stay on screen either way.
- * @param menuOpen Whether the menu rows are shown above the menu button.
- * @param menuRows The rows to show, in order. Empty hides the menu button.
- * @param percent The progress shown on the Contents row. Null shows none.
- * @param bookmarkCount The count shown on the Bookmarks row, when it is above zero.
- * @param pageBookmarked Whether the current page has a bookmark, which fills the quick action's icon.
- * @param canBookmark False when there is no current position, which disables the quick action.
+ * @param title The book's title, shown on one line in the bar.
+ * @param chromeVisible Whether context mode is on. The bar and the dropdown are shown only then.
+ * @param menuOpen Whether the dropdown is open.
+ * @param menuRows The dropdown's rows, in order. Empty hides the more button.
  * @param colors The reading theme's chrome colours.
  * @param reduceMotion When true, every change appears on the next frame, with no transition.
  * @param insets The system bars and cutout, the same insets the page takes.
- * @param onClose Called when the close button is tapped.
- * @param onMenuOpened Called when the menu button is tapped.
- * @param onMenuDismissed Called when a tap lands outside the open menu.
+ * @param onClose Called when the back arrow is tapped.
+ * @param onMenuOpened Called when the more button is tapped.
+ * @param onMenuDismissed Called when a tap lands outside the open dropdown.
  * @param onMenuRowChosen Called with the row that was tapped.
- * @param onBookmarkToggled Called when the quick action, shown beside the menu button while the menu is open, is tapped.
+ * @param pageBookmarked Whether the current page has a bookmark, which fills the bookmark toggle's icon.
+ * @param canBookmark False when there is no current position, which disables the bookmark toggle.
+ * @param onBookmarkToggled Called when the bookmark toggle is tapped.
  */
 @Composable
 internal fun ReaderChrome(
-    indicators: ReaderIndicators,
+    title: String,
     chromeVisible: Boolean,
     menuOpen: Boolean,
     menuRows: List<ReaderMenuRow>,
-    percent: Int?,
     colors: ReaderChromeColors,
     reduceMotion: Boolean,
     insets: WindowInsets,
@@ -92,35 +96,32 @@ internal fun ReaderChrome(
     onMenuDismissed: () -> Unit,
     onMenuRowChosen: (ReaderMenuRow) -> Unit,
     modifier: Modifier = Modifier,
-    bookmarkCount: Int = 0,
     pageBookmarked: Boolean = false,
     canBookmark: Boolean = true,
     onBookmarkToggled: () -> Unit = {},
 ) {
     Box(modifier.fillMaxSize()) {
-        // Labels take no touches, so a tap on them reaches the page underneath.
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(insets)
-                .padding(vertical = Spacing.xs, horizontal = ReaderMenu.labelSidePadding),
+        ChromeVisibility(
+            visible = chromeVisible,
+            reduceMotion = reduceMotion,
+            enter = fadeIn(Motion.settle()),
+            exit = fadeOut(Motion.settle()),
+            modifier = Modifier.align(Alignment.TopStart),
         ) {
-            ChromeLabel(
-                text = indicators.top?.text(),
-                tag = ReaderChromeTags.LABEL_TOP,
+            ReaderContextBar(
+                title = title,
+                menuRows = menuRows,
+                pageBookmarked = pageBookmarked,
+                canBookmark = canBookmark,
                 colors = colors,
-                reduceMotion = reduceMotion,
-            )
-            Spacer(Modifier.weight(1f))
-            ChromeLabel(
-                text = indicators.bottom?.text(),
-                tag = ReaderChromeTags.LABEL_BOTTOM,
-                colors = colors,
-                reduceMotion = reduceMotion,
+                insets = insets,
+                onClose = onClose,
+                onMenuOpened = onMenuOpened,
+                onBookmarkToggled = onBookmarkToggled,
             )
         }
 
-        // Only while the menu is open, so the page takes taps as usual otherwise.
+        // Only while the dropdown is open. It is drawn over the bar, so a tap on the bar only dismisses the dropdown.
         if (menuOpen) {
             Box(
                 Modifier
@@ -135,111 +136,247 @@ internal fun ReaderChrome(
         }
 
         ChromeVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && menuOpen && menuRows.isNotEmpty(),
             reduceMotion = reduceMotion,
-            enter = fadeIn(Motion.settle()),
-            exit = fadeOut(Motion.settle()),
+            enter = fadeIn(Motion.lift()),
+            exit = fadeOut(Motion.snap()),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(top = ReaderContextMetrics.barHeight, end = ReaderContextMetrics.dropdownEndMargin),
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(insets)
-                    .padding(horizontal = ReaderMenu.inset, vertical = Spacing.xs),
-            ) {
-                ReaderChromeButton(
-                    iconRes = R.drawable.ic_reader_close,
-                    contentDescription = stringResource(R.string.reader_close_book),
-                    colors = colors,
-                    onClick = onClose,
-                    modifier = Modifier.align(Alignment.TopEnd).testTag(ReaderChromeTags.CLOSE),
-                )
-                if (menuRows.isNotEmpty()) {
-                    Column(
-                        Modifier.align(Alignment.BottomEnd),
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(ReaderMenu.spacing),
-                    ) {
-                        ChromeVisibility(
-                            visible = menuOpen,
-                            reduceMotion = reduceMotion,
-                            enter = fadeIn(Motion.lift()) +
-                                slideInVertically(Motion.lift(IntOffset(1, 1))) { it / 2 },
-                            exit = fadeOut(Motion.snap()),
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                verticalArrangement = Arrangement.spacedBy(ReaderMenu.spacing),
-                            ) {
-                                menuRows.forEach { row ->
-                                    ReaderMenuRowItem(
-                                        row = row,
-                                        percent = percent,
-                                        bookmarkCount = bookmarkCount,
-                                        colors = colors,
-                                        onClick = { onMenuRowChosen(row) },
-                                    )
-                                }
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // The 8dp gap is the wrapper's padding, so the menu button stays put when the quick action is hidden.
-                            ChromeVisibility(
-                                visible = menuOpen,
-                                reduceMotion = reduceMotion,
-                                enter = fadeIn(Motion.lift()),
-                                exit = fadeOut(Motion.snap()),
-                                modifier = Modifier.padding(end = ReaderMenu.spacing),
-                            ) {
-                                ReaderChromeButton(
-                                    iconRes = if (pageBookmarked) {
-                                        R.drawable.ic_reader_bookmark_filled
-                                    } else {
-                                        R.drawable.ic_reader_bookmark
-                                    },
-                                    contentDescription = stringResource(
-                                        if (pageBookmarked) R.string.reader_bookmark_remove else R.string.reader_bookmark_add,
-                                    ),
-                                    colors = colors,
-                                    onClick = onBookmarkToggled,
-                                    enabled = canBookmark,
-                                    modifier = Modifier.testTag(ReaderChromeTags.BOOKMARK),
-                                )
-                            }
-                            ReaderChromeButton(
-                                iconRes = R.drawable.ic_reader_menu,
-                                contentDescription = stringResource(R.string.reader_menu),
-                                colors = colors,
-                                onClick = onMenuOpened,
-                                modifier = Modifier.testTag(ReaderChromeTags.MENU),
-                            )
-                        }
-                    }
-                }
-            }
+            ReaderContextMenu(rows = menuRows, colors = colors, onMenuRowChosen = onMenuRowChosen)
         }
     }
 }
 
-/** Metrics for the chrome, ported from iOS `ReaderMenu`. */
+/**
+ * The top bar: the back arrow, the title on one line, the bookmark toggle and, when there are rows, the more button.
+ * It sits below the status bar and takes no surface of its own.
+ */
+@Composable
+private fun ReaderContextBar(
+    title: String,
+    menuRows: List<ReaderMenuRow>,
+    pageBookmarked: Boolean,
+    canBookmark: Boolean,
+    colors: ReaderChromeColors,
+    insets: WindowInsets,
+    onClose: () -> Unit,
+    onMenuOpened: () -> Unit,
+    onBookmarkToggled: () -> Unit,
+) {
+    // Read outside the modifier lambda, so the back arrow mirrors in a right-to-left layout.
+    val mirror = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .height(ReaderContextMetrics.barHeight)
+            .padding(horizontal = ReaderContextMetrics.barSidePadding)
+            .testTag(ReaderChromeTags.BAR),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ReaderChromeIconButton(
+            iconRes = R.drawable.ic_book_detail_back,
+            contentDescription = stringResource(R.string.reader_close_book),
+            colors = colors,
+            onClick = onClose,
+            modifier = Modifier
+                .testTag(ReaderChromeTags.BACK)
+                .graphicsLayer { scaleX = mirror },
+        )
+        Text(
+            text = title,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = ReaderContextMetrics.titleStartGap),
+            style = uiTextStyle(ReaderContextMetrics.titleSize, FontWeight.Medium, colors.ink),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        ReaderChromeIconButton(
+            iconRes = if (pageBookmarked) R.drawable.ic_reader_bookmark_filled else R.drawable.ic_reader_bookmark,
+            contentDescription = stringResource(
+                if (pageBookmarked) R.string.reader_bookmark_remove else R.string.reader_bookmark_add,
+            ),
+            colors = colors,
+            onClick = onBookmarkToggled,
+            enabled = canBookmark,
+            modifier = Modifier.testTag(ReaderChromeTags.BOOKMARK),
+        )
+        if (menuRows.isNotEmpty()) {
+            ReaderChromeIconButton(
+                iconRes = R.drawable.ic_book_detail_more_dots,
+                contentDescription = stringResource(R.string.reader_menu),
+                colors = colors,
+                onClick = onMenuOpened,
+                modifier = Modifier.testTag(ReaderChromeTags.MORE),
+            )
+        }
+    }
+}
+
+/**
+ * The flat dropdown under the more button: the rows in a rounded plate with hairline dividers between them. It is as
+ * wide as its widest row, and never narrower than [ReaderContextMetrics.dropdownMinWidth].
+ */
+@Composable
+private fun ReaderContextMenu(
+    rows: List<ReaderMenuRow>,
+    colors: ReaderChromeColors,
+    onMenuRowChosen: (ReaderMenuRow) -> Unit,
+) {
+    val shape = RoundedCornerShape(ReaderContextMetrics.dropdownCorner)
+    Column(
+        // The floor comes first, so it is not ignored by the intrinsic width.
+        Modifier
+            .widthIn(min = ReaderContextMetrics.dropdownMinWidth)
+            .width(IntrinsicSize.Max)
+            .shadow(ReaderContextMetrics.dropdownElevation, shape)
+            .clip(shape)
+            .background(colors.plate)
+            .border(ReaderContextMetrics.hairline, colors.border, shape)
+            .testTag(ReaderChromeTags.DROPDOWN),
+    ) {
+        rows.forEachIndexed { index, row ->
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(ReaderContextMetrics.hairline)
+                        .background(colors.border),
+                )
+            }
+            ReaderContextMenuRow(row = row, colors = colors, onClick = { onMenuRowChosen(row) })
+        }
+    }
+}
+
+/** One dropdown row: its icon and label, in the chrome ink. */
+@Composable
+private fun ReaderContextMenuRow(
+    row: ReaderMenuRow,
+    colors: ReaderChromeColors,
+    onClick: () -> Unit,
+) {
+    val (iconRes, titleRes) = when (row) {
+        ReaderMenuRow.Contents -> R.drawable.ic_reader_contents to R.string.reader_menu_contents
+        ReaderMenuRow.Bookmarks -> R.drawable.ic_reader_bookmark to R.string.reader_menu_bookmarks
+        ReaderMenuRow.Settings -> R.drawable.ic_reader_settings to R.string.reader_menu_settings
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = ReaderContextMetrics.rowMinHeight)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(
+                horizontal = ReaderContextMetrics.rowHorizontalPadding,
+                vertical = ReaderContextMetrics.rowVerticalPadding,
+            )
+            .testTag(ReaderChromeTags.menuRow(row)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ReaderContextMetrics.rowIconLabelGap),
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = colors.ink,
+            modifier = Modifier.size(ReaderContextMetrics.rowIconSize),
+        )
+        Text(
+            text = stringResource(titleRes),
+            style = uiTextStyle(ReaderContextMetrics.rowLabelSize, FontWeight.Normal, colors.ink),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * The top and bottom page labels, drawn over the page in its bands. They take no touches, so a tap on them
+ * reaches the page underneath.
+ *
+ * @param indicators The top and bottom labels.
+ * @param colors The reading theme's chrome colours.
+ * @param reduceMotion When true, a changed label appears on the next frame, with no crossfade.
+ * @param insets The system bars and cutout, the same insets the page takes.
+ */
+@Composable
+internal fun ReaderPageLabels(
+    indicators: ReaderIndicators,
+    colors: ReaderChromeColors,
+    reduceMotion: Boolean,
+    insets: WindowInsets,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .windowInsetsPadding(insets)
+            .padding(vertical = Spacing.xs, horizontal = ReaderMenu.labelSidePadding),
+    ) {
+        ChromeLabel(
+            text = indicators.top?.text(),
+            tag = ReaderChromeTags.LABEL_TOP,
+            colors = colors,
+            reduceMotion = reduceMotion,
+        )
+        Spacer(Modifier.weight(1f))
+        ChromeLabel(
+            text = indicators.bottom?.text(),
+            tag = ReaderChromeTags.LABEL_BOTTOM,
+            colors = colors,
+            reduceMotion = reduceMotion,
+        )
+    }
+}
+
+/** Metrics for the chrome's labels, ported from iOS `ReaderMenu`. */
 internal object ReaderMenu {
     val buttonSize = 46.dp
-    val rowHeight = 46.dp
-    val rowMaxWidth = 272.dp
-    val spacing = 8.dp
-    val inset = 28.dp
 
     /** Wider than iOS's 72dp, so a full-width label can't reach a 46dp button 28dp from the edge. */
     val labelSidePadding = 80.dp
 }
 
+/**
+ * Metrics for the context mode top bar and flat dropdown. The spec's figures, in dp, as designed.
+ * The bar's layout row is the 48dp touch row, since the design's 36dp bar has no surface.
+ */
+internal object ReaderContextMetrics {
+    val barHeight = 48.dp
+    val barSidePadding = 4.dp
+    val touchTarget = 48.dp
+    val barIconSize = 22.dp
+    val titleSize = 16.sp
+    val titleStartGap = 4.dp
+
+    val dropdownMinWidth = 150.dp
+    val dropdownEndMargin = 12.dp
+    val dropdownCorner = 8.dp
+    val dropdownElevation = 8.dp
+    val rowMinHeight = 32.dp
+    val rowHorizontalPadding = 12.dp
+    val rowVerticalPadding = 6.dp
+    val rowIconSize = 18.dp
+    val rowIconLabelGap = 10.dp
+    val rowLabelSize = 14.sp
+
+    val hairline = 0.5.dp
+}
+
 /** Test tags on the chrome's nodes. */
 internal object ReaderChromeTags {
-    const val CLOSE = "reader_chrome_close"
-    const val MENU = "reader_chrome_menu"
     const val MENU_SCRIM = "reader_chrome_menu_scrim"
     const val LABEL_TOP = "reader_chrome_label_top"
     const val LABEL_BOTTOM = "reader_chrome_label_bottom"
     const val BOOKMARK = "reader_chrome_bookmark"
+    const val BAR = "reader_chrome_bar"
+    const val BACK = "reader_chrome_back"
+    const val MORE = "reader_chrome_more"
+    const val DROPDOWN = "reader_chrome_dropdown"
 
     fun menuRow(row: ReaderMenuRow) = "reader_chrome_menu_row_${row.name}"
 }
@@ -310,11 +447,11 @@ internal fun ChromeVisibility(
 }
 
 /**
- * A 46dp circular button with an opaque plate, a hairline border and an icon in the chrome ink. A disabled button is
- * drawn at 0.38 alpha and takes no taps.
+ * A plain icon button for the top bar: a 48dp touch target around a 22dp icon in the chrome ink, with no plate or
+ * border. A disabled button is drawn at 0.38 alpha and takes no taps.
  */
 @Composable
-internal fun ReaderChromeButton(
+internal fun ReaderChromeIconButton(
     @DrawableRes iconRes: Int,
     contentDescription: String,
     colors: ReaderChromeColors,
@@ -324,11 +461,9 @@ internal fun ReaderChromeButton(
 ) {
     Box(
         modifier
-            .size(ReaderMenu.buttonSize)
+            .size(ReaderContextMetrics.touchTarget)
             .alpha(if (enabled) 1f else 0.38f)
             .clip(CircleShape)
-            .background(colors.plate)
-            .border(0.5.dp, colors.border, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
@@ -337,65 +472,7 @@ internal fun ReaderChromeButton(
             painter = painterResource(iconRes),
             contentDescription = null,
             tint = colors.ink,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(ReaderContextMetrics.barIconSize),
         )
-    }
-}
-
-/** One menu row: an icon, its title and, for Contents, the current progress. */
-@Composable
-internal fun ReaderMenuRowItem(
-    row: ReaderMenuRow,
-    percent: Int?,
-    bookmarkCount: Int,
-    colors: ReaderChromeColors,
-    onClick: () -> Unit,
-) {
-    val (iconRes, titleRes) = when (row) {
-        ReaderMenuRow.Contents -> R.drawable.ic_reader_contents to R.string.reader_menu_contents
-        ReaderMenuRow.Bookmarks -> R.drawable.ic_reader_bookmark to R.string.reader_menu_bookmarks
-        ReaderMenuRow.Settings -> R.drawable.ic_reader_settings to R.string.reader_menu_settings
-    }
-    Row(
-        Modifier
-            .widthIn(max = ReaderMenu.rowMaxWidth)
-            .fillMaxWidth()
-            .height(ReaderMenu.rowHeight)
-            .clip(CircleShape)
-            .background(colors.plate)
-            .border(0.5.dp, colors.border, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp)
-            .testTag(ReaderChromeTags.menuRow(row)),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = colors.ink,
-            modifier = Modifier.size(22.dp),
-        )
-        Text(
-            text = stringResource(titleRes),
-            modifier = Modifier.weight(1f),
-            style = uiTextStyle(15.sp, FontWeight.Medium, colors.ink),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (row == ReaderMenuRow.Contents && percent != null) {
-            Text(
-                text = stringResource(R.string.reader_percent, percent),
-                style = uiTextStyle(13.5.sp, FontWeight.Normal, colors.labelInk),
-                maxLines = 1,
-            )
-        }
-        if (row == ReaderMenuRow.Bookmarks && bookmarkCount > 0) {
-            Text(
-                text = bookmarkCount.toString(),
-                style = uiTextStyle(13.5.sp, FontWeight.Normal, colors.labelInk),
-                maxLines = 1,
-            )
-        }
     }
 }

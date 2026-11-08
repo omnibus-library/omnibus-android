@@ -4,9 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.LayoutDirection
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
@@ -17,102 +20,67 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 /** A mid-book location: page 361 of 661, seven pages left in chapter 3 of 12, 54%. */
 private val Reading = RelocateData(page = 361, totalPages = 661, pct = 54, chapter = 3, totalChapters = 12, chapterPagesLeft = 7)
 
-/** Before page numbers exist, so the labels fall back to the chapter and the percent. */
-private val Fallback = RelocateData(totalPages = 0, pct = 18, chapter = 3, totalChapters = 12, chapterPagesLeft = 0)
-
 private val AllRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings)
 
-/** Only the title and the bare page, with no buttons. */
+/** The top bar in context mode: back, title, bookmark toggle and more, with the page labels under it. */
 @PreviewTest
 @Preview
 @Composable
-fun ReaderChromeHidden() {
-    ChromeShot(chromeVisible = false, menuRows = listOf(ReaderMenuRow.Contents))
+fun ReaderContextBar() {
+    ChromeShot(chromeVisible = true, menuRows = AllRows)
 }
 
-/** Close and menu buttons, with the pages left in the chapter and the page of total. */
+/** The flat dropdown open under the more button, in the Dark reading theme. */
 @PreviewTest
 @Preview
 @Composable
-fun ReaderChromeVisible() {
-    ChromeShot(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents))
+fun ReaderContextMenuOpen() {
+    ChromeShot(chromeVisible = true, menuOpen = true, menuRows = AllRows, theme = ReaderTheme.Dark)
 }
 
-/** No menu rows, so no menu button. */
+/** The same dropdown in a right-to-left layout, in Sepia: the back arrow mirrors and the dropdown hangs from the start. */
 @PreviewTest
 @Preview
 @Composable
-fun ReaderChromeVisibleWithoutMenu() {
-    ChromeShot(chromeVisible = true, menuRows = emptyList())
+fun ReaderContextMenuOpenReversed() {
+    ChromeShot(chromeVisible = true, menuOpen = true, menuRows = AllRows, theme = ReaderTheme.Sepia, rtl = true)
 }
 
-/** "Chapter 3 of 12" and "18%" before the book has page numbers. */
-@PreviewTest
-@Preview
-@Composable
-fun ReaderChromeFallback() {
-    ChromeShot(chromeVisible = true, menuRows = listOf(ReaderMenuRow.Contents), location = Fallback)
-}
-
-/** Rows stacked above the menu button in list order, Contents with 54%, Bookmarks with its count, and Add bookmark. */
-@PreviewTest
-@Preview
-@Composable
-fun ReaderChromeMenuOpen() {
-    ChromeShot(chromeVisible = true, menuOpen = true, menuRows = AllRows, bookmarkCount = 3)
-}
-
-/** A reversed list reverses the rows. Contents reads 0%, Bookmarks has no count, and the page is bookmarked. */
-@PreviewTest
-@Preview
-@Composable
-fun ReaderChromeMenuOpenReversed() {
-    ChromeShot(
-        chromeVisible = true,
-        menuOpen = true,
-        menuRows = AllRows.reversed(),
-        percent = 0,
-        pageBookmarked = true,
-    )
-}
-
-@PreviewTest
-@Preview
-@Composable
-fun ReaderChromeMenuOpenDark() {
-    ChromeShot(chromeVisible = true, menuOpen = true, menuRows = AllRows, bookmarkCount = 3, theme = ReaderTheme.Dark)
-}
-
-/** The chrome over a plain page in [theme], as the reader draws it, with reduced motion so nothing is mid-flight. */
+/** The page labels and the chrome over a plain page in [theme], as the reader draws them, with reduced motion so nothing is mid-flight. */
 @Composable
 private fun ChromeShot(
     chromeVisible: Boolean,
     menuRows: List<ReaderMenuRow>,
     menuOpen: Boolean = false,
     location: RelocateData = Reading,
-    percent: Int = location.pct,
-    bookmarkCount: Int = 0,
-    pageBookmarked: Boolean = false,
     theme: ReaderTheme = ReaderTheme.Light,
+    rtl: Boolean = false,
 ) {
-    OmnibusTheme(darkTheme = !theme.isLight) {
-        Box(Modifier.background(Color(theme.groundArgb))) {
-            ReaderChrome(
-                indicators = ReaderIndicators(location = location, title = "Nineteen Eighty-Four", chromeVisible = chromeVisible),
-                chromeVisible = chromeVisible,
-                menuOpen = menuOpen,
-                menuRows = menuRows,
-                percent = percent,
-                colors = readerChromeColors(theme),
-                reduceMotion = true,
-                insets = WindowInsets(0),
-                onClose = {},
-                onMenuOpened = {},
-                onMenuDismissed = {},
-                onMenuRowChosen = {},
-                bookmarkCount = bookmarkCount,
-                pageBookmarked = pageBookmarked,
-            )
+    val direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+    CompositionLocalProvider(LocalLayoutDirection provides direction) {
+        OmnibusTheme(darkTheme = !theme.isLight) {
+            Box(Modifier.background(Color(theme.groundArgb))) {
+                ReaderPageLabels(
+                    indicators = ReaderIndicators(location = location, title = "Nineteen Eighty-Four", chromeVisible = false),
+                    colors = readerChromeColors(theme),
+                    reduceMotion = true,
+                    insets = WindowInsets(0),
+                )
+                ReaderChrome(
+                    title = "Nineteen Eighty-Four",
+                    chromeVisible = chromeVisible,
+                    menuOpen = menuOpen,
+                    menuRows = menuRows,
+                    colors = readerChromeColors(theme),
+                    reduceMotion = true,
+                    insets = WindowInsets(0),
+                    onClose = {},
+                    onMenuOpened = {},
+                    onMenuDismissed = {},
+                    onMenuRowChosen = {},
+                    pageBookmarked = false,
+                )
+            }
         }
     }
 }
