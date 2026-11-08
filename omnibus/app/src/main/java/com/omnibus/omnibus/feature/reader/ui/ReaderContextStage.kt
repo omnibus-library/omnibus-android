@@ -90,11 +90,14 @@ internal fun ReaderContextStage(
         }
         // Previews and inspection have no frame clock to run the spring, so they show the settled state at once.
         val instant = reduceMotion || LocalInspectionMode.current
-        val progress by animateFloatAsState(
+        val animated by animateFloatAsState(
             targetValue = if (contextMode) 1f else 0f,
             animationSpec = if (instant) snap<Float>() else Motion.settle<Float>(),
             label = "context",
         )
+        // The settle spring is underdamped, so it overshoots 0 and 1 on the way. Geometry (a negative corner radius
+        // throws in the graphics layer) takes the clamped value, so the overshoot never reaches the layout.
+        val progress = animated.coerceIn(0f, 1f)
 
         val scale = lerp(1f, layout.scale, progress)
         val card = ContextRect(
