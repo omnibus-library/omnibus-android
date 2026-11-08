@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -293,6 +294,27 @@ internal fun BookDetailScreenContent(
                                             backdrop = !twoPane,
                                             underBar = underBar,
                                             coverScale = coverScale,
+                                            contentModifier = if (twoPane) {
+                                                // Centred between the bar row and the action row when it fits.
+                                                Modifier.layout { measurable, constraints ->
+                                                    val placeable = measurable.measure(constraints)
+                                                    val restTop = statusTop + StageRestTop +
+                                                        (if (underBar) 0.dp else TopBarRowHeight)
+                                                    val top = stageContentTop(
+                                                        statusTop,
+                                                        underBar,
+                                                        viewportHeight,
+                                                        actionAreaDp,
+                                                        placeable.height.toDp(),
+                                                    )
+                                                    val offset = (top - restTop).roundToPx()
+                                                    layout(placeable.width, placeable.height + offset) {
+                                                        placeable.place(0, offset)
+                                                    }
+                                                }
+                                            } else {
+                                                Modifier
+                                            },
                                         )
                                     }
                                 },
