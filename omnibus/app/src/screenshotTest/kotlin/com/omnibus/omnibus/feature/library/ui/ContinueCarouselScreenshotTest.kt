@@ -1,10 +1,12 @@
 package com.omnibus.omnibus.feature.library.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.library.Book
@@ -60,6 +62,36 @@ fun ContinueCarouselDots() {
         card(1L, ProgressFormat.Listening, fraction = 0.4, position = PositionLabel.Chapter(3, 12)),
         card(2L, ProgressFormat.Reading, fraction = 0.42, position = PositionLabel.PercentRead(42)),
         card(3L, ProgressFormat.Reading, fraction = null, position = PositionLabel.InProgress),
+    )
+}
+
+/** A wide carousel: two cards share page 0, and the dots count pages. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 800)
+@Preview(name = "Dark", widthDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun ContinueCarouselTwoUp() {
+    CarouselShot(
+        card(1L, ProgressFormat.Listening, fraction = 0.4, position = PositionLabel.Chapter(3, 12)),
+        card(2L, ProgressFormat.Reading, fraction = 0.42, position = PositionLabel.PercentRead(42)),
+        card(3L, ProgressFormat.Reading, fraction = null, position = PositionLabel.InProgress),
+        cardsPerPage = 2,
+    )
+}
+
+/** The last page of three on a wide carousel: the lone card keeps a full page's card width, at the start. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 800)
+@Preview(name = "Dark", widthDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun ContinueCarouselLoneCard() {
+    CarouselShot(
+        card(1L, ProgressFormat.Listening, fraction = 0.4, position = PositionLabel.Chapter(3, 12)),
+        card(2L, ProgressFormat.Reading, fraction = 0.42, position = PositionLabel.PercentRead(42)),
+        card(3L, ProgressFormat.Reading, fraction = null, position = PositionLabel.InProgress),
+        selectedIndex = 2,
+        initialPage = 1,
+        cardsPerPage = 2,
     )
 }
 

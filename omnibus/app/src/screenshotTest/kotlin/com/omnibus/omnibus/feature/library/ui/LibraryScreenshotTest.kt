@@ -1,10 +1,12 @@
 package com.omnibus.omnibus.feature.library.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
@@ -74,6 +76,24 @@ fun LibraryWithContinue() {
             continueCards = cards,
             continueSelectedId = cards.first().id,
         ),
+    )
+}
+
+/** A tablet in landscape: two Continue cards side by side above the grid. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 1280, heightDp = 800)
+@Preview(name = "Dark", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun LibraryWithContinueWide() {
+    val cards = (1L..5L).map { continueCard(it) }
+    LibraryShot(
+        LibraryUIState(
+            books = (1L..9L).map { book(it) },
+            hasLoaded = true,
+            continueCards = cards,
+            continueSelectedId = cards.first().id,
+        ),
+        cardsPerPage = 2,
     )
 }
 
