@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -14,10 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -26,8 +25,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -38,7 +37,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.lerp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.theme.Motion
@@ -48,6 +46,9 @@ import kotlin.math.roundToInt
  * The page area, zoomed out into a card with blank neighbour cards beside it while [contextMode] is on. The zoom is
  * draw-only (a graphics layer), so [page] is never re-measured and the book never re-paginates. While zoomed, and
  * until the zoom-in finishes, a scrim takes every touch: a tap calls [onLeave], and nothing reaches [page].
+ *
+ * The area comes from the constraints, not from a measured size, so the card is right on the first frame. A preview or
+ * an inspection run has no animation clock, so it always shows the settled state.
  *
  * @param contextMode Whether the page is zoomed out into the card.
  * @param peeks The neighbour cards to draw beside the card. Only drawn while zoomed.
@@ -70,44 +71,46 @@ internal fun ReaderContextStage(
     modifier: Modifier = Modifier,
     page: @Composable () -> Unit,
 ) {
-    var area by remember { mutableStateOf(IntSize.Zero) }
-    val density = LocalDensity.current
-    val reservedTop = insets.getTop(density) +
-        with(density) { (ReaderContextMetrics.barHeight + ReaderContextMetrics.cardTopGap).toPx() }
-    val reservedBottom = insets.getBottom(density) + with(density) { ReaderContextMetrics.cardBottomGap.toPx() }
-    val gap = with(density) { ReaderContextMetrics.pageGap.toPx() }
-    // Recomputed on a resize or a fold. The progress below is not reset, so the card snaps to the new frame.
-    val layout = remember(area, reservedTop, reservedBottom, gap) {
-        contextCardLayout(area.width.toFloat(), area.height.toFloat(), reservedTop, reservedBottom, gap)
-    }
-    val progress by animateFloatAsState(
-        targetValue = if (contextMode) 1f else 0f,
-        animationSpec = if (reduceMotion) snap<Float>() else Motion.settle<Float>(),
-        label = "context",
-    )
-
-    val scale = lerp(1f, layout.scale, progress)
-    val card = ContextRect(
-        left = lerp(0f, layout.card.left, progress),
-        top = lerp(0f, layout.card.top, progress),
-        width = area.width * scale,
-        height = area.height * scale,
-    )
-    val corner = ReaderContextMetrics.cardCorner * progress
-    // The layer clips before it scales, so the radius is divided by the scale to read as cardCorner on screen.
-    val pageCorner = ReaderContextMetrics.cardCorner * (progress / scale)
-    val hairline = ReaderContextMetrics.hairline
-    val currentOnLeave by rememberUpdatedState(onLeave)
-    val returnLabel = stringResource(R.string.reader_context_return)
-    val viewConfiguration = LocalViewConfiguration.current
-
-    Box(
+    BoxWithConstraints(
         modifier
             .fillMaxSize()
             .background(ground)
-            .onSizeChanged { area = it }
             .testTag(ReaderContextStageTags.STAGE),
     ) {
+        // The constraints are bounded by the fill above, so these are the area's size on this very pass.
+        val areaWidth = constraints.maxWidth.toFloat()
+        val areaHeight = constraints.maxHeight.toFloat()
+        val density = LocalDensity.current
+        val reservedTop = insets.getTop(density) +
+            with(density) { (ReaderContextMetrics.barHeight + ReaderContextMetrics.cardTopGap).toPx() }
+        val reservedBottom = insets.getBottom(density) + with(density) { ReaderContextMetrics.cardBottomGap.toPx() }
+        val gap = with(density) { ReaderContextMetrics.pageGap.toPx() }
+        val layout = remember(areaWidth, areaHeight, reservedTop, reservedBottom, gap) {
+            contextCardLayout(areaWidth, areaHeight, reservedTop, reservedBottom, gap)
+        }
+        // Previews and inspection have no frame clock to run the spring, so they show the settled state at once.
+        val instant = reduceMotion || LocalInspectionMode.current
+        val progress by animateFloatAsState(
+            targetValue = if (contextMode) 1f else 0f,
+            animationSpec = if (instant) snap<Float>() else Motion.settle<Float>(),
+            label = "context",
+        )
+
+        val scale = lerp(1f, layout.scale, progress)
+        val card = ContextRect(
+            left = lerp(0f, layout.card.left, progress),
+            top = lerp(0f, layout.card.top, progress),
+            width = areaWidth * scale,
+            height = areaHeight * scale,
+        )
+        val corner = ReaderContextMetrics.cardCorner * progress
+        // The layer clips before it scales, so the radius is divided by the scale to read as cardCorner on screen.
+        val pageCorner = ReaderContextMetrics.cardCorner * (progress / scale)
+        val hairline = ReaderContextMetrics.hairline
+        val currentOnLeave by rememberUpdatedState(onLeave)
+        val returnLabel = stringResource(R.string.reader_context_return)
+        val viewConfiguration = LocalViewConfiguration.current
+
         if (progress > 0f) {
             if (PeekSide.Previous in peeks) {
                 Box(
