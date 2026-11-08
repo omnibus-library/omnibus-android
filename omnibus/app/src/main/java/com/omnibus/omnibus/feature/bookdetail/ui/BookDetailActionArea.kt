@@ -37,12 +37,15 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 /**
  * The area pinned above the shell's tab bar: the `actionBar` sections, or the interim Read pill. It draws its
  * own ground only while it shows something. The caller composes it only when [showsReadPill] or [sections] applies.
+ *
+ * @param backed False in two-pane mode, where the area sits on the stage with no ground or hairline.
  */
 @Composable
 internal fun BookDetailActionArea(
     context: BookDetailSectionContext,
     sections: List<BookDetailSection>,
     modifier: Modifier = Modifier,
+    backed: Boolean = true,
 ) {
     val palette = OmnibusTheme.palette
     Column(
@@ -50,8 +53,10 @@ internal fun BookDetailActionArea(
             .fillMaxWidth()
             .testTag(BookDetailTestTags.ACTION_AREA)
             .drawBehind {
-                drawRect(palette.bg0.copy(alpha = 0.74f))
-                drawRect(palette.line.copy(alpha = 0.3f), size = Size(size.width, 1.dp.toPx()))
+                if (backed) {
+                    drawRect(palette.bg0.copy(alpha = 0.74f))
+                    drawRect(palette.line.copy(alpha = 0.3f), size = Size(size.width, 1.dp.toPx()))
+                }
             }
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 16.dp, vertical = 10.dp),

@@ -91,6 +91,10 @@ android {
         // src/screenshotTestDebug/reference.
         screenshotTests.create("screenshotTest") {
             engineVersion = libs.versions.screenshot.get()
+            // Layoutlib's blur and gradient maths differs from machine to machine in a few pixels of a large
+            // render, so a reference recorded on one machine failed on CI at 0.00% difference. This compares
+            // structural similarity and tolerates that.
+            imageDifferenceThreshold = 0.001f
             targetVariants.add("debug")
             dependencies {
                 implementation(libs.androidx.compose.ui.tooling)

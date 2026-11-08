@@ -2,12 +2,15 @@ package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookFile
@@ -16,6 +19,9 @@ import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.stage.BookAccent
 import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
+import com.omnibus.omnibus.feature.bookdetail.ui.PaneSplit
+import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
+import com.omnibus.omnibus.feature.bookdetail.ui.splitAtShare
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlinx.coroutines.runBlocking
@@ -96,7 +102,7 @@ fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
  * Sets [BookDetailScreenContent] in dark theme with empty slots and recording callbacks. Use [setContent] directly
  * when a test changes its state.
  */
-fun ComposeContentTestRule.setDetailScreen(
+internal fun ComposeContentTestRule.setDetailScreen(
     uiState: BookDetailUIState,
     slots: BookDetailSlots = BookDetailSlots(),
     scrollState: ScrollState = ScrollState(0),
@@ -107,6 +113,10 @@ fun ComposeContentTestRule.setDetailScreen(
     onReloadBook: () -> Unit = {},
     onBookChanged: (Book) -> Unit = {},
     onTransientErrorShown: () -> Unit = {},
+    stageScrollState: ScrollState = ScrollState(0),
+    panelScrollState: ScrollState = ScrollState(0),
+    paneSplit: (Dp, Dp) -> PaneSplit? = ::bookDetailPaneSplit,
+    reducedMotion: Boolean = true,
 ) {
     setContent {
         OmnibusTheme(darkTheme = true) {
@@ -122,6 +132,10 @@ fun ComposeContentTestRule.setDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 slots = slots,
                 scrollState = scrollState,
+                reducedMotion = reducedMotion,
+                stageScrollState = stageScrollState,
+                panelScrollState = panelScrollState,
+                paneSplit = paneSplit,
             )
         }
     }
@@ -132,3 +146,21 @@ fun ComposeContentTestRule.scrollTo(state: ScrollState, value: Int = state.maxVa
     runOnIdle { runBlocking { state.scrollTo(value) } }
     waitForIdle()
 }
+
+/**
+ * Forces two panes at any window size, through the unguarded 42% split. The column is never forced: a window that
+ * fails the rule gets one column, so tests pass [forcedTwoPanes] or [forcedColumn] to pick the layout.
+ */
+internal val forcedTwoPanes: (Dp, Dp) -> PaneSplit? = { width, _ -> splitAtShare(width) }
+
+/** Forces the single column at any window size. */
+internal val forcedColumn: (Dp, Dp) -> PaneSplit? = { _, _ -> null }
+
+/** Two panes while [twoPane] is true, the column otherwise. The test flips [twoPane] to swap the layout live. */
+internal fun switchablePanes(twoPane: State<Boolean>): (Dp, Dp) -> PaneSplit? = { width, _ ->
+    if (twoPane.value) splitAtShare(width) else null
+}
+
+/** The node's current vertical scroll value. For tests that cannot hold the [ScrollState] itself. */
+fun SemanticsNodeInteraction.scrollValue(): Float =
+    fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()

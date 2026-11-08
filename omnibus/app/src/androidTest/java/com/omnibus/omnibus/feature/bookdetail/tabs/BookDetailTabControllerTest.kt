@@ -31,6 +31,7 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.bookDetailAnchor
 import com.omnibus.omnibus.feature.bookdetail.bounds
+import com.omnibus.omnibus.feature.bookdetail.forcedTwoPanes
 import com.omnibus.omnibus.feature.bookdetail.scrollTo
 import com.omnibus.omnibus.feature.bookdetail.setDetailScreen
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
@@ -39,6 +40,7 @@ import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import kotlin.math.min
@@ -186,5 +188,124 @@ class BookDetailTabControllerTest {
         rule.runOnIdle { book.value = testDetailBook(id = 2) }
         rule.waitForIdle()
         rule.tabNode(BookDetailTab.Overview).assertIsSelected()
+    }
+
+    // TC-45
+    @Test
+    fun issue211_tc45_twoPaneReviewsShortcutSelectsReviewsAndScrollsThePanelToItsTop() {
+        val stage = ScrollState(0)
+        val panel = ScrollState(0)
+        rule.twoPaneScreen(
+            BookDetailSlots(
+                stageStatusEnd = listOf(reviewsShortcut()),
+                overviewSections = listOf(tallFakeSection("fake-overview")),
+                reviewsSections = listOf(fakeSection("fake-reviews")),
+            ),
+            stage,
+            panel,
+        )
+        rule.scrollTo(panel)
+        assertTrue("panel needs range", panel.value > 0)
+
+        rule.onNodeWithTag("open-reviews").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        rule.tabNode(BookDetailTab.Reviews).assertIsSelected()
+        assertEquals(0, panel.value)
+    }
+
+    // TC-46
+    @Test
+    fun issue211_tc46_twoPaneSeriesShortcutSelectsOverviewAndLandsTheAnchorBelowTheStrip() {
+        val stage = ScrollState(0)
+        val panel = ScrollState(0)
+        val anchor = BookDetailSection { _, modifier ->
+            Box(modifier.fillMaxWidth().height(40.dp).bookDetailAnchor(BookDetailAnchor.Series).testTag("anchor"))
+        }
+        rule.twoPaneScreen(
+            BookDetailSlots(
+                stageStatusEnd = listOf(seriesShortcut()),
+                overviewSections = listOf(tallFakeSection("filler"), anchor, tallFakeSection("tail")),
+                filesSections = listOf(fakeSection("fake-files")),
+            ),
+            stage,
+            panel,
+        )
+        rule.tapTab(BookDetailTab.Files)
+        rule.onNodeWithTag("open-series").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+
+        rule.tabNode(BookDetailTab.Overview).assertIsSelected()
+        // The tail keeps the target inside the scroll range, so the anchor is not clamped.
+        val clearance = with(rule.density) { AnchorClearance.toPx() }
+        val stripBottom = rule.onNodeWithTag(BookDetailTabsTestTags.STRIP).bounds().bottom
+        assertEquals(stripBottom + clearance, rule.onNodeWithTag("anchor").bounds().top, 1f)
+    }
+
+    // TC-47
+    @Test
+    fun issue211_tc47_twoPaneSeriesShortcutFallsBackToThePanelTopWhenTheAnchorNeverLaysOut() {
+        val stage = ScrollState(0)
+        val panel = ScrollState(0)
+        rule.twoPaneScreen(
+            BookDetailSlots(
+                stageStatusEnd = listOf(seriesShortcut()),
+                overviewSections = listOf(tallFakeSection("fake-overview")),
+            ),
+            stage,
+            panel,
+        )
+        rule.scrollTo(panel)
+        assertTrue("panel needs range", panel.value > 0)
+
+        rule.onNodeWithTag("open-series").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitUntil(timeoutMillis = 5_000) { panel.value == 0 }
+    }
+
+    // TC-48
+    @Test
+    fun issue211_tc48_twoPaneStageShortcutLeavesTheStageScrollAlone() {
+        val stage = ScrollState(0)
+        val panel = ScrollState(0)
+        rule.twoPaneScreen(
+            BookDetailSlots(
+                stageProgress = listOf(tallFakeSection("fake-stage")),
+                stageStatusEnd = listOf(reviewsShortcut()),
+                overviewSections = listOf(tallFakeSection("fake-overview")),
+                reviewsSections = listOf(fakeSection("fake-reviews")),
+            ),
+            stage,
+            panel,
+        )
+        rule.scrollTo(stage)
+        assertTrue("stage needs range", stage.value > 0)
+        val before = stage.value
+
+        rule.onNodeWithTag("open-reviews").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        assertEquals(before, stage.value)
+    }
+
+    private fun ComposeContentTestRule.twoPaneScreen(slots: BookDetailSlots, stage: ScrollState, panel: ScrollState) {
+        setDetailScreen(
+            BookDetailUIState(book = testDetailBook(), isLoading = false),
+            slots = slots,
+            stageScrollState = stage,
+            panelScrollState = panel,
+            paneSplit = forcedTwoPanes,
+        )
+        waitForIdle()
+    }
+
+    /** A stage shortcut that jumps the trailing pane to Reviews, as `HouseholdReviews` does. */
+    private fun reviewsShortcut(): BookDetailSection = BookDetailSection { ctx, modifier ->
+        Text("open-reviews", modifier = modifier.testTag("open-reviews").clickable { ctx.tabs.jumpTo(BookDetailTab.Reviews) })
+    }
+
+    /** A stage shortcut that scrolls the trailing pane to the Series anchor. */
+    private fun seriesShortcut(): BookDetailSection = BookDetailSection { ctx, modifier ->
+        Text(
+            "open-series",
+            modifier = modifier.testTag("open-series").clickable { ctx.tabs.scrollTo(BookDetailAnchor.Series) },
+        )
     }
 }

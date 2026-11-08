@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyKey
 /** Test tags for the Book Detail page, so UI tests can find its parts. */
 internal object BookDetailTestTags {
     const val STAGE = "book-detail-stage"
+    const val STAGE_PANE = "book-detail-stage-pane"
     const val WASH = "book-detail-wash"
     const val COVER = "book-detail-cover"
     const val TITLE = "book-detail-title"
