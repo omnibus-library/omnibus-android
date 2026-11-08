@@ -385,7 +385,7 @@ class LibraryScreenTest {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 Box(Modifier.fillMaxSize()) {
-                    val continueState = rememberContinueCarouselState(pageCount = { uiState.value.continueCards.size })
+                    val continueState = rememberContinueCarouselState(cardCount = { uiState.value.continueCards.size })
                     LibraryScreenContent(
                         uiState = uiState.value,
                         onRetry = {},

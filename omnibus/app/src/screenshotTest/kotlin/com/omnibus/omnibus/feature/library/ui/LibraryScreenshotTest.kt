@@ -1,9 +1,12 @@
 package com.omnibus.omnibus.feature.library.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
@@ -13,6 +16,7 @@ import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryUIState
+import com.omnibus.omnibus.feature.library.continuePageCount
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.screenshot.Shot
@@ -75,6 +79,24 @@ fun LibraryWithContinue() {
     )
 }
 
+/** A tablet in landscape: two Continue cards side by side above the grid. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 1280, heightDp = 800)
+@Preview(name = "Dark", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun LibraryWithContinueWide() {
+    val cards = (1L..5L).map { continueCard(it) }
+    LibraryShot(
+        LibraryUIState(
+            books = (1L..9L).map { book(it) },
+            hasLoaded = true,
+            continueCards = cards,
+            continueSelectedId = cards.first().id,
+        ),
+        cardsPerPage = 2,
+    )
+}
+
 /** A book with a uuid of `uuid-<id>` and no cover, so no image loads. */
 private fun book(
     id: Long,
@@ -109,12 +131,16 @@ private fun continueCard(id: Long) = ContinueCard(
     resumeFileId = null,
 )
 
-/** The screen for [uiState]. Every Continue card counts as drawn in, so its bar shows at full length, not mid-animation. */
+/**
+ * The screen for [uiState], with its Continue cards grouped [cardsPerPage] to a page. Every Continue card counts as
+ * drawn in, so its bar shows at full length, not mid-animation.
+ */
 @Composable
-private fun LibraryShot(uiState: LibraryUIState) {
-    val pagerState = rememberPagerState(pageCount = { uiState.continueCards.size })
+private fun LibraryShot(uiState: LibraryUIState, cardsPerPage: Int = 1) {
+    val perPage = remember { mutableIntStateOf(cardsPerPage) }
+    val pagerState = rememberPagerState { continuePageCount(uiState.continueCards.size, perPage.intValue) }
     val continueState = remember {
-        ContinueCarouselState(pagerState, uiState.continueCards.map { it.id }.toMutableStateList())
+        ContinueCarouselState(pagerState, uiState.continueCards.map { it.id }.toMutableStateList(), perPage)
     }
     Shot {
         LibraryScreenContent(
