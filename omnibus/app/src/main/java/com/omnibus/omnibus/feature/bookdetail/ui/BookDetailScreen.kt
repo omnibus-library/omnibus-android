@@ -115,6 +115,9 @@ fun BookDetailScreen(
  * The page's content for [uiState], with the callbacks and slots injected. Internal so instrumented tests can
  * render each state, as `LibraryScreenContent`. Column and two-pane modes share one composition tree, so a layout
  * swap keeps state: see [BookDetailPaneLayout].
+ *
+ * @param initialActionAreaHeight Seeds the action area's height, so a single-pass render (screenshot previews) shows
+ * the settled layout.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -135,13 +138,14 @@ internal fun BookDetailScreenContent(
     stageScrollState: ScrollState = rememberScrollState(),
     panelScrollState: ScrollState = rememberScrollState(),
     paneSplit: (width: Dp, height: Dp) -> PaneSplit? = ::bookDetailPaneSplit,
+    initialActionAreaHeight: Dp = 0.dp,
 ) {
     val palette = OmnibusTheme.palette
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val content = uiState.screen as? BookDetailScreenState.Content
     // Saved, so a restored scroll is not clamped to the range the stage has before the action area is measured.
-    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(0) }
+    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(with(density) { initialActionAreaHeight.roundToPx() }) }
 
     // Section messages and the refresh error share one host. Launched in a scope that outlives the caller.
     val showMessage: (BookDetailMessage) -> Unit = remember(scope, snackbarHostState) {
