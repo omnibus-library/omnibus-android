@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
@@ -427,15 +428,17 @@ class ContinueCarouselTest {
             }
         }
 
+        // A forced two-up page on a narrow device leaves the text column no width, so tap only what a card always
+        // has: its cover, and its own edge (inside the card's padding, clear of the cover).
+        val edge = Offset(4f, 4f)
         rule.onNodeWithTag(ContinueTestTags.cover("b2:epub"), useUnmergedTree = true).performClick()
-        rule.onNodeWithTag(ContinueTestTags.title("b2:epub"), useUnmergedTree = true).performClick()
         rule.onNodeWithTag(ContinueTestTags.cover("b1:epub"), useUnmergedTree = true).performClick()
-        rule.onNodeWithTag(ContinueTestTags.pill("b2:epub"), useUnmergedTree = true).performClick()
-        rule.onNodeWithTag(ContinueTestTags.pill("b1:epub"), useUnmergedTree = true).performClick()
-        rule.onNodeWithTag(ContinueTestTags.author("b2:epub"), useUnmergedTree = true).performTouchInput { longClick() }
+        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { click(edge) }
+        rule.onNodeWithTag(ContinueTestTags.card("b1:epub"), useUnmergedTree = true).performTouchInput { click(edge) }
+        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { longClick(edge) }
         rule.waitForIdle()
 
-        assertEquals(listOf("b2", "b2", "b1"), opened)
+        assertEquals(listOf("b2", "b1"), opened)
         assertEquals(listOf("b2:epub", "b1:epub"), resumed)
         assertEquals(listOf("b2"), menus)
     }
