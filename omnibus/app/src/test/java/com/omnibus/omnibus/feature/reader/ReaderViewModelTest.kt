@@ -205,6 +205,70 @@ class ReaderViewModelTest : DescribeSpec({
             vm.onPageEvent(ReaderEvent.ToggleChrome)
             vm.uiState.value.chromeVisible shouldBe false
         }
+
+        context("in context mode with the dropdown open") {
+            it("TC-23: leaves context mode and closes the dropdown") {
+                val vm = sut()
+                vm.onChromeToggled()
+                vm.onMenuOpened()
+
+                vm.onContextLeft()
+
+                vm.uiState.value.chromeVisible shouldBe false
+                vm.uiState.value.menuOpen shouldBe false
+            }
+        }
+
+        context("in focused mode") {
+            it("TC-23: stays focused and does not turn context mode on") {
+                val vm = sut()
+
+                vm.onContextLeft()
+
+                vm.uiState.value.chromeVisible shouldBe false
+                vm.uiState.value.menuOpen shouldBe false
+            }
+        }
+    }
+
+    describe("leaving context mode") {
+        // The sheet and the dropdown are never open together (withSheet closes the dropdown), so this opens the sheet.
+        fun sutInContextWithSheet() = sut().also {
+            it.onChromeToggled()
+            it.onContentsRequested()
+        }
+
+        context("when a contents entry is chosen") {
+            it("TC-5: turns context mode off and closes the dropdown") {
+                val vm = sutInContextWithSheet()
+
+                vm.onTocEntryChosen(tocEntry())
+
+                vm.uiState.value.chromeVisible shouldBe false
+                vm.uiState.value.menuOpen shouldBe false
+            }
+        }
+
+        context("when a bookmark is chosen") {
+            it("TC-5: turns context mode off and closes the dropdown") {
+                val vm = sutInContextWithSheet()
+
+                vm.onBookmarkChosen(randomBookmark().copy(position = randomCfi()))
+
+                vm.uiState.value.chromeVisible shouldBe false
+                vm.uiState.value.menuOpen shouldBe false
+            }
+        }
+
+        context("when the sheet is dismissed") {
+            it("TC-5: keeps context mode on") {
+                val vm = sutInContextWithSheet()
+
+                vm.onSheetDismissed()
+
+                vm.uiState.value.chromeVisible shouldBe true
+            }
+        }
     }
 
     describe("the menu") {
