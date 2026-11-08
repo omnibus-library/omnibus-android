@@ -429,13 +429,13 @@ class ContinueCarouselTest {
         }
 
         // A forced two-up page on a narrow device leaves the text column no width, so tap only what a card always
-        // has: its cover, and its own edge (inside the card's padding, clear of the cover).
-        val edge = Offset(4f, 4f)
+        // has: its cover, and its own left edge at mid-height (inside the card's padding, clear of the cover and the
+        // rounded corners, which clip touches).
         rule.onNodeWithTag(ContinueTestTags.cover("b2:epub"), useUnmergedTree = true).performClick()
         rule.onNodeWithTag(ContinueTestTags.cover("b1:epub"), useUnmergedTree = true).performClick()
-        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { click(edge) }
-        rule.onNodeWithTag(ContinueTestTags.card("b1:epub"), useUnmergedTree = true).performTouchInput { click(edge) }
-        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { longClick(edge) }
+        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { click(Offset(4f, centerY)) }
+        rule.onNodeWithTag(ContinueTestTags.card("b1:epub"), useUnmergedTree = true).performTouchInput { click(Offset(4f, centerY)) }
+        rule.onNodeWithTag(ContinueTestTags.card("b2:epub"), useUnmergedTree = true).performTouchInput { longClick(Offset(4f, centerY)) }
         rule.waitForIdle()
 
         assertEquals(listOf("b2", "b1"), opened)
