@@ -54,14 +54,14 @@ import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
- * The reader's chrome: the title and page labels, the close and menu buttons, the menu rows and, while the
+ * The reader's chrome: the close and menu buttons, the menu rows and, while the
  * menu is open, the bookmark quick action beside the menu button.
- * It is drawn over the page in the bands `#stage` reserves, and never resizes it.
+ * It is drawn over the page in the bands `#stage` reserves, and never resizes it. The page labels are
+ * drawn separately by [ReaderPageLabels].
  *
  * Stateless. The screen owns the state and passes plain values in.
  *
- * @param indicators The top and bottom labels.
- * @param chromeVisible Whether the buttons are shown. The labels stay on screen either way.
+ * @param chromeVisible Whether the buttons are shown.
  * @param menuOpen Whether the menu rows are shown above the menu button.
  * @param menuRows The rows to show, in order. Empty hides the menu button.
  * @param percent The progress shown on the Contents row. Null shows none.
@@ -79,7 +79,6 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  */
 @Composable
 internal fun ReaderChrome(
-    indicators: ReaderIndicators,
     chromeVisible: Boolean,
     menuOpen: Boolean,
     menuRows: List<ReaderMenuRow>,
@@ -98,28 +97,6 @@ internal fun ReaderChrome(
     onBookmarkToggled: () -> Unit = {},
 ) {
     Box(modifier.fillMaxSize()) {
-        // Labels take no touches, so a tap on them reaches the page underneath.
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(insets)
-                .padding(vertical = Spacing.xs, horizontal = ReaderMenu.labelSidePadding),
-        ) {
-            ChromeLabel(
-                text = indicators.top?.text(),
-                tag = ReaderChromeTags.LABEL_TOP,
-                colors = colors,
-                reduceMotion = reduceMotion,
-            )
-            Spacer(Modifier.weight(1f))
-            ChromeLabel(
-                text = indicators.bottom?.text(),
-                tag = ReaderChromeTags.LABEL_BOTTOM,
-                colors = colors,
-                reduceMotion = reduceMotion,
-            )
-        }
-
         // Only while the menu is open, so the page takes taps as usual otherwise.
         if (menuOpen) {
             Box(
@@ -220,6 +197,45 @@ internal fun ReaderChrome(
     }
 }
 
+/**
+ * The top and bottom page labels, drawn over the page in its bands. They take no touches, so a tap on them
+ * reaches the page underneath.
+ *
+ * @param indicators The top and bottom labels.
+ * @param colors The reading theme's chrome colours.
+ * @param reduceMotion When true, a changed label appears on the next frame, with no crossfade.
+ * @param insets The system bars and cutout, the same insets the page takes.
+ */
+@Composable
+internal fun ReaderPageLabels(
+    indicators: ReaderIndicators,
+    colors: ReaderChromeColors,
+    reduceMotion: Boolean,
+    insets: WindowInsets,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .windowInsetsPadding(insets)
+            .padding(vertical = Spacing.xs, horizontal = ReaderMenu.labelSidePadding),
+    ) {
+        ChromeLabel(
+            text = indicators.top?.text(),
+            tag = ReaderChromeTags.LABEL_TOP,
+            colors = colors,
+            reduceMotion = reduceMotion,
+        )
+        Spacer(Modifier.weight(1f))
+        ChromeLabel(
+            text = indicators.bottom?.text(),
+            tag = ReaderChromeTags.LABEL_BOTTOM,
+            colors = colors,
+            reduceMotion = reduceMotion,
+        )
+    }
+}
+
 /** Metrics for the chrome, ported from iOS `ReaderMenu`. */
 internal object ReaderMenu {
     val buttonSize = 46.dp
@@ -232,6 +248,32 @@ internal object ReaderMenu {
     val labelSidePadding = 80.dp
 }
 
+/**
+ * Metrics for the context mode top bar and flat dropdown. The spec's figures, in dp, as designed.
+ * The bar's layout row is the 48dp touch row, since the design's 36dp bar has no surface.
+ */
+internal object ReaderContextMetrics {
+    val barHeight = 48.dp
+    val barSidePadding = 4.dp
+    val touchTarget = 48.dp
+    val barIconSize = 22.dp
+    val titleSize = 16.sp
+    val titleStartGap = 4.dp
+
+    val dropdownMinWidth = 150.dp
+    val dropdownEndMargin = 12.dp
+    val dropdownCorner = 8.dp
+    val dropdownElevation = 8.dp
+    val rowMinHeight = 32.dp
+    val rowHorizontalPadding = 12.dp
+    val rowVerticalPadding = 6.dp
+    val rowIconSize = 18.dp
+    val rowIconLabelGap = 10.dp
+    val rowLabelSize = 14.sp
+
+    val hairline = 0.5.dp
+}
+
 /** Test tags on the chrome's nodes. */
 internal object ReaderChromeTags {
     const val CLOSE = "reader_chrome_close"
@@ -240,6 +282,10 @@ internal object ReaderChromeTags {
     const val LABEL_TOP = "reader_chrome_label_top"
     const val LABEL_BOTTOM = "reader_chrome_label_bottom"
     const val BOOKMARK = "reader_chrome_bookmark"
+    const val BAR = "reader_chrome_bar"
+    const val BACK = "reader_chrome_back"
+    const val MORE = "reader_chrome_more"
+    const val DROPDOWN = "reader_chrome_dropdown"
 
     fun menuRow(row: ReaderMenuRow) = "reader_chrome_menu_row_${row.name}"
 }

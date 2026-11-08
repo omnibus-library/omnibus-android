@@ -97,8 +97,13 @@ private fun ChromeShot(
 ) {
     OmnibusTheme(darkTheme = !theme.isLight) {
         Box(Modifier.background(Color(theme.groundArgb))) {
-            ReaderChrome(
+            ReaderPageLabels(
                 indicators = ReaderIndicators(location = location, title = "Nineteen Eighty-Four", chromeVisible = chromeVisible),
+                colors = readerChromeColors(theme),
+                reduceMotion = true,
+                insets = WindowInsets(0),
+            )
+            ReaderChrome(
                 chromeVisible = chromeVisible,
                 menuOpen = menuOpen,
                 menuRows = menuRows,

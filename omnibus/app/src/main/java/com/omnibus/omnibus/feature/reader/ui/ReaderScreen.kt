@@ -310,6 +310,12 @@ internal fun ReaderScreenContent(
                                 )
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                                ReaderPageLabels(
+                                    indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
+                                    colors = readerChromeColors(theme),
+                                    reduceMotion = reduceMotion,
+                                    insets = pageInsets,
+                                )
                                 // Anchored above the bottom band whatever the chrome does, so it never moves when the chrome toggles.
                                 ChromeVisibility(
                                     visible = uiState.syncOffer != null,
@@ -337,7 +343,6 @@ internal fun ReaderScreenContent(
                                     )
                                 }
                                 ReaderChrome(
-                                    indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
                                     chromeVisible = uiState.chromeVisible,
                                     menuOpen = uiState.menuOpen,
                                     menuRows = uiState.menuRows,

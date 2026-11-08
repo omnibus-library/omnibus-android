@@ -82,8 +82,13 @@ class ReaderChromeTest {
                             .testTag(UNDERLAY_TAG)
                             .pointerInput(Unit) { detectTapGestures { events += "page" } },
                     )
-                    ReaderChrome(
+                    ReaderPageLabels(
                         indicators = ReaderIndicators(location = i.location, title = i.title, chromeVisible = i.chromeVisible),
+                        colors = readerChromeColors(i.theme),
+                        reduceMotion = i.reduceMotion,
+                        insets = i.insets,
+                    )
+                    ReaderChrome(
                         chromeVisible = i.chromeVisible,
                         menuOpen = i.menuOpen,
                         menuRows = i.menuRows,
