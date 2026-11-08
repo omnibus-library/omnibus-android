@@ -178,7 +178,7 @@ internal fun ContinueCarousel(
     // so it is dropped; the selection sync below moves the pager to the selected card.
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.drop(1).collect { index ->
-            val id = settledCardId(index, currentCards.map { it.id }) ?: return@collect
+            val id = settledCardId(index, currentCards.map { it.id }, 1) ?: return@collect
             if (id != currentSelected) currentOnSettled(id)
         }
     }

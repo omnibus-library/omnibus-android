@@ -128,8 +128,12 @@ fun relativeAgeOf(updatedAtSeconds: Long, nowMillis: Long): RelativeAge {
 fun selectionAfterRefresh(current: String?, ids: List<String>): String? =
     if (current != null && current in ids) current else ids.firstOrNull()
 
-/** The id at [settledIndex], or null for an index that maps to no card, which the caller ignores. */
-fun settledCardId(settledIndex: Int, ids: List<String>): String? = ids.getOrNull(settledIndex)
+/**
+ * The first id on [settledPage] when the cards are grouped [cardsPerPage] to a page, or null for a page that holds
+ * no card, which the caller ignores.
+ */
+fun settledCardId(settledPage: Int, ids: List<String>, cardsPerPage: Int): String? =
+    if (settledPage < 0) null else ids.getOrNull(settledPage * cardsPerPage.coerceAtLeast(1))
 
 /** One card of the Continue carousel, decided once from its resume point. */
 data class ContinueCard(
