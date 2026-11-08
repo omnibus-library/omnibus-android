@@ -53,6 +53,7 @@ import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
+import com.omnibus.omnibus.feature.reader.ReaderBackAction
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
@@ -61,6 +62,7 @@ import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.ReaderViewModel
+import com.omnibus.omnibus.feature.reader.backAction
 import com.omnibus.omnibus.feature.reader.bootCfi
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
@@ -124,6 +126,7 @@ fun ReaderScreen(
         onBookmarkToggled = viewModel::onBookmarkToggled,
         onBookmarkChosen = viewModel::onBookmarkChosen,
         onBookmarksRetryRequested = viewModel::onBookmarksRetryRequested,
+        onContextLeft = viewModel::onContextLeft,
         onClose = onClose,
         modifier = modifier,
         bottomDock = {
@@ -164,6 +167,7 @@ fun ReaderScreen(
  * @param onBookmarkToggled the quick action was tapped: bookmark the page, or remove its bookmarks.
  * @param onBookmarkChosen a bookmark was chosen on the Bookmarks segment.
  * @param onBookmarksRetryRequested the Bookmarks segment's Try again was tapped.
+ * @param onContextLeft back or a tap on the zoomed-out page left context mode.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
 @Composable
@@ -189,6 +193,7 @@ internal fun ReaderScreenContent(
     onBookmarkToggled: () -> Unit = {},
     onBookmarkChosen: (Bookmark) -> Unit = {},
     onBookmarksRetryRequested: () -> Unit = {},
+    onContextLeft: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
 ) {
@@ -198,10 +203,11 @@ internal fun ReaderScreenContent(
     }
     // Always enabled, so back takes this path in every state, and it outranks the root NavDisplay's handler.
     BackHandler {
-        when {
-            uiState.sheet != null -> onSheetDismissed()
-            uiState.menuOpen -> onMenuDismissed()
-            else -> leave()
+        when (uiState.backAction()) {
+            ReaderBackAction.DismissSheet -> onSheetDismissed()
+            ReaderBackAction.DismissMenu -> onMenuDismissed()
+            ReaderBackAction.LeaveContext -> onContextLeft()
+            ReaderBackAction.LeaveReader -> leave()
         }
     }
 
@@ -310,8 +316,9 @@ internal fun ReaderScreenContent(
                                 )
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                                // The labels show the focused content in both modes, so they never switch inside the card.
                                 ReaderPageLabels(
-                                    indicators = ReaderIndicators(uiState.location, book.title, uiState.chromeVisible),
+                                    indicators = ReaderIndicators(uiState.location, book.title, chromeVisible = false),
                                     colors = readerChromeColors(theme),
                                     reduceMotion = reduceMotion,
                                     insets = pageInsets,
@@ -343,11 +350,10 @@ internal fun ReaderScreenContent(
                                     )
                                 }
                                 ReaderChrome(
+                                    title = book.title,
                                     chromeVisible = uiState.chromeVisible,
                                     menuOpen = uiState.menuOpen,
                                     menuRows = uiState.menuRows,
-                                    percent = uiState.menuPercent,
-                                    bookmarkCount = uiState.bookmarkCount,
                                     pageBookmarked = uiState.isPageBookmarked,
                                     canBookmark = uiState.location?.cfi?.isNotBlank() == true,
                                     colors = readerChromeColors(theme),
