@@ -25,6 +25,7 @@ import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
 import com.omnibus.omnibus.feature.reader.ui.RelocateData
+import com.omnibus.omnibus.feature.reader.ui.RibbonFrame
 import com.omnibus.omnibus.feature.reader.ui.TocEntry
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import dagger.assisted.Assisted
@@ -148,7 +149,7 @@ class ReaderViewModel @AssistedInject constructor(
     fun onPageEvent(event: ReaderEvent) {
         when (event) {
             is ReaderEvent.Relocate -> {
-                _uiState.update { it.copy(location = event.data) }
+                _uiState.update { it.withLocation(event.data) }
                 record(event.data)
             }
             is ReaderEvent.Toc -> _uiState.update { it.copy(toc = event.entries) }
@@ -215,16 +216,21 @@ class ReaderViewModel @AssistedInject constructor(
         persistScope.launch(start = CoroutineStart.UNDISPATCHED) { settingsStore.save(next) }
     }
 
-    /** Adds a bookmark at the current page, or removes every bookmark there. The menu stays open. */
+    /**
+     * Adds a bookmark at the current page, or removes every bookmark there. The menu stays open. The page is recorded
+     * as the one tapped, before the repository call, so the ribbon unfurls or furls there.
+     */
     fun onBookmarkToggled() {
         val state = _uiState.value
         val onPage = state.pageBookmarks
         if (onPage.isNotEmpty()) {
+            _uiState.update { it.copy(bookmarkTapPage = state.pageCfi) }
             onPage.forEach { bookmark -> viewModelScope.launch { bookmarksRepository.removeBookmark(bookmark) } }
             return
         }
         val location = state.location ?: return
         val draft = BookmarkDraft.create(bookUuid, location.cfi, location.chapterTitle) ?: return
+        _uiState.update { it.copy(bookmarkTapPage = state.pageCfi) }
         viewModelScope.launch { bookmarksRepository.addBookmark(draft) }
     }
 
@@ -476,20 +482,35 @@ data class ReaderUIState(
     val bookmarksStatus: ReaderBookmarksStatus = ReaderBookmarksStatus.Loaded,
     /** The segment the contents sheet opens on. */
     val contentsTab: ReaderContentsTab = ReaderContentsTab.Contents,
+    /**
+     * The trimmed CFI of the page the bookmark quick action was last tapped on. It is cleared when the location moves
+     * to another page.
+     */
+    val bookmarkTapPage: String? = null,
 ) {
 
     /** The number of bookmarks in the state, so an optimistic add counts at once and a failed one drops off. */
     val bookmarkCount: Int get() = bookmarks.size
 
+    /** The current page's trimmed CFI, or null without one. */
+    internal val pageCfi: String? get() = location?.cfi?.trim()?.takeIf { it.isNotEmpty() }
+
     /** The bookmarks at the current page: a trimmed position equal to the trimmed location CFI. */
     internal val pageBookmarks: List<Bookmark>
         get() {
-            val cfi = location?.cfi?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+            val cfi = pageCfi ?: return emptyList()
             return bookmarks.filter { it.position.trim() == cfi }
         }
 
     /** Whether a bookmark sits at the current page. */
     val isPageBookmarked: Boolean get() = pageBookmarks.isNotEmpty()
+
+    /** What the page's bookmark ribbon shows. */
+    internal val ribbonFrame: RibbonFrame
+        get() {
+            val page = pageCfi
+            return RibbonFrame(page = page, shown = isPageBookmarked, tapped = page != null && bookmarkTapPage == page)
+        }
 
     /** The menu's Contents percent. Null until the book has locations, when the page's percent is a wrong 0. */
     val menuPercent: Int? get() = location?.takeIf { it.totalPages > 0 }?.pct
@@ -565,6 +586,13 @@ internal fun ReaderUIState.withMenuRowChosen(row: ReaderMenuRow): ReaderUIState 
     ReaderMenuRow.Contents -> withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Contents)
     ReaderMenuRow.Bookmarks -> withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Bookmarks)
     ReaderMenuRow.Settings -> withSheet(ReaderSheet.Settings)
+}
+
+/** Moves to [data]. A tap recorded on another page is dropped; an echo of the same page keeps it. */
+internal fun ReaderUIState.withLocation(data: RelocateData): ReaderUIState {
+    val next = copy(location = data)
+    val tap = next.bookmarkTapPage ?: return next
+    return if (tap == next.pageCfi) next else next.copy(bookmarkTapPage = null)
 }
 
 /** Mirrors the repository's [state] into the bookmarks fields. A Loading or Failed state has no rows to show. */

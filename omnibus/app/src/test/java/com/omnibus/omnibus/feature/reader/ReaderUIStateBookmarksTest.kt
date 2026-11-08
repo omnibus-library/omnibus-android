@@ -41,4 +41,60 @@ class ReaderUIStateBookmarksTest : DescribeSpec({
             }
         }
     }
+
+    describe("the ribbon frame") {
+        context("with a bookmark at the location") {
+            it("#224 TC-8: is shown") {
+                val cfi = randomCfi()
+
+                stateAt(cfi, cfi).ribbonFrame.shown shouldBe true
+            }
+
+            it("#224 TC-8: is on the trimmed location cfi") {
+                val cfi = randomCfi()
+
+                stateAt("  $cfi  ", cfi).ribbonFrame.page shouldBe cfi
+            }
+        }
+
+        context("with a bookmark elsewhere") {
+            it("#224 TC-8: is not shown") {
+                stateAt(randomCfi(), randomCfi()).ribbonFrame.shown shouldBe false
+            }
+        }
+
+        context("without a location cfi") {
+            it("#224 TC-8: has no page, for a null or blank cfi") {
+                checkAll(Exhaustive.of(null, "", "   ")) { location ->
+                    stateAt(location, randomCfi()).ribbonFrame.page shouldBe null
+                }
+            }
+        }
+
+        context("with a tap on this page") {
+            it("#224 TC-8: is tapped") {
+                val cfi = randomCfi()
+                val state = stateAt(cfi, cfi).copy(bookmarkTapPage = cfi)
+
+                state.ribbonFrame.tapped shouldBe true
+            }
+        }
+
+        context("with a tap on another page") {
+            it("#224 TC-8: is not tapped") {
+                val cfi = randomCfi()
+                val state = stateAt(cfi, cfi).copy(bookmarkTapPage = randomCfi())
+
+                state.ribbonFrame.tapped shouldBe false
+            }
+        }
+
+        context("with no tap") {
+            it("#224 TC-8: is not tapped") {
+                val cfi = randomCfi()
+
+                stateAt(cfi, cfi).ribbonFrame.tapped shouldBe false
+            }
+        }
+    }
 })
