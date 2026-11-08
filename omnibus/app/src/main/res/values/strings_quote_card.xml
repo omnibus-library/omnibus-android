@@ -1,0 +1,69 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Title of the quote card sheet. -->
+    <string name="quote_card_title">Quote card</string>
+    <!-- Closes the quote card sheet. -->
+    <string name="quote_card_done">Done</string>
+    <!-- Sends the card as an image through the share chooser. -->
+    <string name="quote_card_share">Share</string>
+    <!-- Puts the card on the clipboard as an image. -->
+    <string name="quote_card_copy">Copy image</string>
+    <!-- The label of the clipboard entry the copied card makes. -->
+    <string name="quote_card_clip_label">Quote card</string>
+    <!-- Heading of the sheet's background section. -->
+    <string name="quote_card_background">Background</string>
+    <!-- The two kinds of background, on the pill beside the heading and in its menu. -->
+    <string name="quote_card_kind_solid">Solid</string>
+    <string name="quote_card_kind_gradient">Gradient</string>
+    <!-- Spoken names of the background swatches. -->
+    <string name="quote_card_swatch_book">Book</string>
+    <string name="quote_card_swatch_ink">Ink</string>
+    <string name="quote_card_swatch_paper">Paper</string>
+    <string name="quote_card_swatch_moss">Moss</string>
+    <string name="quote_card_swatch_rose">Rose</string>
+    <string name="quote_card_swatch_dusk">Dusk</string>
+    <string name="quote_card_swatch_sea">Sea</string>
+    <string name="quote_card_swatch_ember">Ember</string>
+    <string name="quote_card_swatch_lagoon">Lagoon</string>
+    <string name="quote_card_swatch_grove">Grove</string>
+    <string name="quote_card_swatch_dawn">Dawn</string>
+    <!-- A gradient drawn from the book's cover. %1$d is its place in the row, from 1. -->
+    <string name="quote_card_swatch_cover">Cover gradient %1$d</string>
+    <string name="quote_card_swatch_custom_color">Custom color</string>
+    <string name="quote_card_swatch_custom_gradient">Custom gradient</string>
+    <!-- Headings of the type and shape sections. -->
+    <string name="quote_card_type">Type</string>
+    <string name="quote_card_shape">Shape</string>
+    <!-- Typeface names, each drawn in its own face. -->
+    <string name="quote_card_typeface_serif">Serif</string>
+    <string name="quote_card_typeface_sans">Sans</string>
+    <string name="quote_card_typeface_mono">Mono</string>
+    <!-- Size steps. -->
+    <string name="quote_card_size_small">S</string>
+    <string name="quote_card_size_medium">M</string>
+    <string name="quote_card_size_large">L</string>
+    <!-- Spoken names of the size steps. -->
+    <string name="quote_card_size_small_description">Small</string>
+    <string name="quote_card_size_medium_description">Medium</string>
+    <string name="quote_card_size_large_description">Large</string>
+    <!-- Toggles for the passage's weight and slant. -->
+    <string name="quote_card_bold">Bold</string>
+    <string name="quote_card_italic">Italic</string>
+    <!-- Shape names, over their ratios. -->
+    <string name="quote_card_shape_square">Square</string>
+    <string name="quote_card_shape_post">Post</string>
+    <string name="quote_card_shape_portrait">Portrait</string>
+    <string name="quote_card_shape_story">Story</string>
+    <string name="quote_card_ratio_square">1:1</string>
+    <string name="quote_card_ratio_post">4:5</string>
+    <string name="quote_card_ratio_portrait">3:4</string>
+    <string name="quote_card_ratio_story">9:16</string>
+    <!-- The custom colour picker's sliders. -->
+    <string name="quote_card_picker_hue">Hue</string>
+    <string name="quote_card_picker_saturation">Saturation</string>
+    <string name="quote_card_picker_lightness">Lightness</string>
+    <!-- The two ends of a custom gradient. -->
+    <string name="quote_card_stop_from">From</string>
+    <string name="quote_card_stop_to">To</string>
+    <!-- Spoken name of the button that turns a gradient's direction. %1$d is its angle in degrees. -->
+    <string name="quote_card_direction" tools:ignore="PluralsCandidate">Direction, %1$d degrees</string>
+</resources>

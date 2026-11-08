@@ -1,0 +1,16 @@
+package com.omnibus.omnibus.feature.quotecard
+
+/** Test tags for the quote card sheet's controls. */
+internal object QuoteCardTestTags {
+    const val KIND_PILL = "quote-card-kind-pill"
+    const val KIND_MENU = "quote-card-kind-menu"
+    const val BOLD = "quote-card-bold"
+    const val ITALIC = "quote-card-italic"
+    const val DIRECTION = "quote-card-direction"
+    const val DIVIDER = "quote-card-swatch-divider"
+
+    fun shape(shape: QuoteShape) = "quote-card-shape-${shape.name.lowercase()}"
+    fun slider(name: String) = "quote-card-slider-$name"
+    fun well(stop: GradientStop) = "quote-card-well-${stop.name.lowercase()}"
+    fun kindItem(kind: QuoteBackgroundKind) = "quote-card-kind-${kind.name.lowercase()}"
+}
