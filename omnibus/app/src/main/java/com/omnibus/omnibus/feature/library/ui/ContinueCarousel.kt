@@ -34,8 +34,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -62,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -87,9 +92,18 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.bookCoverSourceModifier
 import com.omnibus.omnibus.feature.library.ContinueCard
+import com.omnibus.omnibus.feature.library.ContinueCardContentGap
+import com.omnibus.omnibus.feature.library.ContinueCardPadding
+import com.omnibus.omnibus.feature.library.ContinueCoverWidth
+import com.omnibus.omnibus.feature.library.ContinuePageCardGap
+import com.omnibus.omnibus.feature.library.MAX_CONTINUE_CARDS_PER_PAGE
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
+import com.omnibus.omnibus.feature.library.continueCardsPerPage
+import com.omnibus.omnibus.feature.library.continuePageCount
+import com.omnibus.omnibus.feature.library.continuePages
 import com.omnibus.omnibus.feature.library.formatDuration
+import com.omnibus.omnibus.feature.library.pageOfCard
 import com.omnibus.omnibus.feature.library.settledCardId
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.coverShadow
@@ -101,7 +115,7 @@ import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
-/** Test tags for the Continue carousel, so UI tests can find its parts. */
+/** Test tags for the Continue carousel, so UI tests can find its parts. `dot(index)` is the page at [index]. */
 internal object ContinueTestTags {
     const val CAROUSEL = "continue-carousel"
     const val DOTS = "continue-dots"
@@ -120,38 +134,54 @@ private val SHADOW_TOP = 8.dp
 private val SHADOW_BOTTOM = 24.dp
 
 /**
- * The pager state and the set of cards whose progress bar has drawn in. Both are hoisted above the
- * Library grid, so scrolling the carousel off screen and back keeps the card and replays nothing.
+ * The pager state, the set of cards whose progress bar has drawn in, and how many cards share a page. All are
+ * hoisted above the Library grid, so scrolling the carousel off screen and back keeps the page and replays nothing.
  */
 @Stable
 class ContinueCarouselState(
     val pagerState: PagerState,
     val drawnIn: SnapshotStateList<String>,
-)
+    private val cardsPerPageState: MutableIntState,
+) {
+    /** Cards on each page as last laid out; the pager's page count follows it. Only the carousel writes it. */
+    var cardsPerPage: Int
+        get() = cardsPerPageState.intValue
+        internal set(value) {
+            cardsPerPageState.intValue = value
+        }
+}
 
 /** Remembers a [ContinueCarouselState] that survives the carousel leaving composition, and rotation. */
 @Composable
-fun rememberContinueCarouselState(pageCount: () -> Int): ContinueCarouselState {
-    val pagerState = rememberPagerState(pageCount = pageCount)
+fun rememberContinueCarouselState(cardCount: () -> Int): ContinueCarouselState {
+    // Saved with the pager's page, so a recreation regroups from the grouping that page index belongs to (R12).
+    val cardsPerPage = rememberSaveable { mutableIntStateOf(1) }
+    val pagerState = rememberPagerState(
+        pageCount = { continuePageCount(cardCount(), cardsPerPage.intValue) },
+    )
     val drawnIn = rememberSaveable(
         saver = listSaver<SnapshotStateList<String>, String>(
             save = { it.toList() },
             restore = { it.toMutableStateList() },
         ),
     ) { mutableStateListOf() }
-    return remember(pagerState, drawnIn) { ContinueCarouselState(pagerState, drawnIn) }
+    return remember(pagerState, drawnIn, cardsPerPage) {
+        ContinueCarouselState(pagerState, drawnIn, cardsPerPage)
+    }
 }
 
 /**
- * The Continue carousel: one card per page, with page dots once there are two or more cards.
+ * The Continue carousel: up to two cards per page on a wide carousel, one otherwise, with page dots once there are
+ * two or more pages.
  *
- * The pager reports its settled page as a card id through [onSettled], and follows [selectedId]
- * when the selection changes from outside, for example after a refresh.
+ * The pager reports the first card of its settled page through [onSettled], and follows [selectedId] when the
+ * selection changes from outside, for example after a refresh.
  *
- * @param onSettled Called with the id of the card the pager has settled on, when it differs from [selectedId].
+ * @param onSettled Called with the id of the first card on the page the pager has settled on, when it differs from [selectedId].
  * @param onOpenBook Called with the book's uuid when the cover or title is tapped.
  * @param onResume Called with the card id when the resume pill, or any other part of the card, is tapped.
  * @param onShowContextMenu Called with the book on a long press of the card.
+ * @param cardsPerPage The rule for how many cards share a page, given the carousel's width and the font scale. Tests force it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -164,57 +194,128 @@ internal fun ContinueCarousel(
     onResume: (cardId: String) -> Unit,
     onShowContextMenu: (Book) -> Unit,
     modifier: Modifier = Modifier,
+    cardsPerPage: (width: Dp, fontScale: Float) -> Int = ::continueCardsPerPage,
 ) {
     val pagerState = state.pagerState
     val currentCards by rememberUpdatedState(cards)
     val currentSelected by rememberUpdatedState(selectedId)
     val currentOnSettled by rememberUpdatedState(onSettled)
-    // The pager can ask for a key before this composition has seen a list that grew or shrank, so
-    // read the latest cards and fall back to the index rather than indexing a stale list.
-    val currentKeys by rememberUpdatedState(cards)
 
-    // Keyed on the pager only: restarting on a new list would re-send a settled index that
+    // Keyed on the pager only: restarting on a new list would re-send a settled page that
     // still belongs to the old list. The first value is the page the pager starts on, not a swipe,
     // so it is dropped; the selection sync below moves the pager to the selected card.
+    // The grouping is read when the page arrives: a regroup writes it in the same snapshot that moves the page.
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.drop(1).collect { index ->
-            val id = settledCardId(index, currentCards.map { it.id }, 1) ?: return@collect
+        snapshotFlow { pagerState.settledPage }.drop(1).collect { page ->
+            val id = settledCardId(page, currentCards.map { it.id }, state.cardsPerPage) ?: return@collect
             if (id != currentSelected) currentOnSettled(id)
         }
     }
-    // Follows the view model's selection, for example a refresh that dropped the visible card.
-    LaunchedEffect(selectedId, cards) {
-        val target = cards.indexOfFirst { it.id == selectedId }
-        if (target >= 0 && target != pagerState.settledPage) pagerState.scrollToPage(target)
-    }
 
-    Column(modifier.fillMaxWidth().testTag(ContinueTestTags.CAROUSEL)) {
-        HorizontalPager(
-            state = pagerState,
-            key = { index -> currentKeys.getOrNull(index)?.id ?: index },
-            modifier = Modifier.fillMaxWidth().bleedVertically(top = SHADOW_TOP, bottom = SHADOW_BOTTOM),
-        ) { page ->
-            ContinueCardView(
-                card = cards[page],
-                state = state,
-                onOpenBook = onOpenBook,
-                onResume = onResume,
-                onShowContextMenu = onShowContextMenu,
-                modifier = Modifier.padding(
-                    start = Spacing.screen,
-                    end = Spacing.screen,
-                    top = SHADOW_TOP,
-                    bottom = SHADOW_BOTTOM,
-                ),
-            )
+    BoxWithConstraints(modifier.fillMaxWidth().testTag(ContinueTestTags.CAROUSEL)) {
+        val perPage = cardsPerPage(maxWidth, LocalDensity.current.fontScale).coerceIn(1, MAX_CONTINUE_CARDS_PER_PAGE)
+        // Lands on the page holding the selection under the new grouping, before the pager measures the new page
+        // count, so no intermediate page is settled or reported (R9, R12).
+        SideEffect {
+            val previous = state.cardsPerPage
+            if (previous != perPage) {
+                val ids = cards.map { it.id }
+                val held = pageOfCard(selectedId, ids, perPage)
+                val target = if (held >= 0) held else pagerState.currentPage * previous / perPage
+                state.cardsPerPage = perPage
+                val count = continuePageCount(ids.size, perPage)
+                if (count > 0) pagerState.requestScrollToPage(target.coerceIn(0, count - 1))
+            }
         }
-        if (cards.size >= 2) {
-            Spacer(Modifier.height(10.dp))
-            PageDots(
-                count = cards.size,
-                selected = pagerState.settledPage,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            )
+        // Follows the view model's selection, for example a refresh that dropped the visible card.
+        LaunchedEffect(selectedId, cards, perPage) {
+            val target = pageOfCard(selectedId, cards.map { it.id }, perPage)
+            if (target >= 0 && target != pagerState.settledPage) pagerState.scrollToPage(target)
+        }
+
+        val pages = remember(cards, perPage) { continuePages(cards, perPage) }
+        // The pager can ask for a key before this composition has seen a list that grew or shrank, so
+        // read the latest pages and fall back to the index rather than indexing a stale list.
+        val currentPages by rememberUpdatedState(pages)
+        val pageCount = pages.size
+
+        Column(Modifier.fillMaxWidth()) {
+            HorizontalPager(
+                state = pagerState,
+                key = { index -> currentPages.getOrNull(index)?.firstOrNull()?.id ?: index },
+                modifier = Modifier.fillMaxWidth().bleedVertically(top = SHADOW_TOP, bottom = SHADOW_BOTTOM),
+            ) { page ->
+                pages.getOrNull(page)?.let { pageCards ->
+                    ContinuePage(
+                        cards = pageCards,
+                        perPage = perPage,
+                        state = state,
+                        onOpenBook = onOpenBook,
+                        onResume = onResume,
+                        onShowContextMenu = onShowContextMenu,
+                    )
+                }
+            }
+            if (pageCount >= 2) {
+                Spacer(Modifier.height(10.dp))
+                PageDots(
+                    count = pageCount,
+                    selected = pagerState.settledPage,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One page of cards. On a one-card layout it is the card alone, as before. On a two-card layout the cards share the
+ * row, and a page with fewer cards keeps the full-page card width, aligned to the start edge.
+ */
+@Composable
+private fun ContinuePage(
+    cards: List<ContinueCard>,
+    perPage: Int,
+    state: ContinueCarouselState,
+    onOpenBook: (uuid: String) -> Unit,
+    onResume: (cardId: String) -> Unit,
+    onShowContextMenu: (Book) -> Unit,
+) {
+    val pagePadding = Modifier.padding(
+        start = Spacing.screen,
+        end = Spacing.screen,
+        top = SHADOW_TOP,
+        bottom = SHADOW_BOTTOM,
+    )
+    if (perPage == 1) {
+        ContinueCardView(
+            card = cards.first(),
+            state = state,
+            onOpenBook = onOpenBook,
+            onResume = onResume,
+            onShowContextMenu = onShowContextMenu,
+            modifier = pagePadding,
+        )
+    } else {
+        Row(
+            Modifier.fillMaxWidth().then(pagePadding),
+            horizontalArrangement = Arrangement.spacedBy(ContinuePageCardGap),
+        ) {
+            cards.forEach { card ->
+                key(card.id) {
+                    ContinueCardView(
+                        card = card,
+                        state = state,
+                        onOpenBook = onOpenBook,
+                        onResume = onResume,
+                        onShowContextMenu = onShowContextMenu,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            repeat(perPage - cards.size) {
+                Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
@@ -230,7 +331,7 @@ private fun Modifier.bleedVertically(top: Dp, bottom: Dp) = layout { measurable,
     layout(placeable.width, placeable.height - extra) { placeable.place(0, -topPx) }
 }
 
-/** One dot per card. The selected dot is a wider, brighter capsule, and both animate between pages. */
+/** One dot per page. The selected dot is a wider, brighter capsule, and both animate between pages. */
 @Composable
 private fun PageDots(count: Int, selected: Int, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
@@ -316,12 +417,12 @@ private fun ContinueCardView(
                 onLongClick = { onShowContextMenu(book) },
                 onClick = resume,
             )
-            .padding(16.dp),
+            .padding(ContinueCardPadding),
     ) {
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(ContinueCardContentGap)) {
             Box(
                 bookCoverSourceModifier(book.uuid, BookCoverOrigin.Continue)
-                    .width(96.dp)
+                    .width(ContinueCoverWidth)
                     .testTag(ContinueTestTags.cover(card.id))
                     .clickable(onClickLabel = openDetails, onClick = openBook)
                     .semantics { contentDescription = book.displayTitle },
@@ -769,7 +870,7 @@ private fun ContinueCarouselPreview() {
         ),
     )
     OmnibusTheme {
-        val state = rememberContinueCarouselState(pageCount = { cards.size })
+        val state = rememberContinueCarouselState(cardCount = { cards.size })
         ContinueCarousel(
             cards = cards,
             selectedId = cards.first().id,
@@ -784,4 +885,4 @@ private fun ContinueCarouselPreview() {
 
 @Composable
 private fun rememberPreviewCarouselState(count: Int): ContinueCarouselState =
-    rememberContinueCarouselState(pageCount = { count })
+    rememberContinueCarouselState(cardCount = { count })

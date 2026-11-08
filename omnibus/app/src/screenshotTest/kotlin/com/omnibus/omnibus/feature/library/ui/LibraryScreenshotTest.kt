@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -13,6 +14,7 @@ import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryUIState
+import com.omnibus.omnibus.feature.library.continuePageCount
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.screenshot.Shot
@@ -109,12 +111,16 @@ private fun continueCard(id: Long) = ContinueCard(
     resumeFileId = null,
 )
 
-/** The screen for [uiState]. Every Continue card counts as drawn in, so its bar shows at full length, not mid-animation. */
+/**
+ * The screen for [uiState], with its Continue cards grouped [cardsPerPage] to a page. Every Continue card counts as
+ * drawn in, so its bar shows at full length, not mid-animation.
+ */
 @Composable
-private fun LibraryShot(uiState: LibraryUIState) {
-    val pagerState = rememberPagerState(pageCount = { uiState.continueCards.size })
+private fun LibraryShot(uiState: LibraryUIState, cardsPerPage: Int = 1) {
+    val perPage = remember { mutableIntStateOf(cardsPerPage) }
+    val pagerState = rememberPagerState { continuePageCount(uiState.continueCards.size, perPage.intValue) }
     val continueState = remember {
-        ContinueCarouselState(pagerState, uiState.continueCards.map { it.id }.toMutableStateList())
+        ContinueCarouselState(pagerState, uiState.continueCards.map { it.id }.toMutableStateList(), perPage)
     }
     Shot {
         LibraryScreenContent(

@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -12,6 +13,7 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
+import com.omnibus.omnibus.feature.library.continuePageCount
 import com.omnibus.omnibus.screenshot.Shot
 
 /** The eyebrow, chapter label, Play pill and progress bar of a listening card. */
@@ -92,16 +94,25 @@ private fun card(
     resumeFileId = null,
 )
 
-/** The carousel on the first card. Every card counts as drawn in, so the bars show at full length, not mid-animation. */
+/**
+ * The carousel on [initialPage], grouped [cardsPerPage] to a page, with the card at [selectedIndex] selected. Every card
+ * counts as drawn in, so the bars show at full length, not mid-animation.
+ */
 @Composable
-private fun CarouselShot(vararg cards: ContinueCard) {
+private fun CarouselShot(
+    vararg cards: ContinueCard,
+    selectedIndex: Int = 0,
+    initialPage: Int = 0,
+    cardsPerPage: Int = 1,
+) {
     val list = cards.toList()
-    val pagerState = rememberPagerState(pageCount = { list.size })
-    val state = remember { ContinueCarouselState(pagerState, list.map { it.id }.toMutableStateList()) }
+    val perPage = remember { mutableIntStateOf(cardsPerPage) }
+    val pagerState = rememberPagerState(initialPage = initialPage) { continuePageCount(list.size, perPage.intValue) }
+    val state = remember { ContinueCarouselState(pagerState, list.map { it.id }.toMutableStateList(), perPage) }
     Shot {
         ContinueCarousel(
             cards = list,
-            selectedId = list.first().id,
+            selectedId = list[selectedIndex].id,
             state = state,
             onSettled = {},
             onOpenBook = {},
