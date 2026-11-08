@@ -33,16 +33,32 @@ class BookDetailLayoutTest : DescribeSpec({
 
     describe("splitting the book detail page") {
 
-        context("when the window is a portrait phone") {
-            it("#211 TC-1: stays one column") {
+        context("when the window is narrower than the minimum width") {
+            it("#211 TC-3: stays one column, landscape or not") {
                 val width = randomInt(300..559)
-                val height = width + randomInt(1..800)
+                val short = randomInt(100..width - 1)
+                val tall = width + randomInt(1..800)
 
-                bookDetailPaneSplit(width.dp, height.dp).shouldBeNull()
+                bookDetailPaneSplit(width.dp, short.dp).shouldBeNull()
+                bookDetailPaneSplit(width.dp, tall.dp).shouldBeNull()
+            }
+
+            it("#211 TC-8: stays one column just under the minimum") {
+                bookDetailPaneSplit(559.99f.dp, 300.dp).shouldBeNull()
             }
         }
 
-        context("when the window is a landscape phone at or above the minimum width") {
+        context("when the window is not wider than it is tall") {
+            it("#211 TC-5: stays one column at any width at or above the minimum") {
+                val width = randomInt(560..1000)
+                val tall = width + randomInt(1..800)
+
+                bookDetailPaneSplit(width.dp, tall.dp).shouldBeNull()
+                bookDetailPaneSplit(width.dp, width.dp).shouldBeNull()
+            }
+        }
+
+        context("when the window is landscape and at least the minimum width") {
             it("#211 TC-2: splits the width into the two panes") {
                 val width = randomInt(560..1000)
                 val height = randomInt(200..559)
@@ -51,79 +67,12 @@ class BookDetailLayoutTest : DescribeSpec({
 
                 split.leading + split.trailing shouldBe width.dp
             }
-        }
 
-        context("when the window is landscape below the minimum width") {
-            it("#211 TC-3: stays one column") {
-                val width = randomInt(300..559)
-                val height = randomInt(100..width - 1)
-
-                bookDetailPaneSplit(width.dp, height.dp).shouldBeNull()
-            }
-        }
-
-        context("when the window is a landscape tablet") {
-            it("#211 TC-4: gives the leading pane 42% of the width, rounded") {
-                val width = randomInt(800..1400)
-                val height = randomInt(400..799)
-
-                bookDetailPaneSplit(width.dp, height.dp).shouldNotBeNull().leading shouldBe ((width * 42 + 50) / 100).dp
-            }
-        }
-
-        context("when the window is a portrait tablet") {
-            it("#211 TC-5: stays one column") {
-                val width = randomInt(560..1000)
-                val height = width + randomInt(1..800)
-
-                bookDetailPaneSplit(width.dp, height.dp).shouldBeNull()
-            }
-        }
-
-        context("when the window is a narrow split-screen") {
-            it("#211 TC-6: stays one column whether it is tall or short") {
-                val tallWidth = randomInt(300..559)
-                val tallHeight = tallWidth + randomInt(1..800)
-                val shortWidth = randomInt(300..559)
-                val shortHeight = randomInt(100..shortWidth - 1)
-
-                bookDetailPaneSplit(tallWidth.dp, tallHeight.dp).shouldBeNull()
-                bookDetailPaneSplit(shortWidth.dp, shortHeight.dp).shouldBeNull()
-            }
-        }
-
-        context("when the width is exactly the minimum") {
-            it("#211 TC-7: splits a landscape window") {
-                val height = randomInt(100..559)
-
-                bookDetailPaneSplit(560.dp, height.dp).shouldNotBeNull()
-            }
-        }
-
-        context("when the width is just under the minimum") {
-            it("#211 TC-8: stays one column at 559 dp") {
-                val height = randomInt(100..558)
-
-                bookDetailPaneSplit(559.dp, height.dp).shouldBeNull()
+            it("#211 TC-7: splits at exactly the minimum width") {
+                bookDetailPaneSplit(560.dp, randomInt(100..559).dp).shouldNotBeNull()
             }
 
-            it("#211 TC-8: stays one column at 559.99 dp") {
-                val height = randomInt(100..558)
-
-                bookDetailPaneSplit(559.99f.dp, height.dp).shouldBeNull()
-            }
-        }
-
-        context("when the window is square") {
-            it("#211 TC-9: stays one column at any width at or above the minimum") {
-                val side = randomInt(560..1400).dp
-
-                bookDetailPaneSplit(side, side).shouldBeNull()
-            }
-        }
-
-        context("when the width is one dp more than the height") {
-            it("#211 TC-10: splits a window at or above the minimum width") {
+            it("#211 TC-10: splits when it is one dp wider than tall") {
                 val width = randomInt(560..1400)
 
                 bookDetailPaneSplit(width.dp, (width - 1).dp).shouldNotBeNull()
@@ -138,9 +87,7 @@ class BookDetailLayoutTest : DescribeSpec({
                     leading shouldBe ((width * 42 + 50) / 100).toFloat()
                 }
             }
-        }
 
-        context("when the share is a half dp") {
             it("#211 TC-12: rounds 493.5 up to 494 dp for a width of 1175 dp") {
                 val split = bookDetailPaneSplit(1175.dp, 800.dp).shouldNotBeNull()
 
@@ -150,16 +97,10 @@ class BookDetailLayoutTest : DescribeSpec({
         }
 
         context("when two panes are forced") {
-            it("#211 TC-13: splits a portrait width at 42%") {
-                val width = randomInt(300..1000)
+            it("#211 TC-13: splits any width at 42%") {
+                val width = randomInt(300..1400)
 
                 splitAtShare(width.dp).leading shouldBe ((width * 42 + 50) / 100).dp
-            }
-
-            it("#211 TC-13: splits a square width at 42%") {
-                val side = randomInt(560..1400)
-
-                splitAtShare(side.dp).leading shouldBe ((side * 42 + 50) / 100).dp
             }
         }
     }
@@ -167,21 +108,15 @@ class BookDetailLayoutTest : DescribeSpec({
     describe("deciding whether the stage rests under the bar") {
 
         context("when the leading pane is at least 300 dp") {
-            it("#211 TC-14: rests the stage under the bar at 300 dp") {
+            it("#211 TC-14: rests the stage under the bar") {
                 stageUnderBar(300.dp) shouldBe true
-            }
-
-            it("#211 TC-14: rests the stage under the bar above 300 dp") {
                 stageUnderBar(randomInt(301..2000).dp) shouldBe true
             }
         }
 
         context("when the leading pane is narrower than 300 dp") {
-            it("#211 TC-14: does not rest the stage under the bar at 299.99 dp") {
+            it("#211 TC-14: does not rest the stage under the bar") {
                 stageUnderBar(299.99f.dp) shouldBe false
-            }
-
-            it("#211 TC-14: does not rest the stage under the bar below 300 dp") {
                 stageUnderBar(randomDouble(0.0, 299.99).toFloat().dp) shouldBe false
             }
         }

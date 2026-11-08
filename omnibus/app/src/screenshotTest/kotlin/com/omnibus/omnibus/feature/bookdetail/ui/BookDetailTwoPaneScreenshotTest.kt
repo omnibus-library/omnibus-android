@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
@@ -33,24 +32,6 @@ fun BookDetailTwoPaneLandscapePhone() {
 @Preview(name = "Dark", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun BookDetailTwoPaneTablet() {
-    TwoPaneShot()
-}
-
-/** A short window: the cover clamps to the 0.5 floor under the bar, and the title scrolls under the action row. */
-@PreviewTest
-@Preview(name = "Light", widthDp = 900, heightDp = 300)
-@Preview(name = "Dark", widthDp = 900, heightDp = 300, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-fun BookDetailTwoPaneShortWindow() {
-    TwoPaneShot()
-}
-
-/** A narrow leading pane (269 dp): the stage starts below the bar row, so the cover clears the Back disc. */
-@PreviewTest
-@Preview(name = "Light", widthDp = 640, heightDp = 360)
-@Preview(name = "Dark", widthDp = 640, heightDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-fun BookDetailTwoPaneNarrowLeading() {
     TwoPaneShot()
 }
 

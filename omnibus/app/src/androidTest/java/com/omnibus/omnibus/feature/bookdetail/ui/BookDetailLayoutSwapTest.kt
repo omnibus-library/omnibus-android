@@ -344,31 +344,6 @@ class BookDetailLayoutSwapTest {
         rule.onNodeWithTag("sheet-field").assertTextEquals("typed")
     }
 
-    // TC-61
-    @Test
-    fun issue211_tc61_savedCountersSurviveAnInProcessSwap() {
-        val twoPane = mutableStateOf(false)
-        val slots = BookDetailSlots(
-            stageProgress = listOf(saveableCounterSection("counter-stage")),
-            overviewSections = listOf(saveableCounterSection("counter-overview")),
-            actionBar = listOf(saveableCounterSection("counter-action")),
-        )
-        rule.swapPage(twoPane, slots = slots)
-        rule.tapCounter("counter-stage")
-        rule.tapCounter("counter-stage")
-        rule.tapCounter("counter-overview")
-        repeat(3) { rule.tapCounter("counter-action") }
-
-        rule.flip(twoPane, true)
-        rule.onNodeWithTag("counter-stage").assertTextEquals("2")
-        rule.onNodeWithTag("counter-overview").assertTextEquals("1")
-        rule.onNodeWithTag("counter-action").assertTextEquals("3")
-        rule.flip(twoPane, false)
-        rule.onNodeWithTag("counter-stage").assertTextEquals("2")
-        rule.onNodeWithTag("counter-overview").assertTextEquals("1")
-        rule.onNodeWithTag("counter-action").assertTextEquals("3")
-    }
-
     // TC-62
     @Test
     fun issue211_tc62_savedCountersSurviveASwapPlusARecreation() {

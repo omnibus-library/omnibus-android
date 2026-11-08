@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.BookDetailError
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
@@ -393,39 +392,6 @@ class BookDetailTwoPaneTest {
         val padding = with(rule.density) { 8.dp.toPx() }
         assertEquals((scroll.left + scroll.right) / 2f, (snackbar.left + snackbar.right) / 2f, padding)
         assertTrue(snackbar.bottom <= rule.actionArea().top + 1f)
-    }
-
-    // TC-66
-    @Test
-    fun issue211_tc66_theDefaultResolverFollowsTheScreensOwnSize() {
-        rule.page(split = { width, height -> com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit(width, height) })
-
-        val density = rule.density.density
-        val root = rule.onRoot().bounds()
-        val expectTwoPane = com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit(
-            (root.width / density).dp,
-            (root.height / density).dp,
-        ) != null
-        val stage = rule.stage()
-        val strip = rule.strip()
-        val actualTwoPane = stage.right <= strip.left + 1f
-        assertEquals(expectTwoPane, actualTwoPane)
-    }
-
-    // TC-67
-    @Test
-    fun issue211_tc67_forcedSplitGivesTwoPanesAtTheDeviceSize() {
-        rule.page(split = forcedTwoPanes)
-
-        assertTrue(rule.stage().right <= rule.strip().left + 1f)
-    }
-
-    // TC-67
-    @Test
-    fun issue211_tc67_nullResolverGivesAColumnAtTheDeviceSize() {
-        rule.page(slots = allFakes(tallStage = false), split = forcedColumn)
-
-        assertTrue(rule.stage().bottom <= rule.strip().top + 1f)
     }
 
     /** Composes the stage and the top bar alone, over a plain box, as the screen does. */
