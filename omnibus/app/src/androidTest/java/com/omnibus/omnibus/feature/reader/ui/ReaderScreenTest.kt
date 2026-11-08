@@ -536,6 +536,79 @@ class ReaderScreenTest {
         assertNoChrome()
     }
 
+    // TC-15
+    @Test
+    fun issue224_tc15_ribbonShowsOnlyOnAReadyBookmarkedPage() {
+        val cfi = "epubcfi(/6/8!/4/2/1:0)"
+        val book = mutableStateOf<ReaderBookState>(ReaderBookState.Loading)
+        val load = mutableStateOf<ReaderLoadStatus>(ReaderLoadStatus.Loading)
+        val bookmarks = mutableStateOf(listOf(Bookmark(1L, "client-1", "book-1", cfi, "Here", "Chapter", 0.5f, null)))
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = book.value,
+                    loadStatus = load.value,
+                    location = RelocateData(cfi = cfi, chapterTitle = "Chapter"),
+                    chromeVisible = false,
+                    bookmarks = bookmarks.value,
+                )
+            },
+            inspection = true,
+        )
+        val ribbon = { rule.onNodeWithTag(ReaderRibbonTags.RIBBON, useUnmergedTree = true) }
+
+        ribbon().assertDoesNotExist()
+
+        rule.runOnIdle { book.value = ReaderBookState.Ready(title = "Nineteen Eighty-Four") }
+        rule.waitForIdle()
+        ribbon().assertDoesNotExist()
+
+        rule.runOnIdle { load.value = ReaderLoadStatus.Ready }
+        rule.waitForIdle()
+        assertEquals(1f, ribbon().fetchSemanticsNode().config[ReaderRibbonAlphaKey], 0.001f)
+
+        rule.runOnIdle { bookmarks.value = emptyList() }
+        rule.waitForIdle()
+        assertEquals(0f, ribbon().fetchSemanticsNode().config[ReaderRibbonAlphaKey], 0.001f)
+    }
+
+    // TC-16
+    @Test
+    fun issue224_tc16_theChromeDrawsAboveTheRibbon() {
+        val cfi = "epubcfi(/6/8!/4/2/1:0)"
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                location = RelocateData(cfi = cfi, chapterTitle = "Chapter"),
+                bookmarks = listOf(Bookmark(1L, "client-1", "book-1", cfi, "Here", "Chapter", 0.5f, null)),
+                chromeVisible = true,
+                menuOpen = true,
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+            ),
+        )
+        val events = mutableListOf<String>()
+        show(
+            uiState = { state.value },
+            inspection = true,
+            onMenuDismissed = {
+                events += "menuDismissed"
+                state.value = state.value.withMenuDismissed()
+            },
+            onClose = { events += "close" },
+        )
+
+        rule.onNodeWithTag(ReaderRibbonTags.RIBBON, useUnmergedTree = true).performTouchInput { click() }
+        rule.waitForIdle()
+        assertEquals(listOf("menuDismissed"), events)
+
+        rule.runOnIdle { state.value = state.value.copy(menuOpen = false) }
+        rule.waitForIdle()
+        rule.onNodeWithTag(ReaderChromeTags.BACK).performTouchInput { click() }
+        rule.waitForIdle()
+        assertEquals(listOf("menuDismissed", "close"), events)
+    }
+
     // RC-52, TC-14
     @Test
     fun rc52_pageLabelsDoNotChangeInContextMode() {

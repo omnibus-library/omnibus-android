@@ -12,6 +12,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
@@ -30,6 +31,14 @@ fun ReaderContextBar() {
     ChromeShot(chromeVisible = true, menuRows = AllRows)
 }
 
+/** The top bar over a bookmarked page: the filled toggle in the page accent, and the ribbon hanging under the back arrow. */
+@PreviewTest
+@Preview
+@Composable
+fun ReaderContextBarBookmarked() {
+    ChromeShot(chromeVisible = true, menuRows = AllRows, pageBookmarked = true)
+}
+
 /** The flat dropdown open under the more button, in the Dark reading theme. */
 @PreviewTest
 @Preview
@@ -46,7 +55,10 @@ fun ReaderContextMenuOpenReversed() {
     ChromeShot(chromeVisible = true, menuOpen = true, menuRows = AllRows, theme = ReaderTheme.Sepia, rtl = true)
 }
 
-/** The page labels and the chrome over a plain page in [theme], as the reader draws them, with reduced motion so nothing is mid-flight. */
+/**
+ * The page labels and the chrome over a plain page in [theme], as the reader draws them, with reduced motion so nothing is
+ * mid-flight. A [pageBookmarked] page draws its ribbon first, as the reader does, and tints the bar's toggle with its accent.
+ */
 @Composable
 private fun ChromeShot(
     chromeVisible: Boolean,
@@ -55,11 +67,24 @@ private fun ChromeShot(
     location: RelocateData = Reading,
     theme: ReaderTheme = ReaderTheme.Light,
     rtl: Boolean = false,
+    pageBookmarked: Boolean = false,
 ) {
     val direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+    val accent = readerPageAccent(
+        ReaderBookState.Ready("Nineteen Eighty-Four", ReaderContentsPreviewCover.copy(accent = "oklch(0.55 0.09 195)")),
+        theme,
+    )
     CompositionLocalProvider(LocalLayoutDirection provides direction) {
         OmnibusTheme(darkTheme = !theme.isLight) {
             Box(Modifier.background(Color(theme.groundArgb))) {
+                if (pageBookmarked) {
+                    ReaderRibbon(
+                        frame = RibbonFrame("p", shown = true, tapped = false),
+                        color = accent,
+                        placement = RibbonPlacement(ReaderRibbonMetrics.EDGE, translucent = false, twoPage = false),
+                        reduceMotion = true,
+                    )
+                }
                 ReaderPageLabels(
                     indicators = ReaderIndicators(location = location, title = "Nineteen Eighty-Four", chromeVisible = false),
                     colors = readerChromeColors(theme),
@@ -78,7 +103,8 @@ private fun ChromeShot(
                     onMenuOpened = {},
                     onMenuDismissed = {},
                     onMenuRowChosen = {},
-                    pageBookmarked = false,
+                    pageBookmarked = pageBookmarked,
+                    bookmarkTint = accent,
                 )
             }
         }

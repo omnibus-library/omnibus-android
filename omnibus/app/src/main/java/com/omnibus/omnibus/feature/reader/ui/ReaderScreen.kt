@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -70,6 +73,7 @@ import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -147,7 +151,8 @@ fun ReaderScreen(
  * Nothing here pads the page for the system bars. The reader fills the window, and the page takes
  * the insets as CSS variables, so only the state views are inset.
  *
- * The chrome is an overlay sibling of the page and never resizes it. Sheets opened from the menu
+ * The chrome is an overlay sibling of the page and never resizes it. The bookmark ribbon hangs from the page's top edge
+ * under the labels, the top bar and the sheets, and takes no touches. Sheets opened from the menu
  * (#47, #48) must use the app theme, so host them outside this function's
  * `OmnibusTheme(darkTheme = !theme.isLight)` or re-wrap them in `OmnibusTheme()`.
  *
@@ -316,6 +321,23 @@ internal fun ReaderScreenContent(
                                 )
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                                // Above the page and below the labels, the banner, the top bar and the sheets, which are drawn after it.
+                                BoxWithConstraints(Modifier.fillMaxSize()) {
+                                    val density = LocalDensity.current
+                                    val direction = LocalLayoutDirection.current
+                                    // Rounded to whole CSS px, as ReaderWebView hands the insets to the page.
+                                    val insetLeft = (pageInsets.getLeft(density, direction) / density.density).roundToInt().toFloat()
+                                    val insetRight = (pageInsets.getRight(density, direction) / density.density).roundToInt().toFloat()
+                                    val placement = remember(maxWidth, insetLeft, insetRight, uiState.settings.margins, uiState.settings.spread) {
+                                        ribbonPlacement(maxWidth.value, insetLeft, insetRight, uiState.settings.margins, uiState.settings.spread)
+                                    }
+                                    ReaderRibbon(
+                                        frame = uiState.ribbonFrame,
+                                        color = readerPageAccent(book, theme),
+                                        placement = placement,
+                                        reduceMotion = reduceMotion,
+                                    )
+                                }
                                 // The labels show the focused content in both modes, so they never switch inside the card.
                                 ReaderPageLabels(
                                     indicators = ReaderIndicators(uiState.location, book.title, chromeVisible = false),
@@ -364,6 +386,7 @@ internal fun ReaderScreenContent(
                                     onMenuDismissed = onMenuDismissed,
                                     onMenuRowChosen = onMenuRowChosen,
                                     onBookmarkToggled = onBookmarkToggled,
+                                    bookmarkTint = readerPageAccent(book, theme),
                                 )
                             }
                             if (uiState.sheet == ReaderSheet.Contents) {
