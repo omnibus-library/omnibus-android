@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.5](https://github.com/omnibus-library/omnibus-android/compare/v0.1.4...v0.1.5) (2026-11-08)
+
+
+### Features
+
+* add the quote card to book detail highlights ([#206](https://github.com/omnibus-library/omnibus-android/issues/206)) ([4e89d5f](https://github.com/omnibus-library/omnibus-android/commit/4e89d5fcc61ef7a77e16add9a2c527228a51716e))
+* **bookdetail:** add a two-pane layout for wide windows ([#213](https://github.com/omnibus-library/omnibus-android/issues/213)) ([2955195](https://github.com/omnibus-library/omnibus-android/commit/2955195bd9475d58296fcd31f58d0d9777aabd06))
+* **library:** show two continue cards per page on wide windows ([#222](https://github.com/omnibus-library/omnibus-android/issues/222)) ([16de8d3](https://github.com/omnibus-library/omnibus-android/commit/16de8d3843fab25a9e34c542ceeea0b5268216b4))
+* **reader:** add a top bar and flat dropdown to the reader ([#223](https://github.com/omnibus-library/omnibus-android/issues/223)) ([d6a4bf3](https://github.com/omnibus-library/omnibus-android/commit/d6a4bf3e78231f97a61c0b41f2b97a44cc49ce41))
+* **reader:** add the context mode back order and card layout rules ([#220](https://github.com/omnibus-library/omnibus-android/issues/220)) ([e168128](https://github.com/omnibus-library/omnibus-android/commit/e168128a68d930a0dee0980019d2ab4c9bba4072))
+* **reader:** zoom the page out into a card in context mode ([#226](https://github.com/omnibus-library/omnibus-android/issues/226)) ([21b0557](https://github.com/omnibus-library/omnibus-android/commit/21b055770d69721e1729c6b5c00b57bae1347936))
+
+
+### Bug Fixes
+
+* **bookdetail:** centre the wide stage vertically ([#218](https://github.com/omnibus-library/omnibus-android/issues/218)) ([10dbd90](https://github.com/omnibus-library/omnibus-android/commit/10dbd90c2231bc6ddaf26492efbc71d90457ed77))
+
 ## [0.1.4](https://github.com/omnibus-library/omnibus-android/compare/v0.1.3...v0.1.4) (2026-11-07)
 
 
