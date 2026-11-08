@@ -40,10 +40,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.Dp
@@ -114,6 +115,9 @@ fun BookDetailScreen(
  * The page's content for [uiState], with the callbacks and slots injected. Internal so instrumented tests can
  * render each state, as `LibraryScreenContent`. Column and two-pane modes share one composition tree, so a layout
  * swap keeps state: see [BookDetailPaneLayout].
+ *
+ * @param initialActionAreaHeight Seeds the action area's height, so a single-pass render (screenshot previews) shows
+ * the settled layout.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,13 +138,14 @@ internal fun BookDetailScreenContent(
     stageScrollState: ScrollState = rememberScrollState(),
     panelScrollState: ScrollState = rememberScrollState(),
     paneSplit: (width: Dp, height: Dp) -> PaneSplit? = ::bookDetailPaneSplit,
+    initialActionAreaHeight: Dp = 0.dp,
 ) {
     val palette = OmnibusTheme.palette
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val content = uiState.screen as? BookDetailScreenState.Content
     // Saved, so a restored scroll is not clamped to the range the stage has before the action area is measured.
-    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(0) }
+    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(with(density) { initialActionAreaHeight.roundToPx() }) }
 
     // Section messages and the refresh error share one host. Launched in a scope that outlives the caller.
     val showMessage: (BookDetailMessage) -> Unit = remember(scope, snackbarHostState) {
@@ -293,6 +298,27 @@ internal fun BookDetailScreenContent(
                                             backdrop = !twoPane,
                                             underBar = underBar,
                                             coverScale = coverScale,
+                                            contentModifier = if (twoPane) {
+                                                // Centred between the bar row and the action row when it fits.
+                                                Modifier.layout { measurable, constraints ->
+                                                    val placeable = measurable.measure(constraints)
+                                                    val restTop = statusTop + StageRestTop +
+                                                        (if (underBar) 0.dp else TopBarRowHeight)
+                                                    val top = stageContentTop(
+                                                        statusTop,
+                                                        underBar,
+                                                        viewportHeight,
+                                                        actionAreaDp,
+                                                        placeable.height.toDp(),
+                                                    )
+                                                    val offset = (top - restTop).roundToPx()
+                                                    layout(placeable.width, placeable.height + offset) {
+                                                        placeable.place(0, offset)
+                                                    }
+                                                }
+                                            } else {
+                                                Modifier
+                                            },
                                         )
                                     }
                                 },

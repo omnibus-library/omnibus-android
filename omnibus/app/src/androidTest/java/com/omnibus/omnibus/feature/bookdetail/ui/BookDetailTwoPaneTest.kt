@@ -394,6 +394,24 @@ class BookDetailTwoPaneTest {
         assertTrue(snackbar.bottom <= rule.actionArea().top + 1f)
     }
 
+    // #216
+    @Test
+    fun issue216_shortStageIsCentredBetweenTheBarRowAndTheActionRow() {
+        rule.page(slots = allFakes(tallStage = false))
+
+        val barBottom = rule.barBottom()
+        val actionTop = rule.actionArea().top
+        // The cover is the stage's first row and the progress section its last.
+        val contentTop = rule.onNodeWithTag(BookDetailTestTags.COVER).bounds().top
+        val contentBottom = rule.onNodeWithTag("fake-stage").bounds().bottom
+        val fadeClearance = with(rule.density) { (EdgeFadeLength - EdgeFadeReach).toPx() }
+        assertTrue(
+            "stage must fit clear of the fades to be centred",
+            contentBottom - contentTop + 2 * fadeClearance <= actionTop - barBottom,
+        )
+        assertEquals(contentTop - barBottom, actionTop - contentBottom, 2f)
+    }
+
     /** Composes the stage and the top bar alone, over a plain box, as the screen does. */
     private fun ComposeContentTestRule.stageUnderTopBar(underBar: Boolean) {
         setContent {

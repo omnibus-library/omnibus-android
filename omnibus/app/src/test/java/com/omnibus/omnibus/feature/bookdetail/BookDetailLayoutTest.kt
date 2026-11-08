@@ -1,19 +1,26 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeLength
+import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeReach
 import com.omnibus.omnibus.feature.bookdetail.ui.FadeBand
 import com.omnibus.omnibus.feature.bookdetail.ui.StageActionRowHeight
+import com.omnibus.omnibus.feature.bookdetail.ui.StageRestTop
+import com.omnibus.omnibus.feature.bookdetail.ui.TopBarRowHeight
 import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
 import com.omnibus.omnibus.feature.bookdetail.ui.columnContentOffsetPx
 import com.omnibus.omnibus.feature.bookdetail.ui.columnScrollForContentOffset
 import com.omnibus.omnibus.feature.bookdetail.ui.splitAtShare
 import com.omnibus.omnibus.feature.bookdetail.ui.stageBottomFadeBand
+import com.omnibus.omnibus.feature.bookdetail.ui.stageContentTop
 import com.omnibus.omnibus.feature.bookdetail.ui.stageCoverScale
 import com.omnibus.omnibus.feature.bookdetail.ui.stageTopFadeBand
 import com.omnibus.omnibus.feature.bookdetail.ui.stageUnderBar
+import com.omnibus.omnibus.testing.randomBoolean
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomInt
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.comparables.shouldBeGreaterThanOrEqualTo
 import io.kotest.matchers.comparables.shouldBeLessThan
 import io.kotest.matchers.comparables.shouldBeLessThanOrEqualTo
 import io.kotest.matchers.nulls.shouldBeNull
@@ -256,6 +263,86 @@ class BookDetailLayoutTest : DescribeSpec({
                 val clear = paneHeight - actionArea + 4.dp
 
                 stageBottomFadeBand(paneHeight, actionArea) shouldBe FadeBand(clear, clear - 24.dp)
+            }
+        }
+    }
+
+    describe("placing the stage content in the leading pane") {
+
+        // The room each fade needs between the content and the bar row or the action row.
+        val fadeClearance = EdgeFadeLength - EdgeFadeReach
+
+        context("when the content fits between the bar row and the action row clear of the fades") {
+            it("#216: centres the content between the bar row's bottom and the action row's top") {
+                val statusTop = randomInt(0..80).dp
+                val paneHeight = randomInt(500..1200).dp
+                val actionArea = randomInt(0..80).dp
+                val bandTop = statusTop + TopBarRowHeight
+                val bandBottom = paneHeight - actionArea
+                val content = randomInt(0..(bandBottom - bandTop - fadeClearance * 2).value.toInt()).dp
+
+                val top = stageContentTop(statusTop, randomBoolean(), paneHeight, actionArea, content)
+
+                top - bandTop shouldBe bandBottom - (top + content)
+            }
+
+            it("#216: keeps the content's bottom inside the opaque part of the bottom fade, under the bar or not") {
+                checkAll(Arb.int(0..80), Arb.int(500..1200), Arb.int(0..80), Arb.boolean()) { status, pane, action, underBar ->
+                    val statusTop = status.dp
+                    val paneHeight = pane.dp
+                    val actionArea = action.dp
+                    val content = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2
+
+                    val top = stageContentTop(statusTop, underBar, paneHeight, actionArea, content)
+
+                    top + content shouldBeLessThanOrEqualTo stageBottomFadeBand(paneHeight, actionArea).opaque
+                }
+            }
+
+            context("when the stage starts below the bar row") {
+                it("#216: keeps the content's top inside the opaque part of the top fade") {
+                    val statusTop = randomInt(0..80).dp
+                    val paneHeight = randomInt(500..1200).dp
+                    val actionArea = randomInt(0..80).dp
+                    val content = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2
+
+                    val top = stageContentTop(statusTop, underBar = false, paneHeight, actionArea, content)
+
+                    top shouldBeGreaterThanOrEqualTo stageTopFadeBand(statusTop, underBar = false).opaque
+                }
+            }
+        }
+
+        context("when the content does not fit between the bar row and the action row clear of the fades") {
+
+            context("when the stage rests under the bar") {
+                it("#216: puts the content at the rest line below the status bar, however far the content overflows") {
+                    val statusTop = randomInt(0..80).dp
+                    val paneHeight = randomInt(300..1200).dp
+                    val actionArea = randomInt(0..80).dp
+                    // 1 dp short of the room the fades need, the tightest content that does not fit.
+                    val tightest = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2 + 1.dp
+
+                    checkAll(Arb.int(0..600)) { overflow ->
+                        stageContentTop(statusTop, underBar = true, paneHeight, actionArea, tightest + overflow.dp) shouldBe
+                            statusTop + StageRestTop
+                    }
+                }
+            }
+
+            context("when the stage starts below the bar row") {
+                it("#216: puts the content at the rest line below the bar row, however far the content overflows") {
+                    val statusTop = randomInt(0..80).dp
+                    val paneHeight = randomInt(300..1200).dp
+                    val actionArea = randomInt(0..80).dp
+                    // 1 dp short of the room the fades need, the tightest content that does not fit.
+                    val tightest = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2 + 1.dp
+
+                    checkAll(Arb.int(0..600)) { overflow ->
+                        stageContentTop(statusTop, underBar = false, paneHeight, actionArea, tightest + overflow.dp) shouldBe
+                            statusTop + TopBarRowHeight + StageRestTop
+                    }
+                }
             }
         }
     }

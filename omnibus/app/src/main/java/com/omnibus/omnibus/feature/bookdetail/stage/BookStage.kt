@@ -38,6 +38,7 @@ import com.omnibus.omnibus.ui.theme.rememberReducedMotion
  * @param backdrop Whether the stage draws its own wash. Two-pane mode draws one wash behind both panes instead.
  * @param underBar Whether the cover rests in the bar row. False adds the bar row's height above it.
  * @param coverScale The cover's scale, see [stageCoverScale].
+ * @param contentModifier Applied inside the stage's padding, around the cover and the rows under it.
  */
 @Composable
 internal fun BookStage(
@@ -48,6 +49,7 @@ internal fun BookStage(
     backdrop: Boolean = true,
     underBar: Boolean = true,
     coverScale: Float = 1f,
+    contentModifier: Modifier = Modifier,
 ) {
     val lightGround = isLightGround(OmnibusTheme.palette.bg0)
     val byline = remember(context.book) { bylineModel(context.book) }
@@ -65,7 +67,8 @@ internal fun BookStage(
                     end = 16.dp,
                     top = StageRestTop + (if (underBar) 0.dp else TopBarRowHeight),
                     bottom = 14.dp,
-                ),
+                )
+                .then(contentModifier),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             BookStageCover(context.book, lightGround, scale = coverScale) {

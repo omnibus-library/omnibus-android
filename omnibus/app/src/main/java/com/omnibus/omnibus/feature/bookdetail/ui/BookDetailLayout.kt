@@ -74,6 +74,21 @@ internal fun stageTopFadeBand(statusTop: Dp, underBar: Boolean): FadeBand =
         (statusTop + TopBarRowHeight - EdgeFadeReach).let { FadeBand(it, it + EdgeFadeLength) }
     }
 
+/**
+ * The top of the stage's content in a pane [paneHeight] tall, for content [content] tall. The content is centred
+ * between the bar row and the action row when it fits there clear of the edge fades. Otherwise it rests at the
+ * stage's usual top and the pane scrolls.
+ */
+internal fun stageContentTop(statusTop: Dp, underBar: Boolean, paneHeight: Dp, actionArea: Dp, content: Dp): Dp {
+    val bandTop = statusTop + TopBarRowHeight
+    val spare = paneHeight - actionArea - bandTop - content
+    return if (spare >= (EdgeFadeLength - EdgeFadeReach) * 2) {
+        bandTop + spare / 2
+    } else {
+        statusTop + StageRestTop + (if (underBar) 0.dp else TopBarRowHeight)
+    }
+}
+
 /** The bottom fade of the stage pane, ending just above the action row. */
 internal fun stageBottomFadeBand(paneHeight: Dp, actionArea: Dp): FadeBand =
     (paneHeight - actionArea + EdgeFadeReach).let { FadeBand(clear = it, opaque = it - EdgeFadeLength) }

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
@@ -32,12 +33,17 @@ fun BookDetailTwoPaneLandscapePhone() {
 @Preview(name = "Dark", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun BookDetailTwoPaneTablet() {
-    TwoPaneShot()
+    // The Read pill's 52 dp and its 10 dp padding above and below: the height the action area settles at.
+    TwoPaneShot(actionAreaHeight = 72.dp)
 }
 
-/** The page at the preview's own size. The forced layout comes from the screen's rule, not from this file. */
+/**
+ * The page at the preview's own size. The forced layout comes from the screen's rule, not from this file.
+ *
+ * @param actionAreaHeight The action area's settled height, which a single-pass render never measures.
+ */
 @Composable
-private fun TwoPaneShot() {
+private fun TwoPaneShot(actionAreaHeight: Dp = 0.dp) {
     Shot {
         BookDetailScreenContent(
             uiState = BookDetailUIState(
@@ -58,6 +64,7 @@ private fun TwoPaneShot() {
             onTransientErrorShown = {},
             slots = previewSlots(),
             reducedMotion = true,
+            initialActionAreaHeight = actionAreaHeight,
         )
     }
 }
