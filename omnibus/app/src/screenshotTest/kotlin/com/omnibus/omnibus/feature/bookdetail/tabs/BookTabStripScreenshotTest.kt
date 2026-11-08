@@ -32,8 +32,19 @@ fun BookTabStripPinned() {
     StripShot(stripTopPx = 0, scroll = 1)
 }
 
+/**
+ * The strip in two-pane mode: the scroll that would pin it in column mode leaves it unpinned, with its ribbon out and a
+ * hairline inset under the cells.
+ */
+@PreviewTest
+@PreviewLightDark
 @Composable
-private fun StripShot(stripTopPx: Int, scroll: Int) {
+fun BookTabStripUnpinned() {
+    StripShot(stripTopPx = 0, scroll = 1, pins = false)
+}
+
+@Composable
+private fun StripShot(stripTopPx: Int, scroll: Int, pins: Boolean = true) {
     Shot {
         val scrollState = rememberScrollState(scroll)
         val scope = rememberCoroutineScope()
@@ -48,7 +59,7 @@ private fun StripShot(stripTopPx: Int, scroll: Int) {
         state.stripTopPx = stripTopPx
         state.pinTopPx = 0
         Column {
-            BookTabStrip(state, scrollState, ribbonColor = Color(0xFFB5452B), reducedMotion = true)
+            BookTabStrip(state, scrollState, ribbonColor = Color(0xFFB5452B), reducedMotion = true, pins = pins)
             // Room for the resting ribbon, which hangs below the strip.
             Spacer(Modifier.height(48.dp))
         }

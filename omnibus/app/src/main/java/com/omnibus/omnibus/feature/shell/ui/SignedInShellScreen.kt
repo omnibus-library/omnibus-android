@@ -14,16 +14,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
@@ -43,9 +40,8 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
-import com.omnibus.omnibus.feature.shell.AuthorsRoot
 import com.omnibus.omnibus.feature.shell.LibraryRoot
-import com.omnibus.omnibus.feature.shell.SeriesRoot
+import com.omnibus.omnibus.feature.shell.SearchRoot
 import com.omnibus.omnibus.feature.shell.ShellNavigator
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
@@ -53,7 +49,6 @@ import com.omnibus.omnibus.feature.shell.YouRoot
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -170,10 +165,9 @@ private fun SignedInShellContent(
                         entry<BookDetailPlaceholderRoute> { key ->
                             StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
                         }
-                        entry<AuthorsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Authors) } }
-                        entry<SeriesRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Series) } }
-                        entry<StatsRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.Stats) } }
-                        entry<YouRoot> { StatusBarPadded { EmptyTabRoot(ShellTab.You) } }
+                        entry<SearchRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.Search) } }
+                        entry<StatsRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.Stats) } }
+                        entry<YouRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.You) } }
                     },
                 )
             }
@@ -194,20 +188,6 @@ private fun SignedInShellContent(
 @Composable
 private fun StatusBarPadded(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) { content() }
-}
-
-/** Placeholder root until the tab's own ticket supplies its content. */
-@Composable
-private fun EmptyTabRoot(tab: ShellTab, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = stringResource(tab.label),
-            style = uiTextStyle(16, FontWeight.Normal, OmnibusTheme.palette.ink0),
-        )
-    }
 }
 
 @Composable

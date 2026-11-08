@@ -36,8 +36,12 @@ import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.theme.Oklch
 
+/** The cover's width at scale 1. Its height follows from the 2:3 aspect ratio. */
+internal val StageCoverWidth = 168.dp
+
 /**
- * The book's cover on the stage: tilted in perspective, lit by a warm halo, standing on a floor shadow.
+ * The book's cover on the stage: tilted in perspective, lit by a warm halo, standing on a floor shadow. [scale]
+ * sizes the whole cover, so its halo and floor follow.
  * The [overlay] sits over the cover, outside the tilt.
  */
 @Composable
@@ -45,6 +49,7 @@ internal fun BookStageCover(
     book: Book,
     lightGround: Boolean,
     modifier: Modifier = Modifier,
+    scale: Float = 1f,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val identity = book.coverIdentity()
@@ -53,7 +58,7 @@ internal fun BookStageCover(
 
     Box(
         modifier
-            .width(168.dp)
+            .width(StageCoverWidth * scale)
             .aspectRatio(2f / 3f)
             .testTag(BookDetailTestTags.COVER)
             .semantics { contentDescription = description }

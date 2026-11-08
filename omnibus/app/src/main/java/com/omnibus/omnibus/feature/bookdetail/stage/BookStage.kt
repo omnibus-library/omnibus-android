@@ -24,6 +24,8 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.InertBookDetailTabController
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailTestTags
+import com.omnibus.omnibus.feature.bookdetail.ui.StageRestTop
+import com.omnibus.omnibus.feature.bookdetail.ui.TopBarRowHeight
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.feature.library.ui.isLightGround
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -33,6 +35,9 @@ import com.omnibus.omnibus.ui.theme.rememberReducedMotion
  * The top of the page: the wash, the cover, the title, the byline and the slot rows under them.
  *
  * @param slots The sections to place. Each one gets the same [context].
+ * @param backdrop Whether the stage draws its own wash. Two-pane mode draws one wash behind both panes instead.
+ * @param underBar Whether the cover rests in the bar row. False adds the bar row's height above it.
+ * @param coverScale The cover's scale, see [stageCoverScale].
  */
 @Composable
 internal fun BookStage(
@@ -40,20 +45,30 @@ internal fun BookStage(
     slots: BookDetailSlots,
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
+    backdrop: Boolean = true,
+    underBar: Boolean = true,
+    coverScale: Float = 1f,
 ) {
     val lightGround = isLightGround(OmnibusTheme.palette.bg0)
     val byline = remember(context.book) { bylineModel(context.book) }
 
     Box(modifier.fillMaxWidth().testTag(BookDetailTestTags.STAGE)) {
-        BookStageWash(context.book.coverIdentity(), lightGround, Modifier.matchParentSize(), reducedMotion = reducedMotion)
+        if (backdrop) {
+            BookStageWash(context.book.coverIdentity(), lightGround, Modifier.matchParentSize(), reducedMotion = reducedMotion)
+        }
         Column(
             Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 14.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = StageRestTop + (if (underBar) 0.dp else TopBarRowHeight),
+                    bottom = 14.dp,
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BookStageCover(context.book, lightGround) {
+            BookStageCover(context.book, lightGround, scale = coverScale) {
                 slots.stageCoverOverlay.forEach { it.Content(context, Modifier) }
             }
             slots.stageAboveTitle.forEach { it.Content(context, Modifier) }

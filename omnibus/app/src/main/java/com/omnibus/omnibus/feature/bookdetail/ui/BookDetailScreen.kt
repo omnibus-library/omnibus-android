@@ -4,15 +4,18 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,10 +36,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
@@ -56,6 +61,7 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.BookDetailViewModel
 import com.omnibus.omnibus.feature.bookdetail.slots.BookDetailSlots
 import com.omnibus.omnibus.feature.bookdetail.stage.BookStage
+import com.omnibus.omnibus.feature.bookdetail.stage.BookStageWash
 import com.omnibus.omnibus.feature.bookdetail.stage.LocalBookStageWashPose
 import com.omnibus.omnibus.feature.bookdetail.stage.rememberBookAccent
 import com.omnibus.omnibus.feature.bookdetail.tabs.BookDetailTabHost
@@ -63,6 +69,8 @@ import com.omnibus.omnibus.feature.bookdetail.tabs.rememberBookDetailTabControll
 import com.omnibus.omnibus.feature.bookdetail.tabs.rememberTabWashPose
 import com.omnibus.omnibus.feature.bookdetail.tabs.tabHostMinHeight
 import com.omnibus.omnibus.feature.library.LibraryUIError
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.library.ui.isLightGround
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
@@ -104,7 +112,8 @@ fun BookDetailScreen(
 
 /**
  * The page's content for [uiState], with the callbacks and slots injected. Internal so instrumented tests can
- * render each state, as `LibraryScreenContent`.
+ * render each state, as `LibraryScreenContent`. Column and two-pane modes share one composition tree, so a layout
+ * swap keeps state: see [BookDetailPaneLayout].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,12 +131,16 @@ internal fun BookDetailScreenContent(
     scrollState: ScrollState = rememberScrollState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     reducedMotion: Boolean = rememberReducedMotion(),
+    stageScrollState: ScrollState = rememberScrollState(),
+    panelScrollState: ScrollState = rememberScrollState(),
+    paneSplit: (width: Dp, height: Dp) -> PaneSplit? = ::bookDetailPaneSplit,
 ) {
     val palette = OmnibusTheme.palette
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val content = uiState.screen as? BookDetailScreenState.Content
-    var actionAreaHeightPx by remember { mutableIntStateOf(0) }
+    // Saved, so a restored scroll is not clamped to the range the stage has before the action area is measured.
+    var actionAreaHeightPx by rememberSaveable { mutableIntStateOf(0) }
 
     // Section messages and the refresh error share one host. Launched in a scope that outlives the caller.
     val showMessage: (BookDetailMessage) -> Unit = remember(scope, snackbarHostState) {
@@ -156,7 +169,8 @@ internal fun BookDetailScreenContent(
 
     // One context per (book, accent, reloadKey, tabs); callbacks go through rememberUpdatedState so the context never
     // changes on recomposition or scroll.
-    val tabState = if (content != null) rememberBookDetailTabController(scrollState, reducedMotion) else null
+    val tabState = if (content != null) rememberBookDetailTabController(scrollState, reducedMotion, panelScrollState) else null
+    val handoff = rememberSaveable(saver = BookDetailScrollHandoff.Saver) { BookDetailScrollHandoff() }
     val context: BookDetailSectionContext? = content?.let { c ->
         val accent = rememberBookAccent(c.book)
         val tabs = checkNotNull(tabState)
@@ -190,7 +204,22 @@ internal fun BookDetailScreenContent(
         derivedStateOf { isTopBarFilled(scrollState.value, thresholdPx) }
     }
 
-    Box(modifier.fillMaxSize().background(palette.bg0)) {
+    // The layout is chosen from this screen's own size, the window minus the shell's tab bar and any side cutout.
+    BoxWithConstraints(modifier.fillMaxSize().background(palette.bg0)) {
+        val layoutDirection = LocalLayoutDirection.current
+        val cutout = WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)
+        val cutoutPadding = cutout.asPaddingValues()
+        val cutoutWidth = cutoutPadding.calculateLeftPadding(layoutDirection) +
+            cutoutPadding.calculateRightPadding(layoutDirection)
+        val viewportHeight = maxHeight
+        val split = if (content != null) paneSplit(maxWidth - cutoutWidth, viewportHeight) else null
+        val twoPane = split != null
+        val underBar = split?.let { stageUnderBar(it.leading) } ?: true
+        val coverScale = if (split != null) stageCoverScale(viewportHeight - statusTop, underBar) else 1f
+        if (tabState != null) {
+            BookDetailScrollHandoffEffect(handoff, twoPane, tabState, scrollState, panelScrollState)
+        }
+
         when (val screen = uiState.screen) {
             BookDetailScreenState.Loading -> LoadingStateView(
                 label = stringResource(R.string.book_detail_loading),
@@ -220,27 +249,67 @@ internal fun BookDetailScreenContent(
                         )
                     },
                 ) {
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
-                        val viewportHeight = maxHeight
-                        Column(Modifier.fillMaxSize().verticalScroll(scrollState).testTag(BookDetailTestTags.SCROLL)) {
-                            if (context != null && tabState != null) {
-                                CompositionLocalProvider(
-                                    LocalBookStageWashPose provides rememberTabWashPose({ tabState.selected }, reducedMotion),
-                                ) {
-                                    BookStage(context, slots, reducedMotion)
-                                }
-                                val pinTop = statusTop + TopBarRowHeight
-                                BookDetailTabHost(
-                                    state = tabState,
-                                    context = context,
-                                    slots = slots,
-                                    scrollState = scrollState,
-                                    pinTop = pinTop,
-                                    minHeight = tabHostMinHeight(viewportHeight, pinTop, actionAreaDp),
+                    if (context != null && tabState != null) {
+                        val pinTop = statusTop + TopBarRowHeight
+                        // Both scrolls are built here and chosen below, so the mode never changes their groups.
+                        val pageScroll = Modifier.verticalScroll(scrollState)
+                        val stageScroll = Modifier.verticalScroll(stageScrollState)
+                        CompositionLocalProvider(
+                            LocalBookStageWashPose provides rememberTabWashPose({ tabState.selected }, reducedMotion),
+                        ) {
+                            if (twoPane) {
+                                BookStageWash(
+                                    context.book.coverIdentity(),
+                                    isLightGround(palette.bg0),
+                                    Modifier.fillMaxSize(),
                                     reducedMotion = reducedMotion,
                                 )
                             }
-                            Spacer(Modifier.height(actionAreaDp))
+                            BookDetailPaneLayout(
+                                split = split,
+                                trailingSpace = actionAreaDp,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(if (twoPane) Modifier.windowInsetsPadding(cutout) else pageScroll)
+                                    .testTag(BookDetailTestTags.SCROLL),
+                                stagePane = {
+                                    val stagePaneModifier = if (twoPane) {
+                                        Modifier
+                                            .edgeFade(
+                                                top = stageTopFadeBand(statusTop, underBar),
+                                                bottom = stageBottomFadeBand(viewportHeight, actionAreaDp),
+                                            )
+                                            .then(stageScroll)
+                                            .padding(horizontal = StageHaloOverhang)
+                                            .padding(bottom = actionAreaDp)
+                                    } else {
+                                        Modifier
+                                    }
+                                    Box(stagePaneModifier.testTag(BookDetailTestTags.STAGE_PANE)) {
+                                        BookStage(
+                                            context,
+                                            slots,
+                                            reducedMotion,
+                                            backdrop = !twoPane,
+                                            underBar = underBar,
+                                            coverScale = coverScale,
+                                        )
+                                    }
+                                },
+                                tabHost = {
+                                    BookDetailTabHost(
+                                        state = tabState,
+                                        context = context,
+                                        slots = slots,
+                                        scrollState = scrollState,
+                                        pinTop = pinTop,
+                                        minHeight = tabHostMinHeight(viewportHeight, pinTop, actionAreaDp),
+                                        reducedMotion = reducedMotion,
+                                        twoPane = twoPane,
+                                        panelScrollState = panelScrollState,
+                                    )
+                                },
+                            )
                         }
                     }
                 }
@@ -251,16 +320,19 @@ internal fun BookDetailScreenContent(
             BookDetailActionArea(
                 context = context,
                 sections = slots.actionBar,
-                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { actionAreaHeightPx = it.height },
+                backed = !twoPane,
+                modifier = (split?.let { Modifier.align(Alignment.BottomStart).windowInsetsPadding(cutout).width(it.leading) }
+                    ?: Modifier.align(Alignment.BottomCenter))
+                    .onSizeChanged { actionAreaHeightPx = it.height },
             )
         }
 
         BookDetailTopBar(
-            title = content?.book?.displayTitle,
-            filled = content != null && filled,
+            title = if (twoPane) null else content?.book?.displayTitle,
+            filled = content != null && !twoPane && filled,
             onBack = onClose,
             reducedMotion = reducedMotion,
-            modifier = Modifier.align(Alignment.TopStart),
+            modifier = Modifier.align(Alignment.TopStart).then(if (twoPane) Modifier.windowInsetsPadding(cutout) else Modifier),
             actions = {
                 if (context != null && slots.topBarActions.isNotEmpty()) {
                     slots.topBarActions.forEach { it.Content(context, Modifier) }

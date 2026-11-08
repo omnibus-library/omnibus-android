@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.4](https://github.com/omnibus-library/omnibus-android/compare/v0.1.3...v0.1.4) (2026-11-07)
+
+
+### Features
+
+* **shell:** match the iOS tabs and add under-construction pages ([#212](https://github.com/omnibus-library/omnibus-android/issues/212)) ([e8012e5](https://github.com/omnibus-library/omnibus-android/commit/e8012e5446eefd1a99a8174625aa7ceea1ee64d3))
+
+
+### Bug Fixes
+
+* **audiobook:** centre the digits in the player skip icons ([#208](https://github.com/omnibus-library/omnibus-android/issues/208)) ([66d80a4](https://github.com/omnibus-library/omnibus-android/commit/66d80a4f7b7afb69d8d37631e17d291559d05d1f))
+* **reader:** keep the settings sheet below the top of the screen ([#209](https://github.com/omnibus-library/omnibus-android/issues/209)) ([c25291b](https://github.com/omnibus-library/omnibus-android/commit/c25291b0b93a3e6e08ef50bd9ca83745a097fa80))
+
 ## [0.1.3](https://github.com/omnibus-library/omnibus-android/compare/v0.1.2...v0.1.3) (2026-11-07)
 
 

@@ -107,6 +107,8 @@ internal class BookDetailTabState(
     private val scroller: PageScroller,
     private val maxScroll: () -> Int,
     anchorTopInHost: ((BookDetailAnchor) -> Int?)? = null,
+    private val paneScroller: PageScroller = scroller,
+    private val paneMaxScroll: () -> Int = maxScroll,
 ) : BookDetailTabController, BookDetailAnchorRegistry {
 
     override val selected: BookDetailTab get() = selectedState.value
@@ -117,6 +119,12 @@ internal class BookDetailTabState(
 
     /** The tab whose panel is at rest, or null while its entrance runs. A cancelled entrance never sets it. */
     var settledTab: BookDetailTab? by mutableStateOf(selectedState.value)
+
+    /** Whether the page is in two-pane mode, which makes the scrolls drive the trailing pane. Written by the host. */
+    var twoPane by mutableStateOf(false)
+
+    /** The mode the current geometry was measured in, or null until the host is placed. Written by the host. */
+    var measuredTwoPane: Boolean? by mutableStateOf(null)
 
     /** The strip's top in the page's content, or -1 until the host is placed. */
     var stripTopPx by mutableIntStateOf(-1)
@@ -153,7 +161,9 @@ internal class BookDetailTabState(
             if (top == null) {
                 scrollStripToPin()
             } else {
-                scroller.scrollTo(anchorScrollTarget(stripTopPx + top, pinTopPx, stripHeightPx, clearancePx, maxScroll()))
+                activeScroller().scrollTo(
+                    anchorScrollTarget(stripTopPx + top, pinTopPx, stripHeightPx, clearancePx, activeMaxScroll()),
+                )
             }
         }
     }
@@ -177,8 +187,13 @@ internal class BookDetailTabState(
     }
 
     private suspend fun scrollStripToPin() {
-        if (stripTopPx >= 0) scroller.scrollTo(jumpScrollTarget(stripTopPx, pinTopPx, maxScroll()))
+        if (stripTopPx >= 0) activeScroller().scrollTo(jumpScrollTarget(stripTopPx, pinTopPx, activeMaxScroll()))
     }
+
+    /** The scroll that drives the content: the trailing pane's in two-pane mode, else the page's. */
+    private fun activeScroller(): PageScroller = if (twoPane) paneScroller else scroller
+
+    private fun activeMaxScroll(): Int = if (twoPane) paneMaxScroll() else maxScroll()
 
     private fun registryTop(anchor: BookDetailAnchor): Int? {
         val host = hostCoordinates?.takeIf { it.isAttached } ?: return null
@@ -192,10 +207,14 @@ internal class BookDetailTabState(
  * survives configuration change and returning from the reader; [reducedMotion] makes scrolls instant.
  */
 @Composable
-internal fun rememberBookDetailTabController(scrollState: ScrollState, reducedMotion: Boolean): BookDetailTabState {
+internal fun rememberBookDetailTabController(
+    scrollState: ScrollState,
+    reducedMotion: Boolean,
+    paneScrollState: ScrollState = scrollState,
+): BookDetailTabState {
     val selected = rememberSaveable { mutableStateOf(BookDetailTab.Overview) }
     val scope = rememberCoroutineScope()
-    return remember(selected, scope, scrollState, reducedMotion) {
+    return remember(selected, scope, scrollState, paneScrollState, reducedMotion) {
         BookDetailTabState(
             selectedState = selected,
             scope = scope,
@@ -203,6 +222,10 @@ internal fun rememberBookDetailTabController(scrollState: ScrollState, reducedMo
                 if (reducedMotion) scrollState.scrollTo(value) else scrollState.animateScrollTo(value, Motion.settle())
             },
             maxScroll = { scrollState.maxValue },
+            paneScroller = PageScroller { value ->
+                if (reducedMotion) paneScrollState.scrollTo(value) else paneScrollState.animateScrollTo(value, Motion.settle())
+            },
+            paneMaxScroll = { paneScrollState.maxValue },
         )
     }
 }
