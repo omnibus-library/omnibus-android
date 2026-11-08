@@ -64,6 +64,17 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
 
                 bookmarks.drafts shouldBe listOf(BookmarkDraft.create(uuid, cfi, title))
             }
+
+            it("#224 TC-6: records the trimmed cfi as the page tapped") {
+                val cfi = randomCfi()
+                val bookmarks = TestBookmarksRepository().apply { onAdd = { awaitCancellation() } }
+                val vm = sut(bookmarksRepository = bookmarks)
+                vm.relocateTo(" $cfi ")
+
+                vm.onBookmarkToggled()
+
+                vm.uiState.value.bookmarkTapPage shouldBe cfi
+            }
         }
 
         context("without a current cfi") {
@@ -76,6 +87,17 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
                     vm.onBookmarkToggled()
 
                     bookmarks.drafts.shouldBeEmpty()
+                }
+            }
+
+            it("#224 TC-6: records no tapped page, for a null or blank cfi") {
+                checkAll(Exhaustive.of(null, "   ")) { cfi ->
+                    val vm = sut()
+                    vm.relocateTo(cfi)
+
+                    vm.onBookmarkToggled()
+
+                    vm.uiState.value.bookmarkTapPage shouldBe null
                 }
             }
         }
@@ -97,6 +119,47 @@ class ReaderViewModelBookmarksTest : DescribeSpec({
                 vm.onBookmarkToggled()
 
                 bookmarks.removed shouldContainExactlyInAnyOrder listOf(first, second)
+            }
+
+            it("#224 TC-6: records the trimmed cfi as the page tapped") {
+                val uuid = randomString()
+                val cfi = randomCfi()
+                val bookmarks = TestBookmarksRepository().apply {
+                    seed(uuid, BookmarksState.Loaded(listOf(randomBookmark().copy(position = cfi))))
+                    onRemove = { awaitCancellation() }
+                }
+                val vm = sut(bookUuid = uuid, bookmarksRepository = bookmarks)
+                vm.relocateTo(" $cfi ")
+
+                vm.onBookmarkToggled()
+
+                vm.uiState.value.bookmarkTapPage shouldBe cfi
+            }
+        }
+
+        context("after a tap on the page") {
+            it("#224 TC-7: clears the tapped page when the location moves to another cfi") {
+                val cfi = randomCfi()
+                val bookmarks = TestBookmarksRepository().apply { onAdd = { awaitCancellation() } }
+                val vm = sut(bookmarksRepository = bookmarks)
+                vm.relocateTo(cfi)
+                vm.onBookmarkToggled()
+
+                vm.relocateTo(randomCfi())
+
+                vm.uiState.value.bookmarkTapPage shouldBe null
+            }
+
+            it("#224 TC-7: keeps the tapped page when the location echoes the same cfi, untrimmed") {
+                val cfi = randomCfi()
+                val bookmarks = TestBookmarksRepository().apply { onAdd = { awaitCancellation() } }
+                val vm = sut(bookmarksRepository = bookmarks)
+                vm.relocateTo(cfi)
+                vm.onBookmarkToggled()
+
+                vm.relocateTo("  $cfi\n")
+
+                vm.uiState.value.bookmarkTapPage shouldBe cfi
             }
         }
     }
