@@ -63,6 +63,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // A different application ID lets the debug and release builds be installed side by side.
+            // The icon and label are overridden in src/debug/res.
+            applicationIdSuffix = ".debug"
+        }
         release {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
