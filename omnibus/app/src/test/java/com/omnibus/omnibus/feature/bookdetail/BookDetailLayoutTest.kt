@@ -1,8 +1,12 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeLength
+import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeReach
 import com.omnibus.omnibus.feature.bookdetail.ui.FadeBand
 import com.omnibus.omnibus.feature.bookdetail.ui.StageActionRowHeight
+import com.omnibus.omnibus.feature.bookdetail.ui.StageRestTop
+import com.omnibus.omnibus.feature.bookdetail.ui.TopBarRowHeight
 import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
 import com.omnibus.omnibus.feature.bookdetail.ui.columnContentOffsetPx
 import com.omnibus.omnibus.feature.bookdetail.ui.columnScrollForContentOffset
@@ -265,31 +269,46 @@ class BookDetailLayoutTest : DescribeSpec({
 
     describe("placing the stage content in the leading pane") {
 
+        // The room each fade needs between the content and the bar row or the action row.
+        val fadeClearance = EdgeFadeLength - EdgeFadeReach
+
         context("when the content fits between the bar row and the action row clear of the fades") {
             it("#216: centres the content between the bar row's bottom and the action row's top") {
                 val statusTop = randomInt(0..80).dp
                 val paneHeight = randomInt(500..1200).dp
                 val actionArea = randomInt(0..80).dp
-                val bandTop = statusTop + 50.dp
+                val bandTop = statusTop + TopBarRowHeight
                 val bandBottom = paneHeight - actionArea
-                val content = randomInt(0..(bandBottom - bandTop - 40.dp).value.toInt()).dp
+                val content = randomInt(0..(bandBottom - bandTop - fadeClearance * 2).value.toInt()).dp
 
                 val top = stageContentTop(statusTop, randomBoolean(), paneHeight, actionArea, content)
 
                 top - bandTop shouldBe bandBottom - (top + content)
             }
 
-            it("#216: keeps the content inside the opaque part of both edge fades, under the bar or not") {
+            it("#216: keeps the content's bottom inside the opaque part of the bottom fade, under the bar or not") {
                 checkAll(Arb.int(0..80), Arb.int(500..1200), Arb.int(0..80), Arb.boolean()) { status, pane, action, underBar ->
                     val statusTop = status.dp
                     val paneHeight = pane.dp
                     val actionArea = action.dp
-                    val content = (paneHeight - actionArea - statusTop - 50.dp - 40.dp)
+                    val content = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2
 
                     val top = stageContentTop(statusTop, underBar, paneHeight, actionArea, content)
 
-                    top shouldBeGreaterThanOrEqualTo stageTopFadeBand(statusTop, underBar).opaque
                     top + content shouldBeLessThanOrEqualTo stageBottomFadeBand(paneHeight, actionArea).opaque
+                }
+            }
+
+            context("when the stage starts below the bar row") {
+                it("#216: keeps the content's top inside the opaque part of the top fade") {
+                    val statusTop = randomInt(0..80).dp
+                    val paneHeight = randomInt(500..1200).dp
+                    val actionArea = randomInt(0..80).dp
+                    val content = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2
+
+                    val top = stageContentTop(statusTop, underBar = false, paneHeight, actionArea, content)
+
+                    top shouldBeGreaterThanOrEqualTo stageTopFadeBand(statusTop, underBar = false).opaque
                 }
             }
         }
@@ -297,31 +316,31 @@ class BookDetailLayoutTest : DescribeSpec({
         context("when the content does not fit between the bar row and the action row clear of the fades") {
 
             context("when the stage rests under the bar") {
-                it("#216: puts the content at the rest line, 10 dp below the status bar, however far the content overflows") {
+                it("#216: puts the content at the rest line below the status bar, however far the content overflows") {
                     val statusTop = randomInt(0..80).dp
                     val paneHeight = randomInt(300..1200).dp
                     val actionArea = randomInt(0..80).dp
-                    // 1 dp short of the 20 dp each fade needs clear, the tightest content that does not fit.
-                    val tightest = paneHeight - actionArea - statusTop - 50.dp - 40.dp + 1.dp
+                    // 1 dp short of the room the fades need, the tightest content that does not fit.
+                    val tightest = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2 + 1.dp
 
                     checkAll(Arb.int(0..600)) { overflow ->
                         stageContentTop(statusTop, underBar = true, paneHeight, actionArea, tightest + overflow.dp) shouldBe
-                            statusTop + 10.dp
+                            statusTop + StageRestTop
                     }
                 }
             }
 
             context("when the stage starts below the bar row") {
-                it("#216: puts the content 10 dp below the bar row, however far the content overflows") {
+                it("#216: puts the content at the rest line below the bar row, however far the content overflows") {
                     val statusTop = randomInt(0..80).dp
                     val paneHeight = randomInt(300..1200).dp
                     val actionArea = randomInt(0..80).dp
-                    // 1 dp short of the 20 dp each fade needs clear, the tightest content that does not fit.
-                    val tightest = paneHeight - actionArea - statusTop - 50.dp - 40.dp + 1.dp
+                    // 1 dp short of the room the fades need, the tightest content that does not fit.
+                    val tightest = paneHeight - actionArea - statusTop - TopBarRowHeight - fadeClearance * 2 + 1.dp
 
                     checkAll(Arb.int(0..600)) { overflow ->
                         stageContentTop(statusTop, underBar = false, paneHeight, actionArea, tightest + overflow.dp) shouldBe
-                            statusTop + 60.dp
+                            statusTop + TopBarRowHeight + StageRestTop
                     }
                 }
             }
