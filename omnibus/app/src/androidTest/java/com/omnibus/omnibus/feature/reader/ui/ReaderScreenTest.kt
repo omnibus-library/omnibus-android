@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -51,6 +52,7 @@ import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderStart
 import com.omnibus.omnibus.feature.reader.ReaderUIState
 import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
+import com.omnibus.omnibus.feature.reader.withContextLeft
 import com.omnibus.omnibus.feature.reader.withMenuDismissed
 import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
@@ -117,6 +119,7 @@ class ReaderScreenTest {
         onBookmarkToggled: () -> Unit = {},
         onBookmarkChosen: (Bookmark) -> Unit = {},
         onBookmarksRetryRequested: () -> Unit = {},
+        onContextLeft: () -> Unit = {},
         /** The dock below the page; empty, as in the app without a book in the player. */
         bottomDock: @Composable () -> Unit = {},
     ) {
@@ -144,6 +147,7 @@ class ReaderScreenTest {
                         onBookmarkToggled = onBookmarkToggled,
                         onBookmarkChosen = onBookmarkChosen,
                         onBookmarksRetryRequested = onBookmarksRetryRequested,
+                        onContextLeft = onContextLeft,
                         bottomDock = bottomDock,
                     )
                 }
@@ -322,17 +326,18 @@ class ReaderScreenTest {
     /** The chrome's nodes, none of which may be drawn over a page that isn't Ready. */
     private fun assertNoChrome() {
         listOf(
-            ReaderChromeTags.CLOSE,
-            ReaderChromeTags.MENU,
+            ReaderChromeTags.BAR,
+            ReaderChromeTags.BACK,
+            ReaderChromeTags.MORE,
             ReaderChromeTags.LABEL_TOP,
             ReaderChromeTags.LABEL_BOTTOM,
             ReaderChromeTags.MENU_SCRIM,
         ).forEach { rule.onNodeWithTag(it).assertDoesNotExist() }
     }
 
-    // RC-45
+    // RC-45, TC-12
     @Test
-    fun rc45_closeButtonLeavesThroughTheBackPath() {
+    fun rc45_backArrowLeavesThroughTheBackPath() {
         val events = mutableListOf<String>()
         show(
             uiState = {
@@ -347,13 +352,13 @@ class ReaderScreenTest {
             onClose = { events += "close" },
         )
 
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).performClick()
+        rule.onNodeWithTag(ReaderChromeTags.BACK).performClick()
         rule.waitForIdle()
 
         assertEquals(listOf("closed", "close"), events)
     }
 
-    // RC-47
+    // RC-47, TC-11
     @Test
     fun rc47_choosingARowRaisesTheSheet() {
         val state = mutableStateOf(
@@ -361,7 +366,7 @@ class ReaderScreenTest {
                 book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
                 loadStatus = ReaderLoadStatus.Ready,
                 chromeVisible = true,
-                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Settings),
+                menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
             ),
         )
         show(
@@ -372,17 +377,32 @@ class ReaderScreenTest {
             onMenuRowChosen = { state.value = state.value.withMenuRowChosen(it) },
         )
 
-        rule.onNodeWithTag(ReaderChromeTags.MENU).performClick()
-        rule.waitForIdle()
+        listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings).forEach { row ->
+            rule.onNodeWithTag(ReaderChromeTags.MORE).performClick()
+            rule.waitForIdle()
 
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).performClick()
-        rule.waitForIdle()
+            rule.onNodeWithTag(ReaderChromeTags.menuRow(row)).performClick()
+            rule.waitForIdle()
 
-        // CS-4
-        rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
+            rule.onNodeWithTag(ReaderChromeTags.DROPDOWN).assertDoesNotExist()
+            when (row) {
+                ReaderMenuRow.Contents -> {
+                    rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
+                    rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Contents)).assertIsSelected()
+                }
+                ReaderMenuRow.Bookmarks -> {
+                    rule.onNodeWithTag(ReaderContentsTags.SHEET).assertIsDisplayed()
+                    rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertIsSelected()
+                }
+                ReaderMenuRow.Settings -> rule.onNodeWithTag(ReaderSettingsSheetTags.SHEET).assertIsDisplayed()
+            }
+
+            rule.runOnIdle { state.value = state.value.copy(sheet = null) }
+            rule.waitForIdle()
+        }
     }
 
-    // TC-75
+    // TC-8 (RC-75)
     @Test
     fun bookmarkControlsAreWiredThroughTheScreenContent() {
         val cfi = "epubcfi(/6/8!/4/2/1:0)"
@@ -397,7 +417,7 @@ class ReaderScreenTest {
                 location = RelocateData(cfi = cfi, chapterTitle = "Chapter"),
                 chromeVisible = true,
                 menuRows = listOf(ReaderMenuRow.Contents, ReaderMenuRow.Bookmarks, ReaderMenuRow.Settings),
-                menuOpen = true,
+                menuOpen = false,
                 bookmarks = bookmarks,
             ),
         )
@@ -406,6 +426,7 @@ class ReaderScreenTest {
         show(
             uiState = { state.value },
             inspection = true,
+            onMenuOpened = { state.value = state.value.withMenuOpened() },
             onMenuRowChosen = { state.value = state.value.withMenuRowChosen(it) },
             onMenuDismissed = { state.value = state.value.withMenuDismissed() },
             onBookmarkToggled = { toggles++ },
@@ -425,6 +446,8 @@ class ReaderScreenTest {
         state.value = state.value.copy(location = RelocateData(cfi = cfi, chapterTitle = "Chapter"))
         rule.waitForIdle()
 
+        rule.onNodeWithTag(ReaderChromeTags.MORE).performClick()
+        rule.waitForIdle()
         rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)).performClick()
         rule.waitForIdle()
         rule.onNodeWithTag(ReaderContentsTags.segment(ReaderContentsTab.Bookmarks)).assertIsSelected()
@@ -434,9 +457,9 @@ class ReaderScreenTest {
         assertEquals(listOf(bookmarks[1]), chosen)
     }
 
-    // RC-48
+    // RC-48, TC-13
     @Test
-    fun rc48_backOrderIsSheetThenMenuThenLeave() {
+    fun rc48_backOrderIsSheetThenMenuThenContextThenLeave() {
         val state = mutableStateOf(
             ReaderUIState(
                 book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
@@ -459,6 +482,10 @@ class ReaderScreenTest {
                 events += "menu"
                 state.value = state.value.withMenuDismissed()
             },
+            onContextLeft = {
+                events += "context"
+                state.value = state.value.withContextLeft()
+            },
             onReaderClosed = { events += "closed" },
             onClose = { events += "close" },
         )
@@ -473,7 +500,11 @@ class ReaderScreenTest {
 
         pressBack()
         rule.waitForIdle()
-        assertEquals(listOf("sheet", "menu", "closed", "close"), events)
+        assertEquals(listOf("sheet", "menu", "context"), events)
+
+        pressBack()
+        rule.waitForIdle()
+        assertEquals(listOf("sheet", "menu", "context", "closed", "close"), events)
     }
 
     // RC-49
@@ -498,12 +529,37 @@ class ReaderScreenTest {
 
         rule.runOnIdle { load.value = ReaderLoadStatus.Ready }
         rule.waitForIdle()
-        rule.onNodeWithTag(ReaderChromeTags.CLOSE).assertIsDisplayed()
+        rule.onNodeWithTag(ReaderChromeTags.BAR).assertIsDisplayed()
 
         rule.runOnIdle { book.value = ReaderBookState.Failed(LibraryUIError.NoServer) }
         rule.waitForIdle()
         assertNoChrome()
     }
+
+    // RC-52, TC-14
+    @Test
+    fun rc52_pageLabelsDoNotChangeInContextMode() {
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+                location = RelocateData(page = 361, totalPages = 661, pct = 54, chapter = 3, totalChapters = 12, chapterPagesLeft = 7),
+            ),
+        )
+        show(uiState = { state.value }, inspection = true)
+        rule.waitForIdle()
+        assertEquals(listOf("Nineteen Eighty-Four", "361"), pageLabelTexts())
+
+        rule.runOnIdle { state.value = state.value.copy(chromeVisible = true) }
+        rule.waitForIdle()
+        assertEquals(listOf("Nineteen Eighty-Four", "361"), pageLabelTexts())
+    }
+
+    /** The text of the top and bottom page labels, read from their merged nodes. */
+    private fun pageLabelTexts(): List<String> =
+        listOf(ReaderChromeTags.LABEL_TOP, ReaderChromeTags.LABEL_BOTTOM).map { tag ->
+            rule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].single().text
+        }
 
     // TC-43
     @Test

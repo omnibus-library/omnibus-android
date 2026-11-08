@@ -177,6 +177,11 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.withChromeToggled() }
     }
 
+    /** The reader left context mode, by back or by tapping the page. Unlike a toggle, it never turns the chrome on. */
+    fun onContextLeft() {
+        _uiState.update { it.withContextLeft() }
+    }
+
     /** The reader tapped the menu button. Does nothing unless the chrome is up and has rows. */
     fun onMenuOpened() {
         _uiState.update { it.withMenuOpened() }
@@ -230,11 +235,11 @@ class ReaderViewModel @AssistedInject constructor(
     }
 
     /**
-     * The reader chose a bookmark: closes the sheet and asks the page to show its position. #58 will mark a
-     * return point here, before the jump.
+     * The reader chose a bookmark: closes the sheet, leaves context mode and asks the page to show its position. #58
+     * will mark a return point here, before the jump.
      */
     fun onBookmarkChosen(bookmark: Bookmark) {
-        _uiState.update { it.copy(sheet = null) }
+        _uiState.update { it.copy(sheet = null).withContextLeft() }
         _commands.trySend(ReaderCommand.Display(bookmark.position))
     }
 
@@ -248,9 +253,9 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(sheet = null) }
     }
 
-    /** A contents entry was chosen: closes the sheet and asks the page to show the entry. */
+    /** A contents entry was chosen: closes the sheet, leaves context mode and asks the page to show the entry. */
     fun onTocEntryChosen(entry: TocEntry) {
-        _uiState.update { it.copy(sheet = null) }
+        _uiState.update { it.copy(sheet = null).withContextLeft() }
         _commands.trySend(ReaderCommand.Display(entry.href))
     }
 
@@ -448,6 +453,7 @@ data class ReaderUIState(
     val loadStatus: ReaderLoadStatus = ReaderLoadStatus.Loading,
     val location: RelocateData? = null,
     val toc: List<TocEntry> = emptyList(),
+    /** Whether the reader is in context mode: the book is zoomed out and the top bar is up. False is focused. */
     val chromeVisible: Boolean = false,
     val settings: ReaderSettings = ReaderSettings(),
     val sheet: ReaderSheet? = null,
@@ -552,6 +558,19 @@ enum class ReaderBookmarksStatus { Loading, Failed, Loaded }
  * `BookmarksAndHighlights` and adds the highlight count.
  */
 enum class ReaderMenuRow { Contents, Bookmarks, Settings }
+
+/** What system back does next, in order: the sheet, the dropdown, context mode, then the reader itself. */
+enum class ReaderBackAction { DismissSheet, DismissMenu, LeaveContext, LeaveReader }
+
+internal fun ReaderUIState.backAction(): ReaderBackAction = when {
+    sheet != null -> ReaderBackAction.DismissSheet
+    menuOpen -> ReaderBackAction.DismissMenu
+    chromeVisible -> ReaderBackAction.LeaveContext
+    else -> ReaderBackAction.LeaveReader
+}
+
+/** Leaves context mode and closes the dropdown. Idempotent, unlike a toggle. */
+internal fun ReaderUIState.withContextLeft(): ReaderUIState = copy(chromeVisible = false, menuOpen = false)
 
 internal fun ReaderUIState.withChromeToggled(): ReaderUIState =
     if (chromeVisible) copy(chromeVisible = false, menuOpen = false) else copy(chromeVisible = true)

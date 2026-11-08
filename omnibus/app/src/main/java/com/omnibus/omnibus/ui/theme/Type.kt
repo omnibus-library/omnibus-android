@@ -5,16 +5,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 
-/** Cormorant Garamond, the display face shared with the iOS and web clients. Bundles Normal, Medium, and SemiBold. */
+/**
+ * Cormorant Garamond, the display face shared with the iOS and web clients. Bundles Normal, Medium, and SemiBold,
+ * and a Normal italic that [FontStyle.Italic] text resolves to.
+ */
 val DisplayFontFamily = FontFamily(
     Font(R.font.cormorant_garamond_regular, FontWeight.Normal),
     Font(R.font.cormorant_garamond_medium, FontWeight.Medium),
     Font(R.font.cormorant_garamond_semibold, FontWeight.SemiBold),
+    Font(R.font.cormorant_garamond_italic, FontWeight.Normal, FontStyle.Italic),
 )
 
 /** Instrument Sans, the UI face shared with the iOS and web clients. Bundles Normal, Medium, and SemiBold. */

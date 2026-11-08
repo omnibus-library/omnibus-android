@@ -34,6 +34,8 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  *
  * Greys out when disabled, and is disabled with a spinner in place of [text] while [isLoading].
  *
+ * @param prominent False draws the quieter secondary button, on the raised surface in primary ink, as the iOS
+ * `FilledButtonStyle(prominent: false)`.
  * @param loadingDescription Announced by screen readers while [isLoading].
  */
 @Composable
@@ -44,6 +46,7 @@ fun FilledButton(
     enabled: Boolean = true,
     isLoading: Boolean = false,
     loadingDescription: String? = null,
+    prominent: Boolean = true,
 ) {
     val palette = OmnibusTheme.palette
     val interactionSource = remember { MutableInteractionSource() }
@@ -64,8 +67,8 @@ fun FilledButton(
         enabled = enabled && !isLoading,
         shape = RoundedCornerShape(Radius.md),
         colors = ButtonDefaults.buttonColors(
-            containerColor = palette.accent,
-            contentColor = palette.accentInk,
+            containerColor = if (prominent) palette.accent else palette.bg2,
+            contentColor = if (prominent) palette.accentInk else palette.ink0,
         ),
         contentPadding = PaddingValues(horizontal = Spacing.xl),
         interactionSource = interactionSource,
