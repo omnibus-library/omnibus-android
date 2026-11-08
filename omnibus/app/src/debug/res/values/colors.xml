@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug launcher icon background: orange instead of the release near-black (the stoat is inverted to match), so the two builds differ at a glance. -->
+    <color name="ic_launcher_background">#FFE49442</color>
+</resources>
