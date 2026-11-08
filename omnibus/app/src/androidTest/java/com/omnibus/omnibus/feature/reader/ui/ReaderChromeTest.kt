@@ -18,7 +18,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -301,9 +300,10 @@ class ReaderChromeTest {
 
         val tops = ALL_ROWS.map { rule.onNodeWithTag(ReaderChromeTags.menuRow(it)).fetchSemanticsNode().boundsInRoot.top }
         assertTrue("the rows run top to bottom in order", tops.zipWithNext().all { (a, b) -> a < b })
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assert(hasAnyDescendant(hasText("Contents")))
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)).assert(hasAnyDescendant(hasText("Bookmarks")))
-        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Settings)).assert(hasAnyDescendant(hasText("Themes & Settings")))
+        // The row merges its descendants, so its label text is on the row node itself.
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Contents)).assert(hasText("Contents"))
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Bookmarks)).assert(hasText("Bookmarks"))
+        rule.onNodeWithTag(ReaderChromeTags.menuRow(ReaderMenuRow.Settings)).assert(hasText("Themes & Settings"))
         rule.onAllNodesWithText("%", substring = true).assertCountEquals(0)
     }
 
