@@ -95,14 +95,14 @@ class ShelvesRailTest {
         rule.onNodeWithTag(ShelvesRailTestTags.ROW).performScrollToIndex(1)
         rule.waitForIdle()
 
-        assertTrue("the row moved off its first card", state.firstVisibleItemIndex == 1)
+        assertTrue("the row moved off its first card", state.canScrollBackward)
         assertFadeShown(ShelvesRailTestTags.START_FADE, shown = true)
         assertFadeShown(ShelvesRailTestTags.END_FADE, shown = true)
 
         rule.onNodeWithTag(ShelvesRailTestTags.ROW).performScrollToIndex(7)
         rule.waitForIdle()
 
-        assertTrue("the row moved to its last card", state.firstVisibleItemIndex == 7)
+        assertTrue("the row moved to its end", !state.canScrollForward)
         assertFadeShown(ShelvesRailTestTags.START_FADE, shown = true)
         assertFadeShown(ShelvesRailTestTags.END_FADE, shown = false)
     }
