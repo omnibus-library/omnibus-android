@@ -1,11 +1,14 @@
 package com.omnibus.omnibus.ui.components
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,10 +44,10 @@ data class OmnibusTabBarItem(
 )
 
 /**
- * A flush, full-width bottom bar of outline icons that fill when selected, each with a tight label.
+ * A flush, full-width bottom bar: a hairline rule above outline icons that fill when selected,
+ * each with a tight label.
  *
- * The bar has no ground of its own and draws over whatever its host puts behind it. Its items pad the
- * navigation bar.
+ * The bar's background runs under the navigation bar while the items stay above it.
  *
  * @param items The tabs, left to right.
  * @param selectedIndex Index into [items] of the selected tab.
@@ -58,25 +61,38 @@ fun OmnibusTabBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val palette = OmnibusTheme.palette
     val haptics = LocalHapticFeedback.current
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(top = 9.dp, bottom = 6.dp),
+            .background(palette.bg0)
     ) {
-        items.forEachIndexed { index, item ->
-            val isSelected = index == selectedIndex
-            TabBarEntry(
-                item = item,
-                isSelected = isSelected,
-                onClick = {
-                    if (!isSelected) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                    onSelect(index)
-                },
-                modifier = Modifier.weight(1f),
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(palette.line)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(top = 9.dp, bottom = 6.dp),
+        ) {
+            items.forEachIndexed { index, item ->
+                val isSelected = index == selectedIndex
+                TabBarEntry(
+                    item = item,
+                    isSelected = isSelected,
+                    onClick = {
+                        if (!isSelected) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                        onSelect(index)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
