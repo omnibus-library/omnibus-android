@@ -14,6 +14,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.ProgressFormat
+import com.omnibus.omnibus.data.library.SeriesBooks
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.continuePageCount
@@ -97,6 +98,51 @@ fun LibraryWithContinueWide() {
     )
 }
 
+/**
+ * The grouped Library with the switch on: Dune Chronicles (three books, one loaded), The Expanse (two, one loaded)
+ * and Solo (one book) fold into stacks among the single books. The series reads supply the books not loaded yet.
+ */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun LibraryGroupedFolded() {
+    LibraryShot(
+        LibraryUIState(
+            books = listOf(
+                book(1L),
+                seriesBook(2L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                book(3L),
+                seriesBook(4L, seriesId = 20L, series = "The Expanse", index = "1"),
+                seriesBook(5L, seriesId = 30L, series = "Solo", index = "1"),
+                book(6L),
+            ),
+            hasLoaded = true,
+            groupBySeries = true,
+            seriesBooks = mapOf(
+                10L to SeriesBooks(
+                    name = "Dune Chronicles",
+                    books = listOf(
+                        seriesBook(2L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                        seriesBook(7L, seriesId = 10L, series = "Dune Chronicles", index = "2"),
+                        seriesBook(8L, seriesId = 10L, series = "Dune Chronicles", index = "3"),
+                    ),
+                ),
+                20L to SeriesBooks(
+                    name = "The Expanse",
+                    books = listOf(
+                        seriesBook(4L, seriesId = 20L, series = "The Expanse", index = "1"),
+                        seriesBook(9L, seriesId = 20L, series = "The Expanse", index = "2"),
+                    ),
+                ),
+                30L to SeriesBooks(
+                    name = "Solo",
+                    books = listOf(seriesBook(5L, seriesId = 30L, series = "Solo", index = "1")),
+                ),
+            ),
+        ),
+    )
+}
+
 /** A book with a uuid of `uuid-<id>` and no cover, so no image loads. */
 private fun book(
     id: Long,
@@ -118,6 +164,13 @@ private fun book(
     addedAt = null,
     lastInteractedAt = null,
     bookFiles = emptyList(),
+)
+
+/** A book [id] at [index] of series [seriesId], named [series]. */
+private fun seriesBook(id: Long, seriesId: Long, series: String, index: String) = book(id).copy(
+    seriesId = seriesId,
+    series = series,
+    seriesIndex = index,
 )
 
 /** A reading card for book [id], with a half-read bar. */
