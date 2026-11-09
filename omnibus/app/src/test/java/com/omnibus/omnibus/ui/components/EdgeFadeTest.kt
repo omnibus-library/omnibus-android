@@ -16,10 +16,12 @@ import io.kotest.property.exhaustive.of
 
 class EdgeFadeTest : DescribeSpec({
 
+    // The trailing false leaves out the NaN and infinite edge cases Arb.float adds, which are no fraction.
+
     describe("the stops of an edge fade") {
 
         it("TC-1: eases from about 96% alpha to exactly 0 in at least eight stops, for any solid fraction") {
-            checkAll(PropTestConfig(seed = TEST_SEED), Arb.float(0f..1f)) { fraction ->
+            checkAll(PropTestConfig(seed = TEST_SEED), Arb.float(0f, 1f, false)) { fraction ->
                 val stops = edgeFadeStops(fraction)
                 val alphas = stops.map { it.second }
 
@@ -40,7 +42,7 @@ class EdgeFadeTest : DescribeSpec({
     describe("the solid part of an edge fade") {
 
         it("TC-2: holds full solid alpha up to the solid fraction, then drops below it") {
-            checkAll(PropTestConfig(seed = TEST_SEED), Arb.float(0f..1f)) { fraction ->
+            checkAll(PropTestConfig(seed = TEST_SEED), Arb.float(0f, 1f, false)) { fraction ->
                 val stops = edgeFadeStops(fraction)
                 val lastSolid = stops.indexOfLast { it.second == 0.96f }
 
