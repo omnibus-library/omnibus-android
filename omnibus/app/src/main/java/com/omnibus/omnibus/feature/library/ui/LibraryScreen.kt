@@ -120,11 +120,13 @@ private const val FOOTER_KEY = "footer"
 private const val HEADER_ITEM_COUNT = 1
 
 /**
- * The scrim at the top of the window spans the status bar and no more. Its top [TOP_SCRIM_SOLID] holds [TOP_SCRIM_PEAK]
- * behind the status bar icons and the rest eases to clear, so the grid shows through as it scrolls under the bar.
+ * The scrim at the top of the window covers the status bar plus [TOP_SCRIM_EXTRA]. Its top [TOP_SCRIM_SOLID] of the
+ * status bar holds [TOP_SCRIM_PEAK] behind the icons and the rest eases to clear, so the grid shows through as it
+ * scrolls under the bar.
  */
 private const val TOP_SCRIM_SOLID = 0.4f
-private const val TOP_SCRIM_PEAK = 0.8f
+private const val TOP_SCRIM_PEAK = 0.7f
+private val TOP_SCRIM_EXTRA = 12.dp
 
 /** The space below the last row, on top of the bottom overlay (#11). */
 private val GRID_BOTTOM_GAP = 40.dp
@@ -326,7 +328,7 @@ internal fun LibraryScreenContent(
                     EdgeFade(
                         FadeEdge.Top,
                         solid = statusTop * TOP_SCRIM_SOLID,
-                        fade = statusTop * (1f - TOP_SCRIM_SOLID),
+                        fade = statusTop * (1f - TOP_SCRIM_SOLID) + TOP_SCRIM_EXTRA,
                         modifier = Modifier.align(Alignment.TopCenter),
                         peak = TOP_SCRIM_PEAK,
                     )
