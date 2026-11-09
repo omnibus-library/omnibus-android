@@ -181,21 +181,21 @@ class LibraryViewModelTest : DescribeSpec({
             val viewModel = sutWithSixtyBooks(repository)
             repository.enqueue(pageOf(61L..90L, cursor = "c2"))
 
-            viewModel.loadMoreIfNeeded(59)
+            viewModel.loadMoreIfNeeded(0)
 
             repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), "c1")
             viewModel.bookIds() shouldBe (1L..90L).toList()
             viewModel.uiState.value.nextCursor shouldBe "c2"
         }
 
-        it("TC-78: requests at index 48 of 60 books, not at 47") {
+        it("TC-78, #235 TC-18: requests with 11 items after the last visible one, not 12") {
             val repository = TestLibraryRepository()
             val viewModel = sutWithSixtyBooks(repository)
 
-            viewModel.loadMoreIfNeeded(47)
+            viewModel.loadMoreIfNeeded(12)
             repository.pageRequests.size shouldBe 1
 
-            viewModel.loadMoreIfNeeded(48)
+            viewModel.loadMoreIfNeeded(11)
             repository.pageRequests.size shouldBe 2
         }
 
@@ -204,7 +204,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository().apply { enqueue(pageOf(1L..2L)) }
                 val viewModel = sut(repository)
 
-                viewModel.loadMoreIfNeeded(1)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 1
             }
@@ -217,7 +217,7 @@ class LibraryViewModelTest : DescribeSpec({
                 repository.enqueue(CompletableDeferred())
                 viewModel.refresh()
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -228,9 +228,9 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(CompletableDeferred())
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -245,7 +245,7 @@ class LibraryViewModelTest : DescribeSpec({
                     LibraryPageResult.Success(BooksPage(listOf(randomBook().copy(id = 59), randomBook().copy(id = 61)), "c2", null, null)),
                 )
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 viewModel.bookIds() shouldBe (1L..61L).toList()
                 viewModel.uiState.value.books.first { it.id == 59L } shouldBe first
@@ -257,9 +257,9 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(LibraryPageResult.Success(BooksPage(emptyList(), "c2", null, null)))
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -271,7 +271,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(unreachable)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 val state = viewModel.uiState.value
                 state.books.size shouldBe 60
@@ -285,9 +285,9 @@ class LibraryViewModelTest : DescribeSpec({
                     val repository = TestLibraryRepository()
                     val viewModel = sutWithSixtyBooks(repository)
                     repository.enqueue(unreachable)
-                    viewModel.loadMoreIfNeeded(59)
+                    viewModel.loadMoreIfNeeded(0)
 
-                    viewModel.loadMoreIfNeeded(59)
+                    viewModel.loadMoreIfNeeded(0)
 
                     repository.pageRequests.last().cursor shouldBe "c1"
                 }
@@ -303,7 +303,7 @@ class LibraryViewModelTest : DescribeSpec({
                 repository.enqueue(pageOf(1L..60L, cursor = "c3"))
                 viewModel.selectCategory(LibraryCategory.Audiobooks)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(
                     BooksPageQuery(sort = LibrarySort.Author, formats = LibraryCategory.Audiobooks.formats),
@@ -368,7 +368,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val viewModel = sutWithSixtyBooks(repository)
                 val loadMore = CompletableDeferred<LibraryPageResult>()
                 repository.enqueue(loadMore)
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
                 repository.enqueue(page(100L, cursor = "n"))
                 viewModel.refresh()
 
@@ -404,7 +404,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(unreachable)
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 viewModel.transientErrorShown()
 
@@ -546,7 +546,7 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.uiState.value.scrollToTop shouldBe false
 
             repository.enqueue(pageOf(61L..62L, cursor = "c3"))
-            viewModel.loadMoreIfNeeded(59)
+            viewModel.loadMoreIfNeeded(0)
             viewModel.uiState.value.scrollToTop shouldBe false
         }
     }

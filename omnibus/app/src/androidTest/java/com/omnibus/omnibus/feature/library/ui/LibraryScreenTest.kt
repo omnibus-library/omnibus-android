@@ -112,7 +112,7 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun tc83_reportsLastVisibleBookIndexNotGridIndex() {
+    fun tc235_20_reportsItemsAfterLastVisibleItem() {
         val reported = mutableListOf<Int>()
         setLibrary(
             LibraryUIState(books = (1L..40L).map { book(it) }),
@@ -122,7 +122,7 @@ class LibraryScreenTest {
         rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(40)
         rule.waitForIdle()
 
-        assertEquals(39, reported.last())
+        assertEquals(0, reported.last())
     }
 
     @Test

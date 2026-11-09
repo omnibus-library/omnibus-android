@@ -125,14 +125,15 @@ class LibraryViewModel @Inject constructor(
     }
 
     /**
-     * Fetches the next page when [lastVisibleIndex] is close enough to the end of the loaded books.
-     * Does nothing while another load is in flight or when there is no next cursor.
+     * Fetches the next page when [itemsAfterLastVisible] is close enough to the end of the loaded books.
+     * [itemsAfterLastVisible] is how many grid items follow the last visible one. Does nothing while another
+     * load is in flight or when there is no next cursor.
      */
-    fun loadMoreIfNeeded(lastVisibleIndex: Int) {
+    fun loadMoreIfNeeded(itemsAfterLastVisible: Int) {
         val state = _uiState.value
         val cursor = state.nextCursor ?: return
         if (state.isInitialLoading || state.isRefreshing || state.isLoadingMore) return
-        if (lastVisibleIndex < state.books.size - LOAD_MORE_THRESHOLD) return
+        if (itemsAfterLastVisible >= LOAD_MORE_THRESHOLD) return
 
         val token = reloadToken
         // The query that produced the cursor, so the next page continues the same list.
