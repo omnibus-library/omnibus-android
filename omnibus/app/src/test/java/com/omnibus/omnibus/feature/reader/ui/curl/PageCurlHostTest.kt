@@ -17,7 +17,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
@@ -27,6 +26,9 @@ import kotlinx.serialization.json.JsonPrimitive
 private enum class Change { Repaint, Selection, AnnotationTap, Resize, Relocate }
 
 private const val MOVED_CFI = "epubcfi(/6/4)"
+
+/** Long enough for any chain of the host's delays and frames: a capture, a curl and a recapture take under 2 s. */
+private const val SETTLE_MS = 10_000L
 
 private fun PageCurlHost.change(event: Change): Unit = when (event) {
     Change.Repaint -> onRepaint()
@@ -65,10 +67,16 @@ class PageCurlHostTest : DescribeSpec({
         environment = CurlEnvironment(reducedMotion = reducedMotion, isLowRam = { lowRam }),
     )
 
+    /**
+     * Runs the host's work to rest. The host's coroutines live in [backgroundScope], and `advanceUntilIdle` skips
+     * background work, so this advances virtual time instead, past every delay and frame the host schedules.
+     */
+    fun TestScope.settle() = advanceTimeBy(SETTLE_MS)
+
     /** Marks the page ready in [host] and waits out the first capture. */
     fun TestScope.readied(host: PageCurlHost) {
         host.onPageReady()
-        advanceUntilIdle()
+        settle()
     }
 
     /** A host in Curl mode, with its page ready and snapshotted, and the log cleared after the capture. */
@@ -136,7 +144,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log)
 
                     host.mode = ReaderPageTurn.None
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldNotContain ReaderScripts.setCurlReady(on = true, next = false, prev = false)
                 }
@@ -190,7 +198,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log)
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContainInOrder listOf("curl", ReaderScripts.turnInstant(1))
                 }
@@ -202,7 +210,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log)
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContain ReaderScripts.turnInstant(1)
                 }
@@ -214,7 +222,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log)
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldNotContain ReaderScripts.turnSlide(1)
                 }
@@ -226,7 +234,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log)
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log.dropWhile { it != ReaderScripts.turnInstant(1) } shouldContain ReaderScripts.peek(1)
                 }
@@ -239,7 +247,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log, snapshotter = snapshotter)
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     snapshotter.images.take(2).map { it.recycles } shouldBe listOf(0, 0)
                 }
@@ -261,7 +269,7 @@ class PageCurlHostTest : DescribeSpec({
                     )
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     stage.cover.shouldNotBeNull()
                 }
@@ -278,10 +286,10 @@ class PageCurlHostTest : DescribeSpec({
                         stage = stage,
                     )
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     gate.complete(JsonPrimitive(true))
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContainInOrder listOf(ReaderScripts.turnInstant(1), "drawn", "cover:null")
                 }
@@ -301,10 +309,10 @@ class PageCurlHostTest : DescribeSpec({
                             stage = stage,
                         )
                         host.tapTurn(1)
-                        advanceUntilIdle()
+                        settle()
 
                         gate.complete(reply)
-                        advanceUntilIdle()
+                        settle()
 
                         stage.cover shouldBe null
                     }
@@ -321,10 +329,10 @@ class PageCurlHostTest : DescribeSpec({
                             page = scriptedPage(log).apply { replies[ReaderScripts.turnInstant(1)] = { gate.await() } },
                         )
                         host.tapTurn(1)
-                        advanceUntilIdle()
+                        settle()
 
                         gate.complete(reply)
-                        advanceUntilIdle()
+                        settle()
 
                         log.dropWhile { it != ReaderScripts.turnInstant(1) } shouldContain ReaderScripts.WHEN_SETTLED
                     }
@@ -342,7 +350,7 @@ class PageCurlHostTest : DescribeSpec({
                     snapshotter.drawn = false
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     stage.cover shouldBe null
                 }
@@ -356,7 +364,7 @@ class PageCurlHostTest : DescribeSpec({
                     snapshotter.drawn = false
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log.dropWhile { it != ReaderScripts.turnInstant(1) } shouldContain ReaderScripts.WHEN_SETTLED
                 }
@@ -445,7 +453,7 @@ class PageCurlHostTest : DescribeSpec({
                     val host = readyCurl(log, page = scriptedPage(log, next = "section"))
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContainInOrder listOf(
                         "cover:snap-1",
@@ -473,7 +481,7 @@ class PageCurlHostTest : DescribeSpec({
                     log.clear()
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContain ReaderScripts.turnInstant(1)
                 }
@@ -488,7 +496,7 @@ class PageCurlHostTest : DescribeSpec({
                     log.clear()
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldNotContain "snapshot"
                     log shouldNotContain "curl"
@@ -505,7 +513,7 @@ class PageCurlHostTest : DescribeSpec({
                     reduced = true
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldContain ReaderScripts.turnInstant(1)
                 }
@@ -519,7 +527,7 @@ class PageCurlHostTest : DescribeSpec({
                     reduced = true
 
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldNotContain "snapshot"
                     log shouldNotContain "curl"
@@ -539,7 +547,7 @@ class PageCurlHostTest : DescribeSpec({
                     host.tapTurn(1)
                     host.tapTurn(1)
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     log.count { it == ReaderScripts.turnInstant(1) } shouldBe 3
                 }
@@ -586,11 +594,11 @@ class PageCurlHostTest : DescribeSpec({
                 val log = mutableListOf<String>()
                 val host = readyCurl(log)
                 host.onSelection()
-                advanceUntilIdle()
+                settle()
                 log shouldNotContain ReaderScripts.WHEN_SETTLED
 
                 host.onSelectionCleared()
-                advanceUntilIdle()
+                settle()
 
                 log shouldContain ReaderScripts.WHEN_SETTLED
             }
@@ -606,11 +614,11 @@ class PageCurlHostTest : DescribeSpec({
                         page = scriptedPage(log).apply { replies[ReaderScripts.turnInstant(1)] = { gate.await() } },
                     )
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     host.onRelocate(MOVED_CFI)
                     gate.complete(JsonPrimitive(true))
-                    advanceUntilIdle()
+                    settle()
 
                     host.isReadyToCurl shouldBe true
                 }
@@ -631,7 +639,7 @@ class PageCurlHostTest : DescribeSpec({
                         snapshotter = snapshotter,
                     )
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
 
                     host.release()
 
@@ -648,7 +656,7 @@ class PageCurlHostTest : DescribeSpec({
                         page = scriptedPage(log).apply { replies[ReaderScripts.turnInstant(1)] = { gate.await() } },
                     )
                     host.tapTurn(1)
-                    advanceUntilIdle()
+                    settle()
                     host.release()
                     val atRelease = log.toList()
 
@@ -656,7 +664,7 @@ class PageCurlHostTest : DescribeSpec({
                     host.tapTurn(1)
                     host.onRepaint()
                     host.onRelocate(MOVED_CFI)
-                    advanceUntilIdle()
+                    settle()
 
                     log shouldBe atRelease
                 }
