@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackError
 import com.omnibus.omnibus.data.audiobook.playback.SleepTimerState
-import com.omnibus.omnibus.feature.bookdetail.stage.BookStageWash
 import com.omnibus.omnibus.feature.bookdetail.stage.bookAccent
 import com.omnibus.omnibus.feature.library.ui.isLightGround
 import com.omnibus.omnibus.ui.components.CoverIdentity
@@ -89,12 +88,7 @@ internal fun PlayerScreenContent(
                 }
                 .testTag(PlayerTestTags.SURFACE),
         ) {
-            BookStageWash(
-                identity = uiState.cover,
-                lightGround = lightGround,
-                modifier = Modifier.matchParentSize(),
-                reducedMotion = reducedMotion,
-            )
+            PlayerBackdrop(identity = uiState.cover, modifier = Modifier.matchParentSize())
             when (uiState.gate) {
                 PlayerGate.Checking -> Unit
                 PlayerGate.Offline -> PlayerOfflineDialog(title = uiState.title, onDismiss = onClose)
