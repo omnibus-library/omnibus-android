@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.7](https://github.com/omnibus-library/omnibus-android/compare/v0.1.6...v0.1.7) (2026-11-09)
+
+
+### Features
+
+* **library:** add series grouping state and saved setting ([#239](https://github.com/omnibus-library/omnibus-android/issues/239)) ([c8d0adb](https://github.com/omnibus-library/omnibus-android/commit/c8d0adb20dd09741292ee32d3fd9796de44ffd03))
+* **library:** add the group-by-series switch and folded stacks ([#242](https://github.com/omnibus-library/omnibus-android/issues/242)) ([075ba3a](https://github.com/omnibus-library/omnibus-android/commit/075ba3aa83099900c4a2f4ccdcc3fa8c83e897f3))
+* **library:** add the series grouping rules and series read ([#237](https://github.com/omnibus-library/omnibus-android/issues/237)) ([c0fd87a](https://github.com/omnibus-library/omnibus-android/commit/c0fd87ace8cc9f2d315ad730b905b13b8f35e0ee))
+* **library:** load and filter the shelves for the Library ([#238](https://github.com/omnibus-library/omnibus-android/issues/238)) ([44d8939](https://github.com/omnibus-library/omnibus-android/commit/44d8939e0b7248b83af69969acce5ba7bc1daa3e))
+* **library:** scroll the Library under the system bars ([#231](https://github.com/omnibus-library/omnibus-android/issues/231)) ([0190bb8](https://github.com/omnibus-library/omnibus-android/commit/0190bb8593afaa09a8557d49dc27111c593fe443))
+* **library:** show the shelves rail on the Library ([#240](https://github.com/omnibus-library/omnibus-android/issues/240)) ([6cbdfe1](https://github.com/omnibus-library/omnibus-android/commit/6cbdfe1fa58bc9f6ac63b1f6aa6f56c422ca3a87))
+* **library:** unfold a series in place with an outline ([#245](https://github.com/omnibus-library/omnibus-android/issues/245)) ([3bcee4e](https://github.com/omnibus-library/omnibus-android/commit/3bcee4e214ba51daa96e354d40b5249c646525d7))
+
+
+### Bug Fixes
+
+* **audiobook:** match the iOS player backdrop ([#230](https://github.com/omnibus-library/omnibus-android/issues/230)) ([868f28a](https://github.com/omnibus-library/omnibus-android/commit/868f28a0556bc6ad825160b4529e0b459fe61662))
+
 ## [0.1.6](https://github.com/omnibus-library/omnibus-android/compare/v0.1.5...v0.1.6) (2026-11-09)
 
 
