@@ -147,6 +147,9 @@ gets a screenshot test.
       and is printed to the test report as `TEST_SEED=`. To debug a failure, hard-code that seed in `TEST_SEED`.
     - A test that fails only for some random values has found either a bug or an assumption the test should state in a
       `context`. Fix whichever it is. Do not pin the value to make the failure go away.
+    - Don't assert exact 8-bit channel equality on a colour converted from a random continuous value (hue, chroma,
+      lightness). Float conversion lands a channel one step off for a few percent of values, so the test fails
+      intermittently. Compare within a step, or use a fixed set of inputs with `Exhaustive`.
     - If you need lower-level primitive fixture types (e.g. `randomString()`) to help build higher level fixtures, look
       for them in `com.omnibus.omnibus.testing`. If they don't exist and are generally useful, add them there for others
       to use.
