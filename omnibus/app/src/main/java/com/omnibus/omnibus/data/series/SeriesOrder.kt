@@ -4,5 +4,8 @@ package com.omnibus.omnibus.data.series
 internal fun seriesNumber(index: String?): Double? = index?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
 
 /** Stable sort by numeric index; null and non-numeric indexes go last in their original order. */
-internal fun List<SeriesMember>.inSeriesOrder(): List<SeriesMember> =
-    sortedWith(compareBy(nullsLast<Double>()) { seriesNumber(it.seriesIndex) })
+internal fun List<SeriesMember>.inSeriesOrder(): List<SeriesMember> = inSeriesOrderBy { it.seriesIndex }
+
+/** Stable sort by the numeric value of [index]; null and non-numeric indexes go last in their original order. */
+internal fun <T> List<T>.inSeriesOrderBy(index: (T) -> String?): List<T> =
+    sortedWith(compareBy(nullsLast<Double>()) { seriesNumber(index(it)) })
