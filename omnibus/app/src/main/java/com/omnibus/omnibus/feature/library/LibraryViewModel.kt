@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPageQuery
@@ -13,6 +14,8 @@ import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
+import com.omnibus.omnibus.data.library.ShelfPreview
+import com.omnibus.omnibus.data.library.ShelfPreviewsResult
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
@@ -40,6 +43,7 @@ class LibraryViewModel @Inject constructor(
     private val connectivityMonitor: ConnectivityMonitor,
     private val bookAvailability: BookAvailability,
     private val timeSource: TimeSource,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -58,6 +62,10 @@ class LibraryViewModel @Inject constructor(
     private var resumeToken = 0
     private var resumeJob: Job? = null
 
+    /** Bumped by every shelves load, so a superseded load cannot overwrite a newer one. */
+    private var shelvesToken = 0
+    private var shelvesJob: Job? = null
+
     init {
         viewModelScope.launch {
             // Restored before the first request, so page 1 already carries the saved sort and direction.
@@ -69,19 +77,32 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             connectivityMonitor.isOnline.collect { online -> _uiState.update { it.copy(isOffline = !online) } }
         }
+        viewModelScope.launch {
+            authRepository.currentUser.collect { user -> _uiState.update { it.copy(viewerId = user?.id) } }
+        }
     }
 
     /** Reloads the first page after a full-screen error. */
     fun retry() = reload(refreshing = false)
 
-    /** Reloads the first page and the Continue cards for pull to refresh. The result replaces the list wholesale. */
+    /**
+     * Reloads the first page, the Continue cards and the shelves for pull to refresh. The results replace the lists
+     * wholesale.
+     */
     fun refresh() {
         reload(refreshing = true)
         loadResumePoints()
+        loadShelves()
     }
 
-    /** Loads the Continue cards. Called each time the Library is shown, so returning from the reader shows the new position. */
-    fun libraryShown() = loadResumePoints()
+    /**
+     * Loads the Continue cards and the shelves. Called each time the Library is shown, so returning from the reader
+     * shows the new position.
+     */
+    fun libraryShown() {
+        loadResumePoints()
+        loadShelves()
+    }
 
     /**
      * Selects the card at the pager's settled page. Ignored for an unknown id, and for the card that
@@ -240,6 +261,21 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Loads the shelves for the rail. A failure keeps the shelves already shown and raises no error, as for the
+     * Continue cards. Only the newest load may apply.
+     */
+    private fun loadShelves() {
+        val token = ++shelvesToken
+        shelvesJob?.cancel()
+        shelvesJob = viewModelScope.launch {
+            val result = libraryRepository.getShelfPreviewsFlow().last()
+            if (token != shelvesToken) return@launch
+            if (result !is ShelfPreviewsResult.Success) return@launch
+            _uiState.update { it.copy(shelves = result.previews) }
+        }
+    }
+
     /** Saves the current sort and direction. The category is never saved. */
     private fun persistSort() {
         val state = _uiState.value
@@ -303,6 +339,8 @@ class LibraryViewModel @Inject constructor(
  * @property continueSelectedId The id of the card the carousel is on, kept across reloads while the card is still listed.
  * @property pendingResume A one-shot request to open a reader or player for a card. Cleared by [LibraryViewModel.resumeHandled].
  * @property unavailableBook A one-shot request to show the "can't open offline" alert. Cleared by [LibraryViewModel.unavailableDismissed].
+ * @property shelves Every shelf the user can see, unfiltered, in server order.
+ * @property viewerId The signed-in user's id, or null while it is unknown or signed out.
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -322,6 +360,8 @@ data class LibraryUIState(
     val continueSelectedId: String? = null,
     val pendingResume: ResumeTarget? = null,
     val unavailableBook: UnavailableBook? = null,
+    val shelves: List<ShelfPreview> = emptyList(),
+    val viewerId: Long? = null,
 ) {
 
     /** Whether the books are narrowed or reordered from the default view. Hidden formats never count. */
@@ -329,6 +369,10 @@ data class LibraryUIState(
         get() = category != LibraryCategory.All ||
             sort != LibrarySort.NewestAdded ||
             direction != SortDirection.Desc
+
+    /** The shelves the rail shows: [shelves] filtered for [viewerId] by [railShelvesOf], at most eight. */
+    val railShelves: List<ShelfPreview>
+        get() = railShelvesOf(shelves, viewerId)
 
     /** The page query for the current category, sort and direction. */
     fun toQuery(): BooksPageQuery = category.toQuery(sort, direction)
