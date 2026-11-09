@@ -153,6 +153,7 @@ private fun SignedInShellContent(
                                 onAddBooks = { /* Add books sheet: later ticket */ },
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
+                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name)) },
                             )
                         }
                         entry<BookDetailRoute> { key ->

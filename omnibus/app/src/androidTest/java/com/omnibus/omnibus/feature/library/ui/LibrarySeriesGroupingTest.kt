@@ -12,9 +12,13 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -146,11 +150,86 @@ class LibrarySeriesGroupingTest {
         assertEquals(listOf(10L), unfolded)
     }
 
+    @Test
+    fun tc235_29_memberWithAnIndexShowsItsVolume() {
+        setLibrary(mutableStateOf(unfoldedDune()))
+
+        rule.onNode(hasText("VOL. 1") and hasAnyAncestor(hasTestTag(LibraryTestTags.cell(1L))), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun tc235_29_memberWithoutAnIndexShowsItsAuthor() {
+        setLibrary(mutableStateOf(unfoldedDune()))
+
+        rule.onNode(hasText(AUTHOR_2) and hasAnyAncestor(hasTestTag(LibraryTestTags.cell(2L))), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun tc235_29_memberWithoutAnIndexHasNoVolumeLine() {
+        setLibrary(mutableStateOf(unfoldedDune()))
+
+        rule.onAllNodes(
+            hasText("VOL.", substring = true) and hasAnyAncestor(hasTestTag(LibraryTestTags.cell(2L))),
+            useUnmergedTree = true,
+        ).assertCountEquals(0)
+    }
+
+    @Test
+    fun tc235_29_summaryNamesTheSeries() {
+        setLibrary(mutableStateOf(unfoldedDune()))
+
+        rule.onNode(hasText(DUNE) and hasAnyAncestor(hasTestTag(LibraryTestTags.seriesSummary(10L))), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun tc235_29_summaryHasASeriesPageButton() {
+        setLibrary(mutableStateOf(unfoldedDune()))
+
+        rule.onNode(hasText("Series page →") and hasAnyAncestor(hasTestTag(LibraryTestTags.seriesSummary(10L))), useUnmergedTree = true)
+            .assertExists()
+    }
+
+    @Test
+    fun tc235_30_foldUpCallsOnFoldUpSeries() {
+        val folded = mutableListOf<Long>()
+        setLibrary(mutableStateOf(unfoldedDune()), onFoldUpSeries = { folded += it })
+
+        rule.onNodeWithTag(LibraryTestTags.foldUp(10L)).performClick()
+
+        assertEquals(listOf(10L), folded)
+    }
+
+    @Test
+    fun tc235_30_seriesPageCallsOnOpenSeries() {
+        val opened = mutableListOf<Pair<Long, String>>()
+        setLibrary(mutableStateOf(unfoldedDune()), onOpenSeries = { id, name -> opened += id to name })
+
+        rule.onNodeWithTag(LibraryTestTags.seriesPage(10L)).performClick()
+
+        assertEquals(listOf(10L to DUNE), opened)
+    }
+
+    @Test
+    fun tc235_30_memberCellCallsOnOpenBook() {
+        val opened = mutableListOf<String>()
+        setLibrary(mutableStateOf(unfoldedDune()), onOpenBook = { opened += it })
+
+        rule.onNodeWithTag(LibraryTestTags.cell(1L)).performClick()
+
+        assertEquals(listOf("uuid-1"), opened)
+    }
+
     private fun setLibrary(
         uiState: State<LibraryUIState>,
         onLoadMore: (Int) -> Unit = {},
         onToggleGroupBySeries: () -> Unit = {},
         onUnfoldSeries: (Long) -> Unit = {},
+        onFoldUpSeries: (Long) -> Unit = {},
+        onOpenSeries: (Long, String) -> Unit = { _, _ -> },
+        onOpenBook: (String) -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -160,11 +239,13 @@ class LibrarySeriesGroupingTest {
                         onRetry = {},
                         onRefresh = {},
                         onLoadMore = onLoadMore,
-                        onOpenBook = {},
+                        onOpenBook = onOpenBook,
                         onAddBooks = {},
                         onTransientErrorShown = {},
                         onToggleGroupBySeries = onToggleGroupBySeries,
                         onUnfoldSeries = onUnfoldSeries,
+                        onFoldUpSeries = onFoldUpSeries,
+                        onOpenSeries = onOpenSeries,
                     )
                 }
             }
@@ -176,8 +257,20 @@ class LibrarySeriesGroupingTest {
         const val SOLO = "Solo"
         const val GROUP_LABEL = "Group by series"
         const val UNFOLD_LABEL = "Unfold series"
+        const val AUTHOR_2 = "Author 2"
 
-        fun groupedState(vararg books: Book) = LibraryUIState(books = books.toList(), groupBySeries = true)
+        fun groupedState(vararg books: Book, unfolded: Set<Long> = emptySet()) = LibraryUIState(
+            books = books.toList(),
+            groupBySeries = true,
+            unfoldedSeries = unfolded,
+        )
+
+        /** Dune Chronicles unfolded: book 1 at index "1", then book 2 with no index. */
+        fun unfoldedDune() = groupedState(
+            seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"),
+            book(2L).copy(seriesId = 10L, series = DUNE),
+            unfolded = setOf(10L),
+        )
 
         /** A book with a uuid of `uuid-<id>` and no cover, so no image loads in these tests. */
         fun book(id: Long) = Book(

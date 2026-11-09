@@ -199,6 +199,102 @@ fun LibraryGroupedFolded() {
     )
 }
 
+/**
+ * Two series unfolded at 2 columns, the Expanse folded between them: Dune Chronicles starts mid-row, so the outline is
+ * a staircase, and Solo, a one-book series, sits in the corner of a two-cell run.
+ */
+@PreviewTest
+@Preview(name = "Light", widthDp = 360, heightDp = 1800)
+@Preview(name = "Dark", widthDp = 360, heightDp = 1800, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun LibraryGroupedUnfoldedNarrow() {
+    LibraryShot(
+        LibraryUIState(
+            books = listOf(
+                book(1L),
+                seriesBook(2L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                seriesBook(4L, seriesId = 20L, series = "The Expanse", index = "1"),
+                book(6L),
+                seriesBook(5L, seriesId = 30L, series = "Solo", index = "1"),
+            ),
+            hasLoaded = true,
+            groupBySeries = true,
+            unfoldedSeries = setOf(10L, 30L),
+            seriesBooks = mapOf(
+                10L to SeriesBooks(
+                    name = "Dune Chronicles",
+                    books = listOf(
+                        seriesBook(2L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                        seriesBook(7L, seriesId = 10L, series = "Dune Chronicles", index = "2"),
+                        seriesBook(8L, seriesId = 10L, series = "Dune Chronicles", index = "3"),
+                    ),
+                ),
+                20L to SeriesBooks(
+                    name = "The Expanse",
+                    books = listOf(
+                        seriesBook(4L, seriesId = 20L, series = "The Expanse", index = "1"),
+                        seriesBook(9L, seriesId = 20L, series = "The Expanse", index = "2"),
+                    ),
+                ),
+                30L to SeriesBooks(
+                    name = "Solo",
+                    books = listOf(seriesBook(5L, seriesId = 30L, series = "Solo", index = "1")),
+                ),
+            ),
+        ),
+    )
+}
+
+/**
+ * Six columns: The Expanse (four books) starts in the fifth column and wraps to the next row, so its outline is open at
+ * the wrapped edges. Dune Chronicles (three books) fits one row, so its outline is a closed box.
+ */
+@PreviewTest
+@Preview(name = "Light", widthDp = 840, heightDp = 1100)
+@Preview(name = "Dark", widthDp = 840, heightDp = 1100, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun LibraryGroupedUnfoldedWide() {
+    LibraryShot(
+        LibraryUIState(
+            books = listOf(
+                book(1L),
+                book(2L),
+                book(3L),
+                book(4L),
+                seriesBook(11L, seriesId = 20L, series = "The Expanse", index = "1"),
+                book(5L),
+                book(6L),
+                book(7L),
+                seriesBook(15L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                book(8L),
+                book(9L),
+            ),
+            hasLoaded = true,
+            groupBySeries = true,
+            unfoldedSeries = setOf(10L, 20L),
+            seriesBooks = mapOf(
+                10L to SeriesBooks(
+                    name = "Dune Chronicles",
+                    books = listOf(
+                        seriesBook(15L, seriesId = 10L, series = "Dune Chronicles", index = "1"),
+                        seriesBook(16L, seriesId = 10L, series = "Dune Chronicles", index = "2"),
+                        seriesBook(17L, seriesId = 10L, series = "Dune Chronicles", index = "3"),
+                    ),
+                ),
+                20L to SeriesBooks(
+                    name = "The Expanse",
+                    books = listOf(
+                        seriesBook(11L, seriesId = 20L, series = "The Expanse", index = "1"),
+                        seriesBook(12L, seriesId = 20L, series = "The Expanse", index = "2"),
+                        seriesBook(13L, seriesId = 20L, series = "The Expanse", index = "3"),
+                        seriesBook(14L, seriesId = 20L, series = "The Expanse", index = "4"),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
 /** A book with a uuid of `uuid-<id>` and no cover, so no image loads. */
 private fun book(
     id: Long,

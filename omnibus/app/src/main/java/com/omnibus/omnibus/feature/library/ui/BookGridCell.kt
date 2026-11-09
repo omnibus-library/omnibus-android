@@ -45,6 +45,7 @@ internal fun Book.coverIdentity(): CoverIdentity = CoverIdentity(
  *
  * @param width The cell width from [LibraryGridMetrics.cellWidth].
  * @param onClick Called once per tap anywhere on the cell.
+ * @param subtitle Shown instead of the author when set, such as a series volume.
  */
 @Composable
 internal fun BookGridCell(
@@ -52,6 +53,7 @@ internal fun BookGridCell(
     width: Dp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
 ) {
     val palette = OmnibusTheme.palette
 
@@ -80,8 +82,12 @@ internal fun BookGridCell(
         )
         Spacer(Modifier.height(1.dp))
         Text(
-            text = book.authorDisplay,
-            style = uiTextStyle(11.sp, FontWeight.Normal, palette.ink3),
+            text = subtitle ?: book.authorDisplay,
+            style = if (subtitle != null) {
+                uiTextStyle(10.sp, FontWeight.Medium, palette.ink3).copy(letterSpacing = 1.sp)
+            } else {
+                uiTextStyle(11.sp, FontWeight.Normal, palette.ink3)
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

@@ -87,6 +87,14 @@
     </plurals>
     <string name="library_series_stack_subtitle">%1$s · %2$s</string>
     <string name="library_series_stack_description">%1$s, %2$s</string>
+    <string name="library_series_kicker">SERIES</string>
+    <plurals name="library_series_in_library">
+        <item quantity="one">%d in your library</item>
+        <item quantity="other">%d in your library</item>
+    </plurals>
+    <string name="library_series_page">Series page →</string>
+    <string name="library_series_fold_up">Fold up</string>
+    <string name="library_series_volume">VOL. %s</string>
     <string name="library_category_all">All</string>
     <string name="library_category_ebooks">Ebooks</string>
     <string name="library_category_audiobooks">Audiobooks</string>
