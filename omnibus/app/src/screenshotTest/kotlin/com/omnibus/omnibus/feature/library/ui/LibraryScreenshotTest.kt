@@ -151,7 +151,6 @@ private fun LibraryShot(uiState: LibraryUIState, cardsPerPage: Int = 1) {
             onOpenBook = {},
             onAddBooks = {},
             onTransientErrorShown = {},
-            bottomInset = 0.dp,
             continueState = continueState,
         )
     }

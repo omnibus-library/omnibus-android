@@ -132,7 +132,6 @@ internal class CoverTransitionHarness(
                                         },
                                         onAddBooks = {},
                                         onTransientErrorShown = {},
-                                        bottomInset = 0.dp,
                                         onResume = { resumed += it },
                                     )
                                 }

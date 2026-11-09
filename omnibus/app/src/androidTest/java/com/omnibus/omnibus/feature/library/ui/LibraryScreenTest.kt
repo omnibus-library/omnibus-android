@@ -68,7 +68,6 @@ class LibraryScreenTest {
                         onOpenBook = {},
                         onAddBooks = {},
                         onTransientErrorShown = {},
-                        bottomInset = 0.dp,
                     )
                 }
             }
@@ -161,7 +160,6 @@ class LibraryScreenTest {
                             shown++
                             uiState.value = uiState.value.copy(transientError = null)
                         },
-                        bottomInset = 0.dp,
                     )
                     Text("ticks ${unrelated.value}")
                 }
@@ -394,7 +392,6 @@ class LibraryScreenTest {
                         onOpenBook = onOpenBook,
                         onAddBooks = onAddBooks,
                         onTransientErrorShown = {},
-                        bottomInset = 0.dp,
                         onSelectCategory = onSelectCategory,
                         onSelectSort = onSelectSort,
                         onToggleDirection = onToggleDirection,

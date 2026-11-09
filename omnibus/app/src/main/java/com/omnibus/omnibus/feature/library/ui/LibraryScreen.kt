@@ -5,20 +5,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -34,16 +37,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,12 +79,15 @@ import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
+import com.omnibus.omnibus.ui.components.EdgeFade
 import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
+import com.omnibus.omnibus.ui.components.FadeEdge
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.components.Masthead
 import com.omnibus.omnibus.ui.components.MastheadAddButton
 import com.omnibus.omnibus.ui.components.OfflinePill
+import com.omnibus.omnibus.ui.components.bottomOverlay
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
@@ -114,17 +120,29 @@ private const val FOOTER_KEY = "footer"
 private const val HEADER_ITEM_COUNT = 1
 
 /**
+ * The scrim at the top of the window covers the status bar plus [TOP_SCRIM_EXTRA]. Its top [TOP_SCRIM_SOLID] of the
+ * status bar holds [TOP_SCRIM_PEAK] behind the icons and the rest eases to clear, so the grid shows through as it
+ * scrolls under the bar.
+ */
+private const val TOP_SCRIM_SOLID = 0.4f
+private const val TOP_SCRIM_PEAK = 0.7f
+private val TOP_SCRIM_EXTRA = 12.dp
+
+/** The space below the last row, on top of the bottom overlay (#11). */
+private val GRID_BOTTOM_GAP = 40.dp
+
+/**
  * The Library tab's root: the All books grid, with its loading, error and empty states.
  *
  * Stateful wrapper that feeds [LibraryScreenContent] from [LibraryViewModel]. The grid state is
- * hoisted here so the saveable-state decorator restores scroll on back.
+ * hoisted here so the saveable-state decorator restores scroll on back. It fills the window: the grid scrolls under
+ * the status bar and the shell's bottom overlay, behind a `bg0` scrim over the status bar.
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
  * @param onAddBooks Called when the masthead's add button is tapped.
  * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
  * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryScreen(
     onOpenBook: (uuid: String) -> Unit,
@@ -141,11 +159,6 @@ fun LibraryScreen(
     // Runs each time the entry is composed again, so returning from the reader, the player or detail reloads the cards.
     LaunchedEffect(Unit) { viewModel.libraryShown() }
 
-    // The shell consumes the navigation bar above the tab bar. Only the part it did not consume
-    // is added as bottom padding here, so the last row clears the tab bar without a doubled inset.
-    var consumed by remember { mutableStateOf(WindowInsets(0)) }
-    val bottomInset = WindowInsets.navigationBars.exclude(consumed).asPaddingValues().calculateBottomPadding()
-
     LibraryScreenContent(
         uiState = uiState,
         onRetry = viewModel::retry,
@@ -154,8 +167,7 @@ fun LibraryScreen(
         onOpenBook = onOpenBook,
         onAddBooks = onAddBooks,
         onTransientErrorShown = viewModel::transientErrorShown,
-        bottomInset = bottomInset,
-        modifier = modifier.onConsumedWindowInsetsChanged { consumed = it },
+        modifier = modifier,
         onSelectCategory = viewModel::selectCategory,
         onSelectSort = viewModel::selectSort,
         onToggleDirection = viewModel::toggleDirection,
@@ -178,7 +190,6 @@ fun LibraryScreen(
  * [LibraryUIState]s.
  *
  * @param onLoadMore Called with the index of the last visible book whenever it changes.
- * @param bottomInset Navigation bar padding the caller could not consume, added below the grid.
  * @param onSelectCategory Called with the category picked in the filter menu.
  * @param onSelectSort Called with the sort key picked in the filter menu.
  * @param onToggleDirection Called when the Direction row is tapped.
@@ -204,7 +215,6 @@ internal fun LibraryScreenContent(
     onOpenBook: (uuid: String) -> Unit,
     onAddBooks: () -> Unit,
     onTransientErrorShown: () -> Unit,
-    bottomInset: Dp,
     modifier: Modifier = Modifier,
     onSelectCategory: (LibraryCategory) -> Unit = {},
     onSelectSort: (LibrarySort) -> Unit = {},
@@ -250,11 +260,18 @@ internal fun LibraryScreenContent(
         onResumeHandled()
     }
 
+    // The grid runs under the status bar and the bottom overlay. The other states and the snackbar keep clear of both.
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val overlay = WindowInsets.bottomOverlay
+    val overlayBottom = overlay.asPaddingValues().calculateBottomPadding()
+    val sides = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
+    val stateInsets = WindowInsets.statusBars.union(overlay).union(sides)
+
     Box(modifier.fillMaxSize()) {
         when (val screen = uiState.screen) {
             LibraryScreenState.Loading -> LoadingStateView(
                 label = stringResource(R.string.library_loading),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(stateInsets),
             )
 
             is LibraryScreenState.Error -> ErrorStateView(
@@ -262,37 +279,60 @@ internal fun LibraryScreenContent(
                 message = libraryErrorText(screen.error),
                 actionLabel = stringResource(R.string.library_try_again),
                 onRetry = onRetry,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(stateInsets),
             )
 
             LibraryScreenState.Empty -> PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(stateInsets),
             ) {
                 EmptyLibrary()
             }
 
-            LibraryScreenState.Content -> PullToRefreshBox(
-                isRefreshing = uiState.isRefreshing,
-                onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                LibraryGrid(
-                    uiState = uiState,
-                    onOpenBook = onOpenBook,
-                    onAddBooks = onAddBooks,
-                    onLoadMore = onLoadMore,
-                    onSelectCategory = onSelectCategory,
-                    onSelectSort = onSelectSort,
-                    onToggleDirection = onToggleDirection,
-                    gridState = gridState,
-                    bottomInset = bottomInset,
-                    continueState = continueState,
-                    onContinueSettled = onContinueSettled,
-                    onResume = onResume,
-                    onShowContextMenu = onShowContextMenu,
-                )
+            LibraryScreenState.Content -> {
+                val refreshState = rememberPullToRefreshState()
+                PullToRefreshBox(
+                    isRefreshing = uiState.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                    state = refreshState,
+                    // The default indicator sits at the top of the box, which here is under the status bar.
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            state = refreshState,
+                            isRefreshing = uiState.isRefreshing,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = statusTop),
+                        )
+                    },
+                ) {
+                    LibraryGrid(
+                        uiState = uiState,
+                        onOpenBook = onOpenBook,
+                        onAddBooks = onAddBooks,
+                        onLoadMore = onLoadMore,
+                        onSelectCategory = onSelectCategory,
+                        onSelectSort = onSelectSort,
+                        onToggleDirection = onToggleDirection,
+                        gridState = gridState,
+                        topInset = statusTop,
+                        bottomInset = overlayBottom,
+                        modifier = Modifier.windowInsetsPadding(sides),
+                        continueState = continueState,
+                        onContinueSettled = onContinueSettled,
+                        onResume = onResume,
+                        onShowContextMenu = onShowContextMenu,
+                    )
+                    // Keeps the status bar icons legible over the content scrolling under them. Drawn after the grid, so
+                    // the indicator (drawn after the content) stays above it.
+                    EdgeFade(
+                        FadeEdge.Top,
+                        solid = statusTop * TOP_SCRIM_SOLID,
+                        fade = statusTop * (1f - TOP_SCRIM_SOLID) + TOP_SCRIM_EXTRA,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        peak = TOP_SCRIM_PEAK,
+                    )
+                }
             }
         }
 
@@ -300,7 +340,7 @@ internal fun LibraryScreenContent(
 
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(overlay.union(sides)).padding(12.dp),
         )
     }
 }
@@ -344,6 +384,9 @@ private fun EmptyLibrary() {
  * past the header and clamps it to the last book. The filter menu's choices go to the three
  * `onSelect*`/`onToggleDirection` callbacks. The Continue carousel sits between the masthead and the
  * heading when there are cards.
+ *
+ * [topInset] and [bottomInset] are the status bar and the bottom overlay the grid scrolls under: they pad the
+ * content so it starts and ends clear of them.
  */
 @Composable
 private fun LibraryGrid(
@@ -355,7 +398,9 @@ private fun LibraryGrid(
     onSelectSort: (LibrarySort) -> Unit,
     onToggleDirection: () -> Unit,
     gridState: LazyGridState,
+    topInset: Dp,
     bottomInset: Dp,
+    modifier: Modifier,
     continueState: ContinueCarouselState,
     onContinueSettled: (cardId: String) -> Unit,
     onResume: (cardId: String) -> Unit,
@@ -375,7 +420,7 @@ private fun LibraryGrid(
             .collect { onLoadMore(it) }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val available = maxWidth - Spacing.screen * 2
         val columns = LibraryGridMetrics.columns(available.value)
         val cellWidth = LibraryGridMetrics.cellWidth(available.value).dp
@@ -386,7 +431,8 @@ private fun LibraryGrid(
             contentPadding = PaddingValues(
                 start = Spacing.screen,
                 end = Spacing.screen,
-                bottom = 40.dp + bottomInset,
+                top = topInset,
+                bottom = GRID_BOTTOM_GAP + bottomInset,
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize().testTag(LibraryTestTags.GRID),
@@ -553,7 +599,6 @@ private fun LibraryPreviewContent(uiState: LibraryUIState) {
             onOpenBook = {},
             onAddBooks = {},
             onTransientErrorShown = {},
-            bottomInset = 0.dp,
         )
     }
 }
