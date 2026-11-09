@@ -79,6 +79,7 @@
     <string name="library_empty_title">No books yet</string>
     <string name="library_empty_message">Point the server at a library folder, or add a book from the You tab.</string>
     <string name="library_filter_sort">Filter and sort</string>
+    <string name="library_group_by_series">Group by series</string>
     <string name="library_category_all">All</string>
     <string name="library_category_ebooks">Ebooks</string>
     <string name="library_category_audiobooks">Audiobooks</string>

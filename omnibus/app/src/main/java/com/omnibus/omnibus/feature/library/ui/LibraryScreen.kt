@@ -103,6 +103,7 @@ internal object LibraryTestTags {
     const val HEADING = "library-heading"
     const val FOOTER_SPINNER = "library-footer-spinner"
     const val FILTER_BUTTON = "library-filter-button"
+    const val GROUP_SWITCH = "library-group-switch"
     const val MENU_DIRECTION = "library-menu-direction"
 
     fun cell(id: Long) = "library-cell-$id"
@@ -171,6 +172,7 @@ fun LibraryScreen(
         onSelectCategory = viewModel::selectCategory,
         onSelectSort = viewModel::selectSort,
         onToggleDirection = viewModel::toggleDirection,
+        onToggleGroupBySeries = viewModel::toggleGroupBySeries,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
         continueState = continueState,
@@ -193,6 +195,7 @@ fun LibraryScreen(
  * @param onSelectCategory Called with the category picked in the filter menu.
  * @param onSelectSort Called with the sort key picked in the filter menu.
  * @param onToggleDirection Called when the Direction row is tapped.
+ * @param onToggleGroupBySeries Called when the group-by-series pill is tapped.
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
@@ -219,6 +222,7 @@ internal fun LibraryScreenContent(
     onSelectCategory: (LibraryCategory) -> Unit = {},
     onSelectSort: (LibrarySort) -> Unit = {},
     onToggleDirection: () -> Unit = {},
+    onToggleGroupBySeries: () -> Unit = {},
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -314,6 +318,7 @@ internal fun LibraryScreenContent(
                         onSelectCategory = onSelectCategory,
                         onSelectSort = onSelectSort,
                         onToggleDirection = onToggleDirection,
+                        onToggleGroupBySeries = onToggleGroupBySeries,
                         gridState = gridState,
                         topInset = statusTop,
                         bottomInset = overlayBottom,
@@ -397,6 +402,7 @@ private fun LibraryGrid(
     onSelectCategory: (LibraryCategory) -> Unit,
     onSelectSort: (LibrarySort) -> Unit,
     onToggleDirection: () -> Unit,
+    onToggleGroupBySeries: () -> Unit,
     gridState: LazyGridState,
     topInset: Dp,
     bottomInset: Dp,
@@ -469,6 +475,10 @@ private fun LibraryGrid(
                                 text = stringResource(uiState.category.headingRes()),
                                 style = displayTextStyle(27, palette.ink0),
                                 modifier = Modifier.weight(1f).testTag(LibraryTestTags.HEADING),
+                            )
+                            GroupBySeriesSwitch(
+                                checked = uiState.groupBySeries,
+                                onToggle = onToggleGroupBySeries,
                             )
                             LibraryFilterControl(
                                 category = uiState.category,
