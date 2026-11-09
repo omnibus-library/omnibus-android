@@ -120,7 +120,7 @@ class PageCurlHostTest : DescribeSpec({
 
                     readied(host)
 
-                    log shouldContain ReaderScripts.setCurlReady(on = true, next = false, prev = false)
+                    log shouldContain ReaderScripts.setCurlReady(on = true, next = true, prev = true)
                 }
             }
         }
