@@ -67,7 +67,29 @@ class TestLibraryRepository : LibraryRepository {
         if (script != null) script(this) else emit(defaultRecentProgress ?: awaitCancellation())
     }
 
-    override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow { awaitCancellation() }
+    /** The number of [getShelfPreviewsFlow] calls, in call order. */
+    var shelfPreviewRequests = 0
+
+    private val shelfScripts = ArrayDeque<suspend FlowCollector<ShelfPreviewsResult>.() -> Unit>()
+
+    /** Emitted by [getShelfPreviewsFlow] when no script is queued. */
+    var defaultShelfPreviews: ShelfPreviewsResult? = null
+
+    /** Queues a [getShelfPreviewsFlow] call that emits [result] once. */
+    fun enqueueShelves(result: ShelfPreviewsResult) {
+        shelfScripts.addLast { emit(result) }
+    }
+
+    /** Queues a [getShelfPreviewsFlow] call that holds until [deferred] completes. */
+    fun enqueueShelves(deferred: CompletableDeferred<ShelfPreviewsResult>) {
+        shelfScripts.addLast { emit(deferred.await()) }
+    }
+
+    override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow {
+        shelfPreviewRequests++
+        val script = shelfScripts.removeFirstOrNull()
+        if (script != null) script(this) else emit(defaultShelfPreviews ?: awaitCancellation())
+    }
 
     /** The uuid of every [getBookFlow] call, in call order. */
     val bookRequests = mutableListOf<String>()

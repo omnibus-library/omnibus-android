@@ -55,6 +55,19 @@ fun randomBook(): Book = Book(
     wishlistSource = randomString().orNull(),
 )
 
+fun randomShelf(): Shelf = Shelf(
+    id = randomLong(),
+    ownerUserId = randomLong(),
+    ownerUsername = randomString(),
+    kind = randomEnum<ShelfKind>(),
+    name = randomString(),
+    visibility = randomEnum<ShelfVisibility>(),
+    accent = randomString().orNull(),
+    bookCount = randomLong(0L..500L),
+)
+
+fun randomShelfPreview(): ShelfPreview = ShelfPreview(randomShelf(), List(randomInt(0..4)) { randomString() })
+
 fun randomLibrarySortPreference(): LibrarySortPreference =
     LibrarySortPreference(sort = randomEnum<LibrarySort>(), direction = randomEnum<SortDirection>())
 
