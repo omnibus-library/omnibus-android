@@ -5,15 +5,8 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +48,8 @@ import kotlinx.serialization.Serializable
 data object SignedInShellRoute : NavKey
 
 /**
- * The signed-in shell: a tab bar over a navigation stack for the selected tab.
+ * The signed-in shell: a navigation stack for the selected tab, laid out under a bottom overlay of the mini player and
+ * the tab bar.
  *
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
@@ -101,7 +95,6 @@ private fun SignedInShellContent(
     onOpenPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val palette = OmnibusTheme.palette
     val tabBarItems = ShellTab.entries.map {
         OmnibusTabBarItem(stringResource(it.label), it.icon, it.selectedIcon)
     }
@@ -121,19 +114,27 @@ private fun SignedInShellContent(
         )
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.bg0),
+    DisableNavigationBarScrim()
+    ShellLayout(
+        overlay = {
+            Column {
+                // The mini player sits above the tab bar, except on Book Detail (P-MINI-1). It pads no insets: the tab bar does.
+                if (!shellHidesMiniPlayer(navigator.backStack.lastOrNull())) {
+                    MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
+                }
+                OmnibusTabBar(
+                    items = tabBarItems,
+                    selectedIndex = ShellTab.entries.indexOf(navigator.selected),
+                    onSelect = { navigator.select(ShellTab.entries[it]) },
+                )
+            }
+        },
+        modifier = modifier.fillMaxSize(),
     ) {
-        SharedTransitionLayout(Modifier.weight(1f)) {
+        SharedTransitionLayout(Modifier.fillMaxSize()) {
             ProvideBookCoverTransition(this) {
                 NavDisplay(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        // Book Detail draws under the status bar, so each entry pads it (see StatusBarPadded).
-                        // OmnibusTabBar below pads for the navigation bar, so nothing above it should.
-                        .consumeWindowInsets(WindowInsets.navigationBars),
+                    modifier = Modifier.fillMaxSize(),
                     backStack = navigator.backStack,
                     onBack = onBack,
                     // Switching tabs moves between stacks, which a slide would read as a push or pop.
@@ -146,7 +147,7 @@ private fun SignedInShellContent(
                     ),
                     entryProvider = entryProvider {
                         entry<LibraryRoot> {
-                            StatusBarPadded {
+                            ShellPaddedEntry {
                                 LibraryScreen(
                                     onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
                                     onAddBooks = { /* Add books sheet: later ticket */ },
@@ -156,38 +157,25 @@ private fun SignedInShellContent(
                             }
                         }
                         entry<BookDetailRoute> { key ->
-                            BookDetailScreen(
-                                uuid = key.uuid,
-                                onNavigate = openDestination,
-                                onClose = { navigator.back() },
-                            )
+                            ShellBookDetailEntry {
+                                BookDetailScreen(
+                                    uuid = key.uuid,
+                                    onNavigate = openDestination,
+                                    onClose = { navigator.back() },
+                                )
+                            }
                         }
                         entry<BookDetailPlaceholderRoute> { key ->
-                            StatusBarPadded { BookDetailPlaceholderScreen(title = key.title) }
+                            ShellPaddedEntry { BookDetailPlaceholderScreen(title = key.title) }
                         }
-                        entry<SearchRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.Search) } }
-                        entry<StatsRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.Stats) } }
-                        entry<YouRoot> { StatusBarPadded { UnderConstructionScreen(UnderConstructionPage.You) } }
+                        entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
+                        entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
+                        entry<YouRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.You) } }
                     },
                 )
             }
         }
-        // The mini player sits above the tab bar, except on Book Detail (P-MINI-1). It pads no insets: the tab bar does.
-        if (!shellHidesMiniPlayer(navigator.backStack.lastOrNull())) {
-            MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
-        }
-        OmnibusTabBar(
-            items = tabBarItems,
-            selectedIndex = ShellTab.entries.indexOf(navigator.selected),
-            onSelect = { navigator.select(ShellTab.entries[it]) },
-        )
     }
-}
-
-/** Pads the status bar for an entry. Book Detail draws under it, so the shell can't pad the whole NavDisplay. */
-@Composable
-private fun StatusBarPadded(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) { content() }
 }
 
 @Composable
