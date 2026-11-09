@@ -146,15 +146,14 @@ private fun SignedInShellContent(
                         rememberViewModelStoreNavEntryDecorator(),
                     ),
                     entryProvider = entryProvider {
+                        // The Library fills the window and reads the insets itself, so it takes no wrapper.
                         entry<LibraryRoot> {
-                            ShellPaddedEntry {
-                                LibraryScreen(
-                                    onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
-                                    onAddBooks = { /* Add books sheet: later ticket */ },
-                                    onOpenReader = { onOpenReader(it, null) },
-                                    onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
-                                )
-                            }
+                            LibraryScreen(
+                                onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                                onAddBooks = { /* Add books sheet: later ticket */ },
+                                onOpenReader = { onOpenReader(it, null) },
+                                onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
+                            )
                         }
                         entry<BookDetailRoute> { key ->
                             ShellBookDetailEntry {
