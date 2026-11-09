@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -81,6 +82,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * @param pageBookmarked Whether the current page has a bookmark, which fills the bookmark toggle's icon.
  * @param canBookmark False when there is no current position, which disables the bookmark toggle.
  * @param onBookmarkToggled Called when the bookmark toggle is tapped.
+ * @param bookmarkTint The filled bookmark toggle's colour while [pageBookmarked]: the page ribbon's accent.
  */
 @Composable
 internal fun ReaderChrome(
@@ -99,6 +101,7 @@ internal fun ReaderChrome(
     pageBookmarked: Boolean = false,
     canBookmark: Boolean = true,
     onBookmarkToggled: () -> Unit = {},
+    bookmarkTint: Color = colors.ink,
 ) {
     Box(modifier.fillMaxSize()) {
         ChromeVisibility(
@@ -112,6 +115,7 @@ internal fun ReaderChrome(
                 title = title,
                 menuRows = menuRows,
                 pageBookmarked = pageBookmarked,
+                bookmarkTint = bookmarkTint,
                 canBookmark = canBookmark,
                 colors = colors,
                 insets = insets,
@@ -159,6 +163,7 @@ private fun ReaderContextBar(
     title: String,
     menuRows: List<ReaderMenuRow>,
     pageBookmarked: Boolean,
+    bookmarkTint: Color,
     canBookmark: Boolean,
     colors: ReaderChromeColors,
     insets: WindowInsets,
@@ -203,6 +208,7 @@ private fun ReaderContextBar(
             colors = colors,
             onClick = onBookmarkToggled,
             enabled = canBookmark,
+            iconTint = if (pageBookmarked) bookmarkTint else colors.ink,
             modifier = Modifier.testTag(ReaderChromeTags.BOOKMARK),
         )
         if (menuRows.isNotEmpty()) {
@@ -458,7 +464,8 @@ internal fun ChromeVisibility(
 
 /**
  * A plain icon button for the top bar: a 48dp touch target around a 22dp icon in the chrome ink, with no plate or
- * border. A disabled button is drawn at 0.38 alpha and takes no taps.
+ * border. A disabled button is drawn at 0.38 alpha and takes no taps. [iconTint] colours the icon; the chrome ink by
+ * default.
  */
 @Composable
 internal fun ReaderChromeIconButton(
@@ -468,6 +475,7 @@ internal fun ReaderChromeIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    iconTint: Color = colors.ink,
 ) {
     Box(
         modifier
@@ -481,7 +489,7 @@ internal fun ReaderChromeIconButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = colors.ink,
+            tint = iconTint,
             modifier = Modifier.size(ReaderContextMetrics.barIconSize),
         )
     }
