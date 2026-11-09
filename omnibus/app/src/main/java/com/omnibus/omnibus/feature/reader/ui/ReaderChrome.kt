@@ -371,6 +371,16 @@ internal object ReaderContextMetrics {
     val rowLabelSize = 14.sp
 
     val hairline = 0.5.dp
+
+    /** The zoomed-out card's corner radius, on screen. */
+    val cardCorner = 8.dp
+
+    /** The gap between the card and each neighbour card beside it. */
+    val pageGap = 12.dp
+
+    /** The space between the top bar and the card's top, and between the card's bottom and the bottom inset. */
+    val cardTopGap = 8.dp
+    val cardBottomGap = 8.dp
 }
 
 /** Test tags on the chrome's nodes. */

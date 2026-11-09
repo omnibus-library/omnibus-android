@@ -297,21 +297,41 @@ internal fun ReaderScreenContent(
 
                         is ReaderBookState.Ready -> {
                             val opening = uiState.opening
-                            if (LocalInspectionMode.current) {
-                                // The WebView can't run in a preview, so the page is a plain ground.
-                                Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
-                            } else if (opening is ReaderOpening.Resolved && uiState.settingsLoaded) {
-                                // The page boots at the opening position and the stored settings, so it waits for both.
-                                SideEffect { controller.startAt(opening.start.bootCfi) }
-                                ReaderWebView(
-                                    bookUuid = bookUuid,
-                                    settings = uiState.settings,
-                                    controller = controller,
-                                    assetLoaderFactory = assetLoaderFactory,
-                                    modifier = Modifier.fillMaxSize(),
-                                    onEvent = onPageEvent,
-                                    insets = pageInsets,
-                                )
+                            // The page and its labels zoom out into a card in context mode, and nothing else here does.
+                            ReaderContextStage(
+                                contextMode = uiState.chromeVisible && uiState.loadStatus == ReaderLoadStatus.Ready,
+                                peeks = contextPeeks(uiState.location),
+                                colors = readerChromeColors(theme),
+                                ground = ground,
+                                reduceMotion = reduceMotion,
+                                insets = pageInsets,
+                                onLeave = onContextLeft,
+                            ) {
+                                if (LocalInspectionMode.current) {
+                                    // The WebView can't run in a preview, so the page is a plain ground.
+                                    Box(Modifier.fillMaxSize().background(ground).testTag(ReaderScreenTags.PREVIEW_PAGE))
+                                } else if (opening is ReaderOpening.Resolved && uiState.settingsLoaded) {
+                                    // The page boots at the opening position and the stored settings, so it waits for both.
+                                    SideEffect { controller.startAt(opening.start.bootCfi) }
+                                    ReaderWebView(
+                                        bookUuid = bookUuid,
+                                        settings = uiState.settings,
+                                        controller = controller,
+                                        assetLoaderFactory = assetLoaderFactory,
+                                        modifier = Modifier.fillMaxSize(),
+                                        onEvent = onPageEvent,
+                                        insets = pageInsets,
+                                    )
+                                }
+                                if (uiState.loadStatus == ReaderLoadStatus.Ready) {
+                                    // The labels show the focused content in both modes, so they never switch inside the card.
+                                    ReaderPageLabels(
+                                        indicators = ReaderIndicators(uiState.location, book.title, chromeVisible = false),
+                                        colors = readerChromeColors(theme),
+                                        reduceMotion = reduceMotion,
+                                        insets = pageInsets,
+                                    )
+                                }
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Loading) {
                                 LoadingStateView(
@@ -321,7 +341,7 @@ internal fun ReaderScreenContent(
                                 )
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Ready) {
-                                // Above the page and below the labels, the banner, the top bar and the sheets, which are drawn after it.
+                                // Above the page and its labels, below the banner, the top bar and the sheets, which are drawn after it.
                                 BoxWithConstraints(Modifier.fillMaxSize()) {
                                     val density = LocalDensity.current
                                     val direction = LocalLayoutDirection.current
@@ -338,13 +358,6 @@ internal fun ReaderScreenContent(
                                         reduceMotion = reduceMotion,
                                     )
                                 }
-                                // The labels show the focused content in both modes, so they never switch inside the card.
-                                ReaderPageLabels(
-                                    indicators = ReaderIndicators(uiState.location, book.title, chromeVisible = false),
-                                    colors = readerChromeColors(theme),
-                                    reduceMotion = reduceMotion,
-                                    insets = pageInsets,
-                                )
                                 // Anchored above the bottom band whatever the chrome does, so it never moves when the chrome toggles.
                                 ChromeVisibility(
                                     visible = uiState.syncOffer != null,

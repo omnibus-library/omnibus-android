@@ -834,6 +834,33 @@ class ReaderScreenTest {
         rule.waitUntil(timeoutMillis = 10_000) { webViewPresent() }
     }
 
+    // TC-20
+    @Test
+    fun rc53_onlyThePageAreaZoomsAboveTheDock() {
+        val state = mutableStateOf(
+            ReaderUIState(
+                book = ReaderBookState.Ready(title = "Nineteen Eighty-Four"),
+                loadStatus = ReaderLoadStatus.Ready,
+            ),
+        )
+        show(
+            uiState = { state.value },
+            inspection = true,
+            bottomDock = { Box(Modifier.fillMaxWidth().fillMaxHeight(0.1f).testTag("test_dock")) },
+        )
+        rule.waitForIdle()
+        val dockWhileFocused = rule.onNodeWithTag("test_dock").fetchSemanticsNode().boundsInRoot
+
+        rule.runOnIdle { state.value = state.value.copy(chromeVisible = true) }
+        rule.waitForIdle()
+
+        val card = rule.onNodeWithTag(ReaderContextStageTags.CARD).fetchSemanticsNode().boundsInRoot
+        val dock = rule.onNodeWithTag("test_dock").fetchSemanticsNode().boundsInRoot
+        assertTrue("the zoomed card ends above the dock", card.bottom <= dock.top + 2f)
+        assertEquals(dockWhileFocused.top, dock.top, 1f)
+        assertEquals(dockWhileFocused.bottom, dock.bottom, 1f)
+    }
+
     // TC-45, P-MINI-4 (the dock pads the navigation bar, so the page's bottom inset is 0 while docked)
     @Test
     fun dockPageBottomInsetIsZeroWhileDocked() {

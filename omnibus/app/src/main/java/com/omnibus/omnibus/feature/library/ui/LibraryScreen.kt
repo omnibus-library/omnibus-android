@@ -136,7 +136,7 @@ fun LibraryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val gridState = rememberLazyGridState()
-    val continueState = rememberContinueCarouselState(pageCount = { uiState.continueCards.size })
+    val continueState = rememberContinueCarouselState(cardCount = { uiState.continueCards.size })
 
     // Runs each time the entry is composed again, so returning from the reader, the player or detail reloads the cards.
     LaunchedEffect(Unit) { viewModel.libraryShown() }
@@ -212,7 +212,7 @@ internal fun LibraryScreenContent(
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    continueState: ContinueCarouselState = rememberContinueCarouselState(pageCount = { uiState.continueCards.size }),
+    continueState: ContinueCarouselState = rememberContinueCarouselState(cardCount = { uiState.continueCards.size }),
     onContinueSettled: (cardId: String) -> Unit = {},
     onResume: (cardId: String) -> Unit = {},
     onShowContextMenu: (Book) -> Unit = {},

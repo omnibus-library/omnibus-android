@@ -205,6 +205,7 @@
     <string name="reader_contents_done">Done</string>
     <string name="reader_contents_current_chapter">Current chapter</string>
     <string name="reader_menu_bookmarks">Bookmarks</string>
+    <string name="reader_context_return">Return to book</string>
     <string name="reader_bookmark_add">Add bookmark</string>
     <string name="reader_bookmark_remove">Remove bookmark</string>
     <string name="reader_contents_tab_bookmarks">Bookmarks</string>

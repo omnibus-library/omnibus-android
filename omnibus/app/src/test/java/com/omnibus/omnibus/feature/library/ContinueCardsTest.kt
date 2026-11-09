@@ -286,8 +286,27 @@ class ContinueCardsTest : DescribeSpec({
             checkAll(
                 Exhaustive.of(0 to "a", 1 to "b", 2 to null, -1 to null),
             ) { (index, id) ->
-                settledCardId(index, listOf("a", "b")) shouldBe id
+                settledCardId(index, listOf("a", "b"), 1) shouldBe id
             }
+        }
+
+        it("#217 TC-6: is the first card on the settled page, or nothing past the last page") {
+            val ids = listOf("a", "b", "c", "d", "e")
+            checkAll(
+                Exhaustive.of(
+                    Triple(0, 2, "a"),
+                    Triple(1, 2, "c"),
+                    Triple(2, 2, "e"),
+                    Triple(3, 2, null),
+                    Triple(-1, 2, null),
+                ),
+            ) { (page, cardsPerPage, id) ->
+                settledCardId(page, ids, cardsPerPage) shouldBe id
+            }
+        }
+
+        it("#217 TC-6: is nothing when there are no cards") {
+            settledCardId(0, emptyList(), 2) shouldBe null
         }
     }
 })
