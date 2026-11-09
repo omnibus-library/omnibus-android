@@ -30,8 +30,8 @@ enum class ShelfVisibility {
     Public,
 }
 
-/** A [Shelf] with the first few of its books, used as covers on the Library screen. */
+/** A [Shelf] with the uuids of up to four of its books that have covers, in shelf order, for the Library's shelf mosaic. */
 data class ShelfPreview(
     val shelf: Shelf,
-    val covers: List<Book>,
+    val coverUuids: List<String>,
 )

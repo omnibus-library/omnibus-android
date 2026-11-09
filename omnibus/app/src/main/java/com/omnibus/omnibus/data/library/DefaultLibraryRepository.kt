@@ -7,14 +7,10 @@ import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.library.remote.ResumePointDto
 import com.omnibus.omnibus.data.library.remote.SeriesBooksResponseDto
 import com.omnibus.omnibus.data.library.remote.ShelfDto
-import com.omnibus.omnibus.data.library.remote.ShelfPageResponseDto
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
@@ -88,50 +84,18 @@ class DefaultLibraryRepository @Inject constructor(
     }
 
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow {
-        val shelves = when (
-            val read = get(SHELVES_PATH) { response ->
-                LibraryJson.decodeFromString<List<ShelfDto>>(response.body.string()).map { it.toDomain() }
-            }
-        ) {
-            is Read.Ok -> read.value
-            is Read.Failed -> {
-                emit(ShelfPreviewsResult.Failure(read.error))
-                return@flow
-            }
-            Read.NoServer -> {
-                emit(ShelfPreviewsResult.NoServer)
-                return@flow
+        val read = get(SHELVES_PATH) { response ->
+            LibraryJson.decodeFromString<List<ShelfDto>>(response.body.string()).map { dto ->
+                ShelfPreview(shelf = dto.toDomain(), coverUuids = dto.coverUuids.take(SHELF_COVER_COUNT))
             }
         }
-
-        // awaitAll keeps input order, so the previews stay in the server's shelf order.
-        val previews = coroutineScope {
-            shelves.map { shelf ->
-                async {
-                    // A shelf whose covers can't be loaded still shows, just without covers.
-                    val covers = if (shelf.bookCount > 0) {
-                        val read = get("$SHELVES_PATH/${shelf.id}/page") { response ->
-                            LibraryJson.decodeFromString<ShelfPageResponseDto>(response.body.string())
-                                .books
-                                .take(SHELF_COVER_COUNT)
-                                .map { it.toDomain() }
-                        }
-                        when (read) {
-                            is Read.Ok -> read.value
-                            is Read.Failed -> {
-                                Log.w(TAG, "Shelf ${shelf.id} covers unavailable: ${read.error}")
-                                emptyList()
-                            }
-                            Read.NoServer -> emptyList()
-                        }
-                    } else {
-                        emptyList()
-                    }
-                    ShelfPreview(shelf = shelf, covers = covers)
-                }
-            }.awaitAll()
-        }
-        emit(ShelfPreviewsResult.Success(previews))
+        emit(
+            when (read) {
+                is Read.Ok -> ShelfPreviewsResult.Success(read.value)
+                is Read.Failed -> ShelfPreviewsResult.Failure(read.error)
+                Read.NoServer -> ShelfPreviewsResult.NoServer
+            },
+        )
     }
 
     override fun getBookFlow(uuid: String): Flow<BookResult> = flow {

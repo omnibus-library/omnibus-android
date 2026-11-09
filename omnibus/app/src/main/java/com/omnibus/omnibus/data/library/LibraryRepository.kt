@@ -17,7 +17,7 @@ interface LibraryRepository {
     /** The most recent resume points, newest first. */
     fun getRecentProgressFlow(): Flow<RecentProgressResult>
 
-    /** Every shelf the user can see, in the server's order, each with up to four covers. */
+    /** Every shelf the user can see, in the server's order, each with the uuids of up to four covers. One request. */
     fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult>
 
     /** One book by its [uuid]. A uuid that isn't in the library gives [BookResult.NotFound]. */

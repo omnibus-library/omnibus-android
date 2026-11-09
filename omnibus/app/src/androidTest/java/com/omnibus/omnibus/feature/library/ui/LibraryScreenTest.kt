@@ -36,6 +36,10 @@ import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.SortDirection
+import com.omnibus.omnibus.data.library.Shelf
+import com.omnibus.omnibus.data.library.ShelfKind
+import com.omnibus.omnibus.data.library.ShelfPreview
+import com.omnibus.omnibus.data.library.ShelfVisibility
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
@@ -334,6 +338,21 @@ class LibraryScreenTest {
         assertEquals(listOf("u1"), readers)
     }
 
+    @Test
+    fun issue233_tc15_theShelvesSectionShowsOnlyWithRailShelves() {
+        val uiState = mutableStateOf(
+            LibraryUIState(books = listOf(book(1L)), hasLoaded = true, shelves = listOf(ownShelf(1L)), viewerId = 1L),
+        )
+        setLibraryState(uiState)
+
+        rule.onNodeWithTag(ShelvesRailTestTags.HEADING).assertExists()
+
+        rule.runOnIdle { uiState.value = uiState.value.copy(shelves = emptyList()) }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelvesRailTestTags.HEADING).assertDoesNotExist()
+    }
+
     private fun filterButton() = rule.onNodeWithTag(LibraryTestTags.FILTER_BUTTON)
 
     private fun openMenu() = filterButton().performClick()
@@ -415,6 +434,21 @@ class LibraryScreenTest {
         const val TRY_AGAIN = "Try again"
         const val ADD_LABEL = "Add books by upload or barcode scan"
         const val FILTER_LABEL = "Filter and sort"
+
+        /** A private manual shelf of the viewer's, with no covers, so its card is a plate. */
+        fun ownShelf(id: Long) = ShelfPreview(
+            shelf = Shelf(
+                id = id,
+                ownerUserId = 1L,
+                ownerUsername = "Owner",
+                kind = ShelfKind.Manual,
+                name = "Shelf $id",
+                visibility = ShelfVisibility.Private,
+                accent = null,
+                bookCount = 1L,
+            ),
+            coverUuids = emptyList(),
+        )
 
         /** A book with a uuid of `uuid-<id>` and no cover, so no image loads in these tests. */
         fun book(
