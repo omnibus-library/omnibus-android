@@ -189,7 +189,7 @@ fun LibraryScreen(
  * Internal rather than private so the instrumented tests can render each state with hand-built
  * [LibraryUIState]s.
  *
- * @param onLoadMore Called with the index of the last visible book whenever it changes.
+ * @param onLoadMore Called with how many grid items follow the last visible one whenever that changes.
  * @param onSelectCategory Called with the category picked in the filter menu.
  * @param onSelectSort Called with the sort key picked in the filter menu.
  * @param onToggleDirection Called when the Direction row is tapped.
@@ -211,7 +211,7 @@ internal fun LibraryScreenContent(
     uiState: LibraryUIState,
     onRetry: () -> Unit,
     onRefresh: () -> Unit,
-    onLoadMore: (lastVisibleBookIndex: Int) -> Unit,
+    onLoadMore: (itemsAfterLastVisible: Int) -> Unit,
     onOpenBook: (uuid: String) -> Unit,
     onAddBooks: () -> Unit,
     onTransientErrorShown: () -> Unit,
@@ -380,8 +380,8 @@ private fun EmptyLibrary() {
  * surface.
  *
  * The column count and cell width come from [LibraryGridMetrics] for the width left after the
- * screen insets. Reports the last visible book index to [onLoadMore], which maps the grid index back
- * past the header and clamps it to the last book. The filter menu's choices go to the three
+ * screen insets. Reports the grid items after the last visible one to [onLoadMore], with the footer counted as
+ * none. The filter menu's choices go to the three
  * `onSelect*`/`onToggleDirection` callbacks. The Continue carousel sits between the masthead and the
  * heading when there are cards.
  *
@@ -393,7 +393,7 @@ private fun LibraryGrid(
     uiState: LibraryUIState,
     onOpenBook: (uuid: String) -> Unit,
     onAddBooks: () -> Unit,
-    onLoadMore: (lastVisibleBookIndex: Int) -> Unit,
+    onLoadMore: (itemsAfterLastVisible: Int) -> Unit,
     onSelectCategory: (LibraryCategory) -> Unit,
     onSelectSort: (LibrarySort) -> Unit,
     onToggleDirection: () -> Unit,
@@ -411,11 +411,12 @@ private fun LibraryGrid(
     val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
     val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
-    LaunchedEffect(gridState, uiState.books.size) {
+    val gridItemCount = uiState.books.size // layer 3 changes this to the grid item list's size
+    LaunchedEffect(gridState, uiState.books.size, gridItemCount) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .filterNotNull()
-            .map { (it - HEADER_ITEM_COUNT).coerceAtMost(uiState.books.lastIndex) }
-            .filter { it >= 0 }
+            .filter { it >= HEADER_ITEM_COUNT } // only the header visible: no report, as today
+            .map { (HEADER_ITEM_COUNT + gridItemCount - 1 - it).coerceAtLeast(0) } // the footer counts as 0
             .distinctUntilChanged()
             .collect { onLoadMore(it) }
     }

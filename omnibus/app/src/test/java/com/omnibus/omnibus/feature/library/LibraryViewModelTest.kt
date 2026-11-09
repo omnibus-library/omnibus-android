@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.feature.library
 
+import app.cash.turbine.test
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.BookAvailability
@@ -13,6 +15,7 @@ import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
 import com.omnibus.omnibus.data.library.ResumePoint
+import com.omnibus.omnibus.data.library.SeriesBooksResult
 import com.omnibus.omnibus.data.library.ShelfKind
 import com.omnibus.omnibus.data.library.ShelfPreviewsResult
 import com.omnibus.omnibus.data.library.ShelfVisibility
@@ -25,6 +28,7 @@ import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.library.randomLibrarySortPreference
 import com.omnibus.omnibus.data.library.about
 import com.omnibus.omnibus.data.library.randomResumePoint
+import com.omnibus.omnibus.data.library.randomSeriesBooks
 import com.omnibus.omnibus.data.library.randomShelf
 import com.omnibus.omnibus.data.library.randomShelfPreview
 import com.omnibus.omnibus.data.library.withRecord
@@ -35,8 +39,10 @@ import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
@@ -75,6 +81,17 @@ class LibraryViewModelTest : DescribeSpec({
     }
 
     fun LibraryViewModel.bookIds() = uiState.value.books.map { it.id }
+
+    /** A random book with [id], in the series [seriesId] or in none. */
+    fun loadedBook(id: Long, seriesId: Long?): Book = randomBook().copy(id = id, seriesId = seriesId)
+
+    fun pageOfBooks(books: List<Book>, cursor: String? = null) = LibraryPageResult.Success(BooksPage(books, cursor, null, null))
+
+    /** A ViewModel with grouping on, reading its series from [repository]. */
+    fun groupedSut(
+        repository: TestLibraryRepository = TestLibraryRepository(),
+        monitor: ConnectivityMonitor = TestConnectivityMonitor(),
+    ) = sut(repository, TestLibrarySortPreferenceStore(initialGroupBySeries = true), monitor)
 
     describe("loading the first page") {
         it("TC-56: requests the default query") {
@@ -189,21 +206,21 @@ class LibraryViewModelTest : DescribeSpec({
             val viewModel = sutWithSixtyBooks(repository)
             repository.enqueue(pageOf(61L..90L, cursor = "c2"))
 
-            viewModel.loadMoreIfNeeded(59)
+            viewModel.loadMoreIfNeeded(0)
 
             repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(BooksPageQuery(), "c1")
             viewModel.bookIds() shouldBe (1L..90L).toList()
             viewModel.uiState.value.nextCursor shouldBe "c2"
         }
 
-        it("TC-78: requests at index 48 of 60 books, not at 47") {
+        it("TC-78, #235 TC-18: requests with 11 items after the last visible one, not 12") {
             val repository = TestLibraryRepository()
             val viewModel = sutWithSixtyBooks(repository)
 
-            viewModel.loadMoreIfNeeded(47)
+            viewModel.loadMoreIfNeeded(12)
             repository.pageRequests.size shouldBe 1
 
-            viewModel.loadMoreIfNeeded(48)
+            viewModel.loadMoreIfNeeded(11)
             repository.pageRequests.size shouldBe 2
         }
 
@@ -212,7 +229,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository().apply { enqueue(pageOf(1L..2L)) }
                 val viewModel = sut(repository)
 
-                viewModel.loadMoreIfNeeded(1)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 1
             }
@@ -225,7 +242,7 @@ class LibraryViewModelTest : DescribeSpec({
                 repository.enqueue(CompletableDeferred())
                 viewModel.refresh()
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -236,9 +253,9 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(CompletableDeferred())
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -253,7 +270,7 @@ class LibraryViewModelTest : DescribeSpec({
                     LibraryPageResult.Success(BooksPage(listOf(randomBook().copy(id = 59), randomBook().copy(id = 61)), "c2", null, null)),
                 )
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 viewModel.bookIds() shouldBe (1L..61L).toList()
                 viewModel.uiState.value.books.first { it.id == 59L } shouldBe first
@@ -265,9 +282,9 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(LibraryPageResult.Success(BooksPage(emptyList(), "c2", null, null)))
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.size shouldBe 2
             }
@@ -279,7 +296,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(unreachable)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 val state = viewModel.uiState.value
                 state.books.size shouldBe 60
@@ -293,9 +310,9 @@ class LibraryViewModelTest : DescribeSpec({
                     val repository = TestLibraryRepository()
                     val viewModel = sutWithSixtyBooks(repository)
                     repository.enqueue(unreachable)
-                    viewModel.loadMoreIfNeeded(59)
+                    viewModel.loadMoreIfNeeded(0)
 
-                    viewModel.loadMoreIfNeeded(59)
+                    viewModel.loadMoreIfNeeded(0)
 
                     repository.pageRequests.last().cursor shouldBe "c1"
                 }
@@ -311,7 +328,7 @@ class LibraryViewModelTest : DescribeSpec({
                 repository.enqueue(pageOf(1L..60L, cursor = "c3"))
                 viewModel.selectCategory(LibraryCategory.Audiobooks)
 
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 repository.pageRequests.last() shouldBe TestLibraryRepository.PageRequest(
                     BooksPageQuery(sort = LibrarySort.Author, formats = LibraryCategory.Audiobooks.formats),
@@ -376,7 +393,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val viewModel = sutWithSixtyBooks(repository)
                 val loadMore = CompletableDeferred<LibraryPageResult>()
                 repository.enqueue(loadMore)
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
                 repository.enqueue(page(100L, cursor = "n"))
                 viewModel.refresh()
 
@@ -412,7 +429,7 @@ class LibraryViewModelTest : DescribeSpec({
                 val repository = TestLibraryRepository()
                 val viewModel = sutWithSixtyBooks(repository)
                 repository.enqueue(unreachable)
-                viewModel.loadMoreIfNeeded(59)
+                viewModel.loadMoreIfNeeded(0)
 
                 viewModel.transientErrorShown()
 
@@ -554,8 +571,294 @@ class LibraryViewModelTest : DescribeSpec({
             viewModel.uiState.value.scrollToTop shouldBe false
 
             repository.enqueue(pageOf(61L..62L, cursor = "c3"))
-            viewModel.loadMoreIfNeeded(59)
+            viewModel.loadMoreIfNeeded(0)
             viewModel.uiState.value.scrollToTop shouldBe false
+        }
+    }
+
+    describe("restoring the grouping setting") {
+        it("#235 TC-8: has grouping on in the state that first shows the books") {
+            val repository = TestLibraryRepository().apply { enqueue(page(1L, 2L)) }
+            val viewModel = sut(repository, TestLibrarySortPreferenceStore(initialGroupBySeries = true))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+
+                state.books.size shouldBe 2
+                state.groupBySeries shouldBe true
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+    }
+
+    describe("toggling grouping") {
+        context("when grouping is off") {
+            it("#235 TC-9: turns grouping on") {
+                val viewModel = sut()
+
+                viewModel.toggleGroupBySeries()
+
+                viewModel.uiState.value.groupBySeries shouldBe true
+            }
+
+            it("#235 TC-9: saves grouping on") {
+                val sortStore = TestLibrarySortPreferenceStore()
+
+                sut(sortStore = sortStore).toggleGroupBySeries()
+
+                sortStore.groupSaves shouldBe listOf(true)
+            }
+        }
+
+        context("when grouping is on") {
+            it("#235 TC-9: turns grouping off") {
+                val viewModel = groupedSut()
+
+                viewModel.toggleGroupBySeries()
+
+                viewModel.uiState.value.groupBySeries shouldBe false
+            }
+
+            it("#235 TC-9: saves grouping off") {
+                val sortStore = TestLibrarySortPreferenceStore(initialGroupBySeries = true)
+
+                sut(sortStore = sortStore).toggleGroupBySeries()
+
+                sortStore.groupSaves shouldBe listOf(false)
+            }
+        }
+    }
+
+    describe("unfolding series") {
+        context("when grouping is on") {
+            it("#235 TC-10: unfolds a series") {
+                val viewModel = groupedSut()
+                val series = randomLong()
+
+                viewModel.unfoldSeries(series)
+
+                viewModel.uiState.value.unfoldedSeries shouldBe setOf(series)
+            }
+
+            it("#235 TC-10: keeps several series unfolded at once") {
+                val viewModel = groupedSut()
+                val first = randomLong()
+                val second = randomLong()
+
+                viewModel.unfoldSeries(first)
+                viewModel.unfoldSeries(second)
+
+                viewModel.uiState.value.unfoldedSeries shouldBe setOf(first, second)
+            }
+
+            it("#235 TC-10: folds up only the series it is given") {
+                val viewModel = groupedSut()
+                val first = randomLong()
+                val second = randomLong()
+                viewModel.unfoldSeries(first)
+                viewModel.unfoldSeries(second)
+
+                viewModel.foldUpSeries(first)
+
+                viewModel.uiState.value.unfoldedSeries shouldBe setOf(second)
+            }
+
+            it("#235 TC-10: unfolds none once grouping is turned off") {
+                val viewModel = groupedSut()
+                viewModel.unfoldSeries(randomLong())
+                viewModel.unfoldSeries(randomLong())
+
+                viewModel.toggleGroupBySeries()
+
+                viewModel.uiState.value.unfoldedSeries.shouldBeEmpty()
+            }
+        }
+
+        it("#235 TC-10: starts with none unfolded in a new ViewModel") {
+            groupedSut().unfoldSeries(randomLong())
+
+            groupedSut().uiState.value.unfoldedSeries.shouldBeEmpty()
+        }
+    }
+
+    describe("grouping off") {
+        /** Loads one page of two books in a series, then a page of a third, and changes the sort and category. */
+        fun TestLibraryRepository.loadOffThroughQueryChanges(): LibraryViewModel {
+            val series = randomLong()
+            enqueue(pageOfBooks(listOf(loadedBook(1L, series), loadedBook(2L, series)), cursor = "c1"))
+            val viewModel = sut(this)
+            enqueue(pageOfBooks(listOf(loadedBook(3L, series))))
+            viewModel.loadMoreIfNeeded(0)
+            viewModel.selectSort(LibrarySort.Title)
+            viewModel.selectCategory(LibraryCategory.Ebooks)
+            return viewModel
+        }
+
+        it("#235 TC-11: lists every loaded book as its own entry, through paging and query changes") {
+            val viewModel = TestLibraryRepository().loadOffThroughQueryChanges()
+            val books = viewModel.uiState.value.books
+
+            books.map { it.id } shouldBe listOf(1L, 2L, 3L)
+            viewModel.uiState.value.entries shouldBe books.map { LibraryEntry.Single(it) }
+        }
+
+        it("#235 TC-11: reads no series") {
+            val repository = TestLibraryRepository()
+
+            repository.loadOffThroughQueryChanges()
+
+            repository.seriesRequests.shouldBeEmpty()
+        }
+    }
+
+    describe("reading series") {
+        /** Series reads that come back as an error, for each kind of failed read. */
+        fun failedReads() = Exhaustive.of(SeriesBooksResult.NoServer, SeriesBooksResult.Failure(LibraryError.Unreachable))
+
+        /** A repository whose first page holds a book in each of [gates]' series, with each read held on its gate. */
+        fun gatedRepository(gates: List<CompletableDeferred<SeriesBooksResult>>): TestLibraryRepository =
+            TestLibraryRepository().apply {
+                gates.forEachIndexed { index, gate -> enqueueSeries(index + 1L, gate) }
+                enqueue(pageOfBooks((1L..6L).map { loadedBook(it, seriesId = it) }))
+            }
+
+        context("when a page is loaded") {
+            it("#235 TC-12: reads each series once, however many pages repeat it") {
+                val (first, second, third) = List(3) { randomLong() }
+                val repository = TestLibraryRepository().apply {
+                    defaultSeriesResult = { SeriesBooksResult.Success(randomSeriesBooks()) }
+                    enqueue(
+                        pageOfBooks(
+                            listOf(loadedBook(1L, first), loadedBook(2L, first), loadedBook(3L, second), loadedBook(4L, null)),
+                            cursor = "c1",
+                        ),
+                    )
+                    enqueue(pageOfBooks(listOf(loadedBook(5L, second), loadedBook(6L, third))))
+                }
+                val viewModel = groupedSut(repository)
+
+                viewModel.loadMoreIfNeeded(0)
+                viewModel.selectCategory(LibraryCategory.Audiobooks)
+                viewModel.toggleDirection()
+
+                repository.seriesRequests shouldContainExactlyInAnyOrder listOf(first, second, third)
+            }
+
+            it("#235 TC-12: keeps each series' read through a category and a direction change") {
+                val series = randomLong()
+                val read = randomSeriesBooks()
+                val repository = TestLibraryRepository().apply {
+                    enqueue(pageOfBooks(listOf(loadedBook(1L, series))))
+                    enqueueSeries(series, SeriesBooksResult.Success(read))
+                }
+                val viewModel = groupedSut(repository)
+
+                viewModel.selectCategory(LibraryCategory.Audiobooks)
+                viewModel.toggleDirection()
+
+                viewModel.uiState.value.seriesBooks shouldBe mapOf(series to read)
+            }
+
+            it("#235 TC-13: starts SERIES_READ_CONCURRENCY reads and holds the rest") {
+                val gates = List(6) { CompletableDeferred<SeriesBooksResult>() }
+                val repository = gatedRepository(gates)
+
+                groupedSut(repository)
+
+                repository.seriesRequests.size shouldBe SERIES_READ_CONCURRENCY
+            }
+
+            it("#235 TC-13: completes all six reads once they are released") {
+                val gates = List(6) { CompletableDeferred<SeriesBooksResult>() }
+                val viewModel = groupedSut(gatedRepository(gates))
+
+                gates.forEach { it.complete(SeriesBooksResult.Success(randomSeriesBooks())) }
+
+                viewModel.uiState.value.seriesBooks.keys shouldBe (1L..6L).toSet()
+            }
+
+            it("#235 TC-14: raises no error for a read that gives NoServer or Failure") {
+                checkAll(failedReads()) { failed ->
+                    val series = randomLong()
+                    val repository = TestLibraryRepository().apply {
+                        enqueue(pageOfBooks(listOf(loadedBook(1L, series))))
+                        enqueueSeries(series, failed)
+                    }
+
+                    val state = groupedSut(repository).uiState.value
+
+                    state.error shouldBe null
+                    state.transientError shouldBe null
+                }
+            }
+
+            it("#235 TC-14: still lists the series from its loaded books") {
+                checkAll(failedReads()) { failed ->
+                    val series = randomLong()
+                    val repository = TestLibraryRepository().apply {
+                        enqueue(pageOfBooks(listOf(loadedBook(1L, series))))
+                        enqueueSeries(series, failed)
+                    }
+
+                    groupedSut(repository).uiState.value.entries.single().shouldBeInstanceOf<LibraryEntry.Series>()
+                }
+            }
+        }
+
+        context("when the connection comes back") {
+            it("#235 TC-15: reads a series that failed again, and fills it in") {
+                val series = randomLong()
+                val read = randomSeriesBooks()
+                val monitor = TestConnectivityMonitor(online = true)
+                val repository = TestLibraryRepository().apply {
+                    enqueue(pageOfBooks(listOf(loadedBook(1L, series))))
+                    enqueueSeries(series, SeriesBooksResult.Failure(LibraryError.Unreachable))
+                    enqueueSeries(series, SeriesBooksResult.Success(read))
+                }
+                val viewModel = groupedSut(repository, monitor)
+
+                monitor.isOnline.value = false
+                monitor.isOnline.value = true
+
+                repository.seriesRequests shouldBe listOf(series, series)
+                viewModel.uiState.value.seriesBooks shouldBe mapOf(series to read)
+            }
+        }
+
+        context("when refreshed") {
+            it("#235 TC-16: reads every listed series again") {
+                val first = randomLong()
+                val second = randomLong()
+                val repository = TestLibraryRepository().apply {
+                    defaultSeriesResult = { SeriesBooksResult.Success(randomSeriesBooks()) }
+                    enqueue(pageOfBooks(listOf(loadedBook(1L, first), loadedBook(2L, second))))
+                }
+                val viewModel = groupedSut(repository)
+                repository.enqueue(pageOfBooks(listOf(loadedBook(1L, first), loadedBook(2L, second))))
+
+                viewModel.refresh()
+
+                repository.seriesRequests.groupingBy { it }.eachCount() shouldBe mapOf(first to 2, second to 2)
+            }
+        }
+
+        context("when grouping is switched on again") {
+            it("#235 TC-17: reads a series that failed before it was switched off") {
+                val series = randomLong()
+                val read = randomSeriesBooks()
+                val repository = TestLibraryRepository().apply {
+                    enqueue(pageOfBooks(listOf(loadedBook(1L, series))))
+                    enqueueSeries(series, SeriesBooksResult.Failure(LibraryError.Unreachable))
+                    defaultSeriesResult = { SeriesBooksResult.Success(read) }
+                }
+                val viewModel = groupedSut(repository)
+                viewModel.toggleGroupBySeries()
+
+                viewModel.toggleGroupBySeries()
+
+                repository.seriesRequests shouldBe listOf(series, series)
+                viewModel.uiState.value.seriesBooks shouldBe mapOf(series to read)
+            }
         }
     }
 
