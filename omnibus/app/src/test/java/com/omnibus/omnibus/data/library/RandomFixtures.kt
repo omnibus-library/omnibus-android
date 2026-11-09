@@ -55,6 +55,9 @@ fun randomBook(): Book = Book(
     wishlistSource = randomString().orNull(),
 )
 
+/** A series read with a random name and up to four random books. */
+fun randomSeriesBooks(): SeriesBooks = SeriesBooks(name = randomString(), books = List(randomInt(0..4)) { randomBook() })
+
 fun randomLibrarySortPreference(): LibrarySortPreference =
     LibrarySortPreference(sort = randomEnum<LibrarySort>(), direction = randomEnum<SortDirection>())
 

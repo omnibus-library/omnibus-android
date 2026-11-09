@@ -5,6 +5,7 @@ import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.RecentProgressResult
+import com.omnibus.omnibus.data.library.SeriesBooksResult
 import com.omnibus.omnibus.data.library.ShelfPreviewsResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -28,6 +29,8 @@ class TestBookDetailRepository(
     override fun getRecentProgressFlow(): Flow<RecentProgressResult> = flowOf(RecentProgressResult.NoServer)
 
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flowOf(ShelfPreviewsResult.NoServer)
+
+    override fun getSeriesBooksFlow(seriesId: Long): Flow<SeriesBooksResult> = flowOf(SeriesBooksResult.NoServer)
 
     override fun getBookFlow(uuid: String): Flow<BookResult> = flow {
         bookRequests += uuid

@@ -41,6 +41,12 @@ private const val LISTENING_ITEM = """
       "audio_part": 2, "audio_part_count": 4, "playback_rate": 1.25}]
 """
 
+private const val SERIES_JSON = """
+    {"id":7,"name":"Dune Chronicles","book_count":1,"books":[
+        {"id":1,"unique_identifier":"uuid-1","title":"Dune","series":"Dune Chronicles","series_index":"1","series_id":7,
+         "creators":[{"name":"Frank Herbert","role":"author","id":5}],"formats":["epub","m4b"]}]}
+"""
+
 private fun booksBody(ids: List<Long>): String = """{"books":[${ids.joinToString(",") { """{"id":$it}""" }}]}"""
 
 private fun shelfPage(ids: List<Long>): MockResponse = reply(200, booksBody(ids))
@@ -530,6 +536,35 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
 
                     server.requestCount shouldBe 0
                 }
+            }
+        }
+    }
+
+    describe("reading a series' books") {
+
+        it("#235 TC-6: decodes the series' name and books the way the books page does") {
+            withMockServer { server ->
+                server.enqueue(reply(200, SERIES_JSON))
+
+                val series = sut(server).getSeriesBooksFlow(7).single()
+                    .shouldBeTypeOf<SeriesBooksResult.Success>().series
+
+                series.name shouldBe "Dune Chronicles"
+                val book = series.books.single()
+                book.uuid shouldBe "uuid-1"
+                book.seriesId shouldBe 7L
+                book.creators shouldBe listOf(Creator(name = "Frank Herbert", role = "author", fileAs = null, id = 5L))
+                book.formats shouldBe listOf("epub", "m4b")
+            }
+        }
+
+        it("#235 TC-6: asks for the series by its id") {
+            withMockServer { server ->
+                server.enqueue(reply(200, SERIES_JSON))
+
+                sut(server).getSeriesBooksFlow(7).single()
+
+                server.nextRequest().url.encodedPath shouldBe "/api/series/7"
             }
         }
     }

@@ -5,6 +5,7 @@ import com.omnibus.omnibus.data.library.remote.BookDto
 import com.omnibus.omnibus.data.library.remote.EbooksPageResponseDto
 import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.library.remote.ResumePointDto
+import com.omnibus.omnibus.data.library.remote.SeriesBooksResponseDto
 import com.omnibus.omnibus.data.library.remote.ShelfDto
 import com.omnibus.omnibus.data.library.remote.ShelfPageResponseDto
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
@@ -160,6 +161,20 @@ class DefaultLibraryRepository @Inject constructor(
         )
     }
 
+    override fun getSeriesBooksFlow(seriesId: Long): Flow<SeriesBooksResult> = flow {
+        val read = get(SERIES_PATH, pathSegments = listOf(seriesId.toString())) { response ->
+            val body = LibraryJson.decodeFromString<SeriesBooksResponseDto>(response.body.string())
+            SeriesBooks(name = body.name, books = body.books.map { it.toDomain() })
+        }
+        emit(
+            when (read) {
+                is Read.Ok -> SeriesBooksResult.Success(read.value)
+                is Read.Failed -> SeriesBooksResult.Failure(read.error)
+                Read.NoServer -> SeriesBooksResult.NoServer
+            },
+        )
+    }
+
     /**
      * One GET, reduced to a value or a [LibraryError]. Every library read maps errors here, so a
      * given failure is reported the same way for each read.
@@ -236,6 +251,7 @@ class DefaultLibraryRepository @Inject constructor(
         const val EBOOKS_PATH = "api/ebooks"
         const val RECENT_PROGRESS_PATH = "api/progress/recent"
         const val SHELVES_PATH = "api/shelves"
+        const val SERIES_PATH = "api/series"
 
         const val PAGE_SIZE = 60
         const val RECENT_LIMIT = 5

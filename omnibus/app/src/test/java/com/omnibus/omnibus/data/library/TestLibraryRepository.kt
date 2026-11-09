@@ -82,6 +82,30 @@ class TestLibraryRepository : LibraryRepository {
         bookRequests += uuid
         emit(pendingBook?.await() ?: bookResult ?: awaitCancellation())
     }
+
+    /** The series id of every [getSeriesBooksFlow] call, in call order. */
+    val seriesRequests = mutableListOf<Long>()
+
+    private val seriesScripts = mutableMapOf<Long, ArrayDeque<suspend FlowCollector<SeriesBooksResult>.() -> Unit>>()
+
+    /** Answers the next [getSeriesBooksFlow] call for [seriesId] with [result]. */
+    fun enqueueSeries(seriesId: Long, result: SeriesBooksResult) {
+        seriesScripts.getOrPut(seriesId) { ArrayDeque() }.addLast { emit(result) }
+    }
+
+    /** Queues a [getSeriesBooksFlow] call for [seriesId] that holds until [deferred] completes. */
+    fun enqueueSeries(seriesId: Long, deferred: CompletableDeferred<SeriesBooksResult>) {
+        seriesScripts.getOrPut(seriesId) { ArrayDeque() }.addLast { emit(deferred.await()) }
+    }
+
+    /** Answers a [getSeriesBooksFlow] call that has no queued script, by series id. Unset, such a call never answers. */
+    var defaultSeriesResult: ((Long) -> SeriesBooksResult)? = null
+
+    override fun getSeriesBooksFlow(seriesId: Long): Flow<SeriesBooksResult> = flow {
+        seriesRequests += seriesId
+        val script = seriesScripts[seriesId]?.removeFirstOrNull()
+        if (script != null) script(this) else emit(defaultSeriesResult?.invoke(seriesId) ?: awaitCancellation())
+    }
 }
 
 /** A successful page of random books with the given ids. */

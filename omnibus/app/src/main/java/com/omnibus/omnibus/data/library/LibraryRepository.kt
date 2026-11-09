@@ -22,6 +22,9 @@ interface LibraryRepository {
 
     /** One book by its [uuid]. A uuid that isn't in the library gives [BookResult.NotFound]. */
     fun getBookFlow(uuid: String): Flow<BookResult>
+
+    /** Every book of series [seriesId], whatever the category, in the server's order. */
+    fun getSeriesBooksFlow(seriesId: Long): Flow<SeriesBooksResult>
 }
 
 /** The sort keys the server accepts for a books page. [apiName] is what goes on the wire. */
@@ -131,6 +134,21 @@ sealed interface BookResult {
 
     /** [error] is why the read failed. The UI layer decides what text to show for it. */
     data class Failure(val error: LibraryError) : BookResult
+}
+
+/** A series' name and its books, as the server lists them. */
+data class SeriesBooks(val name: String, val books: List<Book>)
+
+/** The outcome of [LibraryRepository.getSeriesBooksFlow]. */
+sealed interface SeriesBooksResult {
+
+    data class Success(val series: SeriesBooks) : SeriesBooksResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : SeriesBooksResult
+
+    /** [error] is why the read failed. The UI layer decides what text to show for it. */
+    data class Failure(val error: LibraryError) : SeriesBooksResult
 }
 
 /** Why a library read failed. The UI layer decides what text to show for each. */
