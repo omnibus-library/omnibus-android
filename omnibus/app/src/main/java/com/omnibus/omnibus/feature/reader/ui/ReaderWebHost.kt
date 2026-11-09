@@ -44,9 +44,9 @@ internal val READER_MESSAGE_ORIGINS: Set<String> = setOf(ReaderAssets.ORIGIN)
  * The [WebView] behind a [ReaderWebView], configured for the reader and tied to the Compose
  * lifetime that remembers it: attached and loading once remembered, destroyed once forgotten.
  *
- * The WebView sits in a [PageTurnFrame], which draws the page curl over it. Nothing here handles
- * touches. The glue in the page owns swipe, edge taps and the centre tap, so the WebView must
- * receive every touch unmodified.
+ * The WebView sits in a [PageTurnFrame], which draws the page curl over it. The glue in the page owns
+ * swipe, edge taps and the centre tap, so the frame passes every touch on unmodified, except a
+ * horizontal swipe the host claims for the curl. The WebView sees that swipe as a cancelled touch.
  *
  * @param onEvent every event the page reports, decoded, on the main thread. Messages that don't
  *   decode are dropped.

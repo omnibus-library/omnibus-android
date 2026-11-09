@@ -49,7 +49,8 @@ import kotlin.math.roundToInt
  * page paints, and an error with a retry if the book can't be opened.
  *
  * The page curl is drawn over the WebView, and nothing else is. The glue in the page handles swipe,
- * edge taps and the centre tap itself, so the curl takes no touch the glue needs.
+ * edge taps and the centre tap itself. The curl takes only the horizontal swipes it turns or follows,
+ * which the glue has announced as the host's.
  * The chrome belongs around the page, in the bands [ReaderBands] leaves, and the failure state
  * replaces the page rather than covering it.
  *

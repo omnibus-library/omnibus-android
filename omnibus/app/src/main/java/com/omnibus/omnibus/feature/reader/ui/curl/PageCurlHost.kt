@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.math.pow
 
 /**
  * Keeps snapshots of the settled reader page and plays each tap-initiated turn as a curl over them, or lands it with
@@ -39,8 +40,12 @@ internal class PageCurlHost(
     /** A repaint (not a relocate) arrived while a capture was running, so its result is stale on arrival. */
     private var changedWhileBusy = false
     private var cfi: String? = null
-    /** The last `setCurlReady` sent, or null for the glue's default (off). */
-    private var lastOn: Boolean? = null
+    /** The swipe directions the host claims, as last announced to the glue. */
+    private var announced: Set<Int> = emptySet()
+    /** The last `setCurlReady` sent as (on, next, prev), or null for the glue's default. */
+    private var lastSent: Triple<Boolean, Boolean, Boolean>? = null
+    /** The drag in progress, from [beginDrag] until [endDrag]. */
+    private var dragging: DragSession? = null
     private var captureJob: Job? = null
 
     /** The page-turn mode. Changing it drops the snapshots; Slide makes no page calls at all. */
@@ -70,7 +75,8 @@ internal class PageCurlHost(
         capture.clear()
         staleness.markStale()
         queue.clear()
-        lastOn = null
+        announced = emptySet()
+        lastSent = null
     }
 
     fun onRelocate(cfi: String?) {
@@ -113,11 +119,60 @@ internal class PageCurlHost(
         }
     }
 
+    /**
+     * Decides what a touch that has moved ([dx], [dy]) from its down point becomes: a drag the host follows, a turn it
+     * plays, or nothing. Only the directions announced to the glue can be claimed. See [CurlClaim.decide].
+     */
+    fun claimFor(dx: Float, dy: Float, slop: Float, elapsedMs: Long, pointers: Int): CurlClaim {
+        if (released) return CurlClaim.Pass
+        return CurlClaim.decide(
+            dx, dy, slop, elapsedMs, pointers, selectionLive,
+            announced = { it in announced },
+            canDrag = { dir -> effective() == EffectiveTurn.Curl && canCurl() && capture.ring[dir] != null },
+        )
+    }
+
+    /** Starts a drag in [dir] that follows the finger from its touch-down point at ([downX], [downY]). */
+    fun beginDrag(dir: Int, downX: Float, downY: Float) {
+        if (released || busy) return
+        val current = capture.ring.current ?: return
+        val destination = capture.ring[dir] ?: return
+        val (turning, flap) = curlRects()
+        val (front, beneath) = if (dir > 0) current to destination else destination to current
+        val drag = CurlDrag(dir, turning, downX, downY)
+        val session = DragSession(drag, flap, front, beneath, lastX = downX, fold = drag.fold(downX, downY))
+        busy = true
+        dragging = session
+        stage.showCover(current)
+        showFold(session, session.fold)
+    }
+
+    /** Moves the fold of the drag in progress to the finger at ([x], [y]). */
+    fun dragTo(x: Float, y: Float) {
+        val session = dragging ?: return
+        session.lastX = x
+        session.fold = session.drag.fold(x, y)
+        showFold(session, session.fold)
+    }
+
+    /**
+     * Ends the drag in progress at [velocityDp] (dp per second, negative leftwards). A release past halfway, or a flick
+     * toward the turn, completes the turn; otherwise the page settles back.
+     */
+    fun endDrag(velocityDp: Float) {
+        val session = dragging ?: return
+        dragging = null
+        val decision = CurlDrag.release(session.drag.dir, session.drag.progress(session.lastX), velocityDp)
+        work.launch { settleDrag(session, decision) }
+    }
+
     /** Stops all work and frees every snapshot. Nothing is evaluated on the page afterwards. */
     fun release() {
         if (released) return
         released = true
         work.cancel()
+        dragging = null
+        announced = emptySet()
         capture.clear()
         queue.clear()
         stage.showCurl(null)
@@ -175,13 +230,31 @@ internal class PageCurlHost(
         }
     }
 
-    /** Tells the glue whether its gutter taps are the host's. Layer 5 claims no swipes. */
+    /**
+     * Tells the glue which swipes are the host's, so it leaves them alone: its gutter taps always are, and a swipe is
+     * when the host claims that direction. Sent only when it changes.
+     */
     private fun announce() {
         if (released) return
-        val on = pageReady && effective() != EffectiveTurn.Slide
-        if (on == lastOn || (!on && lastOn == null)) return
-        lastOn = on
-        evaluate(ReaderScripts.setCurlReady(on, next = false, prev = false))
+        val turn = if (pageReady) effective() else EffectiveTurn.Slide
+        announced = setOf(1, -1).filterTo(mutableSetOf()) { claims(turn, it) }
+        val sent = Triple(turn != EffectiveTurn.Slide, 1 in announced, -1 in announced)
+        if (sent == (lastSent ?: GLUE_DEFAULT)) return
+        lastSent = sent
+        evaluate(ReaderScripts.setCurlReady(sent.first, sent.second, sent.third))
+    }
+
+    /**
+     * Whether a swipe toward [dir] is the host's under [turn]: in Curl, a captured page it can follow or a section it
+     * can turn; in None, any neighbour that exists.
+     */
+    private fun claims(turn: EffectiveTurn, dir: Int): Boolean {
+        val kind = capture.settled?.kind(dir)
+        return when (turn) {
+            EffectiveTurn.Slide -> false
+            EffectiveTurn.Curl -> !staleness.stale && (capture.ring[dir] != null || kind == NeighbourKind.Section)
+            EffectiveTurn.Instant -> kind == NeighbourKind.Page || kind == NeighbourKind.Section
+        }
     }
 
     /** Marks a turn as running before its coroutine starts, so a tap in the same frame queues rather than runs. */
@@ -300,11 +373,7 @@ internal class PageCurlHost(
      * reverse, with the page turned to lying over the current one, as R7 asks.
      */
     private suspend fun animate(dir: Int, from: PageImage, to: PageImage) {
-        val bounds = CurlRect(0f, 0f, stage.widthPx.toFloat(), stage.heightPx.toFloat())
-        val spine = capture.settled?.spine?.let { it * stage.density }
-        val layout = capture.layout ?: CurlLayout.Single
-        val turning = layout.turning(bounds, spine)
-        val flap = layout.flapBounds(bounds, spine)
+        val (turning, flap) = curlRects()
         val corner = Vec(turning.right, turning.top + CORNER_HEIGHT_FRACTION * turning.height)
         val (front, beneath) = if (dir > 0) from to to else to to from
         val start = clock.awaitFrame()
@@ -317,6 +386,52 @@ internal class PageCurlHost(
         }
     }
 
+    /** The turning page and the flap bounds over the stage, from the settled layout and spine. */
+    private fun curlRects(): Pair<CurlRect, CurlRect> {
+        val bounds = CurlRect(0f, 0f, stage.widthPx.toFloat(), stage.heightPx.toFloat())
+        val spine = capture.settled?.spine?.let { it * stage.density }
+        val layout = capture.layout ?: CurlLayout.Single
+        return layout.turning(bounds, spine) to layout.flapBounds(bounds, spine)
+    }
+
+    private fun showFold(session: DragSession, fold: Vec) {
+        val scene = CurlScene(session.drag.turning, session.flap, session.drag.corner, fold)
+        stage.showCurl(CurlPicture(scene, session.front, session.beneath))
+    }
+
+    /**
+     * Eases the fold from the finger's last point to where the release sends it, then completes the turn under the
+     * cover, or hides the curl and settles back.
+     */
+    private suspend fun settleDrag(session: DragSession, decision: CurlDecision) {
+        val from = session.fold
+        val to = session.drag.target(decision)
+        val start = clock.awaitFrame()
+        while (true) {
+            val now = clock.awaitFrame()
+            if (released) return
+            val t = ((now - start) / 1e6f / DRAG_SETTLE_MS).coerceAtMost(1f)
+            val eased = 1 - (1 - t).pow(3)
+            showFold(session, Vec(from.x + (to.x - from.x) * eased, from.y + (to.y - from.y) * eased))
+            if (t >= 1f) break
+        }
+        if (decision == CurlDecision.Commit) {
+            val destination = capture.ring[session.drag.dir]
+            if (destination == null) {
+                fail()
+                return
+            }
+            stage.showCover(destination)
+            stage.showCurl(null)
+            land(session.drag.dir, destination = null)
+        } else {
+            stage.showCurl(null)
+            stage.showCover(null)
+            busy = false
+            settle()
+        }
+    }
+
     private companion object {
         /** Taps that arrive within this of a change wait for the page to settle before the snapshots are taken. */
         const val CAPTURE_DELAY_MS = 120L
@@ -324,7 +439,23 @@ internal class PageCurlHost(
         /** How long a gutter tap's curl takes, in milliseconds. */
         const val CURL_MS = 650f
 
+        /** How long a released drag takes to settle or complete, in milliseconds. */
+        const val DRAG_SETTLE_MS = 250f
+
         /** Where the lifted corner sits down the turning page's right edge, as a fraction of its height. */
         const val CORNER_HEIGHT_FRACTION = 0.7f
+
+        /** The glue's state before anything is announced: curl off, no swipes claimed. */
+        val GLUE_DEFAULT = Triple(false, false, false)
     }
 }
+
+/** A drag in progress: its fold geometry, the two pages it moves between, and the finger's last point and fold. */
+private class DragSession(
+    val drag: CurlDrag,
+    val flap: CurlRect,
+    val front: PageImage,
+    val beneath: PageImage,
+    var lastX: Float,
+    var fold: Vec,
+)

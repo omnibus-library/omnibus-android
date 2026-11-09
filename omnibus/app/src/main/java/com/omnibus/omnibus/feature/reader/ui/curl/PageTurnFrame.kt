@@ -4,11 +4,16 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
+import kotlin.math.abs
 
 /**
- * The frame around the reader's WebView. It draws the page cover and the page curl over the WebView, and reports
- * its size changes to the host. Touches still reach the WebView unmodified.
+ * The frame around the reader's WebView. It draws the page cover and the page curl over the WebView, reports its size
+ * changes to the host, and takes a horizontal swipe the host claims. Every other touch reaches the WebView unmodified.
+ * A claimed swipe reaches the WebView as one cancel, and the rest of the gesture belongs to the host.
  *
  * The probes at the bottom are for instrumented tests; they read the host and the drawn state on the main thread.
  */
@@ -25,6 +30,13 @@ internal class PageTurnFrame(context: Context) : FrameLayout(context), CurlStage
     private var cover: BitmapPageImage? = null
     private var curl: CurlPicture? = null
     private val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var touchState = TouchState.Idle
+    private var downX = 0f
+    private var downY = 0f
+    private var downTime = 0L
+    private var velocity: VelocityTracker? = null
 
     /** Whether the cover has been shown at any point, so a test can tell an animated turn from a plain landing. */
     var coverEverShown = false
@@ -69,6 +81,118 @@ internal class PageTurnFrame(context: Context) : FrameLayout(context), CurlStage
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (oldw != 0 && oldh != 0) onSize?.invoke()
+    }
+
+    /**
+     * Watches each touch before the WebView gets it. A horizontal swipe the host claims is taken from the WebView,
+     * which gets one cancel; anything else is passed on unmodified.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        val host = host ?: return super.dispatchTouchEvent(ev)
+        when (touchState) {
+            TouchState.Dragging -> {
+                track(ev)
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> host.dragTo(ev.x, ev.y)
+                    MotionEvent.ACTION_UP -> {
+                        host.endDrag(velocityDp())
+                        touchState = TouchState.Idle
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        host.endDrag(0f)
+                        touchState = TouchState.Idle
+                    }
+                }
+                return true
+            }
+            TouchState.Swallowing -> {
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    touchState = TouchState.Idle
+                }
+                return true
+            }
+            TouchState.Idle, TouchState.Watching -> Unit
+        }
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = ev.x
+                downY = ev.y
+                downTime = ev.eventTime
+                velocity?.clear()
+                track(ev)
+                touchState = TouchState.Watching
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> touchState = TouchState.Idle
+            MotionEvent.ACTION_MOVE -> if (touchState == TouchState.Watching) {
+                track(ev)
+                val dx = ev.x - downX
+                val dy = ev.y - downY
+                val elapsed = ev.eventTime - downTime
+                when (val claim = host.claimFor(dx, dy, touchSlop, elapsed, ev.pointerCount)) {
+                    is CurlClaim.Drag -> {
+                        cancelChild(ev)
+                        host.beginDrag(claim.dir, downX, downY)
+                        host.dragTo(ev.x, ev.y)
+                        touchState = TouchState.Dragging
+                        return true
+                    }
+                    is CurlClaim.Turn -> {
+                        cancelChild(ev)
+                        host.tapTurn(claim.dir)
+                        touchState = TouchState.Swallowing
+                        return true
+                    }
+                    CurlClaim.Pass -> {
+                        // Once the WebView has had the touch past slop or a long press, the swipe is its own for good.
+                        val settled = abs(dx) >= touchSlop || elapsed >= CurlClaim.LONG_PRESS_MS || ev.pointerCount != 1
+                        if (settled) touchState = TouchState.Idle
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchState = TouchState.Idle
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onDetachedFromWindow() {
+        velocity?.recycle()
+        velocity = null
+        touchState = TouchState.Idle
+        super.onDetachedFromWindow()
+    }
+
+    /** Sends the WebView a cancel for [ev], so it drops the touch as a gesture it had given up on. */
+    private fun cancelChild(ev: MotionEvent) {
+        val cancel = MotionEvent.obtain(ev)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        super.dispatchTouchEvent(cancel)
+        cancel.recycle()
+    }
+
+    private fun track(ev: MotionEvent) {
+        (velocity ?: VelocityTracker.obtain().also { velocity = it }).addMovement(ev)
+    }
+
+    /** The finger's horizontal velocity in dp per second, negative leftwards. */
+    private fun velocityDp(): Float {
+        val tracker = velocity ?: return 0f
+        tracker.computeCurrentVelocity(1000)
+        return tracker.xVelocity / density
+    }
+
+    /** Where a touch stands in the swipe the frame may take. */
+    private enum class TouchState {
+        /** No touch in progress. */
+        Idle,
+
+        /** A touch is down and may still become a claimed swipe. The WebView has every event so far. */
+        Watching,
+
+        /** The host is following a drag; the WebView gets nothing more from this touch. */
+        Dragging,
+
+        /** The host has taken a turn from this touch; the WebView gets nothing more from it. */
+        Swallowing,
     }
 
     /** Whether the host can curl right now. Read on the main thread. */
