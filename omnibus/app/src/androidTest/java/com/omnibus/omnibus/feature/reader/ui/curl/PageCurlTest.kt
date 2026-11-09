@@ -30,6 +30,7 @@ import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -116,9 +117,12 @@ class PageCurlTest {
         showReader(controller, reducedMotion = false)
         awaitReady(controller)
         rule.waitUntil(timeoutMillis = 30_000) { curlReady() }
+        val (pressX, pressY) = glyphOnScreen()
         val before = movements().size
 
-        val longPressDrag = { drag(from = 0.5f to 0.3f, to = 0.2f to 0.3f, steps = 10, stepMs = 15L, holdMs = 800L) }
+        val longPressDrag = {
+            drag(from = pressX to pressY, to = pressX * 0.5f to pressY, steps = 10, stepMs = 15L, holdMs = 800L)
+        }
         repeatGesture(gesture = longPressDrag) { selections() > 0 }
 
         assertEquals("a long press should not start a curl", 0, curlsPlayed())
@@ -260,6 +264,51 @@ class PageCurlTest {
 
     /** The frame around the reader's WebView, which holds the curl. */
     private fun frame(): PageTurnFrame = findWebView()!!.parent as PageTurnFrame
+
+    /**
+     * The centre of the first glyph on screen, as fractions of the page. A long press selects only on text, so the
+     * point comes from the page's own layout rather than a guessed position.
+     */
+    private fun glyphOnScreen(): Pair<Float, Float> {
+        val raw = evaluate(
+            """
+            (function () {
+              var w = window.innerWidth, h = window.innerHeight;
+              var frames = document.querySelectorAll('iframe');
+              for (var i = 0; i < frames.length; i++) {
+                var doc = frames[i].contentDocument;
+                if (!doc || !doc.body) continue;
+                var fr = frames[i].getBoundingClientRect();
+                var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+                for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+                  var first = node.nodeValue.search(/\S/);
+                  if (first < 0) continue;
+                  var range = doc.createRange();
+                  range.setStart(node, first);
+                  range.setEnd(node, first + 1);
+                  var box = range.getBoundingClientRect();
+                  var x = fr.left + box.left + box.width / 2;
+                  var y = fr.top + box.top + box.height / 2;
+                  if (box.width > 0 && x > 0 && x < w && y > 0 && y < h) return (x / w) + ',' + (y / h);
+                }
+              }
+              return 'none';
+            })()
+            """.trimIndent(),
+        ).trim('"')
+        assertNotEquals("the first page should show text", "none", raw)
+        val (x, y) = raw.split(',')
+        return x.toFloat() to y.toFloat()
+    }
+
+    /** Runs [script] in the reader page and returns its JSON answer. */
+    private fun evaluate(script: String): String {
+        val result = arrayOfNulls<String>(1)
+        rule.runOnUiThread { findWebView()?.evaluateJavascript(script) { result[0] = it } }
+        val deadline = System.currentTimeMillis() + 10_000
+        while (result[0] == null && System.currentTimeMillis() < deadline) Thread.sleep(50)
+        return result[0] ?: error("the page did not answer the script")
+    }
 
     private fun findWebView(view: View = rule.activity.window.decorView): WebView? {
         if (view is WebView) return view
