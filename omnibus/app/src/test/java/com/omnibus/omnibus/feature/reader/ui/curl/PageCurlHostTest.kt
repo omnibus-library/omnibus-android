@@ -734,7 +734,7 @@ class PageCurlHostTest : DescribeSpec({
 
                     val turn = host.claimToward(1).shouldBeInstanceOf<CurlClaim.Turn>()
                     host.tapTurn(turn.dir)
-                    advanceUntilIdle()
+                    settle()
 
                     log.first() shouldBe ReaderScripts.turnInstant(1)
                     log shouldNotContain "snapshot"
