@@ -13,6 +13,8 @@ import com.omnibus.omnibus.data.library.LibrarySort
 import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
+import com.omnibus.omnibus.data.library.SeriesBooks
+import com.omnibus.omnibus.data.library.SeriesBooksResult
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
@@ -26,6 +28,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
 /**
@@ -58,30 +62,65 @@ class LibraryViewModel @Inject constructor(
     private var resumeToken = 0
     private var resumeJob: Job? = null
 
+    /** The latest series read for each id. A failed read leaves no result, so the next trigger reads it again. */
+    private val seriesReads = mutableMapOf<Long, Job>()
+    private val seriesReadPermits = Semaphore(SERIES_READ_CONCURRENCY)
+
     init {
         viewModelScope.launch {
-            // Restored before the first request, so page 1 already carries the saved sort and direction.
+            // Restored before the first request, so page 1 already carries the saved sort, direction and grouping.
             // The category is never restored, so every launch starts on All.
             val saved = sortPreferenceStore.preference.first()
-            _uiState.update { it.copy(sort = saved.sort, direction = saved.direction) }
+            val grouped = sortPreferenceStore.groupBySeries.first()
+            _uiState.update { it.copy(sort = saved.sort, direction = saved.direction, groupBySeries = grouped) }
             reload(refreshing = false)
         }
         viewModelScope.launch {
-            connectivityMonitor.isOnline.collect { online -> _uiState.update { it.copy(isOffline = !online) } }
+            var wasOnline = connectivityMonitor.isOnline.value
+            connectivityMonitor.isOnline.collect { online ->
+                _uiState.update { it.copy(isOffline = !online) }
+                if (online && !wasOnline) readSeries()
+                wasOnline = online
+            }
         }
     }
 
     /** Reloads the first page after a full-screen error. */
     fun retry() = reload(refreshing = false)
 
-    /** Reloads the first page and the Continue cards for pull to refresh. The result replaces the list wholesale. */
+    /**
+     * Reloads the first page, the Continue cards and every listed series for pull to refresh. The result
+     * replaces the list wholesale.
+     */
     fun refresh() {
         reload(refreshing = true)
         loadResumePoints()
+        readSeries(force = true)
     }
 
     /** Loads the Continue cards. Called each time the Library is shown, so returning from the reader shows the new position. */
     fun libraryShown() = loadResumePoints()
+
+    /**
+     * Groups the books by series or ungroups them, and saves the choice. Turning grouping off folds every
+     * unfolded series up.
+     */
+    fun toggleGroupBySeries() {
+        val on = !_uiState.value.groupBySeries
+        _uiState.update { it.copy(groupBySeries = on, unfoldedSeries = if (on) it.unfoldedSeries else emptySet()) }
+        viewModelScope.launch { sortPreferenceStore.saveGroupBySeries(on) }
+        if (on) readSeries()
+    }
+
+    /** Unfolds the stack of [seriesId] into its books in the grid. */
+    fun unfoldSeries(seriesId: Long) {
+        _uiState.update { it.copy(unfoldedSeries = it.unfoldedSeries + seriesId) }
+    }
+
+    /** Folds the unfolded stack of [seriesId] back up. Other series stay as they are. */
+    fun foldUpSeries(seriesId: Long) {
+        _uiState.update { it.copy(unfoldedSeries = it.unfoldedSeries - seriesId) }
+    }
 
     /**
      * Selects the card at the pager's settled page. Ignored for an unknown id, and for the card that
@@ -142,7 +181,10 @@ class LibraryViewModel @Inject constructor(
         loadMoreJob = viewModelScope.launch {
             // The repository always emits at least once, so the last emission is the result.
             val result = libraryRepository.getBooksPageFlow(query, cursor).last()
-            if (token == reloadToken) _uiState.update { it.applyLoadMore(result) }
+            if (token == reloadToken) {
+                _uiState.update { it.applyLoadMore(result) }
+                if (result is LibraryPageResult.Success) readSeries()
+            }
         }
     }
 
@@ -213,6 +255,7 @@ class LibraryViewModel @Inject constructor(
                 _uiState.update { state ->
                     state.applyFirstPage(result).let { if (scroll) it.copy(scrollToTop = true) else it }
                 }
+                if (result is LibraryPageResult.Success) readSeries()
             }
             if (token == reloadToken) {
                 _uiState.update { it.copy(isInitialLoading = false, isRefreshing = false) }
@@ -246,6 +289,26 @@ class LibraryViewModel @Inject constructor(
         val state = _uiState.value
         viewModelScope.launch {
             sortPreferenceStore.save(LibrarySortPreference(state.sort, state.direction))
+        }
+    }
+
+    /**
+     * Reads every listed series that has no result yet (all of them when [force]), at most
+     * [SERIES_READ_CONCURRENCY] at once. Only while grouping is on.
+     */
+    private fun readSeries(force: Boolean = false) {
+        val state = _uiState.value
+        if (!state.groupBySeries) return
+        state.books.mapNotNullTo(LinkedHashSet()) { it.seriesId }.forEach { id ->
+            val running = seriesReads[id]?.isActive == true
+            if (!force && (running || id in state.seriesBooks)) return@forEach
+            seriesReads[id]?.cancel()
+            seriesReads[id] = viewModelScope.launch {
+                val result = seriesReadPermits.withPermit { libraryRepository.getSeriesBooksFlow(id).last() }
+                if (result is SeriesBooksResult.Success) {
+                    _uiState.update { it.copy(seriesBooks = it.seriesBooks + (id to result.series)) }
+                }
+            }
         }
     }
 
@@ -304,6 +367,9 @@ class LibraryViewModel @Inject constructor(
  * @property continueSelectedId The id of the card the carousel is on, kept across reloads while the card is still listed.
  * @property pendingResume A one-shot request to open a reader or player for a card. Cleared by [LibraryViewModel.resumeHandled].
  * @property unavailableBook A one-shot request to show the "can't open offline" alert. Cleared by [LibraryViewModel.unavailableDismissed].
+ * @property groupBySeries Whether the books are grouped into series. Restored on launch and saved by [LibraryViewModel.toggleGroupBySeries].
+ * @property seriesBooks The successful series reads, by series id. A failed read is not kept.
+ * @property unfoldedSeries The ids of the series unfolded in the grid. Cleared when grouping is turned off.
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -323,7 +389,14 @@ data class LibraryUIState(
     val continueSelectedId: String? = null,
     val pendingResume: ResumeTarget? = null,
     val unavailableBook: UnavailableBook? = null,
+    val groupBySeries: Boolean = false,
+    val seriesBooks: Map<Long, SeriesBooks> = emptyMap(),
+    val unfoldedSeries: Set<Long> = emptySet(),
 ) {
+
+    /** The grid's entries: each book, or with grouping on, each series in place of its first loaded book. */
+    val entries: List<LibraryEntry>
+        get() = if (groupBySeries) libraryEntries(books, seriesBooks) else books.map { LibraryEntry.Single(it) }
 
     /** Whether the books are narrowed or reordered from the default view. Hidden formats never count. */
     val isFiltered: Boolean
@@ -382,3 +455,6 @@ sealed interface ResumeTarget {
 
 /** A card that cannot open right now: its [title] and the [medium] that was asked for. */
 data class UnavailableBook(val title: String, val medium: ProgressFormat)
+
+/** The most series reads in flight at once, so a page of many series does not flood the server. */
+internal const val SERIES_READ_CONCURRENCY = 4
