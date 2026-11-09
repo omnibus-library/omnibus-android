@@ -3,6 +3,10 @@ package com.omnibus.omnibus.feature.reader.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
@@ -17,6 +21,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
@@ -140,6 +145,30 @@ class ReaderSettingsSheetTest {
         node(ReaderSettingsSheetTags.margins(ReaderMargins.Wide)).performClick()
 
         assertEquals(listOf(settings.copy(margins = ReaderMargins.Wide)), changes)
+    }
+
+    @Test
+    fun tc343_tappingAPageTurnChangesOnlyThePageTurn() {
+        val changes = mutableListOf<ReaderSettings>()
+        val settings = ReaderSettings(pageTurn = ReaderPageTurn.Slide)
+        host(settings, changes)
+
+        node(ReaderSettingsSheetTags.pageTurn(ReaderPageTurn.Curl)).performClick()
+
+        assertEquals(listOf(settings.copy(pageTurn = ReaderPageTurn.Curl)), changes)
+    }
+
+    @Test
+    fun tc344_pageTurnSegmentsAreRadioButtons() {
+        host(ReaderSettings(pageTurn = ReaderPageTurn.Curl))
+
+        ReaderPageTurn.entries.forEach { mode ->
+            node(ReaderSettingsSheetTags.pageTurn(mode))
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
+        }
+        node(ReaderSettingsSheetTags.pageTurn(ReaderPageTurn.Curl)).assertIsSelected()
+        node(ReaderSettingsSheetTags.pageTurn(ReaderPageTurn.Slide)).assertIsNotSelected()
+        node(ReaderSettingsSheetTags.pageTurn(ReaderPageTurn.None)).assertIsNotSelected()
     }
 
     @Test

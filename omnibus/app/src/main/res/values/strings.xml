@@ -204,6 +204,10 @@
     <string name="reader_settings_margins_narrow">Narrow</string>
     <string name="reader_settings_margins_normal">Normal</string>
     <string name="reader_settings_margins_wide">Wide</string>
+    <string name="reader_settings_group_page_turn">Page turn</string>
+    <string name="reader_settings_page_turn_slide">Slide</string>
+    <string name="reader_settings_page_turn_curl">Curl</string>
+    <string name="reader_settings_page_turn_none">None</string>
     <string name="reader_settings_justify">Justify text</string>
     <string name="reader_settings_aa" translatable="false">Aa</string>
     <string name="reader_chapter_of">Chapter %1$d of %2$d</string>
