@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/omnibus-library/omnibus-android/compare/v0.1.5...v0.1.6) (2026-11-09)
+
+
+### Features
+
+* **reader:** add the bookmark ribbon's rules and tap signal ([#225](https://github.com/omnibus-library/omnibus-android/issues/225)) ([910a992](https://github.com/omnibus-library/omnibus-android/commit/910a99214f908830bb1dfa07c7da970df6463d1a))
+* **reader:** hang a bookmark ribbon on the bookmarked page ([#227](https://github.com/omnibus-library/omnibus-android/issues/227)) ([6ed8307](https://github.com/omnibus-library/omnibus-android/commit/6ed8307ef426bc24f0f8b47a8c0d742a9a067a4a))
+
 ## [0.1.5](https://github.com/omnibus-library/omnibus-android/compare/v0.1.4...v0.1.5) (2026-11-08)
 
 
