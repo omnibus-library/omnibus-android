@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.randomReaderSettings
 import com.omnibus.omnibus.testing.mockAndroidLog
@@ -14,6 +15,9 @@ import com.omnibus.omnibus.testing.unmockAndroidLog
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
 import java.io.File
 import java.io.IOException
 import kotlin.io.path.createTempDirectory
@@ -53,6 +57,29 @@ class DefaultReaderSettingsStoreTest : DescribeSpec({
 
     /** [settings] as they come back from storage, where spread is not kept. */
     fun stored(settings: ReaderSettings): ReaderSettings = settings.copy(spread = ReaderSettings().spread)
+
+    /** Saves [settings] to a DataStore file, restarts the store on that file, and returns what it reads back. */
+    suspend fun savedAndReopened(settings: ReaderSettings): ReaderSettings {
+        val directory = createTempDirectory("reader-settings-test").toFile()
+        fun open(scope: CoroutineScope) = PreferenceDataStoreFactory.create(
+            scope = scope,
+            produceFile = { File(directory, "reader_preferences.preferences_pb") },
+        )
+        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            sut(open(firstScope)).save(settings)
+            // Only one DataStore may be open on the file at a time. Cancelling does not wait for the first to
+            // release the file, so join it before reopening.
+            firstScope.coroutineContext.job.cancelAndJoin()
+
+            return sut(open(secondScope)).settings.first()
+        } finally {
+            firstScope.coroutineContext.job.cancelAndJoin()
+            secondScope.coroutineContext.job.cancelAndJoin()
+            directory.deleteRecursively()
+        }
+    }
 
     beforeSpec { mockAndroidLog() }
 
@@ -103,24 +130,15 @@ class DefaultReaderSettingsStoreTest : DescribeSpec({
 
             it("reads the value saved before the restart") {
                 val settings = stored(randomReaderSettings())
-                val directory = createTempDirectory("reader-settings-test").toFile()
-                fun open(scope: CoroutineScope) = PreferenceDataStoreFactory.create(
-                    scope = scope,
-                    produceFile = { File(directory, "reader_preferences.preferences_pb") },
-                )
-                val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-                val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-                try {
-                    sut(open(firstScope)).save(settings)
-                    // Only one DataStore may be open on the file at a time. Cancelling does not wait for the first to
-                    // release the file, so join it before reopening.
-                    firstScope.coroutineContext.job.cancelAndJoin()
 
-                    sut(open(secondScope)).settings.first() shouldBe settings
-                } finally {
-                    firstScope.coroutineContext.job.cancelAndJoin()
-                    secondScope.coroutineContext.job.cancelAndJoin()
-                    directory.deleteRecursively()
+                savedAndReopened(settings) shouldBe settings
+            }
+
+            it("TC-303: reads back every page turn saved before the restart") {
+                checkAll(Exhaustive.enum<ReaderPageTurn>()) { mode ->
+                    val settings = stored(randomReaderSettings()).copy(pageTurn = mode)
+
+                    savedAndReopened(settings).pageTurn shouldBe mode
                 }
             }
         }
