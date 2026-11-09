@@ -6,7 +6,9 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.library.LibraryUIState
@@ -25,11 +28,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The group-by-series switch. */
+/** The group-by-series switch, the folded stacks and the load-more reports they drive. */
 class LibrarySeriesGroupingTest {
 
     @get:Rule
     val rule = createComposeRule()
+
+    @Test
+    fun tc235_21_loadsMoreAgainWhenAPageOnlyJoinsAStack() {
+        val reported = mutableListOf<Int>()
+        val state = mutableStateOf(
+            groupedState(
+                seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"),
+                seriesBook(2L, seriesId = 10L, series = DUNE, index = "2"),
+                book(3L),
+            ),
+        )
+        setLibrary(state, onLoadMore = { reported += it })
+        rule.waitForIdle()
+        // Both grid items fit on screen, so the last item is visible and nothing lies after it.
+        assertEquals(0, reported.last())
+        val before = reported.size
+
+        rule.runOnIdle {
+            state.value = state.value.copy(books = state.value.books + seriesBook(4L, seriesId = 10L, series = DUNE, index = "3"))
+        }
+        rule.waitForIdle()
+
+        assertTrue(reported.size > before)
+    }
 
     @Test
     fun tc235_22_pillIsOneSwitchNamedGroupBySeries() {
@@ -77,10 +104,53 @@ class LibrarySeriesGroupingTest {
         assertTrue(pill.right <= filter.left)
     }
 
+    @Test
+    fun tc235_23_stackDescribesSeriesNameAndBookCount() {
+        setLibrary(
+            mutableStateOf(
+                groupedState(
+                    seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"),
+                    seriesBook(2L, seriesId = 10L, series = DUNE, index = "2"),
+                    seriesBook(3L, seriesId = 10L, series = DUNE, index = "3"),
+                    seriesBook(4L, seriesId = 20L, series = SOLO, index = "1"),
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).assertContentDescriptionEquals("$DUNE, 3 books")
+        rule.onNodeWithTag(LibraryTestTags.stack(20L)).assertContentDescriptionEquals("$SOLO, 1 book")
+    }
+
+    @Test
+    fun tc235_23_unfoldActionIsLabelledUnfoldSeries() {
+        setLibrary(
+            mutableStateOf(groupedState(seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"))),
+        )
+
+        val action = rule.onNodeWithTag(LibraryTestTags.stack(10L)).fetchSemanticsNode()
+            .config.getOrNull(SemanticsActions.OnClick)
+
+        assertEquals(UNFOLD_LABEL, action?.label)
+    }
+
+    @Test
+    fun tc235_23_performingUnfoldCallsOnUnfoldSeries() {
+        val unfolded = mutableListOf<Long>()
+        setLibrary(
+            mutableStateOf(groupedState(seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"))),
+            onUnfoldSeries = { unfolded += it },
+        )
+
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).performSemanticsAction(SemanticsActions.OnClick)
+
+        assertEquals(listOf(10L), unfolded)
+    }
+
     private fun setLibrary(
         uiState: State<LibraryUIState>,
         onLoadMore: (Int) -> Unit = {},
         onToggleGroupBySeries: () -> Unit = {},
+        onUnfoldSeries: (Long) -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -94,6 +164,7 @@ class LibrarySeriesGroupingTest {
                         onAddBooks = {},
                         onTransientErrorShown = {},
                         onToggleGroupBySeries = onToggleGroupBySeries,
+                        onUnfoldSeries = onUnfoldSeries,
                     )
                 }
             }
@@ -101,7 +172,10 @@ class LibrarySeriesGroupingTest {
     }
 
     private companion object {
+        const val DUNE = "Dune Chronicles"
+        const val SOLO = "Solo"
         const val GROUP_LABEL = "Group by series"
+        const val UNFOLD_LABEL = "Unfold series"
 
         fun groupedState(vararg books: Book) = LibraryUIState(books = books.toList(), groupBySeries = true)
 
@@ -123,5 +197,11 @@ class LibrarySeriesGroupingTest {
             bookFiles = emptyList(),
         )
 
+        /** A book of series [seriesId] named [series], at [index] in the series. */
+        fun seriesBook(id: Long, seriesId: Long, series: String, index: String) = book(id).copy(
+            seriesId = seriesId,
+            series = series,
+            seriesIndex = index,
+        )
     }
 }

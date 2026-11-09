@@ -70,6 +70,7 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ContinueCard
+import com.omnibus.omnibus.feature.library.LibraryGridItem
 import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
@@ -79,6 +80,7 @@ import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
+import com.omnibus.omnibus.feature.library.libraryGridItems
 import com.omnibus.omnibus.ui.components.EdgeFade
 import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
@@ -108,6 +110,7 @@ internal object LibraryTestTags {
 
     fun cell(id: Long) = "library-cell-$id"
     fun cover(id: Long) = "library-cover-$id"
+    fun stack(seriesId: Long) = "library-stack-$seriesId"
     fun title(id: Long) = "library-title-$id"
     fun menuCategory(category: LibraryCategory) = "library-menu-category-${category.name}"
     fun menuSort(sort: LibrarySort) = "library-menu-sort-${sort.name}"
@@ -173,6 +176,7 @@ fun LibraryScreen(
         onSelectSort = viewModel::selectSort,
         onToggleDirection = viewModel::toggleDirection,
         onToggleGroupBySeries = viewModel::toggleGroupBySeries,
+        onUnfoldSeries = viewModel::unfoldSeries,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
         continueState = continueState,
@@ -196,6 +200,7 @@ fun LibraryScreen(
  * @param onSelectSort Called with the sort key picked in the filter menu.
  * @param onToggleDirection Called when the Direction row is tapped.
  * @param onToggleGroupBySeries Called when the group-by-series pill is tapped.
+ * @param onUnfoldSeries Called with the series id when a folded series' stack is tapped.
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
@@ -223,6 +228,7 @@ internal fun LibraryScreenContent(
     onSelectSort: (LibrarySort) -> Unit = {},
     onToggleDirection: () -> Unit = {},
     onToggleGroupBySeries: () -> Unit = {},
+    onUnfoldSeries: (seriesId: Long) -> Unit = {},
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -319,6 +325,7 @@ internal fun LibraryScreenContent(
                         onSelectSort = onSelectSort,
                         onToggleDirection = onToggleDirection,
                         onToggleGroupBySeries = onToggleGroupBySeries,
+                        onUnfoldSeries = onUnfoldSeries,
                         gridState = gridState,
                         topInset = statusTop,
                         bottomInset = overlayBottom,
@@ -403,6 +410,7 @@ private fun LibraryGrid(
     onSelectSort: (LibrarySort) -> Unit,
     onToggleDirection: () -> Unit,
     onToggleGroupBySeries: () -> Unit,
+    onUnfoldSeries: (seriesId: Long) -> Unit,
     gridState: LazyGridState,
     topInset: Dp,
     bottomInset: Dp,
@@ -417,7 +425,10 @@ private fun LibraryGrid(
     val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
     val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
-    val gridItemCount = uiState.books.size // layer 3 changes this to the grid item list's size
+    val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries) {
+        libraryGridItems(uiState.entries, unfolded = emptySet())
+    }
+    val gridItemCount = items.size
     LaunchedEffect(gridState, uiState.books.size, gridItemCount) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .filterNotNull()
@@ -495,14 +506,27 @@ private fun LibraryGrid(
                 }
             }
 
-            itemsIndexed(uiState.books, key = { _, book -> book.id }) { index, book ->
-                BookGridCell(
-                    book = book,
-                    width = cellWidth,
-                    onClick = { openFromGrid(book.uuid) },
-                    // Rows after the first get 26 dp above them, from the cells, so the heading gap stays 12 dp.
-                    modifier = Modifier.padding(top = if (index >= columns) 26.dp else 0.dp),
-                )
+            itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+                // Rows after the first get 26 dp above them, from the cells, so the heading gap stays 12 dp.
+                val rowGap = Modifier.padding(top = if (index >= columns) 26.dp else 0.dp)
+                when (item) {
+                    is LibraryGridItem.Single -> BookGridCell(
+                        book = item.book,
+                        width = cellWidth,
+                        onClick = { openFromGrid(item.book.uuid) },
+                        modifier = rowGap,
+                    )
+
+                    is LibraryGridItem.Stack -> SeriesStackCell(
+                        group = item.group,
+                        width = cellWidth,
+                        onUnfold = { onUnfoldSeries(item.group.seriesId) },
+                        modifier = rowGap,
+                    )
+
+                    // Unreachable until a series can unfold; layer 4 draws these.
+                    is LibraryGridItem.Summary, is LibraryGridItem.Member -> Unit
+                }
             }
 
             if (uiState.isLoadingMore) {

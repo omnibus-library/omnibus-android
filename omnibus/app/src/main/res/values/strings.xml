@@ -80,6 +80,13 @@
     <string name="library_empty_message">Point the server at a library folder, or add a book from the You tab.</string>
     <string name="library_filter_sort">Filter and sort</string>
     <string name="library_group_by_series">Group by series</string>
+    <string name="library_unfold_series">Unfold series</string>
+    <plurals name="library_series_book_count">
+        <item quantity="one">%d book</item>
+        <item quantity="other">%d books</item>
+    </plurals>
+    <string name="library_series_stack_subtitle">%1$s · %2$s</string>
+    <string name="library_series_stack_description">%1$s, %2$s</string>
     <string name="library_category_all">All</string>
     <string name="library_category_ebooks">Ebooks</string>
     <string name="library_category_audiobooks">Audiobooks</string>
