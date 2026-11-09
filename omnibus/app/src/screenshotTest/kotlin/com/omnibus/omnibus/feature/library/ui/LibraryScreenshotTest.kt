@@ -15,6 +15,10 @@ import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.data.library.LibraryCategory
 import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.SeriesBooks
+import com.omnibus.omnibus.data.library.Shelf
+import com.omnibus.omnibus.data.library.ShelfKind
+import com.omnibus.omnibus.data.library.ShelfPreview
+import com.omnibus.omnibus.data.library.ShelfVisibility
 import com.omnibus.omnibus.feature.library.ContinueCard
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.continuePageCount
@@ -97,6 +101,58 @@ fun LibraryWithContinueWide() {
         cardsPerPage = 2,
     )
 }
+
+/**
+ * The Shelves section between the Continue card and "All books": a card for each arrangement and kind, a plate for an
+ * empty shelf, and another user's public shelf, which shows its owner.
+ */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun LibraryWithShelves() {
+    val cards = listOf(continueCard(1L))
+    LibraryShot(
+        LibraryUIState(
+            books = listOf(book(1L), book(2L)),
+            hasLoaded = true,
+            continueCards = cards,
+            continueSelectedId = cards.first().id,
+            shelves = listOf(
+                shelf(1L, "Currently Reading", ShelfKind.Manual, ShelfVisibility.Private, bookCount = 12L, covers = 4),
+                shelf(2L, "Sci-Fi Favourites", ShelfKind.Smart, ShelfVisibility.Private, bookCount = 34L, covers = 3),
+                shelf(3L, "Book Club 2026", ShelfKind.Manual, ShelfVisibility.Public, bookCount = 8L, covers = 2),
+                shelf(4L, "Hunter's Wishlist", ShelfKind.Wishlist, ShelfVisibility.Private, bookCount = 1L, covers = 1),
+                shelf(5L, "Someday", ShelfKind.Manual, ShelfVisibility.Private, bookCount = 0L, covers = 0),
+                shelf(6L, "Weekend Reads", ShelfKind.Manual, ShelfVisibility.Public, bookCount = 5L, covers = 2, ownerId = 8L, ownerName = "Ann"),
+            ),
+            viewerId = 7L,
+        ),
+    )
+}
+
+/** A shelf for the screenshots, with [covers] cover uuids that load nothing, so each cover draws as a plate. */
+private fun shelf(
+    id: Long,
+    name: String,
+    kind: ShelfKind,
+    visibility: ShelfVisibility,
+    bookCount: Long,
+    covers: Int,
+    ownerId: Long = 7L,
+    ownerName: String = "Hunter",
+) = ShelfPreview(
+    shelf = Shelf(
+        id = id,
+        ownerUserId = ownerId,
+        ownerUsername = ownerName,
+        kind = kind,
+        name = name,
+        visibility = visibility,
+        accent = null,
+        bookCount = bookCount,
+    ),
+    coverUuids = List(covers) { "preview-$id-$it" },
+)
 
 /**
  * The grouped Library with the switch on: Dune Chronicles (three books, one loaded), The Expanse (two, one loaded)

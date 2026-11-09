@@ -17,10 +17,8 @@ import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.single
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
 
 private const val EMPTY_BOOKS = """{"books":[]}"""
 
@@ -48,23 +46,6 @@ private const val SERIES_JSON = """
 """
 
 private fun booksBody(ids: List<Long>): String = """{"books":[${ids.joinToString(",") { """{"id":$it}""" }}]}"""
-
-private fun shelfPage(ids: List<Long>): MockResponse = reply(200, booksBody(ids))
-
-/** Serves `/api/shelves` with [SHELVES_JSON] and each `/api/shelves/{id}/page` from [page]. */
-private fun MockWebServer.serveShelves(page: (Long) -> MockResponse) {
-    dispatcher = object : Dispatcher() {
-        override fun dispatch(request: RecordedRequest): MockResponse {
-            val path = request.url.encodedPath
-            val shelfPage = Regex("/api/shelves/(\\d+)/page").matchEntire(path)
-            return when {
-                path == "/api/shelves" -> reply(200, SHELVES_JSON)
-                shelfPage != null -> page(shelfPage.groupValues[1].toLong())
-                else -> reply(404)
-            }
-        }
-    }
-}
 
 class DefaultLibraryRepositoryTest : DescribeSpec({
 
@@ -413,24 +394,49 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
 
     describe("reading the shelf previews") {
 
-        it("TC-12: keeps the server's shelf order, with at most four covers each") {
+        it("TC-1: reads the cover uuids, at most four, in order") {
             withMockServer { server ->
-                server.serveShelves { id -> shelfPage(if (id == 2L) listOf(20, 21) else (30L..38L).toList()) }
+                server.enqueue(
+                    reply(
+                        200,
+                        """
+                        [
+                            {"id":1,"owner_user_id":7,"kind":"manual","cover_uuids":[]},
+                            {"id":2,"owner_user_id":7,"kind":"manual","cover_uuids":["a","b","c"]},
+                            {"id":3,"owner_user_id":7,"kind":"manual","cover_uuids":["a","b","c","d","e","f"]},
+                            {"id":4,"owner_user_id":7,"kind":"manual"},
+                            {"id":5,"owner_user_id":7,"kind":"manual","cover_uuids":null}
+                        ]
+                        """,
+                    ),
+                )
 
                 val previews = sut(server).getShelfPreviewsFlow().single()
                     .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
 
-                previews.map { it.shelf.id to it.covers.map { book -> book.id } } shouldBe listOf(
+                previews.map { it.shelf.id to it.coverUuids } shouldBe listOf(
                     1L to emptyList(),
-                    2L to listOf(20L, 21L),
-                    3L to listOf(30L, 31L, 32L, 33L),
+                    2L to listOf("a", "b", "c"),
+                    3L to listOf("a", "b", "c", "d"),
+                    4L to emptyList(),
+                    5L to emptyList(),
                 )
+            }
+        }
+
+        it("TC-2: makes one request however many shelves there are") {
+            // The two 404s answer any page read, so a read that still fans out gets an answer instead of hanging.
+            withMockServer(reply(200, SHELVES_JSON), reply(404), reply(404)) { server ->
+                sut(server).getShelfPreviewsFlow().single()
+
+                server.requestCount shouldBe 1
+                server.nextRequest().url.encodedPath shouldBe "/api/shelves"
             }
         }
 
         it("TC-13: maps each shelf's fields") {
             withMockServer { server ->
-                server.serveShelves { shelfPage(emptyList()) }
+                server.enqueue(reply(200, SHELVES_JSON))
 
                 val previews = sut(server).getShelfPreviewsFlow().single()
                     .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
@@ -440,19 +446,6 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                     Shelf(2, 7, "hunter", ShelfKind.Manual, "Two", ShelfVisibility.Public, "#c8a04a", 2),
                     Shelf(3, 8, "ann", ShelfKind.Wishlist, "Nine", ShelfVisibility.Private, null, 9),
                 )
-            }
-        }
-
-        context("when a shelf's page fails") {
-            it("TC-14: gives only that shelf no covers") {
-                withMockServer { server ->
-                    server.serveShelves { id -> if (id == 2L) reply(500, "boom") else shelfPage(listOf(30)) }
-
-                    val previews = sut(server).getShelfPreviewsFlow().single()
-                        .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
-
-                    previews.map { preview -> preview.covers.map { it.id } } shouldBe listOf(emptyList(), emptyList(), listOf(30L))
-                }
             }
         }
 
