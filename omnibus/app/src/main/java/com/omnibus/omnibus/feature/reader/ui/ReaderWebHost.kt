@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -13,6 +14,11 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.RememberObserver
+import com.omnibus.omnibus.feature.reader.ui.curl.ChoreographerFrameClock
+import com.omnibus.omnibus.feature.reader.ui.curl.CurlEnvironment
+import com.omnibus.omnibus.feature.reader.ui.curl.PageCurlHost
+import com.omnibus.omnibus.feature.reader.ui.curl.PageTurnFrame
+import com.omnibus.omnibus.feature.reader.ui.curl.WebViewSnapshotter
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -20,7 +26,13 @@ import androidx.webkit.WebViewFeature
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderAssets
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
+import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
  * The origins whose page may post to `window.omnibus`. Only the bundled reader page is trusted, so
@@ -32,13 +44,15 @@ internal val READER_MESSAGE_ORIGINS: Set<String> = setOf(ReaderAssets.ORIGIN)
  * The [WebView] behind a [ReaderWebView], configured for the reader and tied to the Compose
  * lifetime that remembers it: attached and loading once remembered, destroyed once forgotten.
  *
- * Nothing here draws or handles touches itself. The glue in the page owns swipe, edge taps and the
- * centre tap, so the WebView must receive every touch unmodified.
+ * The WebView sits in a [PageTurnFrame], which draws the page curl over it. Nothing here handles
+ * touches. The glue in the page owns swipe, edge taps and the centre tap, so the WebView must
+ * receive every touch unmodified.
  *
  * @param onEvent every event the page reports, decoded, on the main thread. Messages that don't
  *   decode are dropped.
  * @param onRebuild the renderer died and this host is no longer usable; the caller should replace
  *   it with a new one, which boots from the controller's last position and settings.
+ * @param curlEnvironment the reduced-motion and low-RAM answers the page turn asks at each turn.
  */
 internal class ReaderWebHost(
     context: Context,
@@ -49,6 +63,7 @@ internal class ReaderWebHost(
     initialInsets: PageInsets,
     private val onEvent: (ReaderEvent) -> Unit,
     private val onRebuild: () -> Unit,
+    curlEnvironment: CurlEnvironment,
 ) : RememberObserver {
 
     val webView: WebView = WebView(context)
@@ -73,9 +88,27 @@ internal class ReaderWebHost(
     private var documentStartScript: ScriptHandler? = null
     private var released = false
 
+    /** The frame the WebView sits in. The composable hosts this, not the WebView. */
+    val frame = PageTurnFrame(context).apply { paper = initialTheme.groundArgb }
+    private val curlScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val curlHost = PageCurlHost(
+        call = { controller.call(it) },
+        evaluate = evaluate,
+        snapshotter = WebViewSnapshotter(webView),
+        stage = frame,
+        clock = ChoreographerFrameClock,
+        scope = curlScope,
+        environment = curlEnvironment,
+    )
+    /** The settings the last look was applied with, minus the page turn, which never repaints. */
+    private var lastLook: ReaderSettings? = null
+
     init {
         configure()
         registerDocumentStartScript()
+        frame.addView(webView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.host = curlHost
+        frame.onSize = curlHost::onSizeChanged
     }
 
     override fun onRemembered() {
@@ -87,6 +120,18 @@ internal class ReaderWebHost(
 
     override fun onAbandoned() = release()
 
+    /**
+     * Applies the page turn and tells the curl when any look setting changed, since a changed look
+     * relayouts the page and its snapshots no longer show it. The page turn itself never relayouts.
+     */
+    fun applySettings(settings: ReaderSettings) {
+        if (released) return
+        curlHost.mode = settings.pageTurn
+        val look = settings.copy(pageTurn = ReaderPageTurn.Slide)
+        if (lastLook != null && look != lastLook) curlHost.onRepaint()
+        lastLook = look
+    }
+
     /** Repaints the host ground, and re-pushes the insets and the column measure, when any of them changed. */
     fun applyPageStyle(theme: ReaderTheme, insets: PageInsets, margins: ReaderMargins) {
         if (released || (theme == this.theme && insets == this.insets && margins == this.margins)) return
@@ -94,6 +139,8 @@ internal class ReaderWebHost(
         this.insets = insets
         this.margins = margins
         webView.setBackgroundColor(theme.groundArgb)
+        frame.paper = theme.groundArgb
+        curlHost.onRepaint()
         evaluate(ReaderScripts.pageStyle(theme.groundHex, insets, margins.css))
         registerDocumentStartScript()
     }
@@ -104,6 +151,8 @@ internal class ReaderWebHost(
 
     private fun release() {
         if (released) return
+        curlHost.release()
+        curlScope.cancel()
         // Straight to this page, not through the controller, which may already belong to a replacement.
         evaluate(ReaderScripts.DESTROY)
         released = true
@@ -114,6 +163,7 @@ internal class ReaderWebHost(
             WebViewCompat.removeWebMessageListener(webView, JS_OBJECT_NAME)
         }
         (webView.parent as? ViewGroup)?.removeView(webView)
+        (frame.parent as? ViewGroup)?.removeView(frame)
         webView.clearFocus()
         webView.stopLoading()
         webView.webViewClient = WebViewClient()
@@ -195,7 +245,28 @@ internal class ReaderWebHost(
         if (released) return
         val event = ReaderEvent.decode(message) ?: return
         controller.handle(event)
+        route(event)
         onEvent(event)
+    }
+
+    /** Tells the page turn what the page reports. Every case is listed, so a new event is a compile error here. */
+    private fun route(event: ReaderEvent) {
+        when (event) {
+            ReaderEvent.HostReady -> curlHost.onPageReplaced()
+            is ReaderEvent.Status -> if (event.state == "ready") curlHost.onPageReady()
+            is ReaderEvent.Relocate -> curlHost.onRelocate(event.data.cfi)
+            is ReaderEvent.Selection -> curlHost.onSelection()
+            ReaderEvent.SelectionCleared -> curlHost.onSelectionCleared()
+            is ReaderEvent.AnnotationTap -> curlHost.onAnnotationTap()
+            is ReaderEvent.TurnRequest -> curlHost.tapTurn(event.dir)
+            is ReaderEvent.Toc,
+            ReaderEvent.ToggleChrome,
+            is ReaderEvent.ShareText,
+            is ReaderEvent.ShareImage,
+            is ReaderEvent.HostReply,
+            is ReaderEvent.LoadStatusChanged,
+            -> Unit
+        }
     }
 
     private fun registerDocumentStartScript() {

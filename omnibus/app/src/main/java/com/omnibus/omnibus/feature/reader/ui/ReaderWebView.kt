@@ -39,6 +39,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.feature.reader.ui.curl.CurlEnvironment
+import com.omnibus.omnibus.feature.reader.ui.curl.LocalCurlEnvironment
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import kotlin.math.roundToInt
 
@@ -46,8 +48,8 @@ import kotlin.math.roundToInt
  * Hosts the EPUB reader page: boots epub.js on the book, shows a loading state until the first
  * page paints, and an error with a retry if the book can't be opened.
  *
- * Nothing interactive is drawn over the WebView. The glue in the page handles swipe, edge taps and
- * the centre tap itself, so any pointer handling layered above would swallow the touches it needs.
+ * The page curl is drawn over the WebView, and nothing else is. The glue in the page handles swipe,
+ * edge taps and the centre tap itself, so the curl takes no touch the glue needs.
  * The chrome belongs around the page, in the bands [ReaderBands] leaves, and the failure state
  * replaces the page rather than covering it.
  *
@@ -127,6 +129,8 @@ private fun ReaderPage(
     val context = LocalContext.current
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
+    val deviceCurlEnvironment = remember(context) { CurlEnvironment.system(context) }
+    val curlEnvironment = LocalCurlEnvironment.current ?: deviceCurlEnvironment
     val pageInsets = PageInsets(
         top = insets.getTop(density).toCssPx(density.density),
         bottom = insets.getBottom(density).toCssPx(density.density),
@@ -146,10 +150,14 @@ private fun ReaderPage(
             initialInsets = pageInsets,
             onEvent = { currentOnEvent(it) },
             onRebuild = { currentOnRebuild() },
+            curlEnvironment = curlEnvironment,
         )
     }
 
-    SideEffect { host.applyPageStyle(settings.theme, pageInsets, settings.margins) }
+    SideEffect {
+        host.applyPageStyle(settings.theme, pageInsets, settings.margins)
+        host.applySettings(settings)
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, host) {
@@ -164,7 +172,7 @@ private fun ReaderPage(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    AndroidView(factory = { host.webView }, modifier = Modifier.fillMaxSize())
+    AndroidView(factory = { host.frame }, modifier = Modifier.fillMaxSize())
 }
 
 /** Covers the page in its own ground while it loads. Draws only; it never handles input. */

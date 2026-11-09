@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.reader.ReaderAssets
 import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.reader.ui.curl.CurlEnvironment
 import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -50,9 +51,10 @@ class ReaderBridgeOriginTest {
                 initialInsets = PageInsets.None,
                 onEvent = { synchronized(events) { events += it } },
                 onRebuild = {},
+                curlEnvironment = CurlEnvironment.system(activity),
             )
             host = created
-            activity.setContentView(created.webView)
+            activity.setContentView(created.frame)
         }
     }
 
