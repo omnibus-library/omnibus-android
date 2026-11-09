@@ -3,6 +3,7 @@ package com.omnibus.omnibus.data.library.local
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.omnibus.omnibus.data.library.LibrarySortPreference
 import com.omnibus.omnibus.data.library.di.LibraryPreferences
@@ -12,7 +13,7 @@ import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
 
-/** Per-device storage for the Library's sort and direction. Reads are observed as a [Flow]; writes are suspend. */
+/** Per-device storage for the Library's sort, direction and grouping. Reads are observed as a [Flow]; writes are suspend. */
 interface LibrarySortPreferenceStore {
 
     /** The stored preference. Emits the defaults when nothing is stored or the read fails. */
@@ -20,6 +21,12 @@ interface LibrarySortPreferenceStore {
 
     /** Stores [preference], replacing the previous one. Failures are logged and not thrown. */
     suspend fun save(preference: LibrarySortPreference)
+
+    /** Whether the Library groups its books by series. Emits false when nothing is stored or the read fails. */
+    val groupBySeries: Flow<Boolean>
+
+    /** Stores whether the Library groups its books by series. Failures are logged and not thrown. */
+    suspend fun saveGroupBySeries(enabled: Boolean)
 }
 
 /**
@@ -54,12 +61,36 @@ class DefaultLibrarySortPreferenceStore @Inject constructor(
         }
     }
 
+    override val groupBySeries: Flow<Boolean> = dataStore.data
+        .map { prefs -> prefs[GROUP_BY_SERIES_KEY] ?: false }
+        .catch { error ->
+            if (error is IOException) {
+                Log.w(TAG, "Unable to read the series grouping", error)
+                emit(false)
+            } else {
+                throw error
+            }
+        }
+
+    override suspend fun saveGroupBySeries(enabled: Boolean) {
+        try {
+            dataStore.updateData { prefs ->
+                prefs.toMutablePreferences().apply { this[GROUP_BY_SERIES_KEY] = enabled }
+            }
+        } catch (error: IOException) {
+            Log.e(TAG, "Unable to save the series grouping", error)
+        }
+    }
+
     companion object {
         /** Holds the sort's wire token. The key names are part of the stored format, so keep them stable. */
         val SORT_KEY = stringPreferencesKey("library.sort")
 
         /** Holds the direction's wire token. */
         val DIRECTION_KEY = stringPreferencesKey("library.sortDirection")
+
+        /** Holds whether the Library groups its books by series. */
+        val GROUP_BY_SERIES_KEY = booleanPreferencesKey("library.groupBySeries")
 
         private const val TAG = "LibrarySortPreferenceStore"
     }

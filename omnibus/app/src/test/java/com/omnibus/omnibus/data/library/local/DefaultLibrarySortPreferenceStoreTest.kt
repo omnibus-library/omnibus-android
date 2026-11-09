@@ -90,4 +90,35 @@ class DefaultLibrarySortPreferenceStoreTest : DescribeSpec({
             }
         }
     }
+
+    describe("the group-by-series setting") {
+
+        context("when nothing is stored") {
+            it("#235 TC-7: is off") {
+                sut().groupBySeries.first() shouldBe false
+            }
+        }
+
+        context("when it is saved on") {
+            it("#235 TC-7: is read back on") {
+                val store = sut()
+
+                store.saveGroupBySeries(true)
+
+                store.groupBySeries.first() shouldBe true
+            }
+        }
+
+        context("when a sort preference is stored") {
+            it("#235 TC-7: leaves the sort preference unchanged") {
+                val store = sut()
+                val preference = randomLibrarySortPreference()
+                store.save(preference)
+
+                store.saveGroupBySeries(true)
+
+                store.preference.first() shouldBe preference
+            }
+        }
+    }
 })
