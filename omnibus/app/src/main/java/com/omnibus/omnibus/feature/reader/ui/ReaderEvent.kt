@@ -1,5 +1,8 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+
 /**
  * Something the reader page reported, or the host reports on its behalf. [decode] turns the page's
  * raw [ReaderMessage] into one of these, so the rest of the reader never parses envelopes.
@@ -36,8 +39,11 @@ sealed interface ReaderEvent {
     /** The reader asked to share a quote card image. */
     data class ShareImage(val data: ShareImageData) : ReaderEvent
 
-    /** A page turn the glue asked for, `next` or `previous`. */
-    data class TurnRequest(val direction: String) : ReaderEvent
+    /** A gutter tap the glue handed to the host while it curls: 1 forward, -1 back. */
+    data class TurnRequest(val dir: Int) : ReaderEvent
+
+    /** The answer to a host page call; [value] is null when the call failed or answered nothing. */
+    data class HostReply(val id: Int, val value: JsonElement?) : ReaderEvent
 
     /**
      * The host's load status, emitted whenever the controller's status changes, including the
@@ -64,7 +70,10 @@ sealed interface ReaderEvent {
                 "toggleChrome" -> ToggleChrome
                 "shareText" -> message.payload?.let(::ShareText)
                 "shareImage" -> message.payload?.let { ShareImage(ReaderJson.decodeFromString<ShareImageData>(it)) }
-                "turnRequest" -> message.payload?.let(::TurnRequest)
+                "turnRequest" -> message.payload?.toIntOrNull()?.takeIf { it == 1 || it == -1 }?.let(::TurnRequest)
+                "hostReply" -> message.payload?.let { ReaderJson.decodeFromString<HostReplyData>(it) }?.let {
+                    HostReply(it.id, it.value?.takeUnless { value -> value is JsonNull })
+                }
                 else -> null
             }
         } catch (e: IllegalArgumentException) {

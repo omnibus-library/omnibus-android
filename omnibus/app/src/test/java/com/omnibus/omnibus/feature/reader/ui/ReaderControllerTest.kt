@@ -9,10 +9,14 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 
 class ReaderControllerTest : DescribeSpec({
 
@@ -296,6 +300,33 @@ class ReaderControllerTest : DescribeSpec({
                 restored.startAt(randomCfi())
 
                 restored.restoreCfi shouldBe moved
+            }
+        }
+    }
+
+    describe("calls into a page that goes away") {
+        context("while a call is pending") {
+            it("TC-307: answers the call null at once, whether the page is detached, lost or replaced") {
+                checkAll(
+                    Exhaustive.of<(ReaderController, (String) -> Unit) -> Unit>(
+                        { reader, evaluate -> reader.detach(evaluate) },
+                        { reader, _ -> reader.onRendererGone() },
+                        { reader, _ -> reader.hostReady() },
+                    ),
+                ) { goAway ->
+                    runTest {
+                        val evaluate: (String) -> Unit = {}
+                        val reader = ReaderController().apply { attach(evaluate) }
+                        val reply = async { reader.call("1+1") }
+                        runCurrent()
+
+                        goAway(reader, evaluate)
+                        runCurrent()
+
+                        reply.isCompleted shouldBe true
+                        reply.await().shouldBeNull()
+                    }
+                }
             }
         }
     }

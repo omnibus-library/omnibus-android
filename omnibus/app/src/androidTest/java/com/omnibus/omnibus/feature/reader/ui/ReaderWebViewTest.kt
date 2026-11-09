@@ -35,6 +35,11 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
@@ -319,6 +324,22 @@ class ReaderWebViewTest {
         val toc = synchronized(messages) { messages.filterIsInstance<ReaderEvent.Toc>().last() }
         assertTrue("the toc should list the book's chapters", toc.entries.isNotEmpty())
     }
+
+    @Test
+    fun tc308_pageCallsRoundTrip() {
+        val controller = ReaderController()
+        showReader(controller)
+        awaitReady(controller)
+        awaitMovementCount(1)
+
+        assertEquals(JsonPrimitive(2), call(controller, "1+1"))
+        assertEquals(buildJsonObject { put("a", 1) }, call(controller, "Promise.resolve({a:1})"))
+        assertNull(call(controller, "(()=>{throw 1})()"))
+    }
+
+    /** Awaits [expr] on the page. [ReaderController.call] must run on the main thread, where its replies arrive. */
+    private fun call(controller: ReaderController, expr: String): JsonElement? =
+        runBlocking(Dispatchers.Main) { controller.call(expr) }
 
     /** Injects a tap through the window's input pipeline, as a finger would deliver it. */
     private fun tap(xFraction: Float, yFraction: Float = 0.5f) {

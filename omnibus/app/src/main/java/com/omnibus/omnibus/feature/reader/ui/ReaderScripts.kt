@@ -44,6 +44,7 @@ internal object ReaderScripts {
     /**
      * The calls that bring a page showing [shown] up to [wanted]. Margins are not among them: they
      * reach the page through [pageStyle]'s `--measure`, never through `OmnibusReader.setMargins`.
+     * `pageTurn` is the host's and sends nothing.
      */
     fun settingsChange(shown: ReaderSettings, wanted: ReaderSettings): List<String> = buildList {
         if (wanted.fontSize != shown.fontSize) add("OmnibusReader.setFontSize(${wanted.fontSize})")
@@ -96,6 +97,25 @@ internal object ReaderScripts {
 
     /** Jumps the page to [fraction] of the book, tagged [id] so the page can report it settled. */
     fun seek(fraction: Double, id: Int) = "OmnibusReader.seek(${JsonPrimitive(fraction)}, $id)"
+
+    /**
+     * Wraps [expr] so its value (awaited if it is a Promise) is posted back as a `hostReply` tagged [id].
+     * A throw or a rejection replies null.
+     */
+    fun hostCall(id: Int, expr: String): String =
+        "(function(){var r=function(v){try{window.omnibus.postMessage(JSON.stringify({type:'hostReply'," +
+            "payload:JSON.stringify({id:$id,value:v===undefined?null:v})}))}catch(e){}};" +
+            "try{Promise.resolve($expr).then(r,function(){r(null)})}catch(e){r(null)}})()"
+
+    const val WHEN_SETTLED = "OmnibusReader.whenSettled()"
+
+    fun peek(dir: Int) = "OmnibusReader.peek($dir)"
+
+    fun turnInstant(dir: Int) = "OmnibusReader.turnInstant($dir)"
+
+    fun turnSlide(dir: Int) = "OmnibusReader.turnSlide($dir)"
+
+    fun setCurlReady(on: Boolean, next: Boolean, prev: Boolean) = "OmnibusReader.setCurlReady($on, $next, $prev)"
 
     private fun quote(value: String) = JsonPrimitive(value).toString()
 

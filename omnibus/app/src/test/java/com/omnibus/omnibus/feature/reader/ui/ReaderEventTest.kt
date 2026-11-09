@@ -15,6 +15,7 @@ import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
 import io.kotest.property.exhaustive.of
 import java.io.File
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 class ReaderEventTest : DescribeSpec({
@@ -56,7 +57,7 @@ class ReaderEventTest : DescribeSpec({
             decode("selectionCleared", null) shouldBe ReaderEvent.SelectionCleared
             decode("toggleChrome", null) shouldBe ReaderEvent.ToggleChrome
             decode("shareText", "Call me Ishmael.") shouldBe ReaderEvent.ShareText("Call me Ishmael.")
-            decode("turnRequest", "next") shouldBe ReaderEvent.TurnRequest("next")
+            decode("turnRequest", "1") shouldBe ReaderEvent.TurnRequest(1)
         }
 
         it("TC-9: covers every type posted by reader.html") {
@@ -74,7 +75,7 @@ class ReaderEventTest : DescribeSpec({
                 "toggleChrome" to null,
                 "shareText" to "Call me Ishmael.",
                 "shareImage" to SHARE_IMAGE,
-                "turnRequest" to "next",
+                "turnRequest" to "1",
             )
 
             posted shouldBe payloads.keys
@@ -112,6 +113,37 @@ class ReaderEventTest : DescribeSpec({
         it("TC-13: applies defaults for explicit nulls") {
             decode("relocate", """{"page":null,"totalPages":null,"chapterTitle":null}""") shouldBe
                 ReaderEvent.Relocate(RelocateData())
+        }
+    }
+
+    describe("decoding page call replies") {
+        it("TC-305: keeps the id and the value of a reply") {
+            decode("hostReply", """{"id":3,"value":{"a":1}}""") shouldBe
+                ReaderEvent.HostReply(3, Json.parseToJsonElement("""{"a":1}"""))
+        }
+
+        it("TC-305: reads an explicit null value as no value") {
+            decode("hostReply", """{"id":3,"value":null}""") shouldBe ReaderEvent.HostReply(3, null)
+        }
+
+        it("TC-305: returns null for a malformed reply") {
+            checkAll(Exhaustive.of("""{"value":1}""", "not json", "{")) { payload ->
+                decode("hostReply", payload).shouldBeNull()
+            }
+        }
+    }
+
+    describe("decoding turn requests") {
+        it("TC-305: reads 1 and -1 as the direction of the turn") {
+            checkAll(Exhaustive.of("1" to 1, "-1" to -1)) { (payload, dir) ->
+                decode("turnRequest", payload) shouldBe ReaderEvent.TurnRequest(dir)
+            }
+        }
+
+        it("TC-305: returns null for any other direction") {
+            checkAll(Exhaustive.of("0", "2", "next", "")) { payload ->
+                decode("turnRequest", payload).shouldBeNull()
+            }
         }
     }
 })
