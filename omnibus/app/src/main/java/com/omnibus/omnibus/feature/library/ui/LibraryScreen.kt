@@ -120,11 +120,11 @@ internal object LibraryTestTags {
     fun directionIcon(direction: SortDirection) = "library-menu-direction-icon-${direction.name}"
 }
 
-private const val HEADER_KEY = "header"
-private const val FOOTER_KEY = "footer"
+internal const val HEADER_KEY = "header"
+internal const val FOOTER_KEY = "footer"
 
 /** The masthead and heading occupy grid item 0, so book indices start at 1. */
-private const val HEADER_ITEM_COUNT = 1
+internal const val HEADER_ITEM_COUNT = 1
 
 /**
  * The scrim at the top of the window covers the status bar plus [TOP_SCRIM_EXTRA]. Its top [TOP_SCRIM_SOLID] of the
@@ -444,6 +444,13 @@ private fun LibraryGrid(
         libraryGridItems(uiState.entries, uiState.unfoldedSeries)
     }
     val gridItemCount = items.size
+    val runs = remember(items) {
+        items.mapIndexedNotNull { i, item ->
+            (item as? LibraryGridItem.Summary)?.let {
+                OutlineRun(firstGridIndex = i + HEADER_ITEM_COUNT, cellCount = 1 + it.group.count)
+            }
+        }
+    }
     LaunchedEffect(gridState, uiState.books.size, gridItemCount) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .filterNotNull()
@@ -468,7 +475,10 @@ private fun LibraryGrid(
                 bottom = GRID_BOTTOM_GAP + bottomInset,
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize().testTag(LibraryTestTags.GRID),
+            modifier = Modifier
+                .fillMaxSize()
+                .seriesOutlines(gridState, runs, columns, palette.accent.copy(alpha = 0.35f))
+                .testTag(LibraryTestTags.GRID),
         ) {
             item(key = HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) {
                 // The masthead and heading carry their own 20 dp inset, so the header undoes the grid's padding.
