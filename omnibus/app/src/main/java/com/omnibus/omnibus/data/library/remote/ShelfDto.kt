@@ -19,6 +19,8 @@ internal data class ShelfDto(
     val accent: String? = null,
     @SerialName("book_count")
     val bookCount: Long = 0,
+    @SerialName("cover_uuids")
+    val coverUuids: List<String> = emptyList(),
 ) {
     fun toDomain(): Shelf = Shelf(
         id = id,
@@ -35,8 +37,3 @@ internal data class ShelfDto(
         bookCount = bookCount,
     )
 }
-
-@Serializable
-internal data class ShelfPageResponseDto(
-    val books: List<BookDto> = emptyList(),
-)

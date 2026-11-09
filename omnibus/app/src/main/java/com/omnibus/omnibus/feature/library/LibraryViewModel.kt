@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPageQuery
@@ -15,6 +16,8 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
 import com.omnibus.omnibus.data.library.SeriesBooks
 import com.omnibus.omnibus.data.library.SeriesBooksResult
+import com.omnibus.omnibus.data.library.ShelfPreview
+import com.omnibus.omnibus.data.library.ShelfPreviewsResult
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
@@ -44,6 +47,7 @@ class LibraryViewModel @Inject constructor(
     private val connectivityMonitor: ConnectivityMonitor,
     private val bookAvailability: BookAvailability,
     private val timeSource: TimeSource,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -66,6 +70,10 @@ class LibraryViewModel @Inject constructor(
     private val seriesReads = mutableMapOf<Long, Job>()
     private val seriesReadPermits = Semaphore(SERIES_READ_CONCURRENCY)
 
+    /** Bumped by every shelves load, so a superseded load cannot overwrite a newer one. */
+    private var shelvesToken = 0
+    private var shelvesJob: Job? = null
+
     init {
         viewModelScope.launch {
             // Restored before the first request, so page 1 already carries the saved sort, direction and grouping.
@@ -83,23 +91,33 @@ class LibraryViewModel @Inject constructor(
                 wasOnline = online
             }
         }
+        viewModelScope.launch {
+            authRepository.currentUser.collect { user -> _uiState.update { it.copy(viewerId = user?.id) } }
+        }
     }
 
     /** Reloads the first page after a full-screen error. */
     fun retry() = reload(refreshing = false)
 
     /**
-     * Reloads the first page, the Continue cards and every listed series for pull to refresh. The result
-     * replaces the list wholesale.
+     * Reloads the first page, the Continue cards, the shelves and every listed series for pull to refresh. The
+     * results replace the lists wholesale.
      */
     fun refresh() {
         reload(refreshing = true)
         loadResumePoints()
         readSeries(force = true)
+        loadShelves()
     }
 
-    /** Loads the Continue cards. Called each time the Library is shown, so returning from the reader shows the new position. */
-    fun libraryShown() = loadResumePoints()
+    /**
+     * Loads the Continue cards and the shelves. Called each time the Library is shown, so returning from the reader
+     * shows the new position.
+     */
+    fun libraryShown() {
+        loadResumePoints()
+        loadShelves()
+    }
 
     /**
      * Groups the books by series or ungroups them, and saves the choice. Turning grouping off folds every
@@ -284,6 +302,21 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Loads the shelves for the rail. A failure keeps the shelves already shown and raises no error, as for the
+     * Continue cards. Only the newest load may apply.
+     */
+    private fun loadShelves() {
+        val token = ++shelvesToken
+        shelvesJob?.cancel()
+        shelvesJob = viewModelScope.launch {
+            val result = libraryRepository.getShelfPreviewsFlow().last()
+            if (token != shelvesToken) return@launch
+            if (result !is ShelfPreviewsResult.Success) return@launch
+            _uiState.update { it.copy(shelves = result.previews) }
+        }
+    }
+
     /** Saves the current sort and direction. The category is never saved. */
     private fun persistSort() {
         val state = _uiState.value
@@ -370,6 +403,8 @@ class LibraryViewModel @Inject constructor(
  * @property groupBySeries Whether the books are grouped into series. Restored on launch and saved by [LibraryViewModel.toggleGroupBySeries].
  * @property seriesBooks The successful series reads, by series id. A failed read is not kept.
  * @property unfoldedSeries The ids of the series unfolded in the grid. Cleared when grouping is turned off.
+ * @property shelves Every shelf the user can see, unfiltered, in server order.
+ * @property viewerId The signed-in user's id, or null while it is unknown or signed out.
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -392,6 +427,8 @@ data class LibraryUIState(
     val groupBySeries: Boolean = false,
     val seriesBooks: Map<Long, SeriesBooks> = emptyMap(),
     val unfoldedSeries: Set<Long> = emptySet(),
+    val shelves: List<ShelfPreview> = emptyList(),
+    val viewerId: Long? = null,
 ) {
 
     /** The grid's entries: each book, or with grouping on, each series in place of its first loaded book. */
@@ -403,6 +440,10 @@ data class LibraryUIState(
         get() = category != LibraryCategory.All ||
             sort != LibrarySort.NewestAdded ||
             direction != SortDirection.Desc
+
+    /** The shelves the rail shows: [shelves] filtered for [viewerId] by [railShelvesOf], at most eight. */
+    val railShelves: List<ShelfPreview>
+        get() = railShelvesOf(shelves, viewerId)
 
     /** The page query for the current category, sort and direction. */
     fun toQuery(): BooksPageQuery = category.toQuery(sort, direction)

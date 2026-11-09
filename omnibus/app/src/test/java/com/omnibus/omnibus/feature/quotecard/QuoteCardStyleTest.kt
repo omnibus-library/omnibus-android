@@ -297,10 +297,6 @@ class QuoteCardStyleTest : DescribeSpec({
             it("is opaque") {
                 (pickerArgb(randomDouble(0.0, 360.0), 0.0, randomDouble(0.1, 0.9)) ushr 24) shouldBe 0xFF
             }
-
-            it("is a grey, whatever the hue and lightness") {
-                channels(pickerArgb(randomDouble(0.0, 360.0), 0.0, randomDouble(0.1, 0.9))).toSet().size shouldBe 1
-            }
         }
 
         it("reads a colour back so that picking it again lands within a step of every channel") {

@@ -2,6 +2,8 @@ package com.omnibus.omnibus.feature.library
 
 import app.cash.turbine.test
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.data.auth.TestAuthRepository
+import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
@@ -14,6 +16,9 @@ import com.omnibus.omnibus.data.library.ProgressFormat
 import com.omnibus.omnibus.data.library.RecentProgressResult
 import com.omnibus.omnibus.data.library.ResumePoint
 import com.omnibus.omnibus.data.library.SeriesBooksResult
+import com.omnibus.omnibus.data.library.ShelfKind
+import com.omnibus.omnibus.data.library.ShelfPreviewsResult
+import com.omnibus.omnibus.data.library.ShelfVisibility
 import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.TestBookAvailability
 import com.omnibus.omnibus.data.library.TestLibraryRepository
@@ -24,6 +29,8 @@ import com.omnibus.omnibus.data.library.randomLibrarySortPreference
 import com.omnibus.omnibus.data.library.about
 import com.omnibus.omnibus.data.library.randomResumePoint
 import com.omnibus.omnibus.data.library.randomSeriesBooks
+import com.omnibus.omnibus.data.library.randomShelf
+import com.omnibus.omnibus.data.library.randomShelfPreview
 import com.omnibus.omnibus.data.library.withRecord
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
@@ -62,7 +69,8 @@ class LibraryViewModelTest : DescribeSpec({
         monitor: ConnectivityMonitor = TestConnectivityMonitor(),
         availability: BookAvailability = TestBookAvailability(),
         time: TimeSource = randomLong().let { now -> TimeSource { now } },
-    ) = LibraryViewModel(repository, sortStore, monitor, availability, time)
+        auth: TestAuthRepository = TestAuthRepository(),
+    ) = LibraryViewModel(repository, sortStore, monitor, availability, time, auth)
 
     fun pageOf(range: LongRange, cursor: String? = null) = page(*range.toList().toLongArray(), cursor = cursor)
 
@@ -1040,6 +1048,118 @@ class LibraryViewModelTest : DescribeSpec({
 
                     viewModel.uiState.value shouldBeEqual before
                 }
+            }
+        }
+    }
+
+    describe("#233 the shelves") {
+        it("TC-10: libraryShown and refresh load the shelves, and a success replaces them") {
+            checkAll(Exhaustive.of(LibraryViewModel::libraryShown, LibraryViewModel::refresh)) { trigger ->
+                val repository = TestLibraryRepository()
+                val viewModel = sut(repository)
+                val shelves = List(3) { randomShelfPreview() }
+                repository.enqueueShelves(ShelfPreviewsResult.Success(shelves))
+
+                trigger(viewModel)
+
+                repository.shelfPreviewRequests shouldBe 1
+                viewModel.uiState.value.shelves shouldBe shelves
+
+                repository.enqueueShelves(ShelfPreviewsResult.Success(emptyList()))
+
+                trigger(viewModel)
+
+                repository.shelfPreviewRequests shouldBe 2
+                viewModel.uiState.value.shelves.shouldBeEmpty()
+            }
+        }
+
+        context("when a later load fails") {
+            it("TC-11: keeps the held shelves and raises no error") {
+                checkAll(
+                    Exhaustive.of(ShelfPreviewsResult.Failure(LibraryError.Unreachable), ShelfPreviewsResult.NoServer),
+                ) { failure ->
+                    val repository = TestLibraryRepository()
+                    val held = List(3) { randomShelfPreview() }
+                    repository.enqueueShelves(ShelfPreviewsResult.Success(held))
+                    val viewModel = sut(repository).also { it.libraryShown() }
+                    repository.enqueueShelves(failure)
+
+                    viewModel.libraryShown()
+
+                    viewModel.uiState.value.shelves shouldBe held
+                    viewModel.uiState.value.error shouldBe null
+                    viewModel.uiState.value.transientError shouldBe null
+                }
+            }
+        }
+
+        context("with a stale load") {
+            it("TC-12: applies only the newest load") {
+                val repository = TestLibraryRepository()
+                val viewModel = sut(repository)
+                val first = CompletableDeferred<ShelfPreviewsResult>()
+                val newer = List(3) { randomShelfPreview() }
+                repository.enqueueShelves(first)
+                repository.enqueueShelves(ShelfPreviewsResult.Success(newer))
+
+                viewModel.libraryShown()
+                viewModel.libraryShown()
+                first.complete(ShelfPreviewsResult.Success(List(3) { randomShelfPreview() }))
+
+                viewModel.uiState.value.shelves shouldBe newer
+            }
+        }
+
+        it("TC-13: leaves the books, the Continue cards and isRefreshing alone") {
+            val repository = TestLibraryRepository()
+            val viewModel = sutWithSixtyBooks(repository)
+            repository.enqueue(CompletableDeferred<LibraryPageResult>())
+            repository.enqueueRecent(RecentProgressResult.Success(listOf(randomResumePoint())))
+            val shelfAnswer = CompletableDeferred<ShelfPreviewsResult>()
+            repository.enqueueShelves(shelfAnswer)
+            val shelves = List(3) { randomShelfPreview() }
+
+            viewModel.refresh()
+            val before = viewModel.uiState.value
+
+            shelfAnswer.complete(ShelfPreviewsResult.Success(shelves))
+
+            viewModel.uiState.value.shelves shouldBe shelves
+            viewModel.uiState.value.books shouldBe before.books
+            viewModel.uiState.value.continueCards shouldBe before.continueCards
+            viewModel.uiState.value.isRefreshing shouldBe true
+        }
+
+        describe("the viewer") {
+            it("TC-14: follows the signed-in user and refilters without a reload") {
+                val user = randomCurrentUser()
+                val repository = TestLibraryRepository()
+                val auth = TestAuthRepository()
+                val owned = randomShelfPreview().copy(
+                    shelf = randomShelf().copy(
+                        ownerUserId = user.id,
+                        kind = ShelfKind.Manual,
+                        visibility = ShelfVisibility.Private,
+                    ),
+                )
+                repository.enqueueShelves(ShelfPreviewsResult.Success(listOf(owned)))
+                val viewModel = sut(repository, auth = auth)
+
+                viewModel.libraryShown()
+
+                viewModel.uiState.value.railShelves.shouldBeEmpty()
+
+                auth.currentUserState.value = user
+
+                viewModel.uiState.value.viewerId shouldBe user.id
+                viewModel.uiState.value.railShelves shouldBe listOf(owned)
+                repository.shelfPreviewRequests shouldBe 1
+
+                auth.currentUserState.value = null
+
+                viewModel.uiState.value.viewerId shouldBe null
+                viewModel.uiState.value.railShelves.shouldBeEmpty()
             }
         }
     }

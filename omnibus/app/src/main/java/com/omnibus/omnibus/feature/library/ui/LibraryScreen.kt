@@ -502,6 +502,12 @@ private fun LibraryGrid(
                         )
                         Spacer(Modifier.height(30.dp))
                     }
+                    val railShelves = uiState.railShelves
+                    if (railShelves.isNotEmpty()) {
+                        ShelvesRail(shelves = railShelves, viewerId = uiState.viewerId)
+                        // 30 dp to the heading, as between the Continue card and the heading.
+                        Spacer(Modifier.height(30.dp))
+                    }
                     Column(Modifier.padding(horizontal = Spacing.screen)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Shelves section on the Library, between the Continue cards and All books (#233). -->
+    <string name="library_shelves_heading">Shelves</string>
+    <plurals name="library_shelves_book_count">
+        <item quantity="one">%d book</item>
+        <item quantity="other">%d books</item>
+    </plurals>
+    <!-- The meta line of a smart shelf, and of a public one. -->
+    <string name="library_shelves_meta_smart">Smart</string>
+    <string name="library_shelves_meta_public">Public</string>
+    <!-- %1$s is the shelf owner's name. -->
+    <string name="library_shelves_meta_owner">by %1$s</string>
+    <!-- The kind of a card, as TalkBack announces it. -->
+    <string name="library_shelves_kind_smart">Smart shelf</string>
+    <string name="library_shelves_kind_wishlist">Wishlist</string>
+    <string name="library_shelves_kind_manual">Shelf</string>
+</resources>
