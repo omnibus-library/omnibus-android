@@ -67,7 +67,7 @@ internal class CurlDrag(val dir: Int, val turning: CurlRect, private val downX: 
             val eased = easeInOutCubic(t.coerceIn(0f, 1f))
             val p = if (dir < 0) 1 - eased else eased
             val h = turning.height
-            return Vec(c.x - p * (c.x - turnedX), c.y - sin(PI.toFloat() * p) * 0.1f * h + p * 0.05f * h)
+            return Vec(c.x - p * (c.x - turnedX), c.y - sin(PI.toFloat() * p) * 0.08f * h)
         }
 
         /** The cubic ease in and out used by the tap curl. */

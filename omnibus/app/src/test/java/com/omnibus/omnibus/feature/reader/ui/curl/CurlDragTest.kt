@@ -187,12 +187,10 @@ class CurlDragTest : DescribeSpec({
                 }
             }
 
-            // The fold's vertical position at the end is not asserted: curl.html's settle drifts it 0.05 of the height.
-            it("TC-312: ends at the turned fold's horizontal position") {
+            it("TC-312: ends at the turned fold, on the corner's row") {
                 checkAll(arbCurlRect()) { rect ->
-                    val end = CurlDrag.tapFold(1, rect, 1f)
-
-                    end.x shouldBe ((2 * rect.left - rect.right - 1f) plusOrMinus PIXELS)
+                    CurlDrag.tapFold(1, rect, 1f)
+                        .shouldBeNear(Vec(2 * rect.left - rect.right - 1f, rect.top + 0.7f * rect.height), PIXELS)
                 }
             }
 
