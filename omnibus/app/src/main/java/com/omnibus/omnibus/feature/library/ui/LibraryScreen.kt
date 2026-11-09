@@ -119,11 +119,8 @@ private const val FOOTER_KEY = "footer"
 /** The masthead and heading occupy grid item 0, so book indices start at 1. */
 private const val HEADER_ITEM_COUNT = 1
 
-/** The solid-to-clear fade under the status bar, over the masthead's top (#162). #26 re-tunes it. */
-private val TOP_FADE = 24.dp
-
-/** The fade above the bottom overlay, so covers dissolve into the tab bar (#162). */
-private val BOTTOM_FADE = 36.dp
+/** The ease below the status bar's solid band. It is the masthead's gap, so it never reaches the masthead (#162). */
+private val TOP_FADE = 8.dp
 
 /** The space below the last row, on top of the bottom overlay (#11). */
 private val GRID_BOTTOM_GAP = 40.dp
@@ -133,7 +130,7 @@ private val GRID_BOTTOM_GAP = 40.dp
  *
  * Stateful wrapper that feeds [LibraryScreenContent] from [LibraryViewModel]. The grid state is
  * hoisted here so the saveable-state decorator restores scroll on back. It fills the window: the grid scrolls under
- * the status bar and the shell's bottom overlay, behind `bg0` edge fades.
+ * the status bar and the shell's bottom overlay, behind a `bg0` fade at the status bar.
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
  * @param onAddBooks Called when the masthead's add button is tapped.
@@ -320,14 +317,9 @@ internal fun LibraryScreenContent(
                         onResume = onResume,
                         onShowContextMenu = onShowContextMenu,
                     )
-                    // Drawn after the grid, so the indicator (drawn after the content) stays above both fades.
+                    // Keeps the status bar icons legible over scrolling content. Drawn after the grid, so the indicator
+                    // (drawn after the content) stays above it.
                     EdgeFade(FadeEdge.Top, solid = statusTop, fade = TOP_FADE, modifier = Modifier.align(Alignment.TopCenter))
-                    EdgeFade(
-                        FadeEdge.Bottom,
-                        solid = overlayBottom,
-                        fade = BOTTOM_FADE,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
                 }
             }
         }

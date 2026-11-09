@@ -93,29 +93,31 @@ class LibraryEdgeToEdgeTest {
 
     // TC-7
     @Test
-    fun tc7_coverUnderTheBottomFadeStillOpens() {
+    fun tc7_coverUnderTheTopFadeStillOpens() {
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         val opened = mutableListOf<String>()
         var gridState: LazyGridState? = null
+        var statusTop = 0
         setLibrary(
             LibraryUIState(books = (1L..40L).map { book(it) }),
             onOpenBook = { opened += it },
+            onStatusTop = { statusTop = it },
             onGridState = { gridState = it },
         )
         rule.onNodeWithTag(LibraryTestTags.GRID).performScrollToIndex(20)
         rule.waitForIdle()
         val grid = checkNotNull(gridState)
 
-        // Just above the overlay, where the bottom fade's eased part begins.
-        val target = rule.onNodeWithTag(SHELL_OVERLAY_TAG).bounds().top - 1f
-        // Scroll back so the composed cell nearest above the target moves down onto it.
+        // Just below the status bar, where the top fade's eased part begins.
+        val target = statusTop + 1f
+        // Scroll forward so the composed cell nearest below the target moves up onto it.
         val (id, nearest) = grid.layoutInfo.visibleItemsInfo
             .mapNotNull { it.key as? Long }
             .map { id -> id to rule.onNodeWithTag(LibraryTestTags.cell(id)).bounds() }
-            .filter { (_, bounds) -> bounds.center.y < target }
-            .maxByOrNull { (_, bounds) -> bounds.center.y }
-            ?: error("no composed cell above the target $target")
-        rule.runOnIdle { grid.dispatchRawDelta(-(target - nearest.center.y)) }
+            .filter { (_, bounds) -> bounds.center.y > target }
+            .minByOrNull { (_, bounds) -> bounds.center.y }
+            ?: error("no composed cell below the target $target")
+        rule.runOnIdle { grid.dispatchRawDelta(nearest.center.y - target) }
         rule.waitForIdle()
 
         val cell = rule.onNodeWithTag(LibraryTestTags.cell(id)).bounds()
