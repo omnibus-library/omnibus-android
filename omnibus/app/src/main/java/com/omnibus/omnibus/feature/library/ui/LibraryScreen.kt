@@ -111,6 +111,9 @@ internal object LibraryTestTags {
     fun cell(id: Long) = "library-cell-$id"
     fun cover(id: Long) = "library-cover-$id"
     fun stack(seriesId: Long) = "library-stack-$seriesId"
+    fun seriesSummary(seriesId: Long) = "library-series-$seriesId"
+    fun seriesPage(seriesId: Long) = "library-series-page-$seriesId"
+    fun foldUp(seriesId: Long) = "library-fold-up-$seriesId"
     fun title(id: Long) = "library-title-$id"
     fun menuCategory(category: LibraryCategory) = "library-menu-category-${category.name}"
     fun menuSort(sort: LibrarySort) = "library-menu-sort-${sort.name}"
@@ -146,6 +149,7 @@ private val GRID_BOTTOM_GAP = 40.dp
  * @param onAddBooks Called when the masthead's add button is tapped.
  * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
  * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
+ * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
  */
 @Composable
 fun LibraryScreen(
@@ -154,6 +158,7 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     onOpenReader: (bookUuid: String) -> Unit = {},
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
+    onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -177,6 +182,8 @@ fun LibraryScreen(
         onToggleDirection = viewModel::toggleDirection,
         onToggleGroupBySeries = viewModel::toggleGroupBySeries,
         onUnfoldSeries = viewModel::unfoldSeries,
+        onFoldUpSeries = viewModel::foldUpSeries,
+        onOpenSeries = onOpenSeries,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
         continueState = continueState,
@@ -201,6 +208,8 @@ fun LibraryScreen(
  * @param onToggleDirection Called when the Direction row is tapped.
  * @param onToggleGroupBySeries Called when the group-by-series pill is tapped.
  * @param onUnfoldSeries Called with the series id when a folded series' stack is tapped.
+ * @param onFoldUpSeries Called with the series id when an unfolded series' "Fold up" is tapped.
+ * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
@@ -229,6 +238,8 @@ internal fun LibraryScreenContent(
     onToggleDirection: () -> Unit = {},
     onToggleGroupBySeries: () -> Unit = {},
     onUnfoldSeries: (seriesId: Long) -> Unit = {},
+    onFoldUpSeries: (seriesId: Long) -> Unit = {},
+    onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -326,6 +337,8 @@ internal fun LibraryScreenContent(
                         onToggleDirection = onToggleDirection,
                         onToggleGroupBySeries = onToggleGroupBySeries,
                         onUnfoldSeries = onUnfoldSeries,
+                        onFoldUpSeries = onFoldUpSeries,
+                        onOpenSeries = onOpenSeries,
                         gridState = gridState,
                         topInset = statusTop,
                         bottomInset = overlayBottom,
@@ -411,6 +424,8 @@ private fun LibraryGrid(
     onToggleDirection: () -> Unit,
     onToggleGroupBySeries: () -> Unit,
     onUnfoldSeries: (seriesId: Long) -> Unit,
+    onFoldUpSeries: (seriesId: Long) -> Unit,
+    onOpenSeries: (seriesId: Long, name: String) -> Unit,
     gridState: LazyGridState,
     topInset: Dp,
     bottomInset: Dp,
@@ -425,8 +440,8 @@ private fun LibraryGrid(
     val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
     val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
-    val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries) {
-        libraryGridItems(uiState.entries, unfolded = emptySet())
+    val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries, uiState.unfoldedSeries) {
+        libraryGridItems(uiState.entries, uiState.unfoldedSeries)
     }
     val gridItemCount = items.size
     LaunchedEffect(gridState, uiState.books.size, gridItemCount) {
@@ -524,8 +539,22 @@ private fun LibraryGrid(
                         modifier = rowGap,
                     )
 
-                    // Unreachable until a series can unfold; layer 4 draws these.
-                    is LibraryGridItem.Summary, is LibraryGridItem.Member -> Unit
+                    is LibraryGridItem.Summary -> SeriesSummaryCell(
+                        group = item.group,
+                        width = cellWidth,
+                        onOpenSeries = { onOpenSeries(item.group.seriesId, item.group.name) },
+                        onFoldUp = { onFoldUpSeries(item.group.seriesId) },
+                        modifier = rowGap,
+                    )
+
+                    is LibraryGridItem.Member -> BookGridCell(
+                        book = item.book,
+                        width = cellWidth,
+                        onClick = { openFromGrid(item.book.uuid) },
+                        modifier = rowGap,
+                        subtitle = item.book.seriesIndex?.trim()?.takeIf { it.isNotEmpty() }
+                            ?.let { stringResource(R.string.library_series_volume, it) },
+                    )
                 }
             }
 
