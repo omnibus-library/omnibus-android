@@ -30,9 +30,10 @@ private const val EASE_STOPS = 12
  *
  * @param solid The height of the solid part, measured from [edge] (for example the status bar inset).
  * @param fade The height of the eased part beyond [solid].
+ * @param peak The alpha of the solid part. Lower it to let the content show through more.
  */
 @Composable
-fun EdgeFade(edge: FadeEdge, solid: Dp, fade: Dp, modifier: Modifier = Modifier) {
+fun EdgeFade(edge: FadeEdge, solid: Dp, fade: Dp, modifier: Modifier = Modifier, peak: Float = SOLID_ALPHA) {
     val ground = OmnibusTheme.palette.bg0
     Box(
         modifier
@@ -41,7 +42,7 @@ fun EdgeFade(edge: FadeEdge, solid: Dp, fade: Dp, modifier: Modifier = Modifier)
             .drawBehind {
                 if (size.height <= 0f) return@drawBehind
                 val fraction = solid.toPx() / size.height
-                val stops = edgeFadeStops(fraction).map { (position, alpha) ->
+                val stops = edgeFadeStops(fraction, peak).map { (position, alpha) ->
                     val y = if (edge == FadeEdge.Bottom) 1f - position else position
                     y to ground.copy(alpha = alpha)
                 }
@@ -53,16 +54,16 @@ fun EdgeFade(edge: FadeEdge, solid: Dp, fade: Dp, modifier: Modifier = Modifier)
 
 /**
  * The gradient stops of an edge fade, as (position, alpha) pairs measured from the anchored edge: 0 is the edge and 1
- * is the transparent end. The solid part holds [SOLID_ALPHA] up to [solidFraction], then an ease-out smoothstep falls
- * to exactly 0 at the end.
+ * is the transparent end. The solid part holds [peak] up to [solidFraction], then an ease-out smoothstep falls to
+ * exactly 0 at the end.
  */
-internal fun edgeFadeStops(solidFraction: Float): List<Pair<Float, Float>> {
+internal fun edgeFadeStops(solidFraction: Float, peak: Float = SOLID_ALPHA): List<Pair<Float, Float>> {
     val f = solidFraction.coerceIn(0f, 1f)
-    val stops = mutableListOf(0f to SOLID_ALPHA, f to SOLID_ALPHA)
+    val stops = mutableListOf(0f to peak, f to peak)
     for (i in 1..EASE_STOPS) {
         val t = i / EASE_STOPS.toFloat()
         val position = if (i == EASE_STOPS) 1f else f + (1f - f) * t
-        val alpha = if (i == EASE_STOPS) 0f else SOLID_ALPHA * (1f - t * t * (3f - 2f * t))
+        val alpha = if (i == EASE_STOPS) 0f else peak * (1f - t * t * (3f - 2f * t))
         stops += position to alpha
     }
     return stops

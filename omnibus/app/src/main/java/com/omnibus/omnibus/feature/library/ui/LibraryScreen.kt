@@ -119,8 +119,12 @@ private const val FOOTER_KEY = "footer"
 /** The masthead and heading occupy grid item 0, so book indices start at 1. */
 private const val HEADER_ITEM_COUNT = 1
 
-/** The ease below the status bar's solid band. It is the masthead's gap, so it never reaches the masthead (#162). */
-private val TOP_FADE = 8.dp
+/**
+ * The scrim at the top of the window spans the status bar and no more. Its top [TOP_SCRIM_SOLID] holds [TOP_SCRIM_PEAK]
+ * behind the status bar icons and the rest eases to clear, so the grid shows through as it scrolls under the bar.
+ */
+private const val TOP_SCRIM_SOLID = 0.4f
+private const val TOP_SCRIM_PEAK = 0.8f
 
 /** The space below the last row, on top of the bottom overlay (#11). */
 private val GRID_BOTTOM_GAP = 40.dp
@@ -130,7 +134,7 @@ private val GRID_BOTTOM_GAP = 40.dp
  *
  * Stateful wrapper that feeds [LibraryScreenContent] from [LibraryViewModel]. The grid state is
  * hoisted here so the saveable-state decorator restores scroll on back. It fills the window: the grid scrolls under
- * the status bar and the shell's bottom overlay, behind a `bg0` fade at the status bar.
+ * the status bar and the shell's bottom overlay, behind a `bg0` scrim over the status bar.
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
  * @param onAddBooks Called when the masthead's add button is tapped.
@@ -317,9 +321,15 @@ internal fun LibraryScreenContent(
                         onResume = onResume,
                         onShowContextMenu = onShowContextMenu,
                     )
-                    // Keeps the status bar icons legible over scrolling content. Drawn after the grid, so the indicator
-                    // (drawn after the content) stays above it.
-                    EdgeFade(FadeEdge.Top, solid = statusTop, fade = TOP_FADE, modifier = Modifier.align(Alignment.TopCenter))
+                    // Keeps the status bar icons legible over the content scrolling under them. Drawn after the grid, so
+                    // the indicator (drawn after the content) stays above it.
+                    EdgeFade(
+                        FadeEdge.Top,
+                        solid = statusTop * TOP_SCRIM_SOLID,
+                        fade = statusTop * (1f - TOP_SCRIM_SOLID),
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        peak = TOP_SCRIM_PEAK,
+                    )
                 }
             }
         }

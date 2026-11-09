@@ -93,7 +93,7 @@ class LibraryEdgeToEdgeTest {
 
     // TC-7
     @Test
-    fun tc7_coverUnderTheTopFadeStillOpens() {
+    fun tc7_coverUnderTheTopScrimStillOpens() {
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         val opened = mutableListOf<String>()
         var gridState: LazyGridState? = null
@@ -108,8 +108,8 @@ class LibraryEdgeToEdgeTest {
         rule.waitForIdle()
         val grid = checkNotNull(gridState)
 
-        // Just below the status bar, where the top fade's eased part begins.
-        val target = statusTop + 1f
+        // Halfway down the status bar, under the scrim, so the cell is covered by it.
+        val target = statusTop / 2f
         // Scroll forward so the composed cell nearest below the target moves up onto it.
         val (id, nearest) = grid.layoutInfo.visibleItemsInfo
             .mapNotNull { it.key as? Long }
