@@ -14,6 +14,13 @@ internal data class EbooksPageResponseDto(
     val total: Long? = null,
 )
 
+/** The part of `GET api/series/{id}` the Library uses. The slim series read has its own DTO. */
+@Serializable
+internal data class SeriesBooksResponseDto(
+    val name: String = "",
+    val books: List<BookDto> = emptyList(),
+)
+
 @Serializable
 internal data class BookDto(
     val id: Long,
