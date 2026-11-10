@@ -85,6 +85,18 @@ class OmnibusNavigationRailTest {
         }
     }
 
+    // TC-11
+    @Test
+    fun tc11d_tabsAreCenteredBetweenTheSystemBars() {
+        val insets = renderEdgeToEdgeRail()
+
+        val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
+        val tabs = rule.onAllNodes(TAB).fetchSemanticsNodes().map { it.boundsInRoot }
+        val gapAbove = tabs.first().top - insets.statusTopPx
+        val gapBelow = (rail.bottom - insets.bottomInsetPx) - tabs.last().bottom
+        assertEquals("gap above the tabs $gapAbove, below $gapBelow", gapAbove, gapBelow, 2f)
+    }
+
     // TC-12
     @Test
     fun tc12_exposesTabsInAGroup() {
@@ -177,6 +189,7 @@ class OmnibusNavigationRailTest {
             insets.statusTopPx = WindowInsets.statusBars.getTop(density)
             insets.startInsetPx = WindowInsets.systemBars.union(WindowInsets.displayCutout)
                 .getLeft(density, LayoutDirection.Ltr)
+            insets.bottomInsetPx = WindowInsets.systemBars.union(WindowInsets.displayCutout).getBottom(density)
             insets.railWidthPx = with(density) { 80.dp.toPx() }
             OmnibusTheme(darkTheme = true) {
                 Box(Modifier.fillMaxSize()) {
@@ -196,6 +209,7 @@ class OmnibusNavigationRailTest {
     private class EdgeInsets {
         var statusTopPx = 0
         var startInsetPx = 0
+        var bottomInsetPx = 0
         var railWidthPx = 0f
     }
 

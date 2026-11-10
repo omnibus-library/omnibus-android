@@ -3,6 +3,7 @@ package com.omnibus.omnibus.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
@@ -28,8 +28,8 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 
 /**
  * The navigation rail for windows 600dp wide and wider: the same destinations as [OmnibusTabBar], stacked down an 80dp
- * `bg2` column on the leading edge, with a hairline on its trailing edge. The first destination sits below the status
- * bar, and the column clears the start-side system bars and display cutouts.
+ * `bg2` column on the leading edge, with a hairline on its trailing edge. The destinations are centered vertically
+ * between the system bars, and the column clears the start-side system bars and display cutouts.
  *
  * @param items The tabs, top to bottom.
  * @param selectedIndex Index into [items] of the selected tab.
@@ -47,16 +47,16 @@ fun OmnibusNavigationRail(
     val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
         .only(WindowInsetsSides.Top + WindowInsetsSides.Start + WindowInsetsSides.Bottom)
 
-    Box(modifier.fillMaxHeight().background(palette.bg2)) {
+    BoxWithConstraints(modifier.fillMaxHeight().background(palette.bg2)) {
         Column(
             Modifier
-                .fillMaxHeight()
                 .windowInsetsPadding(insets)
                 .width(80.dp)
+                // The scroll below gives the column unbounded height, so the minimum is what centers a short list.
+                .heightIn(min = maxHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(top = 20.dp)
                 .selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             items.forEachIndexed { index, item ->
