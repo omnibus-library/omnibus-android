@@ -5,12 +5,19 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.feature.library.OutlineGrid
 import com.omnibus.omnibus.feature.library.OutlineStroke
+import com.omnibus.omnibus.feature.library.SeriesOutlineShape
+import com.omnibus.omnibus.feature.library.outlineFills
 import com.omnibus.omnibus.feature.library.outlineStrokes
 import com.omnibus.omnibus.feature.library.seriesOutline
 import com.omnibus.omnibus.ui.theme.Radius
@@ -30,37 +37,74 @@ private val COLUMN_GAP = 16.dp
 private class RowBox(val top: Float, val bottom: Float)
 
 /**
- * Draws an outline around each of [runs] in the gutters of the grid, over its content. The outlines are computed from
- * the visible items of [gridState]. A run row that is scrolled off-screen is extrapolated from the nearest visible row,
- * so an outline does not stop at the viewport edge. The drawing reads the layout in the draw phase, so scrolling
- * redraws it without recomposing.
+ * Fills and outlines each of [runs] in the gutters of the grid: the fill goes under the grid's content and the outline
+ * over it. The shapes are computed from the visible items of [gridState]. A run row that is scrolled off-screen is
+ * extrapolated from the nearest visible row, so an outline does not stop at the viewport edge. The drawing reads the
+ * layout in the draw phase, so scrolling redraws it without recomposing.
  *
  * @param runs One run per unfolded series, in grid order.
  * @param columns The grid's column count.
- * @param color The stroke colour.
+ * @param stroke The outline colour.
+ * @param fill The colour inside each container.
  */
 internal fun Modifier.seriesOutlines(
     gridState: LazyGridState,
     runs: List<OutlineRun>,
     columns: Int,
-    color: Color,
+    stroke: Color,
+    fill: Color,
 ): Modifier = drawWithContent {
+    val placed = placeRuns(gridState.layoutInfo, runs, columns)
+    val radius = Radius.lg.toPx()
+    val fillPaint = Paint().apply {
+        color = fill
+        style = PaintingStyle.Fill
+        pathEffect = PathEffect.cornerPathEffect(radius)
+    }
+    clipRect {
+        drawIntoCanvas { canvas ->
+            for ((shape, grid) in placed) {
+                // An open end runs past the screen edge, so its rounded corner is cut off by the clip.
+                val fillGrid = grid.copy(edgeLeft = -radius, edgeRight = size.width + radius)
+                for (polygon in outlineFills(shape, fillGrid)) {
+                    canvas.drawPath(OutlineStroke(polygon, closed = true).toPath(), fillPaint)
+                }
+            }
+        }
+    }
     drawContent()
-    if (runs.isEmpty()) return@drawWithContent
+    for ((shape, grid) in placed) {
+        for (outline in outlineStrokes(shape, grid)) {
+            drawPath(
+                path = outline.toPath(),
+                color = stroke,
+                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.cornerPathEffect(radius)),
+            )
+        }
+    }
+}
+
+/** Each of [runs] with a row on screen, as its outline shape and its grid in px. */
+private fun DrawScope.placeRuns(
+    info: LazyGridLayoutInfo,
+    runs: List<OutlineRun>,
+    columns: Int,
+): List<Pair<SeriesOutlineShape, OutlineGrid>> {
+    if (runs.isEmpty()) return emptyList()
     val rowGap = ROW_GAP.toPx()
     val columnGap = COLUMN_GAP.toPx()
-    val rows = visibleRows(gridState.layoutInfo, columns, rowGap)
-    if (rows.isEmpty()) return@drawWithContent
+    val rows = visibleRows(info, columns, rowGap)
+    if (rows.isEmpty()) return emptyList()
     val pitch = rowPitch(rows, rowGap)
     val contentLeft = Spacing.screen.toPx()
     val slotWidth = (size.width - 2 * contentLeft - columnGap * (columns - 1)) / columns
 
-    for (run in runs) {
+    return runs.mapNotNull { run ->
         val first = run.firstGridIndex - HEADER_ITEM_COUNT
         val start = first % columns
         val firstRow = first / columns
         val lastRow = firstRow + (start + run.cellCount - 1) / columns
-        if ((firstRow..lastRow).none { it in rows }) continue
+        if ((firstRow..lastRow).none { it in rows }) return@mapNotNull null
         val boxes = (firstRow..lastRow).map { rowBox(it, rows, pitch) }
         val grid = OutlineGrid(
             contentLeft = contentLeft,
@@ -72,13 +116,7 @@ internal fun Modifier.seriesOutlines(
             edgeLeft = 0f,
             edgeRight = size.width,
         )
-        for (stroke in outlineStrokes(seriesOutline(start, run.cellCount, columns), grid)) {
-            drawPath(
-                path = stroke.toPath(),
-                color = color,
-                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.cornerPathEffect(Radius.lg.toPx())),
-            )
-        }
+        seriesOutline(start, run.cellCount, columns) to grid
     }
 }
 
