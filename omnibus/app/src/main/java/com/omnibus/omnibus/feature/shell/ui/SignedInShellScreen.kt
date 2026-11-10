@@ -33,6 +33,8 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
+import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
+import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
 import com.omnibus.omnibus.feature.shell.LibraryRoot
 import com.omnibus.omnibus.feature.shell.SearchRoot
 import com.omnibus.omnibus.feature.shell.ShellNavigator
@@ -154,6 +156,7 @@ private fun SignedInShellContent(
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
                                 onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name)) },
+                                onOpenShelves = { navigator.navigateTo(ShelvesRoute) },
                             )
                         }
                         entry<BookDetailRoute> { key ->
@@ -167,6 +170,9 @@ private fun SignedInShellContent(
                         }
                         entry<BookDetailPlaceholderRoute> { key ->
                             ShellPaddedEntry { BookDetailPlaceholderScreen(title = key.title) }
+                        }
+                        entry<ShelvesRoute> {
+                            ShellPaddedEntry { ShelvesScreen(onBack = { navigator.back() }) }
                         }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
