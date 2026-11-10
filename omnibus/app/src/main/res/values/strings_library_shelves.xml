@@ -15,4 +15,6 @@
     <string name="library_shelves_kind_smart">Smart shelf</string>
     <string name="library_shelves_kind_wishlist">Wishlist</string>
     <string name="library_shelves_kind_manual">Shelf</string>
+    <!-- The rail heading's link to the Shelves screen. -->
+    <string name="library_shelves_all">All</string>
 </resources>
