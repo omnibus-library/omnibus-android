@@ -20,8 +20,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertTouchWidthIsEqualTo
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -194,8 +194,8 @@ class BookDetailTopBarTest {
         rule.setDetailScreen(BookDetailUIState(book = testDetailBook(), isLoading = false))
 
         rule.onNodeWithContentDescription(detailText(R.string.navigation_back))
-            .assertWidthIsAtLeast(48.dp)
-            .assertHeightIsAtLeast(48.dp)
+            .assertTouchWidthIsEqualTo(48.dp)
+            .assertTouchHeightIsEqualTo(48.dp)
     }
 
     // TC-7
