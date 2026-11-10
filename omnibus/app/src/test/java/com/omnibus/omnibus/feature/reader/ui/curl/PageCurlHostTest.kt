@@ -9,8 +9,10 @@ import io.kotest.matchers.collections.shouldContainInOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
@@ -118,7 +120,7 @@ class PageCurlHostTest : DescribeSpec({
 
                     readied(host)
 
-                    log shouldContain ReaderScripts.setCurlReady(on = true, next = false, prev = false)
+                    log shouldContain ReaderScripts.setCurlReady(on = true, next = true, prev = true)
                 }
             }
         }
@@ -671,4 +673,89 @@ class PageCurlHostTest : DescribeSpec({
             }
         }
     }
+
+    describe("claiming a swipe toward a neighbour") {
+        context("when the mode is Curl") {
+            it("TC-338: claims each direction by its neighbour's kind, over every next and previous kind") {
+                runTest {
+                    val kinds = NeighbourKind.entries.flatMap { next -> NeighbourKind.entries.map { next to it } }
+                    checkAll(Exhaustive.collection(kinds)) { (next, prev) ->
+                        val log = mutableListOf<String>()
+                        val host = readyCurl(log, page = scriptedPage(log, next = next.token, prev = prev.token))
+
+                        host.claimToward(1) shouldBe expectedClaim(ReaderPageTurn.Curl, next, 1)
+                        host.claimToward(-1) shouldBe expectedClaim(ReaderPageTurn.Curl, prev, -1)
+                    }
+                }
+            }
+        }
+
+        context("when the mode is None") {
+            it("TC-338: claims each direction by its neighbour's kind, over every next and previous kind") {
+                runTest {
+                    val kinds = NeighbourKind.entries.flatMap { next -> NeighbourKind.entries.map { next to it } }
+                    checkAll(Exhaustive.collection(kinds)) { (next, prev) ->
+                        val log = mutableListOf<String>()
+                        val page = scriptedPage(log, next = next.token, prev = prev.token)
+                        val host = sut(backgroundScope, log, page = page)
+                        host.mode = ReaderPageTurn.None
+                        readied(host)
+
+                        host.claimToward(1) shouldBe expectedClaim(ReaderPageTurn.None, next, 1)
+                        host.claimToward(-1) shouldBe expectedClaim(ReaderPageTurn.None, prev, -1)
+                    }
+                }
+            }
+        }
+    }
+
+    describe("a swipe with no motion") {
+        context("when the mode is None") {
+            it("TC-339: claims a swipe toward a neighbour as a turn, never as a drag") {
+                runTest {
+                    checkAll(Exhaustive.of(1, -1)) { dir ->
+                        val log = mutableListOf<String>()
+                        val host = sut(backgroundScope, log, page = scriptedPage(log))
+                        host.mode = ReaderPageTurn.None
+                        readied(host)
+
+                        host.claimToward(dir) shouldBe CurlClaim.Turn(dir)
+                    }
+                }
+            }
+
+            it("TC-339: lands the swipe with turnInstant alone") {
+                runTest {
+                    val log = mutableListOf<String>()
+                    val host = sut(backgroundScope, log, page = scriptedPage(log))
+                    host.mode = ReaderPageTurn.None
+                    readied(host)
+                    log.clear()
+
+                    val turn = host.claimToward(1).shouldBeInstanceOf<CurlClaim.Turn>()
+                    host.tapTurn(turn.dir)
+                    settle()
+
+                    log.first() shouldBe ReaderScripts.turnInstant(1)
+                    log shouldNotContain "snapshot"
+                    log shouldNotContain "curl"
+                    log shouldNotContain ReaderScripts.turnSlide(1)
+                }
+            }
+        }
+    }
 })
+
+/** The claim a swipe toward a neighbour of [kind] gets: none for `none`, a follow for a page in Curl, else a turn. */
+private fun expectedClaim(mode: ReaderPageTurn, kind: NeighbourKind, dir: Int): CurlClaim = when {
+    kind == NeighbourKind.None -> CurlClaim.Pass
+    mode == ReaderPageTurn.Curl && kind == NeighbourKind.Page -> CurlClaim.Drag(dir)
+    else -> CurlClaim.Turn(dir)
+}
+
+/** The claim a horizontal swipe toward [dir] gets: well past the slop, with no long press and no live selection. */
+private fun PageCurlHost.claimToward(dir: Int): CurlClaim =
+    claimFor(dx = -dir * 50f, dy = 0f, slop = 8f, elapsedMs = 0L, pointers = 1)
+
+/** The neighbour kind as the glue reports it in `whenSettled()`. */
+private val NeighbourKind.token: String get() = name.lowercase()
