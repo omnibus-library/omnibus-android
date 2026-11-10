@@ -152,7 +152,7 @@ class BookDetailLayoutTest : DescribeSpec({
             it("#211 TC-17: equals the free height times 0.44 over the cover height") {
                 checkAll(Exhaustive.of(true, false)) { underBar ->
                     val height = randomDouble(400.0, 630.0).toFloat()
-                    val free = height - 62f - (if (underBar) 0f else 50f)
+                    val free = height - 62f - (if (underBar) 0f else TopBarRowHeight.value)
                     val expected = free * 0.44f / 252f
 
                     val actual = stageCoverScale(height.dp, underBar)
@@ -247,7 +247,7 @@ class BookDetailLayoutTest : DescribeSpec({
         context("when the stage starts below the bar row") {
             it("#211 TC-73: clears 4 dp above the bar row's bottom and is opaque 24 dp lower") {
                 val statusTop = randomDouble(0.0, 80.0).toFloat().dp
-                val clear = statusTop + 50.dp - 4.dp
+                val clear = statusTop + TopBarRowHeight - 4.dp
 
                 stageTopFadeBand(statusTop, underBar = false) shouldBe FadeBand(clear, clear + 24.dp)
             }
