@@ -33,11 +33,12 @@ internal class CurlGeometry private constructor(
     val far: List<Vec>,
     /** The lifted part reflected across the fold and clipped to the flap bounds. */
     val flap: List<Vec>,
-    private val a: Float,
-    private val b: Float,
-    private val d: Float,
-    private val e: Float,
-    private val f: Float,
+    /** The reflection of [reflect] as affine terms: x' = a·x + b·y + e and y' = b·x + d·y + f. */
+    val a: Float,
+    val b: Float,
+    val d: Float,
+    val e: Float,
+    val f: Float,
     /** Whether C and F are under a pixel apart, so the page draws flat. */
     val isFlat: Boolean,
 ) {
