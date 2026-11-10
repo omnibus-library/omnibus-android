@@ -246,7 +246,8 @@ class ReaderSettingsSheetTest {
         assertEquals(listOf(ReaderMenuRow.Settings), chosen)
         rule.onNodeWithTag(ReaderSettingsSheetTags.SHEET).assertIsDisplayed()
 
-        node(ReaderSettingsSheetTags.DONE).performClick()
+        // Done is pinned above the controls, so it never needs scrolling into view.
+        rule.onNodeWithTag(ReaderSettingsSheetTags.DONE).performClick()
         rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithTag(ReaderSettingsSheetTags.SHEET).fetchSemanticsNodes().isEmpty() }
         assertEquals(1, dismissed)
     }

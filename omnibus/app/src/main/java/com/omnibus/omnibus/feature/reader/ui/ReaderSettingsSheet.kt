@@ -1,19 +1,30 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -21,24 +32,33 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -51,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
@@ -69,6 +90,9 @@ import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Test tags for the settings sheet's controls. */
@@ -94,6 +118,98 @@ internal object ReaderSettingsSheetTags {
 internal object ReaderSettingsSheetDefaults {
     /** No dimming, so the reader can judge a change on the live page behind the sheet. */
     val ScrimColor = Color.Transparent
+
+    /** The share of the window the sheet takes when open. */
+    const val ExpandedHeightFraction = 0.92f
+
+    /** The share of the window the sheet takes at its lower stop. Dragged below it, the sheet closes. */
+    const val CollapsedHeightFraction = 0.40f
+}
+
+/** How far past the lower stop a drag must end to close the sheet, as Material's sheets use. */
+private val CloseDragThreshold = 56.dp
+
+/** How fast a release must be to move to the next stop rather than the nearest, as Material's sheets use. */
+private val StopVelocityThreshold = 125.dp
+
+/**
+ * The share of the window the sheet shows, between [ReaderSettingsSheetDefaults.CollapsedHeightFraction]
+ * and [ReaderSettingsSheetDefaults.ExpandedHeightFraction] at rest, lower while being dragged closed.
+ * It depends only on the gestures and the window height, never on the sheet's own position or
+ * insets, so the sheet's height and its place cannot feed back into each other.
+ */
+private class SettingsSheetHeight(private val scope: CoroutineScope, private val onClose: () -> Unit) {
+    var fraction by mutableFloatStateOf(ReaderSettingsSheetDefaults.ExpandedHeightFraction)
+        private set
+    var windowHeightPx = 0f
+    var closeThresholdPx = 0f
+    var velocityThresholdPx = 0f
+    private var settling: Job? = null
+
+    private val expanded get() = ReaderSettingsSheetDefaults.ExpandedHeightFraction
+    private val collapsed get() = ReaderSettingsSheetDefaults.CollapsedHeightFraction
+
+    val isAtStop get() = fraction == expanded || fraction == collapsed
+    val isExpanded get() = fraction == expanded
+
+    /** Moves the sheet's top by [deltaPx] (down is positive) and returns the part it used. */
+    fun dragBy(deltaPx: Float): Float {
+        if (windowHeightPx <= 0f) return 0f
+        settling?.cancel()
+        val old = fraction
+        fraction = (old - deltaPx / windowHeightPx).coerceIn(0f, expanded)
+        return (old - fraction) * windowHeightPx
+    }
+
+    /** Settles at a stop after a release at [velocity] px/s (down is positive), or closes the sheet. */
+    fun settle(velocity: Float) {
+        val closeFraction = if (windowHeightPx > 0f) collapsed - closeThresholdPx / windowHeightPx else collapsed
+        val target = when {
+            fraction < closeFraction -> null
+            velocity > velocityThresholdPx -> if (fraction > collapsed) collapsed else null
+            velocity < -velocityThresholdPx -> expanded
+            fraction >= (expanded + collapsed) / 2 -> expanded
+            else -> collapsed
+        }
+        if (target == null) {
+            onClose()
+            return
+        }
+        settling?.cancel()
+        settling = scope.launch {
+            animate(fraction, target, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { value, _ ->
+                fraction = value
+            }
+        }
+    }
+
+    /**
+     * Passes the controls' scroll to the sheet: a drag up opens the sheet fully before the controls
+     * scroll, and a drag down past the top of the controls lowers the sheet.
+     */
+    val nestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+            if (available.y < 0 && source == NestedScrollSource.UserInput) Offset(0f, dragBy(available.y)) else Offset.Zero
+
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+            if (source == NestedScrollSource.UserInput) Offset(0f, dragBy(available.y)) else Offset.Zero
+
+        override suspend fun onPreFling(available: Velocity): Velocity =
+            if (available.y < 0 && !isExpanded) {
+                settle(available.y)
+                available
+            } else {
+                Velocity.Zero
+            }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
+            if (!isAtStop) {
+                settle(available.y)
+                available
+            } else {
+                Velocity.Zero
+            }
+    }
 }
 
 /**
@@ -118,43 +234,72 @@ internal fun ReaderSettingsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    val close: () -> Unit = {
+        scope.launch { sheetState.hide() }.invokeOnCompletion {
+            if (!sheetState.isVisible) onDismiss()
+        }
+    }
+    val currentClose by rememberUpdatedState(close)
+    val height = remember(scope) { SettingsSheetHeight(scope, onClose = { currentClose() }) }
+    val density = LocalDensity.current
+    height.closeThresholdPx = with(density) { CloseDragThreshold.toPx() }
+    height.velocityThresholdPx = with(density) { StopVelocityThreshold.toPx() }
 
+    // Material's sheet has no stop at 40% and sizes itself to its content, so the sheet here keeps
+    // only its window, scrim, back handling and slide in and out. Its gestures are off and it takes
+    // the height [SettingsSheetHeight] gives it, so its open position is always that height's top.
+    // The window insets are left to the body: Material's top inset shrinks with the sheet's offset,
+    // and a body sized from what is left made the sheet's height and offset chase each other.
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        modifier = modifier
-            .shadow(elevation = 8.dp, shape = shape, clip = false)
-            .border(0.5.dp, palette.line, shape),
+        sheetGesturesEnabled = false,
         shape = shape,
-        containerColor = palette.bg0,
+        containerColor = Color.Transparent,
         contentColor = palette.ink0,
         tonalElevation = 0.dp,
         scrimColor = ReaderSettingsSheetDefaults.ScrimColor,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = palette.line2) },
+        dragHandle = null,
+        contentWindowInsets = { WindowInsets(0) },
     ) {
-        ReaderSettingsSheetContent(
-            settings = settings,
-            accent = accent,
-            onSettingsChanged = onSettingsChanged,
-            onDone = {
-                scope.launch { sheetState.hide() }.invokeOnCompletion {
-                    if (!sheetState.isVisible) onDismiss()
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .layout { measurable, constraints ->
+                    height.windowHeightPx = constraints.maxHeight.toFloat()
+                    val visible = (constraints.maxHeight * height.fraction).roundToInt()
+                    // Below the lower stop the sheet keeps that height and slides down instead.
+                    val sheetHeight = maxOf(
+                        visible,
+                        (constraints.maxHeight * ReaderSettingsSheetDefaults.CollapsedHeightFraction).roundToInt(),
+                    ).coerceAtMost(constraints.maxHeight)
+                    val placeable = measurable.measure(
+                        constraints.copy(minHeight = sheetHeight, maxHeight = sheetHeight),
+                    )
+                    layout(placeable.width, placeable.height) { placeable.place(0, sheetHeight - visible) }
                 }
-            },
-            // Sizes to the controls, capped like the Contents sheet so a strip of page stays above
-            // it on a short window; the controls scroll beyond the cap.
-            modifier = Modifier.layout { measurable, constraints ->
-                val maxHeight = if (constraints.hasBoundedHeight) {
-                    (constraints.maxHeight * ContentsSheetHeightFraction).toInt()
-                } else {
-                    constraints.maxHeight
-                }
-                val placeable = measurable.measure(
-                    constraints.copy(minHeight = minOf(constraints.minHeight, maxHeight), maxHeight = maxHeight),
+                .border(0.5.dp, palette.line, shape)
+                .background(palette.bg0, shape)
+                .nestedScroll(height.nestedScrollConnection)
+                .draggable(
+                    state = rememberDraggableState { height.dragBy(it) },
+                    orientation = Orientation.Vertical,
+                    onDragStopped = { height.settle(it) },
                 )
-                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-            },
-        )
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+        ) {
+            BottomSheetDefaults.DragHandle(
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                color = palette.line2,
+            )
+            ReaderSettingsSheetContent(
+                settings = settings,
+                accent = accent,
+                onSettingsChanged = onSettingsChanged,
+                onDone = close,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -168,21 +313,28 @@ internal fun ReaderSettingsSheetContent(
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
+    // The header stays put; only the controls under it scroll.
     Column(
         modifier = modifier
             .fillMaxWidth()
             .testTag(ReaderSettingsSheetTags.SHEET)
             .background(palette.bg0)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.screen)
-            .padding(bottom = 32.dp),
+            .padding(horizontal = Spacing.screen),
         verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
         SheetHeader(onDone = onDone)
-        PageGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
-        TypeGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
-        LayoutGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
-        PageTurnGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(26.dp),
+        ) {
+            PageGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+            TypeGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+            LayoutGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+            PageTurnGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+        }
     }
 }
 
