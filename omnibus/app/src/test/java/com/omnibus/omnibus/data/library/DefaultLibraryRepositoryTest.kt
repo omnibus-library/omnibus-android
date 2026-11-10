@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.data.library
 
+import com.omnibus.omnibus.data.network.TestAuthTokenProvider
+import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.randomEnum
@@ -17,6 +19,7 @@ import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.single
+import kotlinx.coroutines.flow.toList
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 
@@ -29,6 +32,17 @@ private const val SHELVES_JSON = """
         {"id":3,"owner_user_id":8,"owner_username":"ann","kind":"wishlist","name":"Nine","visibility":"private","book_count":9}
     ]
 """
+
+private const val OTHER_SHELVES_JSON = """
+    [{"id":9,"owner_user_id":7,"owner_username":"hunter","kind":"manual","name":"Nine","visibility":"public","book_count":0}]
+"""
+
+/** Changes one dimension of the session between two shelves reads, as a test case names it. */
+private typealias SessionChange = (TestServerBaseUrlProvider, TestAuthTokenProvider, MockWebServer) -> Unit
+
+/** The ids of the shelves in a successful read, in order. */
+private fun ShelfPreviewsResult.shelfIds(): List<Long> =
+    shouldBeTypeOf<ShelfPreviewsResult.Success>().previews.map { it.shelf.id }
 
 private const val LISTENING_ITEM = """
     [{"record": {
@@ -49,9 +63,15 @@ private fun booksBody(ids: List<Long>): String = """{"books":[${ids.joinToString
 
 class DefaultLibraryRepositoryTest : DescribeSpec({
 
-    fun sut(server: MockWebServer? = null) = DefaultLibraryRepository(
+    fun sut(
+        server: MockWebServer? = null,
+        baseUrl: TestServerBaseUrlProvider = TestServerBaseUrlProvider(server?.url("/")),
+        token: TestAuthTokenProvider = TestAuthTokenProvider(randomString()),
+    ) = DefaultLibraryRepository(
         ioDispatcher = Dispatchers.Unconfined,
-        omnibusHttpClient = testOmnibusHttpClient(server?.url("/")),
+        omnibusHttpClient = testOmnibusHttpClient(baseUrl, token),
+        baseUrlProvider = baseUrl,
+        authTokenProvider = token,
     )
 
     beforeSpec { mockAndroidLog() }
@@ -393,6 +413,61 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
     }
 
     describe("reading the shelf previews") {
+
+        it("#257 TC-1: emits the cached list before the network one") {
+            withMockServer(reply(200, SHELVES_JSON), reply(200, OTHER_SHELVES_JSON)) { server ->
+                val repository = sut(server)
+
+                val first = repository.getShelfPreviewsFlow().toList()
+                val second = repository.getShelfPreviewsFlow().toList()
+
+                first.map { it.shelfIds() } shouldBe listOf(listOf(1L, 2L, 3L))
+                second.map { it.shelfIds() } shouldBe listOf(listOf(1L, 2L, 3L), listOf(9L))
+            }
+        }
+
+        it("#257 TC-2: never replays the list to another session or server") {
+            checkAll(
+                Exhaustive.of<SessionChange>(
+                    { _, token, _ -> token.token = randomString() },
+                    { _, token, _ -> token.token = null },
+                    { baseUrl, _, otherServer -> baseUrl.baseUrl = otherServer.url("/") },
+                ),
+            ) { change ->
+                withMockServer(reply(200, SHELVES_JSON), reply(200, OTHER_SHELVES_JSON)) { server ->
+                    withMockServer(reply(200, OTHER_SHELVES_JSON)) { otherServer ->
+                        val baseUrl = TestServerBaseUrlProvider(server.url("/"))
+                        val token = TestAuthTokenProvider(randomString())
+                        val repository = sut(baseUrl = baseUrl, token = token)
+                        repository.getShelfPreviewsFlow().single()
+
+                        change(baseUrl, token, otherServer)
+
+                        repository.getShelfPreviewsFlow().toList().map { it.shelfIds() } shouldBe listOf(listOf(9L))
+                    }
+                }
+            }
+        }
+
+        it("#257 TC-3: keeps the cached list through a failed read") {
+            withMockServer(
+                reply(200, SHELVES_JSON),
+                reply(500, "internal server error"),
+                reply(200, OTHER_SHELVES_JSON),
+            ) { server ->
+                val repository = sut(server)
+                val first = repository.getShelfPreviewsFlow().toList()
+
+                val failed = repository.getShelfPreviewsFlow().toList()
+                val third = repository.getShelfPreviewsFlow().toList()
+
+                failed shouldBe listOf(
+                    first.single(),
+                    ShelfPreviewsResult.Failure(LibraryError.Http(500, "internal server error")),
+                )
+                third.first() shouldBe first.single()
+            }
+        }
 
         it("TC-1: reads the cover uuids, at most four, in order") {
             withMockServer { server ->

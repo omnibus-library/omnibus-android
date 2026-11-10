@@ -3,8 +3,8 @@ package com.omnibus.omnibus.data.library
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Library reads. Online-only for now, so each flow emits once and completes. Callers still collect
- * every emission, because a cached-then-network emission is planned and must not need caller changes.
+ * Library reads. Each flow emits once and completes, except [getShelfPreviewsFlow], which may emit a cached list
+ * first. Callers collect every emission.
  */
 interface LibraryRepository {
 
@@ -17,7 +17,11 @@ interface LibraryRepository {
     /** The most recent resume points, newest first. */
     fun getRecentProgressFlow(): Flow<RecentProgressResult>
 
-    /** Every shelf the user can see, in the server's order, each with the uuids of up to four covers. One request. */
+    /**
+     * Every shelf the user can see, in the server's order, each with the uuids of up to four covers. One request.
+     * When this process has already read the shelves for the same saved server and session token, that list is
+     * emitted first, then the network result (which may be a failure). The cache is in memory only.
+     */
     fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult>
 
     /** One book by its [uuid]. A uuid that isn't in the library gives [BookResult.NotFound]. */
