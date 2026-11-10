@@ -32,7 +32,7 @@ class BookDetailAccessibilityTest {
             ),
         )
 
-        rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).assertIsDisplayed()
+        rule.onNodeWithContentDescription(detailText(R.string.navigation_back)).assertIsDisplayed()
         rule.onNodeWithContentDescription(detailText(R.string.book_detail_cover_description, "Dune Messiah"))
             .assertIsDisplayed()
         rule.onNodeWithContentDescription(detailText(R.string.book_detail_author_description, "Frank Herbert"))

@@ -40,7 +40,7 @@ class BookDetailScreenStatesTest {
         var closes = 0
         rule.setDetailScreen(BookDetailUIState(book = testDetailBook(), isLoading = false), onClose = { closes++ })
 
-        rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).performClick()
+        rule.onNodeWithContentDescription(detailText(R.string.navigation_back)).performClick()
         rule.waitForIdle()
 
         assertEquals(1, closes)

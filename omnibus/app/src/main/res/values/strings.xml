@@ -170,6 +170,7 @@
     <string name="reader_opening_title">Opening %1$s</string>
     <string name="reader_error_book_missing">This book isn\'t in your library.</string>
     <string name="reader_error_no_epub">This book has no EPUB to read.</string>
+    <string name="navigation_back">Back</string>
     <string name="reader_back">Back</string>
     <string name="reader_close_book">Close book</string>
     <string name="reader_sync_offer_title">Continue from another device?</string>

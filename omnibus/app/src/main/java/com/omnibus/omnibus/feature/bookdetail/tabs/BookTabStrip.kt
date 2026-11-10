@@ -41,7 +41,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.stage.HaloWarmCore
-import com.omnibus.omnibus.feature.bookdetail.ui.TOP_BAR_FILL_ALPHA
+import com.omnibus.omnibus.feature.bookdetail.ui.topBarFillColor
 import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
@@ -100,7 +100,7 @@ internal fun BookTabStrip(
                         size = Size(size.width - 2 * inset, hairline),
                     )
                 } else if (pinOffset() > 0) {
-                    drawRect(palette.bg0.copy(alpha = TOP_BAR_FILL_ALPHA))
+                    drawRect(topBarFillColor(palette))
                     drawRect(palette.line, topLeft = Offset(0f, size.height - hairline), size = Size(size.width, hairline))
                 }
             }

@@ -229,7 +229,7 @@ private fun ShelvesBackButton(onBack: () -> Unit, modifier: Modifier = Modifier)
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_book_detail_back),
-            contentDescription = stringResource(R.string.book_detail_back),
+            contentDescription = stringResource(R.string.navigation_back),
             tint = palette.ink0,
             modifier = Modifier.size(20.dp),
         )

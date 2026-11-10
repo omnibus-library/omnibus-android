@@ -6,15 +6,18 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertTouchWidthIsEqualTo
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.bookdetail.detailText
@@ -41,6 +44,16 @@ class BookMoreButtonTest {
             .assert(hasContentDescription(detailText(R.string.book_detail_more)))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
             .assertHasClickAction()
+    }
+
+    // TC-14
+    @Test
+    fun issue270_tc14_moreButtonIsAtLeast48dp() {
+        rule.setMoreButton(listOf(TestEntry("Row")))
+
+        rule.onNodeWithTag(BookMoreTestTags.MORE_BUTTON)
+            .assertTouchWidthIsEqualTo(48.dp)
+            .assertTouchHeightIsEqualTo(48.dp)
     }
 
     // TC-67
