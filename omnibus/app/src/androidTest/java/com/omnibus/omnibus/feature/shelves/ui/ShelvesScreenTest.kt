@@ -6,31 +6,44 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.Shelf
 import com.omnibus.omnibus.data.library.ShelfKind
 import com.omnibus.omnibus.data.library.ShelfPreview
 import com.omnibus.omnibus.data.library.ShelfVisibility
+import com.omnibus.omnibus.feature.bookdetail.bounds
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.shelves.ShelvesUIState
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -66,6 +79,9 @@ class ShelvesScreenTest {
 
         rule.onNodeWithTag(ShelvesScreenTestTags.TITLE).assertTextEquals("Shelves")
         rule.onNodeWithTag(ShelvesScreenTestTags.CENSUS).assertTextEquals("3 shelves · 2 yours · 1 from 1 other reader")
+        val title = rule.onNodeWithTag(ShelvesScreenTestTags.TITLE).bounds()
+        val census = rule.onNodeWithTag(ShelvesScreenTestTags.CENSUS).bounds()
+        assertTrue("the census starts at ${census.top}, above the title ending at ${title.bottom}", census.top >= title.bottom - 1f)
         rule.onNodeWithText(NOTICE).assertIsDisplayed()
         rule.onNodeWithTag(ShelvesScreenTestTags.group(VIEWER_ID)).assert(isHeading())
         rule.onNodeWithTag(ShelvesScreenTestTags.group(VIEWER_ID)).assertTextEquals("Your shelves")
@@ -279,6 +295,111 @@ class ShelvesScreenTest {
         rule.onAllNodesWithText(CONNECT_ERROR).assertCountEquals(1)
         assertEquals(1, shown)
     }
+
+    // TC-19
+    @Test
+    fun issue270_tc19_barCollapsesOnScrollAndExpandsBack() {
+        setShelves(mutableStateOf(ShelvesUIState(previews = List(24) { shelf(it + 1L) }, viewerId = VIEWER_ID)))
+        val expandedHeight = rule.onNodeWithTag(ShelvesScreenTestTags.TOP_BAR).bounds().height
+        assertTitleOnItsOwnRow()
+
+        rule.onNodeWithTag(ShelvesScreenTestTags.GRID).performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        val collapsedHeight = rule.onNodeWithTag(ShelvesScreenTestTags.TOP_BAR).bounds().height
+        assertTrue("the bar did not collapse from $expandedHeight, it is $collapsedHeight", collapsedHeight < expandedHeight - 1f)
+        assertTitleSharesBackRow()
+
+        rule.onNodeWithTag(ShelvesScreenTestTags.GRID).performScrollToIndex(0)
+        rule.onNodeWithTag(ShelvesScreenTestTags.GRID).performTouchInput { swipeDown() }
+        rule.waitForIdle()
+        assertEquals(expandedHeight, rule.onNodeWithTag(ShelvesScreenTestTags.TOP_BAR).bounds().height, 1f)
+        assertTitleOnItsOwnRow()
+    }
+
+    // TC-20
+    @Test
+    fun issue270_tc20_loadingShowsTheExpandedBar() {
+        setShelves(mutableStateOf(ShelvesUIState(isInitialLoading = true)))
+
+        assertExpandedBarShowsTitleAndBack()
+    }
+
+    // TC-20
+    @Test
+    fun issue270_tc20_errorShowsTheExpandedBar() {
+        setShelves(mutableStateOf(ShelvesUIState(error = CONNECT_UI_ERROR)))
+
+        assertExpandedBarShowsTitleAndBack()
+    }
+
+    // TC-20
+    @Test
+    fun issue270_tc20_emptyShowsTheExpandedBar() {
+        setShelves(mutableStateOf(ShelvesUIState()))
+
+        assertExpandedBarShowsTitleAndBack()
+    }
+
+    // TC-22
+    @Test
+    fun issue270_tc22_titleIsOneHeading() {
+        setShelves(mutableStateOf(ShelvesUIState(previews = List(24) { shelf(it + 1L) }, viewerId = VIEWER_ID)))
+        assertTitleIsOneHeading()
+
+        rule.onNodeWithTag(ShelvesScreenTestTags.GRID).performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        assertTitleIsOneHeading()
+    }
+
+    // TC-23
+    @Test
+    fun issue270_tc23_backIsOneButtonAnnouncedAsBack() {
+        setShelves(mutableStateOf(ShelvesUIState(previews = listOf(shelf(1L)), viewerId = VIEWER_ID)))
+
+        rule.onAllNodesWithContentDescription(backDescription()).assertCountEquals(1)
+        rule.onNodeWithContentDescription(backDescription())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assertHasClickAction()
+    }
+
+    // TC-23
+    @Test
+    fun issue270_tc23_backIsAtLeast48dp() {
+        setShelves(mutableStateOf(ShelvesUIState(previews = listOf(shelf(1L)), viewerId = VIEWER_ID)))
+
+        rule.onNodeWithContentDescription(backDescription())
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+    }
+
+    private fun assertExpandedBarShowsTitleAndBack() {
+        rule.onNodeWithTag(ShelvesScreenTestTags.TITLE).assertIsDisplayed()
+        rule.onNodeWithTag(ShelvesScreenTestTags.BACK).assertIsDisplayed()
+        assertTitleOnItsOwnRow()
+    }
+
+    /** The expanded bar: the title sits in its own row, below the back arrow. */
+    private fun assertTitleOnItsOwnRow() {
+        val title = rule.onNodeWithTag(ShelvesScreenTestTags.TITLE).bounds()
+        val back = rule.onNodeWithTag(ShelvesScreenTestTags.BACK).bounds()
+        assertTrue("the title starts at ${title.top}, above the back row ending at ${back.bottom}", title.top >= back.bottom - 1f)
+    }
+
+    /** The collapsed bar: the title shares the back arrow's row. */
+    private fun assertTitleSharesBackRow() {
+        val title = rule.onNodeWithTag(ShelvesScreenTestTags.TITLE).bounds()
+        val back = rule.onNodeWithTag(ShelvesScreenTestTags.BACK).bounds()
+        assertTrue("the title starts at ${title.top}, below the back row ending at ${back.bottom}", title.top < back.bottom)
+    }
+
+    private fun assertTitleIsOneHeading() {
+        rule.onAllNodesWithTag(ShelvesScreenTestTags.TITLE).assertCountEquals(1)
+        rule.onNodeWithTag(ShelvesScreenTestTags.TITLE)
+            .assert(isHeading())
+            .assertTextEquals("Shelves")
+    }
+
+    private fun backDescription() = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.navigation_back)
 
     private fun setShelves(
         uiState: State<ShelvesUIState>,
