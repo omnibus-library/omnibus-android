@@ -440,7 +440,7 @@ internal class PageCurlHost(
         const val CURL_MS = 650f
 
         /** How long a released drag takes to settle or complete, in milliseconds. */
-        const val DRAG_SETTLE_MS = 250f
+        const val DRAG_SETTLE_MS = 400f
 
         /** Where the lifted corner sits down the turning page's right edge, as a fraction of its height. */
         const val CORNER_HEIGHT_FRACTION = 0.7f
