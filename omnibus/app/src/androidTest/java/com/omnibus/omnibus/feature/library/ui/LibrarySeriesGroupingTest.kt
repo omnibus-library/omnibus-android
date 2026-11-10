@@ -379,7 +379,10 @@ class LibrarySeriesGroupingTest {
         for (id in listOf(1L, 2L)) {
             val cover = centreOf(LibraryTestTags.ghostCover(id), useUnmergedTree = true)
             val slot = centreOf(cell(id))
-            assertTrue((cover - summary).getDistance() < (cover - slot).getDistance())
+            assertTrue(
+                "cover $id at $cover should be nearer the summary $summary than its slot $slot",
+                (cover - summary).getDistance() < (cover - slot).getDistance(),
+            )
         }
     }
 
@@ -422,7 +425,10 @@ class LibrarySeriesGroupingTest {
         rule.onAllNodesWithTag(cell(2L)).assertCountEquals(0)
         val cover = centreOf(LibraryTestTags.ghostCover(1L), useUnmergedTree = true)
         val stack = centreOf(LibraryTestTags.stack(10L))
-        assertTrue((cover - member).getDistance() < (cover - stack).getDistance())
+        assertTrue(
+            "cover at $cover should be nearer the member slot $member than the stack $stack",
+            (cover - member).getDistance() < (cover - stack).getDistance(),
+        )
 
         rule.mainClock.advanceTimeBy(1000)
         rule.waitForIdle()
