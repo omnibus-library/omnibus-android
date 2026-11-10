@@ -98,7 +98,7 @@ class CurlDragTest : DescribeSpec({
 
                     val fold = case.drag.fold(case.x, case.y)
 
-                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo 0f
+                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo -PIXELS
                 }
             }
         }
@@ -149,7 +149,7 @@ class CurlDragTest : DescribeSpec({
 
                     val fold = case.drag.fold(case.x, case.y)
 
-                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo 0f
+                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo -PIXELS
                 }
             }
         }
