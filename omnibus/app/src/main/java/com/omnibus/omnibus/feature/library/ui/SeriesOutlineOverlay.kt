@@ -35,13 +35,13 @@ internal data class OutlineRun(val firstGridIndex: Int, val cellCount: Int, val 
 private class PlacedRun(val seriesId: Long, val start: Int, val shape: SeriesOutlineShape, val grid: OutlineGrid)
 
 /** The 26 dp gap above each row of the Library grid, from the cells' own top padding. */
-private val ROW_GAP = 26.dp
+internal val ROW_GAP = 26.dp
 
 /** The 16 dp gap between columns of the Library grid. */
-private val COLUMN_GAP = 16.dp
+internal val COLUMN_GAP = 16.dp
 
 /** A row's cells in px: the top of the cells below their padding, and the bottom of the tallest one. */
-private class RowBox(val top: Float, val bottom: Float)
+internal class RowBox(val top: Float, val bottom: Float)
 
 /**
  * Fills and outlines each of [runs] in the gutters of the grid: the fill goes under the grid's content and the outline
@@ -145,7 +145,7 @@ private fun DrawScope.placeRuns(
 }
 
 /** The visible book-area rows by row index, skipping the header and footer items. */
-private fun visibleRows(info: LazyGridLayoutInfo, columns: Int, rowGap: Float): Map<Int, RowBox> {
+internal fun visibleRows(info: LazyGridLayoutInfo, columns: Int, rowGap: Float): Map<Int, RowBox> {
     val tops = HashMap<Int, Float>()
     val bottoms = HashMap<Int, Float>()
     for (item in info.visibleItemsInfo) {
@@ -164,7 +164,7 @@ private fun visibleRows(info: LazyGridLayoutInfo, columns: Int, rowGap: Float): 
 }
 
 /** The distance from one row's top to the next: the row's height and the gap below it. */
-private fun rowPitch(rows: Map<Int, RowBox>, rowGap: Float): Float {
+internal fun rowPitch(rows: Map<Int, RowBox>, rowGap: Float): Float {
     val sorted = rows.keys.sorted()
     if (sorted.size < 2) {
         val only = rows.getValue(sorted.single())

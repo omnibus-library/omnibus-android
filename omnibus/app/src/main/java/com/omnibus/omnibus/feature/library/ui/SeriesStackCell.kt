@@ -31,13 +31,14 @@ import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.feature.library.SeriesGroup
+import com.omnibus.omnibus.feature.library.SeriesUnfoldTiming
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.coverShadow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /** How far each cover behind the front one is offset up and to the right, and how much narrower it is. */
-private val STACK_STEP = 6.dp
+private val STACK_STEP = SeriesUnfoldTiming.STACK_STEP_DP.dp
 
 /**
  * A folded series in the All books grid: its top book in front, up to two more covers behind it, then the series
@@ -61,7 +62,6 @@ internal fun SeriesStackCell(
     val unfoldLabel = stringResource(R.string.library_unfold_series)
     val countText = pluralStringResource(R.plurals.library_series_book_count, group.count, group.count)
     val description = stringResource(R.string.library_series_stack_description, group.name, countText)
-    val subtitle = stringResource(R.string.library_series_stack_subtitle, countText, group.author)
     val frontWidth = width - STACK_STEP * 2
 
     Column(
@@ -79,7 +79,7 @@ internal fun SeriesStackCell(
                         .width(frontWidth)
                         .align(Alignment.BottomStart)
                         .offset(x = STACK_STEP * k, y = -STACK_STEP * k)
-                        .dimmed(palette.bg0.copy(alpha = 0.45f)),
+                        .dimmed(palette.bg0.copy(alpha = SeriesUnfoldTiming.VEIL_ALPHA)),
                     size = CoverSize.Md,
                     cornerRadius = 5.dp,
                 )
@@ -92,6 +92,18 @@ internal fun SeriesStackCell(
             )
         }
         Spacer(Modifier.height(8.dp))
+        SeriesStackCaption(group)
+    }
+}
+
+/** The series name and "N books · Author" under a folded stack. Its texts are cleared from semantics. */
+@Composable
+internal fun SeriesStackCaption(group: SeriesGroup, modifier: Modifier = Modifier) {
+    val palette = OmnibusTheme.palette
+    val countText = pluralStringResource(R.plurals.library_series_book_count, group.count, group.count)
+    val subtitle = stringResource(R.string.library_series_stack_subtitle, countText, group.author)
+
+    Column(modifier) {
         Text(
             text = group.name,
             style = uiTextStyle(12.5.sp, FontWeight.Medium, palette.ink0),

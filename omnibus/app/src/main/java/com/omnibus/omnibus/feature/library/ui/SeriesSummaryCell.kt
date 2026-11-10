@@ -51,63 +51,83 @@ internal fun SeriesSummaryCell(
     onFoldUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val palette = OmnibusTheme.palette
-
     Column(modifier.testTag(LibraryTestTags.seriesSummary(group.seriesId)).width(width)) {
-        Column(Modifier.fillMaxWidth().aspectRatio(2f / 3f), verticalArrangement = Arrangement.Center) {
-            Text(
-                text = stringResource(R.string.library_series_kicker),
-                style = uiTextStyle(9.sp, FontWeight.Medium, palette.ink3).copy(letterSpacing = 1.5.sp),
-                maxLines = 1,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = group.name,
-                style = displayTextStyle(16, palette.ink0),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = pluralStringResource(R.plurals.library_series_in_library, group.count, group.count),
-                style = uiTextStyle(10.5.sp, FontWeight.Normal, palette.ink2),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = group.author,
-                style = uiTextStyle(10.5.sp, FontWeight.Normal, palette.ink2),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(10.dp))
-            SeriesActionButton(
-                label = stringResource(R.string.library_series_page),
-                tag = LibraryTestTags.seriesPage(group.seriesId),
-                filled = true,
-                onClick = onOpenSeries,
-            )
-            Spacer(Modifier.height(6.dp))
-            SeriesActionButton(
-                label = stringResource(R.string.library_series_fold_up),
-                tag = LibraryTestTags.foldUp(group.seriesId),
-                filled = false,
-                onClick = onFoldUp,
-            )
-        }
+        SeriesSummaryContent(group, onOpenSeries, onFoldUp)
     }
 }
 
-/** A full-width pill button: accent-filled when [filled], otherwise outlined. */
+/**
+ * The 2:3 text column of an unfolded series' summary: kicker, name, count, author and the two buttons.
+ *
+ * A button's test tag and click are applied only when its callback is set, so a copy drawn without callbacks adds
+ * no second node with the same tag.
+ *
+ * @param group The unfolded series.
+ * @param onOpenSeries Called when "Series page →" is tapped, or null for no button action.
+ * @param onFoldUp Called when "Fold up" is tapped, or null for no button action.
+ */
 @Composable
-private fun SeriesActionButton(label: String, tag: String, filled: Boolean, onClick: () -> Unit) {
+internal fun SeriesSummaryContent(
+    group: SeriesGroup,
+    onOpenSeries: (() -> Unit)?,
+    onFoldUp: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OmnibusTheme.palette
+
+    Column(modifier.fillMaxWidth().aspectRatio(2f / 3f), verticalArrangement = Arrangement.Center) {
+        Text(
+            text = stringResource(R.string.library_series_kicker),
+            style = uiTextStyle(9.sp, FontWeight.Medium, palette.ink3).copy(letterSpacing = 1.5.sp),
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = group.name,
+            style = displayTextStyle(16, palette.ink0),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = pluralStringResource(R.plurals.library_series_in_library, group.count, group.count),
+            style = uiTextStyle(10.5.sp, FontWeight.Normal, palette.ink2),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = group.author,
+            style = uiTextStyle(10.5.sp, FontWeight.Normal, palette.ink2),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(10.dp))
+        SeriesActionButton(
+            label = stringResource(R.string.library_series_page),
+            tag = LibraryTestTags.seriesPage(group.seriesId).takeIf { onOpenSeries != null },
+            filled = true,
+            onClick = onOpenSeries,
+        )
+        Spacer(Modifier.height(6.dp))
+        SeriesActionButton(
+            label = stringResource(R.string.library_series_fold_up),
+            tag = LibraryTestTags.foldUp(group.seriesId).takeIf { onFoldUp != null },
+            filled = false,
+            onClick = onFoldUp,
+        )
+    }
+}
+
+/** A full-width pill button: accent-filled when [filled], otherwise outlined. Tagged and clickable only when set. */
+@Composable
+private fun SeriesActionButton(label: String, tag: String?, filled: Boolean, onClick: (() -> Unit)?) {
     val palette = OmnibusTheme.palette
     val shape = CircleShape
     val base = Modifier.fillMaxWidth().height(28.dp).clip(shape)
     Box(
         modifier = (if (filled) base.background(palette.accent) else base.border(0.5.dp, palette.line2, shape))
-            .testTag(tag)
-            .clickable(role = Role.Button, onClick = onClick),
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Text(

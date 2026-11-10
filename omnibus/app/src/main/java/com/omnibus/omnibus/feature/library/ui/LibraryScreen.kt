@@ -117,6 +117,8 @@ internal object LibraryTestTags {
     fun seriesSummary(seriesId: Long) = "library-series-$seriesId"
     fun seriesPage(seriesId: Long) = "library-series-page-$seriesId"
     fun foldUp(seriesId: Long) = "library-fold-up-$seriesId"
+    fun ghost(seriesId: Long) = "library-ghost-$seriesId"
+    fun ghostCover(id: Long) = "library-ghost-cover-$id"
     fun title(id: Long) = "library-title-$id"
     fun menuCategory(category: LibraryCategory) = "library-menu-category-${category.name}"
     fun menuSort(sort: LibrarySort) = "library-menu-sort-${sort.name}"
@@ -608,8 +610,7 @@ private fun LibraryGrid(
                         width = cellWidth,
                         onClick = { openFromGrid(item.book.uuid) },
                         modifier = rowGap,
-                        subtitle = item.book.seriesIndex?.trim()?.takeIf { it.isNotEmpty() }
-                            ?.let { stringResource(R.string.library_series_volume, it) },
+                        subtitle = memberSubtitle(item.book),
                     )
                 }
             }
