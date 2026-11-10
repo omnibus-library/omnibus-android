@@ -12,6 +12,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 private val LocalOmnibusPalette = staticCompositionLocalOf { OmnibusPalette.Atrium }
 
+/** Whether the nearest [OmnibusTheme] is dark. The palette local defaults to the dark Atrium, so this does too. */
+private val LocalOmnibusIsDark = staticCompositionLocalOf { true }
+
 /**
  * Applies the Atrium palette to [content], both as [OmnibusTheme.palette] and mapped onto the
  * Material [ColorScheme] so stock Material components pick up the same colors.
@@ -25,7 +28,10 @@ fun OmnibusTheme(
 ) {
     val palette = if (darkTheme) OmnibusPalette.Atrium else OmnibusPalette.Light
 
-    CompositionLocalProvider(LocalOmnibusPalette provides palette) {
+    CompositionLocalProvider(
+        LocalOmnibusPalette provides palette,
+        LocalOmnibusIsDark provides darkTheme,
+    ) {
         MaterialTheme(
             colorScheme = palette.toColorScheme(darkTheme),
             typography = Typography,
@@ -40,6 +46,12 @@ object OmnibusTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalOmnibusPalette.current
+
+    /** Whether the nearest [OmnibusTheme] is dark. */
+    val isDark: Boolean
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalOmnibusIsDark.current
 }
 
 private fun OmnibusPalette.toColorScheme(darkTheme: Boolean): ColorScheme {
