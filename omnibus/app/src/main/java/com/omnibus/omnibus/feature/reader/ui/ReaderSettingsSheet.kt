@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
@@ -86,6 +87,7 @@ internal object ReaderSettingsSheetTags {
     fun swatch(theme: ReaderTheme) = "reader_settings_swatch_${theme.token}"
     fun typeface(face: ReaderTypeface) = "reader_settings_typeface_${face.token}"
     fun margins(margins: ReaderMargins) = "reader_settings_margins_${margins.token}"
+    fun pageTurn(mode: ReaderPageTurn) = "reader_settings_page_turn_${mode.token}"
 }
 
 /** Presentation constants for the settings sheet. */
@@ -95,7 +97,7 @@ internal object ReaderSettingsSheetDefaults {
 }
 
 /**
- * The reader's settings sheet: page theme, typeface, size, line height, margins and justification.
+ * The reader's settings sheet: page theme, typeface, size, line height, margins, justification and page turn.
  * Stateless apart from its sheet state. Each control reports the new settings through
  * [onSettingsChanged], and the caller owns the value. The sheet takes the app theme, never the
  * reading theme, so it is composed inside `OmnibusTheme()`.
@@ -180,6 +182,7 @@ internal fun ReaderSettingsSheetContent(
         PageGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
         TypeGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
         LayoutGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
+        PageTurnGroup(settings = settings, accent = accent, onSettingsChanged = onSettingsChanged)
     }
 }
 
@@ -505,43 +508,14 @@ private fun LayoutGroup(settings: ReaderSettings, accent: BookAccent, onSettings
     val shape = RoundedCornerShape(Radius.lg)
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         GroupLabel(stringResource(R.string.reader_settings_group_layout))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .selectableGroup()
-                .clip(CircleShape)
-                .background(palette.bg2.copy(alpha = 0.7f))
-                .padding(3.dp),
-        ) {
-            ReaderMargins.entries.forEach { margins ->
-                val selected = settings.margins == margins
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .selectable(
-                            selected = selected,
-                            role = Role.RadioButton,
-                            onClick = {
-                                if (!selected) onSettingsChanged(settings.copy(margins = margins))
-                            },
-                        )
-                        .testTag(ReaderSettingsSheetTags.margins(margins))
-                        .clip(CircleShape)
-                        .background(if (selected) accent.tint else Color.Transparent),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(marginsLabel(margins)),
-                        style = uiTextStyle(
-                            14,
-                            if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            if (selected) accent.onTint else palette.ink2,
-                        ),
-                    )
-                }
-            }
-        }
+        SegmentedPill(
+            options = ReaderMargins.entries,
+            selected = settings.margins,
+            accent = accent,
+            label = { stringResource(marginsLabel(it)) },
+            tag = ReaderSettingsSheetTags::margins,
+            onSelect = { onSettingsChanged(settings.copy(margins = it)) },
+        )
         Row(
             Modifier
                 .fillMaxWidth()
@@ -574,6 +548,71 @@ private fun LayoutGroup(settings: ReaderSettings, accent: BookAccent, onSettings
     }
 }
 
+@Composable
+private fun PageTurnGroup(settings: ReaderSettings, accent: BookAccent, onSettingsChanged: (ReaderSettings) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        GroupLabel(stringResource(R.string.reader_settings_group_page_turn))
+        SegmentedPill(
+            options = ReaderPageTurn.entries,
+            selected = settings.pageTurn,
+            accent = accent,
+            label = { stringResource(pageTurnLabel(it)) },
+            tag = ReaderSettingsSheetTags::pageTurn,
+            onSelect = { onSettingsChanged(settings.copy(pageTurn = it)) },
+        )
+    }
+}
+
+/** A row of mutually exclusive choices in a pill, the selected one in the book's accent. */
+@Composable
+private fun <T> SegmentedPill(
+    options: List<T>,
+    selected: T,
+    accent: BookAccent,
+    label: @Composable (T) -> String,
+    tag: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    val palette = OmnibusTheme.palette
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectableGroup()
+            .clip(CircleShape)
+            .background(palette.bg2.copy(alpha = 0.7f))
+            .padding(3.dp),
+    ) {
+        options.forEach { option ->
+            val isSelected = option == selected
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .selectable(
+                        selected = isSelected,
+                        role = Role.RadioButton,
+                        onClick = {
+                            if (!isSelected) onSelect(option)
+                        },
+                    )
+                    .testTag(tag(option))
+                    .clip(CircleShape)
+                    .background(if (isSelected) accent.tint else Color.Transparent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label(option),
+                    style = uiTextStyle(
+                        14,
+                        if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        if (isSelected) accent.onTint else palette.ink2,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 private fun swatchLabel(theme: ReaderTheme): Int = when (theme) {
     ReaderTheme.Light -> R.string.reader_settings_theme_light
     ReaderTheme.Sepia -> R.string.reader_settings_theme_sepia
@@ -594,6 +633,12 @@ private fun marginsLabel(margins: ReaderMargins): Int = when (margins) {
     ReaderMargins.Narrow -> R.string.reader_settings_margins_narrow
     ReaderMargins.Normal -> R.string.reader_settings_margins_normal
     ReaderMargins.Wide -> R.string.reader_settings_margins_wide
+}
+
+private fun pageTurnLabel(mode: ReaderPageTurn): Int = when (mode) {
+    ReaderPageTurn.Slide -> R.string.reader_settings_page_turn_slide
+    ReaderPageTurn.Curl -> R.string.reader_settings_page_turn_curl
+    ReaderPageTurn.None -> R.string.reader_settings_page_turn_none
 }
 
 @PreviewLightDark

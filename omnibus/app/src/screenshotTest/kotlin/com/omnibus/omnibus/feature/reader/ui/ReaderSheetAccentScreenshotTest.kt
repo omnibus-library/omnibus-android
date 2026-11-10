@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.reader.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import com.android.tools.screenshot.PreviewTest
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.screenshot.Shot
@@ -28,7 +29,7 @@ fun ReaderContentsBlueCover() {
     ContentsShot(BlueCover)
 }
 
-/** The selected theme, typeface and margins and the justify switch are red, as is the steppers' glyph on dark. */
+/** The selected theme, typeface, margins and page turn and the justify switch are red, as is the steppers' glyph on dark. */
 @PreviewTest
 @PreviewLightDark
 @Composable
@@ -63,7 +64,7 @@ private fun ContentsShot(cover: CoverIdentity) {
 private fun SettingsShot(cover: CoverIdentity) {
     Shot {
         ReaderSettingsSheetContent(
-            settings = ReaderSettings(justify = true),
+            settings = ReaderSettings(justify = true, pageTurn = ReaderPageTurn.Curl),
             accent = readerSheetAccent(ReaderBookState.Ready("The Long Road Home", cover), OmnibusTheme.palette),
             onSettingsChanged = {},
             onDone = {},
