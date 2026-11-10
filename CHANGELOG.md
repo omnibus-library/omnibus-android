@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.10](https://github.com/omnibus-library/omnibus-android/compare/v0.1.9...v0.1.10) (2026-11-10)
+
+
+### Features
+
+* **bookdetail:** use a Material 3 back arrow in the top bar ([#274](https://github.com/omnibus-library/omnibus-android/issues/274)) ([eef2d1d](https://github.com/omnibus-library/omnibus-android/commit/eef2d1d74afdeb384121ef069f221f76003564ee))
+* **shell:** float the mini player as a rounded card ([#278](https://github.com/omnibus-library/omnibus-android/issues/278)) ([7c57768](https://github.com/omnibus-library/omnibus-android/commit/7c57768840c2d0db0b45e6c11e7bc75189e54487))
+* **shelves:** add a large top app bar that collapses on scroll ([#275](https://github.com/omnibus-library/omnibus-android/issues/275)) ([1f47e13](https://github.com/omnibus-library/omnibus-android/commit/1f47e13a1b0011c728d518a9aa1a6d824bd3ca89))
+
 ## [0.1.9](https://github.com/omnibus-library/omnibus-android/compare/v0.1.8...v0.1.9) (2026-11-10)
 
 
