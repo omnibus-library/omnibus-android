@@ -22,15 +22,17 @@ internal class CurlDrag(val dir: Int, val turning: CurlRect, private val downX: 
     /** The fold past the left edge, where nothing of the turning page is kept. */
     val turned = Vec(2 * turning.left - corner.x - 1f, corner.y)
 
-    /** The fold for the finger at ([x], [y]). Vertical travel is damped, so a straight swipe folds near-vertically. */
+    /**
+     * The fold for the finger at ([x], [y]). Vertical travel is damped, so a straight swipe folds near-vertically, and
+     * the fold's tilt is capped at [MAX_FOLD_SLOPE] so a steep pull never flips the page up or down.
+     */
     fun fold(x: Float, y: Float): Vec {
         val dx = x - downX
         val dy = y - downY
-        return if (dir > 0) {
-            Vec(corner.x + min(dx, 0f), corner.y + dy * TILT_DAMPING)
-        } else {
-            Vec(min(turned.x + 2 * max(dx, 0f), corner.x), corner.y + 2 * dy * TILT_DAMPING)
-        }
+        val foldX = if (dir > 0) corner.x + min(dx, 0f) else min(turned.x + 2 * max(dx, 0f), corner.x)
+        val tilt = (if (dir > 0) dy * TILT_DAMPING else 2 * dy * TILT_DAMPING)
+        val limit = MAX_FOLD_SLOPE * (corner.x - foldX)
+        return Vec(foldX, corner.y + tilt.coerceIn(-limit, limit))
     }
 
     /** How far the turn has gone, 0 to 1, from the touch-down toward the turn direction. */
@@ -42,6 +44,9 @@ internal class CurlDrag(val dir: Int, val turning: CurlRect, private val downX: 
     companion object {
         /** How far the fold's tilt follows vertical finger travel. */
         const val TILT_DAMPING = 0.35f
+
+        /** The most the fold may offset vertically from the corner, per pixel of horizontal distance from it. */
+        const val MAX_FOLD_SLOPE = 0.6f
 
         /** A release faster than this, in dp per second, is a flick. */
         const val FLICK_DP_PER_S = 1_000f

@@ -3,12 +3,14 @@ package com.omnibus.omnibus.feature.reader.ui.curl
 import com.omnibus.omnibus.feature.reader.ui.curl.CurlDecision.Cancel
 import com.omnibus.omnibus.feature.reader.ui.curl.CurlDecision.Commit
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.comparables.shouldBeGreaterThanOrEqualTo
 import io.kotest.matchers.comparables.shouldBeLessThanOrEqualTo
 import io.kotest.matchers.floats.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.numericFloat
 import io.kotest.property.checkAll
+import kotlin.math.abs
 
 /** A drag over [rect], from a touch-down at ([downX], [downY]), and the finger's position at the end of it. */
 private data class DragCase(val drag: CurlDrag, val downX: Float, val downY: Float, val x: Float, val y: Float)
@@ -45,6 +47,8 @@ private fun unit() = Arb.numericFloat(0f, 1f)
 
 private fun signedUnit() = Arb.numericFloat(-1f, 1f)
 
+private fun half() = Arb.numericFloat(0f, 0.5f)
+
 class CurlDragTest : DescribeSpec({
 
     describe("folding the page under the finger") {
@@ -61,7 +65,7 @@ class CurlDragTest : DescribeSpec({
 
             it("TC-310: damps the fold's vertical travel to 0.35 of the finger's") {
                 checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
-                    val case = dragOver(1, rect, fx, fy, travel, vertical)
+                    val case = dragOver(1, rect, fx, fy, travel, vertical * travel * rect.width / rect.height)
 
                     val fold = case.drag.fold(case.x, case.y)
 
@@ -74,6 +78,27 @@ class CurlDragTest : DescribeSpec({
                     val case = dragOver(1, rect, fx, fy, travel, 0f)
 
                     case.drag.fold(case.x, case.y).y shouldBe case.drag.corner.y
+                }
+            }
+
+            it("TC-346: never tilts the fold steeper than the slope cap, however steep the pull") {
+                checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
+                    val case = dragOver(1, rect, fx, fy, travel, vertical)
+
+                    val fold = case.drag.fold(case.x, case.y)
+
+                    abs(fold.y - case.drag.corner.y) shouldBeLessThanOrEqualTo
+                        CurlDrag.MAX_FOLD_SLOPE * (case.drag.corner.x - fold.x) + PIXELS
+                }
+            }
+
+            it("TC-346: tilts the fold toward the finger's side of the corner") {
+                checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
+                    val case = dragOver(1, rect, fx, fy, travel, vertical)
+
+                    val fold = case.drag.fold(case.x, case.y)
+
+                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo 0f
                 }
             }
         }
@@ -90,8 +115,8 @@ class CurlDragTest : DescribeSpec({
             }
 
             it("TC-310: damps the fold's vertical travel to 0.7 of the finger's") {
-                checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
-                    val case = dragOver(-1, rect, fx, fy, travel, vertical)
+                checkAll(arbCurlRect(), unit(), unit(), half(), signedUnit()) { rect, fx, fy, travel, vertical ->
+                    val case = dragOver(-1, rect, fx, fy, travel, vertical * 0.5f * rect.width / rect.height)
 
                     val fold = case.drag.fold(case.x, case.y)
 
@@ -104,6 +129,27 @@ class CurlDragTest : DescribeSpec({
                     val case = dragOver(-1, rect, fx, fy, travel, 0f)
 
                     case.drag.fold(case.x, case.y).y shouldBe case.drag.corner.y
+                }
+            }
+
+            it("TC-346: never tilts the fold steeper than the slope cap, however steep the pull") {
+                checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
+                    val case = dragOver(-1, rect, fx, fy, travel, vertical)
+
+                    val fold = case.drag.fold(case.x, case.y)
+
+                    abs(fold.y - case.drag.corner.y) shouldBeLessThanOrEqualTo
+                        CurlDrag.MAX_FOLD_SLOPE * (case.drag.corner.x - fold.x) + PIXELS
+                }
+            }
+
+            it("TC-346: tilts the fold toward the finger's side of the corner") {
+                checkAll(arbCurlRect(), unit(), unit(), unit(), signedUnit()) { rect, fx, fy, travel, vertical ->
+                    val case = dragOver(-1, rect, fx, fy, travel, vertical)
+
+                    val fold = case.drag.fold(case.x, case.y)
+
+                    (fold.y - case.drag.corner.y) * (case.y - case.downY) shouldBeGreaterThanOrEqualTo 0f
                 }
             }
         }
