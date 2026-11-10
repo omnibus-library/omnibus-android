@@ -150,6 +150,7 @@ private val GRID_BOTTOM_GAP = 40.dp
  * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
  * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
  * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
+ * @param onOpenShelves Called when the Shelves rail's All link is tapped.
  */
 @Composable
 fun LibraryScreen(
@@ -159,6 +160,7 @@ fun LibraryScreen(
     onOpenReader: (bookUuid: String) -> Unit = {},
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
     onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
+    onOpenShelves: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -184,6 +186,7 @@ fun LibraryScreen(
         onUnfoldSeries = viewModel::unfoldSeries,
         onFoldUpSeries = viewModel::foldUpSeries,
         onOpenSeries = onOpenSeries,
+        onOpenShelves = onOpenShelves,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
         continueState = continueState,
@@ -210,6 +213,7 @@ fun LibraryScreen(
  * @param onUnfoldSeries Called with the series id when a folded series' stack is tapped.
  * @param onFoldUpSeries Called with the series id when an unfolded series' "Fold up" is tapped.
  * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
+ * @param onOpenShelves Called when the Shelves rail's All link is tapped.
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
@@ -240,6 +244,7 @@ internal fun LibraryScreenContent(
     onUnfoldSeries: (seriesId: Long) -> Unit = {},
     onFoldUpSeries: (seriesId: Long) -> Unit = {},
     onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
+    onOpenShelves: () -> Unit = {},
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -339,6 +344,7 @@ internal fun LibraryScreenContent(
                         onUnfoldSeries = onUnfoldSeries,
                         onFoldUpSeries = onFoldUpSeries,
                         onOpenSeries = onOpenSeries,
+                        onOpenShelves = onOpenShelves,
                         gridState = gridState,
                         topInset = statusTop,
                         bottomInset = overlayBottom,
@@ -426,6 +432,7 @@ private fun LibraryGrid(
     onUnfoldSeries: (seriesId: Long) -> Unit,
     onFoldUpSeries: (seriesId: Long) -> Unit,
     onOpenSeries: (seriesId: Long, name: String) -> Unit,
+    onOpenShelves: () -> Unit,
     gridState: LazyGridState,
     topInset: Dp,
     bottomInset: Dp,
@@ -504,7 +511,11 @@ private fun LibraryGrid(
                     }
                     val railShelves = uiState.railShelves
                     if (railShelves.isNotEmpty()) {
-                        ShelvesRail(shelves = railShelves, viewerId = uiState.viewerId)
+                        ShelvesRail(
+                            shelves = railShelves,
+                            viewerId = uiState.viewerId,
+                            onOpenAll = onOpenShelves,
+                        )
                         // 30 dp to the heading, as between the Continue card and the heading.
                         Spacer(Modifier.height(30.dp))
                     }

@@ -353,6 +353,29 @@ class LibraryScreenTest {
         rule.onNodeWithTag(ShelvesRailTestTags.HEADING).assertDoesNotExist()
     }
 
+    @Test
+    fun issue257_tc19_allOpensTheShelves() {
+        var opened = 0
+        setLibrary(
+            LibraryUIState(books = listOf(book(1L)), hasLoaded = true, shelves = listOf(ownShelf(1L)), viewerId = 1L),
+            onOpenShelves = { opened++ },
+        )
+
+        rule.onNodeWithTag(ShelvesRailTestTags.ALL).assertIsDisplayed().performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun issue257_tc19_allIsAbsentWithoutRailShelves() {
+        setLibrary(LibraryUIState(books = listOf(book(1L)), hasLoaded = true, shelves = emptyList()))
+
+        // The grid is up, so a missing All link is the rail's absence and not a screen that never drew.
+        rule.onNodeWithTag(LibraryTestTags.HEADING).assertExists()
+        rule.onNodeWithTag(ShelvesRailTestTags.ALL).assertDoesNotExist()
+    }
+
     private fun filterButton() = rule.onNodeWithTag(LibraryTestTags.FILTER_BUTTON)
 
     private fun openMenu() = filterButton().performClick()
@@ -368,6 +391,7 @@ class LibraryScreenTest {
         onToggleDirection: () -> Unit = {},
         onScrolledToTop: () -> Unit = {},
         gridState: LazyGridState? = null,
+        onOpenShelves: () -> Unit = {},
     ) = setLibraryState(
         uiState = mutableStateOf(uiState),
         onOpenBook = onOpenBook,
@@ -379,6 +403,7 @@ class LibraryScreenTest {
         onToggleDirection = onToggleDirection,
         onScrolledToTop = onScrolledToTop,
         gridState = gridState,
+        onOpenShelves = onOpenShelves,
     )
 
     /** Like [setLibrary], but reads the state each recomposition so a test can change it between steps. */
@@ -398,6 +423,7 @@ class LibraryScreenTest {
         onOpenPlayer: (String, Long?) -> Unit = { _, _ -> },
         onResumeHandled: () -> Unit = {},
         onUnavailableDismissed: () -> Unit = {},
+        onOpenShelves: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -422,6 +448,7 @@ class LibraryScreenTest {
                         onOpenPlayer = onOpenPlayer,
                         onResumeHandled = onResumeHandled,
                         onUnavailableDismissed = onUnavailableDismissed,
+                        onOpenShelves = onOpenShelves,
                     )
                 }
             }

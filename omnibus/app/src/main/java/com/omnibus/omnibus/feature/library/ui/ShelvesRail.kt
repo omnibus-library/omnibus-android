@@ -67,6 +67,7 @@ import com.omnibus.omnibus.feature.library.shelfPlateTone
 import com.omnibus.omnibus.feature.library.showsOwnerAttribution
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.CoverIdentity
+import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.components.coverShadow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -76,6 +77,7 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 /** Test tags for [ShelvesRail] and its cards. */
 internal object ShelvesRailTestTags {
     const val HEADING = "shelves-heading"
+    const val ALL = "shelves-all"
     const val ROW = "shelves-row"
     const val START_FADE = "shelves-fade-start"
     const val END_FADE = "shelves-fade-end"
@@ -107,6 +109,8 @@ private val RailFadeWidth = 40.dp
  * The Library's Shelves section: a heading over a row of [ShelfCard]s, one for each of [shelves], which the caller has
  * already filtered for [viewerId]. The row snaps a card's leading edge to the start padding, and a fade shows at each
  * end the row can still scroll towards. Tapping a card does nothing yet.
+ *
+ * @param onOpenAll Called when the heading's All link is tapped
  */
 @Composable
 internal fun ShelvesRail(
@@ -114,14 +118,29 @@ internal fun ShelvesRail(
     viewerId: Long?,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    onOpenAll: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Column(modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.library_shelves_heading),
-            style = displayTextStyle(27, palette.ink0),
-            modifier = Modifier.padding(horizontal = Spacing.screen).testTag(ShelvesRailTestTags.HEADING),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = Spacing.screen),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.library_shelves_heading),
+                style = displayTextStyle(27, palette.ink0),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).testTag(ShelvesRailTestTags.HEADING),
+            )
+            TextLinkButton(
+                text = stringResource(R.string.library_shelves_all),
+                color = palette.accent,
+                size = 15,
+                onClick = onOpenAll,
+                modifier = Modifier.testTag(ShelvesRailTestTags.ALL),
+            )
+        }
         Spacer(Modifier.height(Spacing.md))
         Box(Modifier.fillMaxWidth()) {
             LazyRow(

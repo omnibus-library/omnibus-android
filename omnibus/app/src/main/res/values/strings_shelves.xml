@@ -12,4 +12,28 @@
     <string name="shelves_empty_ledge_manual">Empty shelf</string>
     <string name="shelves_empty_ledge_smart">No matches yet</string>
     <string name="shelves_empty_ledge_wishlist">Nothing wished for</string>
+    <!-- The Shelves screen's header: its title, and the census line under it. -->
+    <string name="shelves_title">Shelves</string>
+    <plurals name="shelves_census_total">
+        <item quantity="one">%d shelf</item>
+        <item quantity="other">%d shelves</item>
+    </plurals>
+    <string name="shelves_census_yours">%d yours</string>
+    <!-- %1$d is the count of shelves from other readers, %2$d the count of those readers. -->
+    <plurals name="shelves_census_from_others">
+        <item quantity="one">%1$d from %2$d other reader</item>
+        <item quantity="other">%1$d from %2$d other readers</item>
+    </plurals>
+    <!-- Shown to an admin who can see other readers' private shelves. -->
+    <string name="shelves_private_notice">Includes other readers’ private shelves — you can see them as an admin.</string>
+    <!-- The heading of each owner's group. %1$s is the owner's name. -->
+    <string name="shelves_group_yours">Your shelves</string>
+    <string name="shelves_group_other">%1$s’s shelves</string>
+    <!-- What a tile's foot calls the viewer's own shelf. -->
+    <string name="shelves_owner_you">You</string>
+    <!-- The loading view, the empty view and its kicker. -->
+    <string name="shelves_loading">Loading shelves</string>
+    <string name="shelves_empty_kicker">Your shelves</string>
+    <string name="shelves_empty_title">No shelves yet</string>
+    <string name="shelves_empty_message">Gather books by hand, or let a rule fill one for you.</string>
 </resources>
