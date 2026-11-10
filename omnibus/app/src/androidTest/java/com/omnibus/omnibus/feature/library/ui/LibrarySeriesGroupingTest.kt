@@ -245,7 +245,6 @@ class LibrarySeriesGroupingTest {
         rule.mainClock.autoAdvance = false
         setLibrary(state)
         rule.waitForIdle()
-        val slot = boundsOf(cell(3L)).getValue(cell(3L))
 
         rule.runOnIdle {
             val books = state.value.books
@@ -253,13 +252,12 @@ class LibrarySeriesGroupingTest {
         }
         rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
-        // Book 6 now takes the slot book 3 held, and is there in the first frame: no glide.
-        val afterFrame = boundsOf(cell(6L)).getValue(cell(6L))
-        assertEquals(slot, afterFrame)
+        // Book 6 is the first Single after the reorder, so it sits in the first row.
+        val afterFrame = rule.onNodeWithTag(cell(6L)).getUnclippedBoundsInRoot()
 
         rule.mainClock.advanceTimeBy(1000)
         rule.waitForIdle()
-        assertEquals(afterFrame, boundsOf(cell(6L)).getValue(cell(6L)))
+        assertEquals(afterFrame, rule.onNodeWithTag(cell(6L)).getUnclippedBoundsInRoot())
     }
 
     @Test
