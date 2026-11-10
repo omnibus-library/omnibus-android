@@ -322,7 +322,7 @@ internal class PageCurlHost(
         const val CAPTURE_DELAY_MS = 120L
 
         /** How long a gutter tap's curl takes, in milliseconds. */
-        const val CURL_MS = 400f
+        const val CURL_MS = 650f
 
         /** Where the lifted corner sits down the turning page's right edge, as a fraction of its height. */
         const val CORNER_HEIGHT_FRACTION = 0.7f
