@@ -7,7 +7,9 @@ import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.library.remote.ResumePointDto
 import com.omnibus.omnibus.data.library.remote.SeriesBooksResponseDto
 import com.omnibus.omnibus.data.library.remote.ShelfDto
+import com.omnibus.omnibus.data.network.AuthTokenProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
+import com.omnibus.omnibus.data.network.ServerBaseUrlProvider
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -18,6 +20,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.HttpUrl
 import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
@@ -29,7 +32,13 @@ import javax.inject.Inject
 class DefaultLibraryRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val omnibusHttpClient: OmnibusHttpClient,
+    private val baseUrlProvider: ServerBaseUrlProvider,
+    private val authTokenProvider: AuthTokenProvider,
 ) : LibraryRepository {
+
+    /** The last successful shelves read, and the server and session it was read for. */
+    @Volatile
+    private var shelvesCache: ShelvesCache? = null
 
     override fun getBooksPageFlow(query: BooksPageQuery, cursor: String?): Flow<LibraryPageResult> = flow {
         // The server rejects a cursor sent without sort and dir, so every page request carries all of them.
@@ -84,10 +93,22 @@ class DefaultLibraryRepository @Inject constructor(
     }
 
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow {
+        // Read once, before the request, so the result is filed under the session it was asked for.
+        val server = baseUrlProvider.baseUrl()
+        val token = authTokenProvider.token()?.takeIf { it.isNotBlank() }
+        val cached = shelvesCache?.takeIf {
+            server != null && token != null && it.server == server && it.token == token
+        }
+        if (cached != null) emit(ShelfPreviewsResult.Success(cached.previews))
+
         val read = get(SHELVES_PATH) { response ->
             LibraryJson.decodeFromString<List<ShelfDto>>(response.body.string()).map { dto ->
                 ShelfPreview(shelf = dto.toDomain(), coverUuids = dto.coverUuids.take(SHELF_COVER_COUNT))
             }
+        }
+        // A failed read keeps the cache; only a successful one replaces it.
+        if (read is Read.Ok && server != null && token != null) {
+            shelvesCache = ShelvesCache(server, token, read.value)
         }
         emit(
             when (read) {
@@ -201,6 +222,9 @@ class DefaultLibraryRepository @Inject constructor(
             Read.Failed(LibraryError.UnexpectedResponse)
         }
     }
+
+    /** A plain class, not a data class, so its `toString` never prints the token. */
+    private class ShelvesCache(val server: HttpUrl, val token: String, val previews: List<ShelfPreview>)
 
     /** The outcome of one GET before it is turned into a read's own result type. */
     private sealed interface Read<out T> {

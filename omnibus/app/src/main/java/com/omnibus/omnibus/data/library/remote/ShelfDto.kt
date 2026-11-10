@@ -21,6 +21,8 @@ internal data class ShelfDto(
     val bookCount: Long = 0,
     @SerialName("cover_uuids")
     val coverUuids: List<String> = emptyList(),
+    @SerialName("owner_has_avatar")
+    val ownerHasAvatar: Boolean = false,
 ) {
     fun toDomain(): Shelf = Shelf(
         id = id,
@@ -35,5 +37,6 @@ internal data class ShelfDto(
         visibility = if (visibility == "public") ShelfVisibility.Public else ShelfVisibility.Private,
         accent = accent,
         bookCount = bookCount,
+        ownerHasAvatar = ownerHasAvatar,
     )
 }

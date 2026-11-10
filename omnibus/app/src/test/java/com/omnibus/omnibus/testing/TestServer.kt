@@ -2,8 +2,10 @@ package com.omnibus.omnibus.testing
 
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.network.AuthTokenProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
+import com.omnibus.omnibus.data.network.ServerBaseUrlProvider
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import java.util.concurrent.CountDownLatch
@@ -36,9 +38,16 @@ private const val RETRIED_CODE = 408
 private val DROPPED: MockResponse = MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
 
 /** An [OmnibusHttpClient] for [baseUrl] (null means no server is saved), signed in with [token]. */
-fun testOmnibusHttpClient(baseUrl: HttpUrl? = null, token: String = randomString()): OmnibusHttpClient = OmnibusHttpClient(
-    baseUrlProvider = TestServerBaseUrlProvider(baseUrl = baseUrl),
-    authTokenProvider = TestAuthTokenProvider(token = token),
+fun testOmnibusHttpClient(baseUrl: HttpUrl? = null, token: String = randomString()): OmnibusHttpClient =
+    testOmnibusHttpClient(TestServerBaseUrlProvider(baseUrl = baseUrl), TestAuthTokenProvider(token = token))
+
+/** An [OmnibusHttpClient] that reads its server and token from [baseUrlProvider] and [authTokenProvider]. */
+fun testOmnibusHttpClient(
+    baseUrlProvider: ServerBaseUrlProvider,
+    authTokenProvider: AuthTokenProvider,
+): OmnibusHttpClient = OmnibusHttpClient(
+    baseUrlProvider = baseUrlProvider,
+    authTokenProvider = authTokenProvider,
     omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
     authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
 )

@@ -1,6 +1,10 @@
 package com.omnibus.omnibus.data.library
 
-/** A shelf of books the user can see, including shelves owned by other users. */
+/**
+ * A shelf of books the user can see, including shelves owned by other users.
+ *
+ * @property ownerHasAvatar Whether the server has a picture for the owner. False when it doesn't say.
+ */
 data class Shelf(
     val id: Long,
     val ownerUserId: Long,
@@ -10,6 +14,7 @@ data class Shelf(
     val visibility: ShelfVisibility,
     val accent: String?,
     val bookCount: Long,
+    val ownerHasAvatar: Boolean = false,
 )
 
 /** How a [Shelf] gets its books. */
