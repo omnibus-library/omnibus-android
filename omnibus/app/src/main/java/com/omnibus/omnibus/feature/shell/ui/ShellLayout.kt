@@ -4,20 +4,37 @@ import android.graphics.Color
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.window.layout.WindowInfoTracker
+import com.omnibus.omnibus.feature.shell.ShellNavigationLayout
+import com.omnibus.omnibus.feature.shell.isTabletop
+import com.omnibus.omnibus.feature.shell.shellNavigationLayout
 import com.omnibus.omnibus.ui.components.LocalBottomOverlayInsets
 import com.omnibus.omnibus.ui.components.bottomOverlay
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -25,24 +42,71 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 /**
  * Lays [content] out at full window height, with [overlay] drawn over its bottom edge. Entries read the overlay's
  * measured height as `WindowInsets.bottomOverlay`, so they can keep clear of it.
+ *
+ * In [ShellNavigationLayout.Rail], [rail] sits on the leading edge and the content is laid out in the width beside it,
+ * not under it. Both layouts share one tree, so [content] keeps its composition when the layout changes.
  */
 @Composable
 internal fun ShellLayout(
     overlay: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    navigationLayout: ShellNavigationLayout = ShellNavigationLayout.Bar,
+    rail: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    Scaffold(
-        modifier = modifier,
-        bottomBar = overlay,
-        containerColor = OmnibusTheme.palette.bg0,
-        contentWindowInsets = WindowInsets(0),
-    ) { innerPadding ->
-        // The body ignores the padding; the overlay's height is the only thing the entries need from it.
-        val bottom = innerPadding.calculateBottomPadding()
-        val insets = remember(bottom) { WindowInsets(bottom = bottom) }
-        CompositionLocalProvider(LocalBottomOverlayInsets provides insets) { content() }
+    val isRail = navigationLayout == ShellNavigationLayout.Rail
+    Row(modifier) {
+        if (isRail) rail()
+        Scaffold(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .then(if (isRail) Modifier.consumeWindowInsets(RailStartInsets) else Modifier),
+            bottomBar = overlay,
+            containerColor = OmnibusTheme.palette.bg0,
+            contentWindowInsets = WindowInsets(0),
+        ) { innerPadding ->
+            // The body ignores the padding; the overlay's height is the only thing the entries need from it.
+            val bottom = innerPadding.calculateBottomPadding()
+            val insets = remember(bottom) { WindowInsets(bottom = bottom) }
+            CompositionLocalProvider(LocalBottomOverlayInsets provides insets) { content() }
+        }
     }
+}
+
+/**
+ * The start-side insets the rail already clears. The rail's content consumes them, so the content beside it doesn't
+ * pad them a second time.
+ */
+private val RailStartInsets: WindowInsets
+    @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Start)
+
+/**
+ * The rail-mode overlay: the mini player, when [miniPlayer] draws it, above a spacer as tall as the navigation bar. The
+ * overlay is never shorter than the navigation bar, so entries clear it even when the mini player is hidden or empty.
+ */
+@Composable
+internal fun ShellRailOverlay(miniPlayer: @Composable (contentWindowInsets: WindowInsets) -> Unit) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        miniPlayer(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+    }
+}
+
+/**
+ * The layout for the current window: the rail from 600dp wide, the bar below it and whenever a fold is in tabletop
+ * posture. Previews and screenshot tests have no activity, so they read as not tabletop.
+ */
+@Composable
+internal fun rememberShellNavigationLayout(): ShellNavigationLayout {
+    val width = LocalWindowInfo.current.containerDpSize.width
+    val activity = if (LocalInspectionMode.current) null else LocalActivity.current
+    val tabletop by produceState(false, activity) {
+        if (activity != null) {
+            WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).collect { value = isTabletop(it.displayFeatures) }
+        }
+    }
+    return shellNavigationLayout(width, tabletop)
 }
 
 /** Pads an entry clear of the status bar and the bottom overlay, as the shell's other root screens need. */

@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -33,6 +35,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -210,10 +213,12 @@ internal fun BookDetailScreenContent(
     }
 
     // The layout is chosen from this screen's own size, the window minus the shell's tab bar and any side cutout.
-    BoxWithConstraints(modifier.fillMaxSize().background(palette.bg0)) {
+    // Cutout sides an ancestor already consumed, such as the navigation rail's start side, are not subtracted again.
+    var consumedInsets by remember { mutableStateOf(WindowInsets(0)) }
+    BoxWithConstraints(modifier.fillMaxSize().background(palette.bg0).onConsumedWindowInsetsChanged { consumedInsets = it }) {
         val layoutDirection = LocalLayoutDirection.current
         val cutout = WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)
-        val cutoutPadding = cutout.asPaddingValues()
+        val cutoutPadding = cutout.exclude(consumedInsets).asPaddingValues()
         val cutoutWidth = cutoutPadding.calculateLeftPadding(layoutDirection) +
             cutoutPadding.calculateRightPadding(layoutDirection)
         val viewportHeight = maxHeight

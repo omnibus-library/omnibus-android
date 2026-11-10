@@ -144,6 +144,7 @@ dependencies {
     }
     implementation(libs.androidx.material3)
     implementation(libs.androidx.webkit)
+    implementation(libs.androidx.window)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
