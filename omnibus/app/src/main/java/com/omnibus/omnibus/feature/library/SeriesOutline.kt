@@ -94,6 +94,18 @@ fun outlineStrokes(shape: SeriesOutlineShape, grid: OutlineGrid): List<OutlineSt
     is SeriesOutlineShape.Rows -> shape.rows.flatMap { grid.rowStrokes(it) }
 }
 
+/** The filled area of [shape] in [grid]: closed polygons that cover exactly the run's cells, inside its strokes. */
+fun outlineFills(shape: SeriesOutlineShape, grid: OutlineGrid): List<List<OutlinePoint>> = when (shape) {
+    is SeriesOutlineShape.Loop -> listOf(
+        shape.corners.map { OutlinePoint(grid.columnX(it.column), grid.rowY(it.row)) },
+    )
+
+    is SeriesOutlineShape.Rows -> shape.rows.map { row ->
+        val (left, top, right, bottom) = grid.rowEdges(row)
+        listOf(OutlinePoint(left, top), OutlinePoint(right, top), OutlinePoint(right, bottom), OutlinePoint(left, bottom))
+    }
+}
+
 /** The x of column boundary [column], in the gutter just before that column. */
 private fun OutlineGrid.columnX(column: Int): Float = contentLeft + column * (slotWidth + columnGap) - columnGap / 2
 
@@ -107,12 +119,20 @@ private fun OutlineGrid.rowY(boundary: Int): Float {
     }
 }
 
+/** The edges of one row's container in px. */
+private data class RowEdges(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+/** One row's container, held in the gaps above and below it. An open side runs to the grid's edge. */
+private fun OutlineGrid.rowEdges(row: OutlineRow): RowEdges = RowEdges(
+    left = if (row.openStart) edgeLeft else columnX(row.startColumn),
+    top = rowTops[row.row] - rowGap / 4,
+    right = if (row.openEnd) edgeRight else columnX(row.endColumn),
+    bottom = rowBottoms[row.row] + rowGap / 4,
+)
+
 /** One row's container, held in the gaps above and below it. An open side runs to the grid's edge. */
 private fun OutlineGrid.rowStrokes(row: OutlineRow): List<OutlineStroke> {
-    val top = rowTops[row.row] - rowGap / 4
-    val bottom = rowBottoms[row.row] + rowGap / 4
-    val left = if (row.openStart) edgeLeft else columnX(row.startColumn)
-    val right = if (row.openEnd) edgeRight else columnX(row.endColumn)
+    val (left, top, right, bottom) = rowEdges(row)
     return when {
         !row.openStart && !row.openEnd -> listOf(
             OutlineStroke(

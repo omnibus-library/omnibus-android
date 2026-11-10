@@ -484,7 +484,13 @@ private fun LibraryGrid(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .seriesOutlines(gridState, runs, columns, palette.accent.copy(alpha = 0.35f))
+                .seriesOutlines(
+                    gridState,
+                    runs,
+                    columns,
+                    stroke = palette.accent.copy(alpha = 0.40f),
+                    fill = palette.seriesFill,
+                )
                 .testTag(LibraryTestTags.GRID),
         ) {
             item(key = HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) {

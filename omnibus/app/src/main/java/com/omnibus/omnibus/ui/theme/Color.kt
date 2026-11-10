@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
  * @property line2 Quieter hairlines and ghost plates.
  * @property ink1 Between [ink0] and [ink2], for secondary emphasis.
  * @property warn Offline and caution tint.
+ * @property seriesFill The tint inside an unfolded series' container in the Library grid.
  */
 data class OmnibusPalette(
     val bg0: Color,
@@ -36,6 +37,7 @@ data class OmnibusPalette(
     val line2: Color,
     val ink1: Color,
     val warn: Color,
+    val seriesFill: Color,
 ) {
     companion object {
         /** The default dark theme. */
@@ -53,6 +55,7 @@ data class OmnibusPalette(
             line2 = Oklch(0.30, 0.010, 70.0, alpha = 0.30).toColor(),
             ink1 = Oklch(0.82, 0.010, 75.0).toColor(),
             warn = Oklch(0.78, 0.13, 75.0).toColor(),
+            seriesFill = Color(0xFFF0A556).copy(alpha = 0.13f),
         )
 
         val Light = OmnibusPalette(
@@ -69,6 +72,7 @@ data class OmnibusPalette(
             line2 = Oklch(0.40, 0.010, 70.0, alpha = 0.10).toColor(),
             ink1 = Oklch(0.36, 0.008, 70.0).toColor(),
             warn = Oklch(0.78, 0.13, 75.0).toColor(),
+            seriesFill = Color(0xFFF0A556).copy(alpha = 0.16f),
         )
     }
 }
