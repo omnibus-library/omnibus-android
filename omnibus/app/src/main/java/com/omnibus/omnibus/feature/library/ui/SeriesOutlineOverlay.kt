@@ -15,17 +15,24 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.feature.library.OutlineGrid
+import com.omnibus.omnibus.feature.library.OutlinePoint
 import com.omnibus.omnibus.feature.library.OutlineStroke
 import com.omnibus.omnibus.feature.library.SeriesOutlineShape
+import com.omnibus.omnibus.feature.library.UnfoldFrame
+import com.omnibus.omnibus.feature.library.collapseToward
 import com.omnibus.omnibus.feature.library.outlineFills
 import com.omnibus.omnibus.feature.library.outlineStrokes
 import com.omnibus.omnibus.feature.library.seriesOutline
+import com.omnibus.omnibus.feature.library.stackRect
 import com.omnibus.omnibus.ui.theme.Radius
 import com.omnibus.omnibus.ui.theme.Spacing
 import kotlin.math.abs
 
-/** An unfolded series' cells in the grid: the grid index of its summary, and how many cells it spans. */
-internal data class OutlineRun(val firstGridIndex: Int, val cellCount: Int)
+/** A series' cells in the grid: the grid index of its first cell, how many cells it spans, and the series. */
+internal data class OutlineRun(val firstGridIndex: Int, val cellCount: Int, val seriesId: Long)
+
+/** A run in px: its series, the column its first cell is in, its outline shape and its grid. */
+private class PlacedRun(val seriesId: Long, val start: Int, val shape: SeriesOutlineShape, val grid: OutlineGrid)
 
 /** The 26 dp gap above each row of the Library grid, from the cells' own top padding. */
 private val ROW_GAP = 26.dp
@@ -46,6 +53,7 @@ private class RowBox(val top: Float, val bottom: Float)
  * @param columns The grid's column count.
  * @param stroke The outline colour.
  * @param fill The colour inside each container.
+ * @param frame The run's unfold frame while its series animates, null at rest.
  */
 internal fun Modifier.seriesOutlines(
     gridState: LazyGridState,
@@ -53,43 +61,59 @@ internal fun Modifier.seriesOutlines(
     columns: Int,
     stroke: Color,
     fill: Color,
+    frame: (seriesId: Long) -> UnfoldFrame? = { null },
 ): Modifier = drawWithContent {
     val placed = placeRuns(gridState.layoutInfo, runs, columns)
     val radius = Radius.lg.toPx()
     val fillPaint = Paint().apply {
-        color = fill
         style = PaintingStyle.Fill
         pathEffect = PathEffect.cornerPathEffect(radius)
     }
     clipRect {
         drawIntoCanvas { canvas ->
-            for ((shape, grid) in placed) {
+            for (run in placed) {
+                val unfold = frame(run.seriesId)
+                if (unfold != null && unfold.containerAlpha <= 0f) continue
+                fillPaint.color = fill.copy(alpha = fill.alpha * (unfold?.containerAlpha ?: 1f))
                 // An open end runs past the screen edge, so its rounded corner is cut off by the clip.
-                val fillGrid = grid.copy(edgeLeft = -radius, edgeRight = size.width + radius)
-                for (polygon in outlineFills(shape, fillGrid)) {
-                    canvas.drawPath(OutlineStroke(polygon, closed = true).toPath(), fillPaint)
+                val fillGrid = run.grid.copy(edgeLeft = -radius, edgeRight = size.width + radius)
+                for (polygon in outlineFills(run.shape, fillGrid)) {
+                    val points = polygon.collapsedBy(unfold, run, columns)
+                    canvas.drawPath(OutlineStroke(points, closed = true).toPath(), fillPaint)
                 }
             }
         }
     }
     drawContent()
-    for ((shape, grid) in placed) {
-        for (outline in outlineStrokes(shape, grid)) {
+    for (run in placed) {
+        val unfold = frame(run.seriesId)
+        if (unfold != null && unfold.containerAlpha <= 0f) continue
+        val strokeColor = stroke.copy(alpha = stroke.alpha * (unfold?.containerAlpha ?: 1f))
+        for (outline in outlineStrokes(run.shape, run.grid)) {
             drawPath(
-                path = outline.toPath(),
-                color = stroke,
+                path = OutlineStroke(outline.points.collapsedBy(unfold, run, columns), outline.closed).toPath(),
+                color = strokeColor,
                 style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.cornerPathEffect(radius)),
             )
         }
     }
 }
 
-/** Each of [runs] with a row on screen, as its outline shape and its grid in px. */
+/**
+ * These points as [run] is drawn at [unfold]: collapsed toward the run's folded stack while its series animates, else
+ * unchanged.
+ */
+private fun List<OutlinePoint>.collapsedBy(unfold: UnfoldFrame?, run: PlacedRun, columns: Int): List<OutlinePoint> {
+    if (unfold == null) return this
+    return collapseToward(this, stackRect(run.start, columns, run.grid), unfold.containerProgress)
+}
+
+/** Each of [runs] with a row on screen, placed in px. */
 private fun DrawScope.placeRuns(
     info: LazyGridLayoutInfo,
     runs: List<OutlineRun>,
     columns: Int,
-): List<Pair<SeriesOutlineShape, OutlineGrid>> {
+): List<PlacedRun> {
     if (runs.isEmpty()) return emptyList()
     val rowGap = ROW_GAP.toPx()
     val columnGap = COLUMN_GAP.toPx()
@@ -116,7 +140,7 @@ private fun DrawScope.placeRuns(
             edgeLeft = 0f,
             edgeRight = size.width,
         )
-        seriesOutline(start, run.cellCount, columns) to grid
+        PlacedRun(run.seriesId, start, seriesOutline(start, run.cellCount, columns), grid)
     }
 }
 
