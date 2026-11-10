@@ -67,6 +67,7 @@ fun randomShelf(): Shelf = Shelf(
     visibility = randomEnum<ShelfVisibility>(),
     accent = randomString().orNull(),
     bookCount = randomLong(0L..500L),
+    ownerHasAvatar = randomBoolean(),
 )
 
 fun randomShelfPreview(): ShelfPreview = ShelfPreview(randomShelf(), List(randomInt(0..4)) { randomString() })

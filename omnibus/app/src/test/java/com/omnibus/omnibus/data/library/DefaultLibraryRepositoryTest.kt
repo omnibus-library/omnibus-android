@@ -449,6 +449,28 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
             }
         }
 
+        it("#257 TC-4: reads owner_has_avatar, defaulting to false") {
+            withMockServer { server ->
+                server.enqueue(
+                    reply(
+                        200,
+                        """
+                        [
+                            {"id":1,"owner_user_id":7,"kind":"manual","owner_has_avatar":true},
+                            {"id":2,"owner_user_id":7,"kind":"manual","owner_has_avatar":false},
+                            {"id":3,"owner_user_id":7,"kind":"manual"}
+                        ]
+                        """,
+                    ),
+                )
+
+                val previews = sut(server).getShelfPreviewsFlow().single()
+                    .shouldBeTypeOf<ShelfPreviewsResult.Success>().previews
+
+                previews.map { it.shelf.ownerHasAvatar } shouldBe listOf(true, false, false)
+            }
+        }
+
         context("when the shelf list fails") {
             it("TC-15: gives the failure") {
                 withMockServer { server ->
