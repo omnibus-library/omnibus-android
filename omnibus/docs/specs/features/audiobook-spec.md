@@ -326,8 +326,8 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 **Requirements**
 
-- P-MINI-1. While a book is loaded, a mini player sits above the bottom navigation, on every screen except Book Detail and the player.
-  - A thin whole-book progress line along its top.
+- P-MINI-1. While a book is loaded, a mini player shows on every screen except Book Detail and the player. In the shell it floats above the content as a rounded card (#271): below 600dp it is inset 12dp from each side and sits 8dp above the tab bar; from 600dp it is at most 560dp wide, centred beside the navigation rail, and 16dp above the bottom edge. Screens leave room for it, so their content scrolls under the card and clears it at the end. The reader keeps the docked strip (P-MINI-4).
+  - A thin whole-book progress line along its top when docked, and along its bottom edge in the shell's card.
   - A small cover, then the title over the chapter title (else the author).
   - Back 15, play/pause, and a ✕.
 - P-MINI-2. The player's chevron-down collapses it to the mini player, and playback continues. Tapping the mini player opens the full player.
@@ -707,3 +707,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #167: AND-RUSE-5 names what the chapters sheet takes from `ReaderContentsSheet`. |
 | 2026-11-04 | #170: P-CAR-3 says the play tile uses the app's accent colour; car mode is always black and dark, whatever the theme. |
 | 2026-11-04 | #168: I-SPD-3 also retries on reconnect and at the next load; I-SPD-4 sets the rate read order at load. |
+| 2026-11-10 | #271: P-MINI-1 floats the shell's mini player as a card above the content; the reader keeps the docked strip. |
