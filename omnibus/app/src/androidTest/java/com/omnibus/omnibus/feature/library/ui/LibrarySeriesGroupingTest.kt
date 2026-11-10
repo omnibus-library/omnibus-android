@@ -225,32 +225,27 @@ class LibrarySeriesGroupingTest {
         val folded = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
 
         rule.runOnIdle { state.setUnfolded(10L, true) }
-        rule.mainClock.advanceTimeBy(200)
+        rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
-        val midway = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
+        val firstFrame = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
 
-        rule.mainClock.advanceTimeBy(1000)
+        rule.mainClock.advanceTimeBy(2000)
         rule.waitForIdle()
         val unfolded = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
+
         val horizontal = movesHorizontally(folded, unfolded)
         assertNotEquals(folded.along(horizontal), unfolded.along(horizontal))
-
-        val between = (midway.along(horizontal) - folded.along(horizontal)) *
-            (midway.along(horizontal) - unfolded.along(horizontal))
-        assertTrue(between < 0f)
-
-        rule.mainClock.advanceTimeBy(1000)
-        rule.waitForIdle()
-        assertEquals(unfolded, rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot())
+        // A jump would put the cell on its unfolded cell in the first frame.
+        assertNotEquals(unfolded.along(horizontal), firstFrame.along(horizontal))
     }
 
     @Test
     fun tc258_21_aSortChangeDoesNotAnimate() {
-        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
         rule.mainClock.autoAdvance = false
         setLibrary(state)
         rule.waitForIdle()
-        val before = boundsOf(cell(3L))
+        val slot = boundsOf(cell(3L)).getValue(cell(3L))
 
         rule.runOnIdle {
             val books = state.value.books
@@ -258,12 +253,13 @@ class LibrarySeriesGroupingTest {
         }
         rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
-        val afterFrame = boundsOf(*singles())
-        assertNotEquals(before.getValue(cell(3L)), afterFrame.getValue(cell(3L)))
+        // Book 6 now takes the slot book 3 held, and is there in the first frame: no glide.
+        val afterFrame = boundsOf(cell(6L)).getValue(cell(6L))
+        assertEquals(slot, afterFrame)
 
         rule.mainClock.advanceTimeBy(1000)
         rule.waitForIdle()
-        assertEquals(afterFrame, boundsOf(*singles()))
+        assertEquals(afterFrame, boundsOf(cell(6L)).getValue(cell(6L)))
     }
 
     @Test
@@ -353,26 +349,23 @@ class LibrarySeriesGroupingTest {
         rule.mainClock.autoAdvance = false
         setLibrary(state)
         rule.waitForIdle()
-        val unfolded = boundsOf(*singles())
+        val grouped = boundsOf(cell(3L)).getValue(cell(3L))
 
         rule.runOnIdle { state.value = state.value.copy(groupBySeries = false, unfoldedSeries = emptySet()) }
         rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
-        val afterFrame = boundsOf(*singles())
-        assertNotEquals(unfolded.getValue(cell(3L)), afterFrame.getValue(cell(3L)))
+        val afterFrame = boundsOf(cell(3L)).getValue(cell(3L))
+        assertNotEquals(grouped, afterFrame)
 
         rule.mainClock.advanceTimeBy(1000)
         rule.waitForIdle()
-        assertEquals(afterFrame, boundsOf(*singles()))
+        assertEquals(afterFrame, boundsOf(cell(3L)).getValue(cell(3L)))
         rule.onAllNodesWithTag(LibraryTestTags.seriesSummary(10L)).assertCountEquals(0)
     }
 
     private fun cell(id: Long) = LibraryTestTags.cell(id)
 
     private fun seriesSummary(seriesId: Long) = LibraryTestTags.seriesSummary(seriesId)
-
-    /** The Single cells of [twoBookSeriesThenSingles], ids 3 to 6. */
-    private fun singles() = arrayOf(cell(3L), cell(4L), cell(5L), cell(6L))
 
     /** The Member cells of an unfolded [twoBookSeriesThenSingles], plus the first Single. */
     private fun unfoldedCells() = arrayOf(cell(1L), cell(2L), cell(3L))

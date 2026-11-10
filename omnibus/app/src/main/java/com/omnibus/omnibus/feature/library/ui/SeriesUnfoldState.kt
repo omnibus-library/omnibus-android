@@ -45,6 +45,12 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
     /** The unfolded set at the last [sync]. A difference from the current set is a change this composition shows. */
     private var settled by mutableStateOf(initial)
     private val progress = mutableStateMapOf<Long, Animatable<Float, AnimationVector1D>>()
+
+    /**
+     * Where each animating series is heading, 1 (unfolding) or 0 (folding). Set before the animation starts, because an
+     * [Animatable]'s target is still its start value until `animateTo` has run.
+     */
+    private val targets = mutableStateMapOf<Long, Float>()
     private val jobs = HashMap<Long, Job>()
 
     /** Starts or retargets the animation of every series whose state changed since the last call. */
@@ -54,6 +60,7 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
             jobs.values.forEach { it.cancel() }
             jobs.clear()
             progress.clear()
+            targets.clear()
             settled = unfolded
             return
         }
@@ -63,8 +70,10 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
             // A fold under reduced motion has no animation: the layout switches at once (Q2).
             if (reducedMotion && target == 0f) {
                 progress.remove(id)
+                targets.remove(id)
                 continue
             }
+            targets[id] = target
             // A retarget keeps the current value, so the change continues from there (R9).
             val anim = progress.getOrPut(id) { Animatable(1f - target) }
             val spec: AnimationSpec<Float> = if (reducedMotion) {
@@ -76,6 +85,7 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
                 anim.animateTo(target, spec)
                 // Not reached when a retarget cancels this job, because animateTo throws.
                 progress.remove(id)
+                targets.remove(id)
                 jobs.remove(id)
             }
         }
@@ -118,8 +128,8 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
     fun placementSpec(unfolded: Set<Long>, groupBySeries: Boolean): FiniteAnimationSpec<IntOffset>? {
         if (reducedMotion || !groupBySeries) return null
         return when {
-            (unfolded - settled).isNotEmpty() || progress.values.any { it.targetValue == 1f } -> UnfoldPlacement
-            (settled - unfolded).isNotEmpty() || progress.values.any { it.targetValue == 0f } -> FoldPlacement
+            (unfolded - settled).isNotEmpty() || targets.values.any { it == 1f } -> UnfoldPlacement
+            (settled - unfolded).isNotEmpty() || targets.values.any { it == 0f } -> FoldPlacement
             else -> null
         }
     }
