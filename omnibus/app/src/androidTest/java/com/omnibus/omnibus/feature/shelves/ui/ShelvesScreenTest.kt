@@ -14,10 +14,10 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
-import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
+import androidx.compose.ui.test.assertTouchWidthIsEqualTo
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isHeading
@@ -368,8 +368,8 @@ class ShelvesScreenTest {
         setShelves(mutableStateOf(ShelvesUIState(previews = listOf(shelf(1L)), viewerId = VIEWER_ID)))
 
         rule.onNodeWithContentDescription(backDescription())
-            .assertWidthIsAtLeast(48.dp)
-            .assertHeightIsAtLeast(48.dp)
+            .assertTouchWidthIsEqualTo(48.dp)
+            .assertTouchHeightIsEqualTo(48.dp)
     }
 
     private fun assertExpandedBarShowsTitleAndBack() {
