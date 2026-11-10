@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Shelves screen (#257). The tile upper-cases the facet and ledge text itself. -->
+    <!-- A shelf's kind, on its tile and in its description. -->
+    <string name="shelves_kind_manual">Hand-picked</string>
+    <string name="shelves_kind_smart">Smart</string>
+    <string name="shelves_kind_wishlist">Wishlist</string>
+    <!-- Who can see a shelf, on its tile and in its description. -->
+    <string name="shelves_visibility_private">Private</string>
+    <string name="shelves_visibility_public">Public</string>
+    <!-- What an empty shelf's ledge says, by kind. -->
+    <string name="shelves_empty_ledge_manual">Empty shelf</string>
+    <string name="shelves_empty_ledge_smart">No matches yet</string>
+    <string name="shelves_empty_ledge_wishlist">Nothing wished for</string>
+</resources>
