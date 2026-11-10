@@ -368,7 +368,7 @@ internal fun BookDetailScreenContent(
                 if (context != null && slots.topBarActions.isNotEmpty()) {
                     slots.topBarActions.forEach { it.Content(context, Modifier) }
                 } else {
-                    Spacer(Modifier.size(44.dp))
+                    Spacer(Modifier.size(48.dp))
                 }
             },
         )

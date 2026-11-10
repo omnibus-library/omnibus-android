@@ -4,7 +4,6 @@
     <string name="book_detail_error_title">Couldn\'t open this book</string>
     <string name="book_detail_error_not_found">This book is no longer in your library.</string>
     <string name="book_detail_retry">Try again</string>
-    <string name="book_detail_back">Back</string>
     <!-- %1$s is the book\'s title. -->
     <string name="book_detail_cover_description">%1$s cover</string>
     <!-- %1$s is the author\'s name. -->

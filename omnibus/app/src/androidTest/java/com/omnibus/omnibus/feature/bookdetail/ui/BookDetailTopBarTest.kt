@@ -72,7 +72,7 @@ class BookDetailTopBarTest {
 
         val root = rule.onRoot().bounds()
         val stage = rule.onNodeWithTag(BookDetailTestTags.STAGE).bounds()
-        val disc = rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).bounds()
+        val disc = rule.onNodeWithContentDescription(detailText(R.string.navigation_back)).bounds()
         val cover = rule.onNodeWithTag(BookDetailTestTags.COVER).bounds()
         assertEquals(root.top, stage.top, 1f)
         assertTrue("disc at ${disc.top}, status bar $statusTop", disc.top >= statusTop - 1f)
@@ -135,7 +135,7 @@ class BookDetailTopBarTest {
             paneSplit = forcedTwoPanes,
         )
 
-        val back = rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).bounds()
+        val back = rule.onNodeWithContentDescription(detailText(R.string.navigation_back)).bounds()
         val more = rule.onNodeWithTag(MORE_TAG).bounds()
         val scroll = rule.onNodeWithTag(BookDetailTestTags.SCROLL).bounds()
         assertTrue(back.left < more.left)
@@ -155,7 +155,7 @@ class BookDetailTopBarTest {
             paneSplit = forcedTwoPanes,
         )
 
-        rule.onNodeWithContentDescription(detailText(R.string.book_detail_back)).performClick()
+        rule.onNodeWithContentDescription(detailText(R.string.navigation_back)).performClick()
         rule.onNodeWithTag(MORE_TAG).performClick()
         rule.waitForIdle()
         assertEquals(1, backTaps)
