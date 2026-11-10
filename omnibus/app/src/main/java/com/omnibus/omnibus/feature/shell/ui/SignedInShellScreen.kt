@@ -37,10 +37,12 @@ import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
 import com.omnibus.omnibus.feature.shell.LibraryRoot
 import com.omnibus.omnibus.feature.shell.SearchRoot
+import com.omnibus.omnibus.feature.shell.ShellNavigationLayout
 import com.omnibus.omnibus.feature.shell.ShellNavigator
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
+import com.omnibus.omnibus.ui.components.OmnibusNavigationRail
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -50,8 +52,8 @@ import kotlinx.serialization.Serializable
 data object SignedInShellRoute : NavKey
 
 /**
- * The signed-in shell: a navigation stack for the selected tab, laid out under a bottom overlay of the mini player and
- * the tab bar.
+ * The signed-in shell: a navigation stack for the selected tab. Below 600dp it is laid out under a bottom overlay of the
+ * mini player and the tab bar; from 600dp wide it sits beside a navigation rail instead.
  *
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
@@ -83,7 +85,7 @@ fun SignedInShellScreen(
 
 /** Creates a [ShellNavigator] whose stacks and selection survive rotation and process death. */
 @Composable
-private fun rememberShellNavigator(): ShellNavigator {
+internal fun rememberShellNavigator(): ShellNavigator {
     val stacks = ShellTab.entries.associateWith { rememberNavBackStack(it.root) }
     val selectedTab = rememberSaveable { mutableStateOf(ShellTab.Start) }
     return remember(stacks) { ShellNavigator(stacks, selectedTab) }
@@ -116,22 +118,34 @@ private fun SignedInShellContent(
         )
     }
 
-    DisableNavigationBarScrim()
+    val navigationLayout = rememberShellNavigationLayout()
+    val selectedIndex = ShellTab.entries.indexOf(navigator.selected)
+    val onSelect: (Int) -> Unit = { navigator.select(ShellTab.entries[it]) }
+    // The mini player is hidden on Book Detail (P-MINI-1).
+    val showsMiniPlayer = !shellHidesMiniPlayer(navigator.backStack.lastOrNull())
+
+    // With no bar over the navigation bar the system's own scrim should stay, so only the bar layout turns it off.
+    if (navigationLayout == ShellNavigationLayout.Bar) DisableNavigationBarScrim()
     ShellLayout(
         overlay = {
-            Column {
-                // The mini player sits above the tab bar, except on Book Detail (P-MINI-1). It pads no insets: the tab bar does.
-                if (!shellHidesMiniPlayer(navigator.backStack.lastOrNull())) {
-                    MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
+            when (navigationLayout) {
+                ShellNavigationLayout.Bar -> Column {
+                    // The mini player sits above the tab bar. It pads no insets: the tab bar does.
+                    if (showsMiniPlayer) {
+                        MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
+                    }
+                    OmnibusTabBar(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect)
                 }
-                OmnibusTabBar(
-                    items = tabBarItems,
-                    selectedIndex = ShellTab.entries.indexOf(navigator.selected),
-                    onSelect = { navigator.select(ShellTab.entries[it]) },
-                )
+                ShellNavigationLayout.Rail -> ShellRailOverlay { insets ->
+                    if (showsMiniPlayer) {
+                        MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) }, contentWindowInsets = insets)
+                    }
+                }
             }
         },
         modifier = modifier.fillMaxSize(),
+        navigationLayout = navigationLayout,
+        rail = { OmnibusNavigationRail(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect) },
     ) {
         SharedTransitionLayout(Modifier.fillMaxSize()) {
             ProvideBookCoverTransition(this) {
