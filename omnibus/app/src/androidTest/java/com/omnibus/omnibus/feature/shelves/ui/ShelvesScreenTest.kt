@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -22,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import com.omnibus.omnibus.data.library.LibraryError
@@ -67,6 +69,9 @@ class ShelvesScreenTest {
         rule.onNodeWithText(NOTICE).assertIsDisplayed()
         rule.onNodeWithTag(ShelvesScreenTestTags.group(VIEWER_ID)).assert(isHeading())
         rule.onNodeWithTag(ShelvesScreenTestTags.group(VIEWER_ID)).assertTextEquals("Your shelves")
+        // The grid is lazy, so on a small screen the second group is composed only once scrolled to.
+        rule.onNodeWithTag(ShelvesScreenTestTags.GRID)
+            .performScrollToNode(hasTestTag(ShelvesScreenTestTags.group(MAYA_ID)))
         rule.onNodeWithTag(ShelvesScreenTestTags.group(MAYA_ID)).assert(isHeading())
         rule.onNodeWithTag(ShelvesScreenTestTags.group(MAYA_ID)).assertTextEquals("maya’s shelves")
         // The count is merged into its heading row and read as nothing of its own.
