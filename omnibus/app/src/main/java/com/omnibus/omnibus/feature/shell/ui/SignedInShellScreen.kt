@@ -174,7 +174,7 @@ private fun SignedInShellContent(
                             )
                         }
                         entry<BookDetailRoute> { key ->
-                            ShellBookDetailEntry {
+                            ShellUnderStatusBarEntry {
                                 BookDetailScreen(
                                     uuid = key.uuid,
                                     onNavigate = openDestination,
@@ -186,7 +186,7 @@ private fun SignedInShellContent(
                             ShellPaddedEntry { BookDetailPlaceholderScreen(title = key.title) }
                         }
                         entry<ShelvesRoute> {
-                            ShellPaddedEntry { ShelvesScreen(onBack = { navigator.back() }) }
+                            ShellUnderStatusBarEntry { ShelvesScreen(onBack = { navigator.back() }) }
                         }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }

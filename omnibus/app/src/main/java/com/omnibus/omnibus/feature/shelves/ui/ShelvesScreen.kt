@@ -1,15 +1,12 @@
 package com.omnibus.omnibus.feature.shelves.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,16 +18,20 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.TopAppBarState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,9 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -52,7 +54,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
@@ -70,15 +74,16 @@ import com.omnibus.omnibus.feature.shelves.ShelvesViewModel
 import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
+import com.omnibus.omnibus.ui.components.OmnibusBackButton
 import com.omnibus.omnibus.ui.components.ReaderAvatar
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.monoTextStyle
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import androidx.compose.ui.semantics.Role
 
 /** The Shelves screen's route, pushed on the Library tab's stack from the rail's All link. */
 @Serializable
@@ -87,6 +92,7 @@ data object ShelvesRoute : NavKey
 /** Test tags for the Shelves screen. */
 internal object ShelvesScreenTestTags {
     const val BACK = "shelves-back"
+    const val TOP_BAR = "shelves-top-bar"
     const val GRID = "shelves-grid"
     const val TITLE = "shelves-title"
     const val CENSUS = "shelves-census"
@@ -99,11 +105,12 @@ internal object ShelvesScreenTestTags {
 private const val CENSUS_SEPARATOR = " · "
 
 /**
- * The Shelves screen: every shelf the user can see, grouped by owner, under a back button, a title and a census line.
+ * The Shelves screen: every shelf the user can see, grouped by owner, under a large top app bar with the back arrow and
+ * title, then the census line.
  *
  * Stateful wrapper that feeds [ShelvesScreenContent] from [ShelvesViewModel].
  *
- * @param onBack Called when the back button is tapped.
+ * @param onBack Called when the back arrow is tapped.
  */
 @Composable
 fun ShelvesScreen(
@@ -135,6 +142,8 @@ fun ShelvesScreen(
  * @param onRetry Called when the full-screen error's Try again is tapped.
  * @param onTransientErrorShown Called once the snackbar for [ShelvesUIState.transientError] has been launched.
  * @param snackbarHostState Hosts the transient error snackbar.
+ * @param topBarState The large bar's collapse state; hoisted so previews can show it collapsed.
+ * @param reducedMotion Whether the bar settles without animating.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,6 +155,8 @@ internal fun ShelvesScreenContent(
     onTransientErrorShown: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    topBarState: TopAppBarState = rememberTopAppBarState(),
+    reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val scope = rememberCoroutineScope()
     val transientMessage = uiState.transientError?.let { libraryErrorText(it) }
@@ -158,42 +169,37 @@ internal fun ShelvesScreenContent(
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
-    val edge = Modifier.padding(horizontal = Spacing.screen)
+    val scrollBehavior = if (reducedMotion) {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(state = topBarState, snapAnimationSpec = null)
+    } else {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior(state = topBarState)
+    }
+    // Attached inside each PullToRefreshBox, not to the root: the box would take every downward drag, and the bar could
+    // not expand back.
+    val barScroll = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     Box(modifier.fillMaxSize().background(OmnibusTheme.palette.bg0)) {
         Column(Modifier.fillMaxSize()) {
-            ShelvesBackButton(
-                onBack = onBack,
-                modifier = Modifier.padding(start = Spacing.screen, top = Spacing.sm, bottom = Spacing.xs),
-            )
+            ShelvesTopBar(onBack = onBack, scrollBehavior = scrollBehavior)
             when (val screen = uiState.screen) {
-                LibraryScreenState.Loading -> {
-                    ShelvesHeader(census = null, showsNotice = false, modifier = edge)
-                    LoadingStateView(
-                        label = stringResource(R.string.shelves_loading),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                LibraryScreenState.Loading -> LoadingStateView(
+                    label = stringResource(R.string.shelves_loading),
+                    modifier = Modifier.weight(1f),
+                )
 
-                is LibraryScreenState.Error -> {
-                    ShelvesHeader(census = null, showsNotice = false, modifier = edge)
-                    ErrorStateView(
-                        title = stringResource(R.string.library_error_title),
-                        message = libraryErrorText(screen.error),
-                        actionLabel = stringResource(R.string.library_try_again),
-                        onRetry = onRetry,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                is LibraryScreenState.Error -> ErrorStateView(
+                    title = stringResource(R.string.library_error_title),
+                    message = libraryErrorText(screen.error),
+                    actionLabel = stringResource(R.string.library_try_again),
+                    onRetry = onRetry,
+                    modifier = Modifier.weight(1f),
+                )
 
-                LibraryScreenState.Empty -> {
-                    ShelvesHeader(census = null, showsNotice = false, modifier = edge)
-                    PullToRefreshBox(
-                        isRefreshing = uiState.isRefreshing,
-                        onRefresh = onRefresh,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        EmptyShelves()
-                    }
+                LibraryScreenState.Empty -> PullToRefreshBox(
+                    isRefreshing = uiState.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    EmptyShelves(barScroll)
                 }
 
                 LibraryScreenState.Content -> PullToRefreshBox(
@@ -201,7 +207,7 @@ internal fun ShelvesScreenContent(
                     onRefresh = onRefresh,
                     modifier = Modifier.weight(1f),
                 ) {
-                    ShelvesGrid(uiState)
+                    ShelvesGrid(uiState, barScroll)
                 }
             }
         }
@@ -213,44 +219,64 @@ internal fun ShelvesScreenContent(
     }
 }
 
-/** The round back button, drawn on the screen's ground rather than over cover art, so it has a solid fill. */
+/**
+ * The Shelves top app bar: a large bar whose title is the Atrium display face, expanded at rest and collapsed into the
+ * row beside the back arrow as the grid scrolls. It draws its own status bar inset and takes its colors from the palette.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ShelvesBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
+private fun ShelvesTopBar(onBack: () -> Unit, scrollBehavior: TopAppBarScrollBehavior) {
     val palette = OmnibusTheme.palette
-    Box(
-        modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(palette.bg1)
-            .border(1.dp, palette.line2, CircleShape)
-            .clickable(role = Role.Button, onClick = onBack)
-            .testTag(ShelvesScreenTestTags.BACK),
-        contentAlignment = Alignment.Center,
+    // The bar reads its title styles from the typography, so the display face is set here, for this bar only.
+    MaterialTheme(
+        typography = MaterialTheme.typography.copy(
+            headlineMedium = displayTextStyle(42, palette.ink0),
+            titleLarge = displayTextStyle(22, palette.ink0),
+        ),
     ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_book_detail_back),
-            contentDescription = stringResource(R.string.navigation_back),
-            tint = palette.ink0,
-            modifier = Modifier.size(20.dp),
+        LargeTopAppBar(
+            title = {
+                Text(
+                    text = stringResource(R.string.shelves_title),
+                    modifier = Modifier.semantics { heading() }.testTag(ShelvesScreenTestTags.TITLE),
+                )
+            },
+            modifier = Modifier.testTag(ShelvesScreenTestTags.TOP_BAR),
+            navigationIcon = {
+                OmnibusBackButton(onClick = onBack, modifier = Modifier.testTag(ShelvesScreenTestTags.BACK))
+            },
+            expandedHeight = shelvesBarExpandedHeight(),
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = palette.bg0,
+                scrolledContainerColor = palette.bg1,
+                navigationIconContentColor = palette.ink0,
+                titleContentColor = palette.ink0,
+                actionIconContentColor = palette.ink0,
+            ),
+            scrollBehavior = scrollBehavior,
         )
     }
 }
 
 /**
- * The title, then the census line when there is a shelf to count, then the private-shelves notice when [showsNotice].
- * The grid puts it at its top, and the other states put it above their message.
+ * The expanded height of the Shelves bar: M3's large bar, taller when the font scale needs room for one 42sp display line
+ * above the bar's title padding.
+ */
+@Composable
+internal fun shelvesBarExpandedHeight(): Dp = maxOf(
+    TopAppBarDefaults.LargeAppBarExpandedHeight,
+    TopAppBarDefaults.LargeAppBarCollapsedHeight + 28.dp + with(LocalDensity.current) { 54.sp.toDp() },
+)
+
+/**
+ * The census line when there is a shelf to count, then the private-shelves notice when [showsNotice]. The grid puts it
+ * at its top, under the bar's title.
  */
 @Composable
 private fun ShelvesHeader(census: ShelvesCensus?, showsNotice: Boolean, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
     Column(modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.shelves_title),
-            style = displayTextStyle(42, palette.ink0),
-            modifier = Modifier.semantics { heading() }.testTag(ShelvesScreenTestTags.TITLE),
-        )
         if (census != null && census.total > 0) {
-            Spacer(Modifier.height(4.dp))
             Text(
                 text = shelvesCensusText(census),
                 style = uiTextStyle(14, FontWeight.Normal, palette.ink2),
@@ -305,13 +331,13 @@ internal fun shelvesCensusText(census: ShelvesCensus): String {
  * column count and cell width come from [ShelvesGridMetrics] for the width left after the screen insets.
  */
 @Composable
-private fun ShelvesGrid(uiState: ShelvesUIState) {
+private fun ShelvesGrid(uiState: ShelvesUIState, modifier: Modifier = Modifier) {
     val groups = remember(uiState.previews, uiState.viewerId) { uiState.groups }
     val census = remember(uiState.previews, uiState.viewerId) { uiState.census }
     val showsNotice = remember(uiState.previews, uiState.viewerId) { uiState.showsNotice }
     val you = stringResource(R.string.shelves_owner_you)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val available = maxWidth - Spacing.screen * 2
         val columns = ShelvesGridMetrics.columns(available.value)
         val cellWidth = ShelvesGridMetrics.cellWidth(available.value).dp
@@ -397,8 +423,8 @@ private fun ShelvesGroupHeading(group: ShelfOwnerGroup, modifier: Modifier = Mod
  * is made elsewhere.
  */
 @Composable
-private fun EmptyShelves() {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+private fun EmptyShelves(modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val height = maxHeight
         Column(Modifier.verticalScroll(rememberScrollState()).testTag(ShelvesScreenTestTags.EMPTY)) {
             EmptyStateView(

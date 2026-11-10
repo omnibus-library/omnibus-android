@@ -85,7 +85,7 @@ class ShellLayoutInsetsTest {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 ShellLayout(overlay = { ShellTestOverlay() }, modifier = Modifier.fillMaxSize()) {
-                    ShellBookDetailEntry {
+                    ShellUnderStatusBarEntry {
                         BookDetailScreenContent(
                             uiState = BookDetailUIState(book = testDetailBook(), isLoading = false),
                             onNavigate = {},

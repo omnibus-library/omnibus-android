@@ -45,6 +45,10 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.foundation.layout.statusBars
+import com.omnibus.omnibus.feature.shelves.ShelvesUIState
+import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreenContent
+import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreenTestTags
 
 class ShellLayoutRailTest {
 
@@ -267,6 +271,65 @@ class ShellLayoutRailTest {
         val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
         val content = rule.onNodeWithTag(CONTENT_TAG).bounds()
         assertTrue("rail starts at ${rail.left}, left of the content ending at ${content.right}", rail.left >= content.right - 1f)
+    }
+
+    // TC-24
+    @Test
+    fun issue270_tc24a_shelvesBarUnderStatusBar() {
+        var statusTop = 0
+        setShell(
+            ShellNavigationLayout.Bar,
+            content = {
+                statusTop = WindowInsets.statusBars.getTop(LocalDensity.current)
+                ShellUnderStatusBarEntry {
+                    ShelvesScreenContent(
+                        uiState = ShelvesUIState(),
+                        onBack = {},
+                        onRefresh = {},
+                        onRetry = {},
+                        onTransientErrorShown = {},
+                    )
+                }
+            },
+        )
+
+        assertShelvesBarUnderStatusBar(statusTop)
+    }
+
+    // TC-24
+    @Test
+    fun issue270_tc24b_shelvesBarBesideRail() {
+        var statusTop = 0
+        setShell(
+            ShellNavigationLayout.Rail,
+            content = {
+                statusTop = WindowInsets.statusBars.getTop(LocalDensity.current)
+                ShellUnderStatusBarEntry {
+                    ShelvesScreenContent(
+                        uiState = ShelvesUIState(),
+                        onBack = {},
+                        onRefresh = {},
+                        onRetry = {},
+                        onTransientErrorShown = {},
+                    )
+                }
+            },
+        )
+
+        assertShelvesBarUnderStatusBar(statusTop)
+        val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
+        val bar = rule.onNodeWithTag(ShelvesScreenTestTags.TOP_BAR).bounds()
+        val back = rule.onNodeWithTag(ShelvesScreenTestTags.BACK).bounds()
+        assertTrue("the bar starts at ${bar.left}, under the rail ending at ${rail.right}", bar.left >= rail.right - 1f)
+        assertTrue("the back arrow sits ${back.left - bar.left}px in, a second rail inset", back.left - bar.left < back.width)
+    }
+
+    private fun assertShelvesBarUnderStatusBar(statusTop: Int) {
+        val root = rule.onRoot().bounds()
+        val bar = rule.onNodeWithTag(ShelvesScreenTestTags.TOP_BAR).bounds()
+        val back = rule.onNodeWithTag(ShelvesScreenTestTags.BACK).bounds()
+        assertEquals(root.top, bar.top, 1f)
+        assertTrue("the back arrow starts at ${back.top}, inside the status bar of $statusTop", back.top >= statusTop - 1f)
     }
 
     /**
