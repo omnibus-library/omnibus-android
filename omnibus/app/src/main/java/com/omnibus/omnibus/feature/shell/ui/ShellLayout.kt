@@ -121,11 +121,11 @@ internal fun ShellPaddedEntry(content: @Composable () -> Unit) {
 }
 
 /**
- * Pads an entry that draws under the status bar, such as Book Detail, clear of the bottom overlay only. Consuming the
- * navigation bar keeps its own navigation bar padding from adding a second inset.
+ * Pads an entry that draws under the status bar, such as Book Detail or a screen with its own top app bar, clear of the
+ * bottom overlay only. Consuming the navigation bar keeps its own navigation bar padding from adding a second inset.
  */
 @Composable
-internal fun ShellBookDetailEntry(content: @Composable () -> Unit) {
+internal fun ShellUnderStatusBarEntry(content: @Composable () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()

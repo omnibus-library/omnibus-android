@@ -174,7 +174,7 @@ private fun SignedInShellContent(
                             )
                         }
                         entry<BookDetailRoute> { key ->
-                            ShellBookDetailEntry {
+                            ShellUnderStatusBarEntry {
                                 BookDetailScreen(
                                     uuid = key.uuid,
                                     onNavigate = openDestination,
