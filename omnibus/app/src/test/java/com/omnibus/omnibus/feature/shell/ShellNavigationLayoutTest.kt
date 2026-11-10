@@ -8,7 +8,7 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
-import io.kotest.property.arbitrary.float
+import io.kotest.property.arbitrary.numericFloat
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 
@@ -30,7 +30,7 @@ class ShellNavigationLayoutTest : DescribeSpec({
     describe("choosing the layout") {
         context("in tabletop posture") {
             it("TC-1: shows the bar at any width") {
-                checkAll(Arb.float(0f, 4000f)) { width ->
+                checkAll(Arb.numericFloat(0f, 4000f)) { width ->
                     shellNavigationLayout(width.dp, isTabletop = true) shouldBe ShellNavigationLayout.Bar
                 }
             }
@@ -38,13 +38,13 @@ class ShellNavigationLayoutTest : DescribeSpec({
 
         context("not in tabletop posture") {
             it("TC-1: shows the bar at every width below 600dp") {
-                checkAll(Arb.float(0f, 599.99f)) { width ->
+                checkAll(Arb.numericFloat(0f, 599.99f)) { width ->
                     shellNavigationLayout(width.dp, isTabletop = false) shouldBe ShellNavigationLayout.Bar
                 }
             }
 
             it("TC-1: shows the rail at every width from 600dp up") {
-                checkAll(Arb.float(600f, 4000f)) { width ->
+                checkAll(Arb.numericFloat(600f, 4000f)) { width ->
                     shellNavigationLayout(width.dp, isTabletop = false) shouldBe ShellNavigationLayout.Rail
                 }
             }
