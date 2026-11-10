@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.8](https://github.com/omnibus-library/omnibus-android/compare/v0.1.7...v0.1.8) (2026-11-10)
+
+
+### Features
+
+* **reader:** add the page curl's fold geometry and drag rules ([#246](https://github.com/omnibus-library/omnibus-android/issues/246)) ([abd50a2](https://github.com/omnibus-library/omnibus-android/commit/abd50a275c91dcdc0d4d23b213200c2aac3277be))
+* **reader:** capture page snapshots for the curl ([#248](https://github.com/omnibus-library/omnibus-android/issues/248)) ([1fa5bca](https://github.com/omnibus-library/omnibus-android/commit/1fa5bca63cb478fc29a2934dd5f5bea642351443))
+* **reader:** choose Slide, Curl or None in the reading settings ([#252](https://github.com/omnibus-library/omnibus-android/issues/252)) ([f865125](https://github.com/omnibus-library/omnibus-android/commit/f86512540cf300dc085afe355dfb56e1dca2d3a1))
+* **reader:** curl pages on gutter taps ([#250](https://github.com/omnibus-library/omnibus-android/issues/250)) ([2b7412f](https://github.com/omnibus-library/omnibus-android/commit/2b7412fa04375d4ef1c6d1ca2e053f75e91cef4e))
+* **reader:** draw the page curl on a canvas ([#249](https://github.com/omnibus-library/omnibus-android/issues/249)) ([68e4f95](https://github.com/omnibus-library/omnibus-android/commit/68e4f95a4dcda11cafefbcf75ff696a818f68622))
+* **reader:** follow the finger with the page curl ([#251](https://github.com/omnibus-library/omnibus-android/issues/251)) ([081eefc](https://github.com/omnibus-library/omnibus-android/commit/081eefc7d6ac7eef01f5f59e801147c005d2c484))
+* **reader:** store a page-turn mode and await page calls ([#244](https://github.com/omnibus-library/omnibus-android/issues/244)) ([2715848](https://github.com/omnibus-library/omnibus-android/commit/2715848c6192139e70c0c9b5df6b62178dff9119))
+* **shelves:** add the data and rules for the shelves list ([#259](https://github.com/omnibus-library/omnibus-android/issues/259)) ([cfba9db](https://github.com/omnibus-library/omnibus-android/commit/cfba9db0899227ffaa00eebe05ee3a656790a222))
+* **shelves:** add the shelf tile ([#260](https://github.com/omnibus-library/omnibus-android/issues/260)) ([33466dd](https://github.com/omnibus-library/omnibus-android/commit/33466dd440e3a024e99e80d7cb64cc7ef0b21b1e))
+* **shelves:** add the Shelves screen and the rail's All link ([#263](https://github.com/omnibus-library/omnibus-android/issues/263)) ([f318cd2](https://github.com/omnibus-library/omnibus-android/commit/f318cd2ce7fc3d892c85676cc4419d30a6b3bb5a))
+
+
+### Bug Fixes
+
+* **reader:** give the settings sheet working 92% and 40% stops ([#255](https://github.com/omnibus-library/omnibus-android/issues/255)) ([9d48142](https://github.com/omnibus-library/omnibus-android/commit/9d48142587c5a218c053ea8650ae5091b114c763))
+
 ## [0.1.7](https://github.com/omnibus-library/omnibus-android/compare/v0.1.6...v0.1.7) (2026-11-09)
 
 
