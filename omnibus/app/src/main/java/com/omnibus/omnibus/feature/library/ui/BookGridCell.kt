@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.library.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,12 +12,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
@@ -55,8 +58,6 @@ internal fun BookGridCell(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
 ) {
-    val palette = OmnibusTheme.palette
-
     Column(
         modifier = modifier
             .testTag(LibraryTestTags.cell(book.id))
@@ -64,21 +65,54 @@ internal fun BookGridCell(
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {},
     ) {
-        Box(bookCoverSourceModifier(book.uuid, BookCoverOrigin.Grid).testTag(LibraryTestTags.cover(book.id))) {
-            BookCover(
-                identity = book.coverIdentity(),
-                modifier = Modifier.fillMaxWidth().coverShadow(5.dp),
-                size = CoverSize.Md,
-                cornerRadius = 5.dp,
-            )
-        }
+        BookCellContent(book, subtitle, modifier = Modifier, captionModifier = Modifier)
+    }
+}
+
+/**
+ * The cover, title and subtitle of a book cell, as a column's children. [BookGridCell] wraps it with the tap target.
+ *
+ * A ghost copy of a cell (see [SeriesUnfoldGhost]) sets [isGhost], so it carries no source for the Book Details cover
+ * morph and no test tags of the real cell.
+ *
+ * @param subtitle The line under the title, from [memberSubtitle] or the book's author.
+ * @param modifier Applied to the cover's box after the source and tag.
+ * @param captionModifier Applied to the title and subtitle column.
+ * @param coverShadow Whether the cover draws its shadow.
+ * @param isGhost Whether this is a ghost copy.
+ */
+@Composable
+internal fun ColumnScope.BookCellContent(
+    book: Book,
+    subtitle: String?,
+    modifier: Modifier,
+    captionModifier: Modifier,
+    coverShadow: Boolean = true,
+    isGhost: Boolean = false,
+) {
+    val palette = OmnibusTheme.palette
+
+    val source = if (isGhost) {
+        Modifier
+    } else {
+        bookCoverSourceModifier(book.uuid, BookCoverOrigin.Grid).testTag(LibraryTestTags.cover(book.id))
+    }
+    Box(source.then(modifier)) {
+        BookCover(
+            identity = book.coverIdentity(),
+            modifier = Modifier.fillMaxWidth().then(if (coverShadow) Modifier.coverShadow(5.dp) else Modifier),
+            size = CoverSize.Md,
+            cornerRadius = 5.dp,
+        )
+    }
+    Column(captionModifier) {
         Spacer(Modifier.height(8.dp))
         Text(
             text = book.displayTitle,
             style = uiTextStyle(12.5.sp, FontWeight.Medium, palette.ink0),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag(LibraryTestTags.title(book.id)),
+            modifier = if (isGhost) Modifier else Modifier.testTag(LibraryTestTags.title(book.id)),
         )
         Spacer(Modifier.height(1.dp))
         Text(
@@ -93,3 +127,8 @@ internal fun BookGridCell(
         )
     }
 }
+
+/** The subtitle of a series member in the grid: its volume, when it has an index, else null for the author. */
+@Composable
+internal fun memberSubtitle(book: Book): String? =
+    book.seriesIndex?.trim()?.takeIf { it.isNotEmpty() }?.let { stringResource(R.string.library_series_volume, it) }

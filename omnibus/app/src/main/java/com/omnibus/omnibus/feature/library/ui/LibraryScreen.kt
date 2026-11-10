@@ -51,7 +51,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -80,6 +82,7 @@ import com.omnibus.omnibus.feature.library.LibraryViewModel
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
+import com.omnibus.omnibus.feature.library.SeriesGroup
 import com.omnibus.omnibus.feature.library.UnavailableBook
 import com.omnibus.omnibus.feature.library.libraryGridItems
 import com.omnibus.omnibus.ui.components.EdgeFade
@@ -117,6 +120,8 @@ internal object LibraryTestTags {
     fun seriesSummary(seriesId: Long) = "library-series-$seriesId"
     fun seriesPage(seriesId: Long) = "library-series-page-$seriesId"
     fun foldUp(seriesId: Long) = "library-fold-up-$seriesId"
+    fun ghost(seriesId: Long) = "library-ghost-$seriesId"
+    fun ghostCover(id: Long) = "library-ghost-cover-$id"
     fun title(id: Long) = "library-title-$id"
     fun menuCategory(category: LibraryCategory) = "library-menu-category-${category.name}"
     fun menuSort(sort: LibrarySort) = "library-menu-sort-${sort.name}"
@@ -460,6 +465,10 @@ private fun LibraryGrid(
     val folding = unfoldState.folding(unfolded)
     val placement = unfoldState.placementSpec(unfolded, uiState.groupBySeries)
     val fade: FiniteAnimationSpec<Float>? = if (reducedMotion) Motion.crossfade() else null
+    val density = LocalDensity.current
+    val rowGapPx = with(density) { ROW_GAP.toPx() }
+    val columnGapPx = with(density) { COLUMN_GAP.toPx() }
+    val screenPx = with(density) { Spacing.screen.toPx() }
 
     val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries, uiState.unfoldedSeries) {
         libraryGridItems(uiState.entries, unfolded)
@@ -591,6 +600,17 @@ private fun LibraryGrid(
                 val rowGap = Modifier
                     .animateItem(fadeInSpec = fade, placementSpec = placement, fadeOutSpec = fade)
                     .padding(top = if (index >= columns) 26.dp else 0.dp)
+                // The slot of member [member] of [group] relative to this item, which is the series' anchor cell.
+                fun slotOf(group: SeriesGroup, member: Int) = memberCoverOffset(
+                    gridState.layoutInfo,
+                    index + HEADER_ITEM_COUNT,
+                    member,
+                    LibraryGridItem.Member(group, group.books[member]).key,
+                    columns,
+                    rowGapPx,
+                    columnGapPx,
+                    screenPx,
+                )
                 when (item) {
                     is LibraryGridItem.Single -> BookGridCell(
                         book = item.book,
@@ -599,28 +619,51 @@ private fun LibraryGrid(
                         modifier = rowGap,
                     )
 
-                    is LibraryGridItem.Stack -> SeriesStackCell(
-                        group = item.group,
-                        width = cellWidth,
-                        onUnfold = { onUnfoldSeries(item.group.seriesId) },
-                        modifier = rowGap,
-                    )
+                    is LibraryGridItem.Stack -> {
+                        val id = item.group.seriesId
+                        SeriesGhostHost(
+                            ghosting = unfoldState.ghosting(id, unfolded),
+                            group = item.group,
+                            width = cellWidth,
+                            t = { unfoldState.t(id, unfolded) ?: if (id in unfolded) 1f else 0f },
+                            memberOffset = { i -> slotOf(item.group, i) },
+                            modifier = rowGap,
+                        ) { hidden ->
+                            SeriesStackCell(
+                                group = item.group,
+                                width = cellWidth,
+                                onUnfold = { onUnfoldSeries(item.group.seriesId) },
+                                modifier = hidden,
+                            )
+                        }
+                    }
 
-                    is LibraryGridItem.Summary -> SeriesSummaryCell(
-                        group = item.group,
-                        width = cellWidth,
-                        onOpenSeries = { onOpenSeries(item.group.seriesId, item.group.name) },
-                        onFoldUp = { onFoldUpSeries(item.group.seriesId) },
-                        modifier = rowGap,
-                    )
+                    is LibraryGridItem.Summary -> {
+                        val id = item.group.seriesId
+                        SeriesGhostHost(
+                            ghosting = unfoldState.ghosting(id, unfolded),
+                            group = item.group,
+                            width = cellWidth,
+                            t = { unfoldState.t(id, unfolded) ?: if (id in unfolded) 1f else 0f },
+                            memberOffset = { i -> slotOf(item.group, i) },
+                            modifier = rowGap,
+                        ) { hidden ->
+                            SeriesSummaryCell(
+                                group = item.group,
+                                width = cellWidth,
+                                onOpenSeries = { onOpenSeries(item.group.seriesId, item.group.name) },
+                                onFoldUp = { onFoldUpSeries(item.group.seriesId) },
+                                modifier = hidden,
+                            )
+                        }
+                    }
 
                     is LibraryGridItem.Member -> BookGridCell(
                         book = item.book,
                         width = cellWidth,
                         onClick = { openFromGrid(item.book.uuid) },
-                        modifier = rowGap,
-                        subtitle = item.book.seriesIndex?.trim()?.takeIf { it.isNotEmpty() }
-                            ?.let { stringResource(R.string.library_series_volume, it) },
+                        modifier = if (unfoldState.ghosting(item.group.seriesId, unfolded)) rowGap.alpha(0f) else rowGap,
+                        subtitle = memberSubtitle(item.book),
                     )
                 }
             }
