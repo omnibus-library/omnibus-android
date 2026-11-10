@@ -85,6 +85,11 @@ class TestLibraryRepository : LibraryRepository {
         shelfScripts.addLast { emit(deferred.await()) }
     }
 
+    /** Queues a [getShelfPreviewsFlow] call with several emissions, such as a cached list followed by a network one. */
+    fun enqueueShelvesFlow(script: suspend FlowCollector<ShelfPreviewsResult>.() -> Unit) {
+        shelfScripts.addLast(script)
+    }
+
     override fun getShelfPreviewsFlow(): Flow<ShelfPreviewsResult> = flow {
         shelfPreviewRequests++
         val script = shelfScripts.removeFirstOrNull()
