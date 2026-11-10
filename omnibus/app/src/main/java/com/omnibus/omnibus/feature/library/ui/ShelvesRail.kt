@@ -249,7 +249,7 @@ private fun ShelfPlate(shelf: Shelf, modifier: Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(glyphOf(shelf.kind)),
+            painter = painterResource(shelfKindGlyph(shelf.kind)),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.45f),
             modifier = Modifier.size(26.dp),
@@ -267,7 +267,7 @@ private fun ShelfBadge(kind: ShelfKind, modifier: Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(glyphOf(kind)),
+            painter = painterResource(shelfKindGlyph(kind)),
             contentDescription = null,
             tint = Color.White,
             modifier = Modifier.size(11.dp),
@@ -331,7 +331,7 @@ private fun kindLabelRes(kind: ShelfKind): Int = when (kind) {
 }
 
 /** The glyph for the kind: a wand, a heart, or stacked shelves. */
-private fun glyphOf(kind: ShelfKind): Int = when (kind) {
+internal fun shelfKindGlyph(kind: ShelfKind): Int = when (kind) {
     ShelfKind.Smart -> R.drawable.ic_shelf_smart
     ShelfKind.Wishlist -> R.drawable.ic_shelf_wishlist
     ShelfKind.Manual -> R.drawable.ic_shelf_manual
