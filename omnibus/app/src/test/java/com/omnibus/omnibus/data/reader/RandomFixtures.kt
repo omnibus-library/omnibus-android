@@ -13,4 +13,5 @@ fun randomReaderSettings(): ReaderSettings = ReaderSettings(
     margins = randomEnum(),
     justify = randomBoolean(),
     spread = randomOf(listOf("none", "auto")),
+    pageTurn = randomEnum(),
 )

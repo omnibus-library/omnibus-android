@@ -90,6 +90,13 @@ data class AnnotationTapData(
     val rects: List<PageRect> = emptyList(),
 )
 
+/** The `hostReply` payload: the id of the call it answers and the value it produced. */
+@Serializable
+data class HostReplyData(
+    val id: Int,
+    val value: JsonElement? = null,
+)
+
 /** The `shareImage` payload: a quote card's file name and its image as a data URL. */
 @Serializable
 data class ShareImageData(

@@ -39,6 +39,19 @@ enum class ReaderMargins(val token: String, val css: String) {
     }
 }
 
+/** How a page turn is drawn. [token] is the stored value; `slide` and `curl` match iOS `ReaderPageTurn`. */
+enum class ReaderPageTurn(val token: String) {
+    Slide("slide"),
+    Curl("curl"),
+    None("none"),
+    ;
+
+    companion object {
+        /** The mode with [token], or null for an unknown token. */
+        fun fromToken(token: String?): ReaderPageTurn? = entries.firstOrNull { it.token == token }
+    }
+}
+
 /**
  * The reader's typeface. The tokens and labels match iOS, but the CSS stacks do not: they name
  * Android system families and end in a generic one, and Apple font names must not be copied in
@@ -72,7 +85,8 @@ enum class ReaderTypeface(val token: String, val css: String?) {
  * The typography and layout the reader is opened with, in the units `OmnibusReader` takes.
  *
  * Every default and bound is defined here, once. [spread] is fixed at `none` until the two-page
- * setting lands, and it is neither stored nor shown.
+ * setting lands, and it is neither stored nor shown. [pageTurn] is how turns are drawn; it never
+ * reaches the page as a setting.
  *
  * @property lineHeight A unitless multiplier, always one decimal place.
  * @property spread `none` for a single column, `auto` to pair columns once the stage is wide enough.
@@ -85,6 +99,7 @@ data class ReaderSettings(
     val margins: ReaderMargins = ReaderMargins.Normal,
     val justify: Boolean = true,
     val spread: String = "none",
+    val pageTurn: ReaderPageTurn = ReaderPageTurn.Slide,
 ) {
 
     /** Whether the font size can go down one step. */

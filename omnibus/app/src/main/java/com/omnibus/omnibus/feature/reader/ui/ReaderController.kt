@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import kotlinx.serialization.json.JsonElement
 
 /** Where a [ReaderController]'s book is in loading. */
 sealed interface ReaderLoadStatus {
@@ -71,6 +72,7 @@ class ReaderController(startCfi: String? = null) {
         private set
 
     private var evaluator: ((String) -> Unit)? = null
+    private val pageCalls = ReaderPageCalls()
     private var bookUuid: String? = null
 
     /** The id of the last [seek], which the page echoes back in `settledSeek` once it has moved there. */
@@ -144,6 +146,8 @@ class ReaderController(startCfi: String? = null) {
         seekId = id
     }
 
+    internal val isPageReady: Boolean get() = isReady
+
     internal fun attach(evaluate: (String) -> Unit) {
         evaluator = evaluate
     }
@@ -154,7 +158,11 @@ class ReaderController(startCfi: String? = null) {
         evaluator = null
         appliedSettings = null
         isReady = false
+        pageCalls.failAll()
     }
+
+    /** Runs [expr] on the page and returns its value, or null on timeout, a failed call or no page. */
+    internal suspend fun call(expr: String): JsonElement? = pageCalls.call(expr, evaluator)
 
     /** Records the book and the settings in force, applying a change to a page that is showing. */
     internal fun configure(bookUuid: String, settings: ReaderSettings) {
@@ -179,6 +187,7 @@ class ReaderController(startCfi: String? = null) {
                 "error" -> fail(ReaderLoadFailure.Render)
             }
             is ReaderEvent.Relocate -> onRelocate(event.data)
+            is ReaderEvent.HostReply -> pageCalls.resolve(event.id, event.value)
             is ReaderEvent.Toc,
             is ReaderEvent.Selection,
             ReaderEvent.SelectionCleared,
@@ -213,6 +222,7 @@ class ReaderController(startCfi: String? = null) {
     internal fun onRendererGone(): Boolean {
         isReady = false
         appliedSettings = null
+        pageCalls.failAll()
         if (++consecutiveRendererLosses > MAX_RENDERER_LOSSES) {
             status = ReaderLoadStatus.Failed(ReaderLoadFailure.RendererCrashed)
             return false
@@ -227,6 +237,8 @@ class ReaderController(startCfi: String? = null) {
      */
     private fun onHostReady() {
         isReady = false
+        // A second hostReady means the page was replaced, so calls into the old one will never be answered.
+        pageCalls.failAll()
         if (status is ReaderLoadStatus.Ready) status = ReaderLoadStatus.Loading
         val uuid = bookUuid ?: return
         val evaluate = evaluator ?: return

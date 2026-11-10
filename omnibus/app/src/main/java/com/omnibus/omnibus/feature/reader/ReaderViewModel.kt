@@ -168,6 +168,7 @@ class ReaderViewModel @AssistedInject constructor(
             is ReaderEvent.ShareText,
             is ReaderEvent.ShareImage,
             is ReaderEvent.TurnRequest,
+            is ReaderEvent.HostReply,
             -> Unit
         }
     }

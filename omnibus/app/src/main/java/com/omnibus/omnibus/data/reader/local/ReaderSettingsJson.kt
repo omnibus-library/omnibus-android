@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.reader.local
 
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
@@ -33,6 +34,7 @@ internal object ReaderSettingsJson {
     private const val MARGINS = "margins"
     private const val JUSTIFY = "justify"
     private const val THEME = "theme"
+    private const val PAGE_TURN = "pageTurn"
 
     private val JSON_LITERAL = Regex("""null|true|false|-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?""")
 
@@ -44,6 +46,7 @@ internal object ReaderSettingsJson {
         put(MARGINS, settings.margins.token)
         put(JUSTIFY, settings.justify)
         put(THEME, settings.theme.token)
+        put(PAGE_TURN, settings.pageTurn.token)
     }.toString()
 
     /**
@@ -63,6 +66,7 @@ internal object ReaderSettingsJson {
             lineHeight = obj.number(LINE_HEIGHT) ?: defaults.lineHeight,
             margins = obj.token(MARGINS)?.let(ReaderMargins::fromToken) ?: defaults.margins,
             justify = obj.bool(JUSTIFY) ?: defaults.justify,
+            pageTurn = obj.token(PAGE_TURN)?.let(ReaderPageTurn::fromToken) ?: defaults.pageTurn,
         ).normalized()
     }
 

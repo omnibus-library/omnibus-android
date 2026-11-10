@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
@@ -131,6 +132,17 @@ class ReaderScriptsTest : DescribeSpec({
 
                 checkAll(Exhaustive.enum<ReaderMargins>(), Exhaustive.enum<ReaderMargins>()) { from, to ->
                     ReaderScripts.settingsChange(settings.copy(margins = from), settings.copy(margins = to)).shouldBeEmpty()
+                }
+            }
+        }
+
+        context("when only the page turn differs") {
+            it("TC-304: sends nothing, for any pair of page turns") {
+                val settings = randomReaderSettings()
+
+                checkAll(Exhaustive.enum<ReaderPageTurn>(), Exhaustive.enum<ReaderPageTurn>()) { from, to ->
+                    val changed = ReaderScripts.settingsChange(settings.copy(pageTurn = from), settings.copy(pageTurn = to))
+                    changed.shouldBeEmpty()
                 }
             }
         }

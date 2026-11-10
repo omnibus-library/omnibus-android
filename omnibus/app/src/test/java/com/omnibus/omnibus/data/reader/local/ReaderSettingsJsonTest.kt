@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.reader.local
 
 import com.omnibus.omnibus.data.reader.ReaderMargins
+import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
@@ -10,9 +11,11 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
 class ReaderSettingsJsonTest : DescribeSpec({
@@ -36,6 +39,7 @@ class ReaderSettingsJsonTest : DescribeSpec({
             "margins" -> settings.copy(margins = defaults.margins)
             "justify" -> settings.copy(justify = defaults.justify)
             "theme" -> settings.copy(theme = defaults.theme)
+            "pageTurn" -> settings.copy(pageTurn = defaults.pageTurn)
             else -> error("Not a stored key: $key")
         }
     }
@@ -51,7 +55,25 @@ class ReaderSettingsJsonTest : DescribeSpec({
         it("writes exactly the keys iOS uses") {
             val encoded = Json.parseToJsonElement(ReaderSettingsJson.encode(randomReaderSettings())).jsonObject
 
-            encoded.keys shouldBe setOf("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme")
+            encoded.keys shouldBe
+                setOf("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme", "pageTurn")
+        }
+
+        it("TC-301: reads back every page turn regardless of the mode") {
+            checkAll(Exhaustive.enum<ReaderPageTurn>()) { mode ->
+                val settings = randomStoredSettings().copy(pageTurn = mode)
+
+                ReaderSettingsJson.decode(ReaderSettingsJson.encode(settings)) shouldBe settings
+            }
+        }
+
+        it("TC-301: stores every page turn under its token") {
+            checkAll(Exhaustive.enum<ReaderPageTurn>()) { mode ->
+                val settings = randomReaderSettings().copy(pageTurn = mode)
+                val encoded = Json.parseToJsonElement(ReaderSettingsJson.encode(settings)).jsonObject
+
+                encoded["pageTurn"] shouldBe JsonPrimitive(mode.token)
+            }
         }
     }
 
@@ -73,6 +95,9 @@ class ReaderSettingsJsonTest : DescribeSpec({
                     """{"fontFamily":"modern"}""" to { it.typeface == ReaderTypeface.Modern },
                     """{"fontFamily":"sans"}""" to { it.typeface == ReaderTypeface.Sans },
                     """{"fontFamily":"mono"}""" to { it.typeface == ReaderTypeface.Mono },
+                    """{"pageTurn":"slide"}""" to { it.pageTurn == ReaderPageTurn.Slide },
+                    """{"pageTurn":"curl"}""" to { it.pageTurn == ReaderPageTurn.Curl },
+                    """{"pageTurn":"none"}""" to { it.pageTurn == ReaderPageTurn.None },
                 ),
             ) { (blob, holds) ->
                 withClue(blob) { holds(ReaderSettingsJson.decode(blob)) shouldBe true }
@@ -82,7 +107,9 @@ class ReaderSettingsJsonTest : DescribeSpec({
         it("falls back for that setting alone regardless of which key is missing") {
             val settings = randomStoredSettings()
 
-            checkAll(Exhaustive.of("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme")) { key ->
+            checkAll(
+                Exhaustive.of("fontSize", "fontFamily", "lineHeight", "margins", "justify", "theme", "pageTurn"),
+            ) { key ->
                 ReaderSettingsJson.decode(blobWith(settings, key, value = null)) shouldBe defaulted(settings, key)
             }
         }
@@ -106,6 +133,10 @@ class ReaderSettingsJsonTest : DescribeSpec({
                     "margins" to "\"huge\"",
                     "theme" to "\"solarized\"",
                     "fontFamily" to "\"comic\"",
+                    "pageTurn" to "\"flip\"",
+                    "pageTurn" to "3",
+                    "pageTurn" to "null",
+                    "pageTurn" to "{}",
                 ),
             ) { (key, value) ->
                 ReaderSettingsJson.decode(blobWith(settings, key, value)) shouldBe defaulted(settings, key)

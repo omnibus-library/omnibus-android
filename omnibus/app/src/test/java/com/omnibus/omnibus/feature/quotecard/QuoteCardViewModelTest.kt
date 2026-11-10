@@ -506,7 +506,7 @@ class QuoteCardViewModelTest : DescribeSpec({
 
         context("when the card is still being captured") {
             it("is exporting") {
-                val vm = sut()
+                val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { randomFile() } })
                 val gate = CompletableDeferred<Unit>()
 
                 vm.onShareRequested {
@@ -520,7 +520,7 @@ class QuoteCardViewModelTest : DescribeSpec({
 
             it("doesn't capture again for a second request, share or copy") {
                 checkAll(Exhaustive.collection(ExportRequest.entries)) { second ->
-                    val vm = sut()
+                    val vm = sut(repository = TestQuoteCardRepository().apply { onSave = { randomFile() } })
                     val gate = CompletableDeferred<Unit>()
                     var captures = 0
                     vm.onShareRequested {
