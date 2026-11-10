@@ -115,6 +115,13 @@ internal class SeriesUnfoldState(initial: Set<Long>, private val scope: Coroutin
         return unfoldFrame(t)
     }
 
+    /**
+     * Whether series [id] is drawn by its ghost: it is changing now and motion is on. It reads no animated value, so it
+     * is safe in composition.
+     */
+    fun ghosting(id: Long, unfolded: Set<Long>): Boolean =
+        !reducedMotion && (id in progress || (id in unfolded) != (id in settled))
+
     /** The series whose folded stack is still animating, whose containers draw over the stack. Composition only. */
     fun folding(unfolded: Set<Long>): Set<Long> {
         if (reducedMotion) return emptySet()
