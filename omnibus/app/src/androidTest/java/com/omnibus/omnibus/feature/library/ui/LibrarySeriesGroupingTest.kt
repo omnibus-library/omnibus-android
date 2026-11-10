@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -361,9 +363,149 @@ class LibrarySeriesGroupingTest {
         rule.onAllNodesWithTag(LibraryTestTags.seriesSummary(10L)).assertCountEquals(0)
     }
 
+    @Test
+    fun tc258_18_unfoldStartsFromTheFoldedStack() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertExists()
+        val summary = centreOf(LibraryTestTags.seriesSummary(10L))
+        for (id in listOf(1L, 2L)) {
+            val cover = centreOf(LibraryTestTags.ghostCover(id), useUnmergedTree = true)
+            val slot = centreOf(cell(id))
+            assertTrue((cover - summary).getDistance() < (cover - slot).getDistance())
+        }
+    }
+
+    @Test
+    fun tc258_19_unfoldSettlesInTheSlots() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+
+        rule.onAllNodesWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithTag(LibraryTestTags.seriesSummary(10L)).assertExists()
+        for (id in listOf(1L, 2L)) {
+            val cellBounds = rule.onNodeWithTag(cell(id)).getUnclippedBoundsInRoot()
+            val coverBounds = rule.onNodeWithTag(LibraryTestTags.cover(id), useUnmergedTree = true).getUnclippedBoundsInRoot()
+            assertTrue(cellBounds.encloses(coverBounds))
+        }
+    }
+
+    @Test
+    fun tc258_22_foldUpPlaysBackToTheStack() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state, onFoldUpSeries = { state.setUnfolded(it, false) })
+        rule.waitForIdle()
+        val member = centreOf(cell(1L))
+
+        rule.onNodeWithTag(LibraryTestTags.foldUp(10L)).performClick()
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).assertExists()
+        rule.onNodeWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertExists()
+        rule.onAllNodesWithTag(LibraryTestTags.seriesSummary(10L)).assertCountEquals(0)
+        rule.onAllNodesWithTag(cell(1L)).assertCountEquals(0)
+        rule.onAllNodesWithTag(cell(2L)).assertCountEquals(0)
+        val cover = centreOf(LibraryTestTags.ghostCover(1L), useUnmergedTree = true)
+        val stack = centreOf(LibraryTestTags.stack(10L))
+        assertTrue((cover - member).getDistance() < (cover - stack).getDistance())
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+
+        rule.onAllNodesWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).assertExists()
+    }
+
+    @Test
+    fun tc258_28_theGhostAddsNoSemantics() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state, onFoldUpSeries = { state.setUnfolded(it, false) })
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.foldUp(10L)).performClick()
+        rule.mainClock.advanceTimeBy(300)
+        rule.waitForIdle()
+        val midFold = seriesSemantics()
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+        val atRest = seriesSemantics()
+
+        assertTrue(atRest.duneNodes > 0)
+        assertEquals(atRest, midFold)
+    }
+
+    @Test
+    fun tc258_31_reducedMotionDrawsNoGhost() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state, reducedMotion = true)
+        rule.waitForIdle()
+
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.seriesSummary(10L)).assertExists()
+        rule.onAllNodesWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun tc258_31_anAlreadyUnfoldedSeriesDrawsNoGhost() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.seriesSummary(10L)).assertExists()
+        rule.onAllNodesWithTag(LibraryTestTags.ghost(10L), useUnmergedTree = true).assertCountEquals(0)
+    }
+
     private fun cell(id: Long) = LibraryTestTags.cell(id)
 
     private fun seriesSummary(seriesId: Long) = LibraryTestTags.seriesSummary(seriesId)
+
+    /** The centre in dp of the unclipped bounds of the node tagged [tag]. */
+    private fun centreOf(tag: String, useUnmergedTree: Boolean = false): Offset =
+        rule.onNodeWithTag(tag, useUnmergedTree).getUnclippedBoundsInRoot().centre()
+
+    /** What a screen reader reaches of the series now: its [DUNE] nodes, and the stack's role, text and unfold action. */
+    private fun seriesSemantics(): SeriesSemantics {
+        val stack = rule.onNodeWithTag(LibraryTestTags.stack(10L)).fetchSemanticsNode().config
+        return SeriesSemantics(
+            duneNodes = rule.onAllNodes(reachableDune()).fetchSemanticsNodes().size,
+            stackRole = stack.getOrNull(SemanticsProperties.Role),
+            stackDescription = stack.getOrNull(SemanticsProperties.ContentDescription),
+            stackAction = stack.getOrNull(SemanticsActions.OnClick)?.label,
+        )
+    }
+
+    /** The reachable semantics of a series: how many [DUNE] nodes there are, and the stack's role, text and action. */
+    private data class SeriesSemantics(
+        val duneNodes: Int,
+        val stackRole: Role?,
+        val stackDescription: List<String>?,
+        val stackAction: String?,
+    )
 
     /** The Member cells of an unfolded [twoBookSeriesThenSingles], plus the first Single. */
     private fun unfoldedCells() = arrayOf(cell(1L), cell(2L), cell(3L))
@@ -466,6 +608,18 @@ class LibrarySeriesGroupingTest {
                 unfoldedSeries = if (unfolded) value.unfoldedSeries + seriesId else value.unfoldedSeries - seriesId,
             )
         }
+
+        /** The centre of [rect] in dp, as an offset. */
+        fun DpRect.centre(): Offset = Offset((left.value + right.value) / 2f, (top.value + bottom.value) / 2f)
+
+        /** Whether [inner] lies within this rectangle. */
+        fun DpRect.encloses(inner: DpRect): Boolean =
+            inner.left >= left && inner.top >= top && inner.right <= right && inner.bottom <= bottom
+
+        /** The [DUNE] text or description that a screen reader can reach, outside any node hidden from accessibility. */
+        fun reachableDune(): SemanticsMatcher =
+            (hasText(DUNE, substring = true) or hasContentDescription(DUNE, substring = true)) and
+                !hasAnyAncestor(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
 
         /** Whether [to] moved more across the horizontal axis than down the vertical one, from [from]. */
         fun movesHorizontally(from: DpRect, to: DpRect): Boolean =
