@@ -2,7 +2,7 @@ package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.State
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -20,14 +20,18 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.unit.DpRect
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.Creator
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -213,17 +217,164 @@ class LibrarySeriesGroupingTest {
     }
 
     @Test
-    fun tc235_30_memberCellCallsOnOpenBook() {
-        val opened = mutableListOf<String>()
-        setLibrary(mutableStateOf(unfoldedDune()), onOpenBook = { opened += it })
+    fun tc258_20_singlesGlideToTheirUnfoldedCells() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+        val folded = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
 
-        rule.onNodeWithTag(LibraryTestTags.cell(1L)).performClick()
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        val firstFrame = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
 
-        assertEquals(listOf("uuid-1"), opened)
+        rule.mainClock.advanceTimeBy(2000)
+        rule.waitForIdle()
+        val unfolded = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
+
+        val horizontal = movesHorizontally(folded, unfolded)
+        assertNotEquals(folded.along(horizontal), unfolded.along(horizontal))
+        // A jump would put the cell on its unfolded cell in the first frame.
+        assertNotEquals(unfolded.along(horizontal), firstFrame.along(horizontal))
     }
 
+    @Test
+    fun tc258_21_aSortChangeDoesNotAnimate() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+
+        rule.runOnIdle {
+            val books = state.value.books
+            state.value = state.value.copy(books = books.take(2) + books.drop(2).reversed())
+        }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        // Book 6 is the first Single after the reorder, so it sits in the first row.
+        val afterFrame = rule.onNodeWithTag(cell(6L)).getUnclippedBoundsInRoot()
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+        assertEquals(afterFrame, rule.onNodeWithTag(cell(6L)).getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun tc258_23_foldingMidUnfoldEndsFolded() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state, onFoldUpSeries = { state.setUnfolded(it, false) })
+        rule.waitForIdle()
+
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeBy(300)
+        rule.waitForIdle()
+        rule.onNodeWithTag(LibraryTestTags.foldUp(10L)).performClick()
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).assertExists()
+        rule.onAllNodesWithTag(LibraryTestTags.seriesSummary(10L)).assertCountEquals(0)
+        rule.onAllNodesWithTag(LibraryTestTags.cell(1L)).assertCountEquals(0)
+        rule.onAllNodesWithTag(LibraryTestTags.cell(2L)).assertCountEquals(0)
+    }
+
+    @Test
+    fun tc258_24_tappingAFoldingSeriesUnfoldsIt() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        val unfoldCalls = mutableListOf<Long>()
+        rule.mainClock.autoAdvance = false
+        setLibrary(
+            state,
+            onUnfoldSeries = {
+                unfoldCalls += it
+                state.setUnfolded(it, true)
+            },
+            onFoldUpSeries = { state.setUnfolded(it, false) },
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(LibraryTestTags.foldUp(10L)).performClick()
+        rule.mainClock.advanceTimeBy(200)
+        rule.waitForIdle()
+        rule.onNodeWithTag(LibraryTestTags.stack(10L)).performClick()
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+
+        assertEquals(listOf(10L), unfoldCalls)
+        rule.onNodeWithTag(LibraryTestTags.seriesSummary(10L)).assertExists()
+        rule.onNodeWithTag(LibraryTestTags.cell(1L)).assertExists()
+        rule.onAllNodesWithTag(LibraryTestTags.stack(10L)).assertCountEquals(0)
+    }
+
+    @Test
+    fun tc258_25_reducedMotionSwitchesLayoutWithoutMotion() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = false))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state, reducedMotion = true)
+        rule.waitForIdle()
+        val folded = rule.onNodeWithTag(LibraryTestTags.cell(3L)).getUnclippedBoundsInRoot()
+
+        rule.runOnIdle { state.setUnfolded(10L, true) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        val afterFrame = boundsOf(*unfoldedCells())
+        assertNotEquals(folded, afterFrame.getValue(cell(3L)))
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+        assertEquals(afterFrame, boundsOf(*unfoldedCells()))
+    }
+
+    @Test
+    fun tc258_26_anAlreadyUnfoldedSeriesShowsAtRest() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        val afterFrame = boundsOf(seriesSummary(10L), *unfoldedCells())
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+        assertEquals(afterFrame, boundsOf(seriesSummary(10L), *unfoldedCells()))
+    }
+
+    @Test
+    fun tc258_27_turningGroupingOffDoesNotAnimate() {
+        val state = mutableStateOf(twoBookSeriesThenSingles(unfolded = true))
+        rule.mainClock.autoAdvance = false
+        setLibrary(state)
+        rule.waitForIdle()
+        val grouped = boundsOf(cell(3L)).getValue(cell(3L))
+
+        rule.runOnIdle { state.value = state.value.copy(groupBySeries = false, unfoldedSeries = emptySet()) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.waitForIdle()
+        val afterFrame = boundsOf(cell(3L)).getValue(cell(3L))
+        assertNotEquals(grouped, afterFrame)
+
+        rule.mainClock.advanceTimeBy(1000)
+        rule.waitForIdle()
+        assertEquals(afterFrame, boundsOf(cell(3L)).getValue(cell(3L)))
+        rule.onAllNodesWithTag(LibraryTestTags.seriesSummary(10L)).assertCountEquals(0)
+    }
+
+    private fun cell(id: Long) = LibraryTestTags.cell(id)
+
+    private fun seriesSummary(seriesId: Long) = LibraryTestTags.seriesSummary(seriesId)
+
+    /** The Member cells of an unfolded [twoBookSeriesThenSingles], plus the first Single. */
+    private fun unfoldedCells() = arrayOf(cell(1L), cell(2L), cell(3L))
+
+    /** The unclipped bounds in the root of each of [tags]' nodes, by tag. */
+    private fun boundsOf(vararg tags: String): Map<String, DpRect> =
+        tags.associateWith { rule.onNodeWithTag(it).getUnclippedBoundsInRoot() }
+
     private fun setLibrary(
-        uiState: State<LibraryUIState>,
+        uiState: MutableState<LibraryUIState>,
+        reducedMotion: Boolean = false,
         onLoadMore: (Int) -> Unit = {},
         onToggleGroupBySeries: () -> Unit = {},
         onUnfoldSeries: (Long) -> Unit = {},
@@ -246,6 +397,7 @@ class LibrarySeriesGroupingTest {
                         onUnfoldSeries = onUnfoldSeries,
                         onFoldUpSeries = onFoldUpSeries,
                         onOpenSeries = onOpenSeries,
+                        reducedMotion = reducedMotion,
                     )
                 }
             }
@@ -296,5 +448,30 @@ class LibrarySeriesGroupingTest {
             series = series,
             seriesIndex = index,
         )
+
+        /** Dune Chronicles' two books (ids 1 and 2), then four Singles (ids 3 to 6). Unfolded when [unfolded]. */
+        fun twoBookSeriesThenSingles(unfolded: Boolean) = groupedState(
+            seriesBook(1L, seriesId = 10L, series = DUNE, index = "1"),
+            seriesBook(2L, seriesId = 10L, series = DUNE, index = "2"),
+            book(3L),
+            book(4L),
+            book(5L),
+            book(6L),
+            unfolded = if (unfolded) setOf(10L) else emptySet(),
+        )
+
+        /** Adds [seriesId] to the unfolded set, or removes it, as the ViewModel does for a tap. */
+        fun MutableState<LibraryUIState>.setUnfolded(seriesId: Long, unfolded: Boolean) {
+            value = value.copy(
+                unfoldedSeries = if (unfolded) value.unfoldedSeries + seriesId else value.unfoldedSeries - seriesId,
+            )
+        }
+
+        /** Whether [to] moved more across the horizontal axis than down the vertical one, from [from]. */
+        fun movesHorizontally(from: DpRect, to: DpRect): Boolean =
+            abs(to.left.value - from.left.value) > abs(to.top.value - from.top.value)
+
+        /** [rect]'s left edge along the horizontal axis, or its top edge along the vertical one. */
+        fun DpRect.along(horizontal: Boolean): Float = if (horizontal) left.value else top.value
     }
 }

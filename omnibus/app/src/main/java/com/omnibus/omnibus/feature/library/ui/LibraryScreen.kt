@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.library.ui
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -90,9 +91,11 @@ import com.omnibus.omnibus.ui.components.Masthead
 import com.omnibus.omnibus.ui.components.MastheadAddButton
 import com.omnibus.omnibus.ui.components.OfflinePill
 import com.omnibus.omnibus.ui.components.bottomOverlay
+import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
@@ -225,6 +228,7 @@ fun LibraryScreen(
  * @param onOpenPlayer Called with the uuid and saved file id when a resume opens the player stub.
  * @param onResumeHandled Called once a pending resume has been passed to [onOpenReader] or [onOpenPlayer].
  * @param onUnavailableDismissed Called when the "can't open offline" alert is dismissed.
+ * @param reducedMotion Whether the system asks for no animation. Tests pass it to force either path.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -256,6 +260,7 @@ internal fun LibraryScreenContent(
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
     onResumeHandled: () -> Unit = {},
     onUnavailableDismissed: () -> Unit = {},
+    reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val scope = rememberCoroutineScope()
 
@@ -353,6 +358,7 @@ internal fun LibraryScreenContent(
                         onContinueSettled = onContinueSettled,
                         onResume = onResume,
                         onShowContextMenu = onShowContextMenu,
+                        reducedMotion = reducedMotion,
                     )
                     // Keeps the status bar icons legible over the content scrolling under them. Drawn after the grid, so
                     // the indicator (drawn after the content) stays above it.
@@ -441,20 +447,45 @@ private fun LibraryGrid(
     onContinueSettled: (cardId: String) -> Unit,
     onResume: (cardId: String) -> Unit,
     onShowContextMenu: (Book) -> Unit,
+    reducedMotion: Boolean,
 ) {
     val palette = OmnibusTheme.palette
     // Record which cover was tapped before the page opens, so the page's cover morphs from it.
     val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
     val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
+    val unfolded = uiState.unfoldedSeries
+    val unfoldState = rememberSeriesUnfoldState(unfolded, reducedMotion)
+    LaunchedEffect(unfolded, uiState.groupBySeries) { unfoldState.sync(unfolded, uiState.groupBySeries) }
+    val folding = unfoldState.folding(unfolded)
+    val placement = unfoldState.placementSpec(unfolded, uiState.groupBySeries)
+    val fade: FiniteAnimationSpec<Float>? = if (reducedMotion) Motion.crossfade() else null
+
     val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries, uiState.unfoldedSeries) {
-        libraryGridItems(uiState.entries, uiState.unfoldedSeries)
+        libraryGridItems(uiState.entries, unfolded)
     }
     val gridItemCount = items.size
-    val runs = remember(items) {
+    // A folding series keeps its container over its stack's cell, which shrinks back into it.
+    val runs = remember(items, folding) {
         items.mapIndexedNotNull { i, item ->
-            (item as? LibraryGridItem.Summary)?.let {
-                OutlineRun(firstGridIndex = i + HEADER_ITEM_COUNT, cellCount = 1 + it.group.count)
+            when (item) {
+                is LibraryGridItem.Summary -> OutlineRun(
+                    firstGridIndex = i + HEADER_ITEM_COUNT,
+                    cellCount = 1 + item.group.count,
+                    seriesId = item.group.seriesId,
+                )
+
+                is LibraryGridItem.Stack -> if (item.group.seriesId in folding) {
+                    OutlineRun(
+                        firstGridIndex = i + HEADER_ITEM_COUNT,
+                        cellCount = 1 + item.group.count,
+                        seriesId = item.group.seriesId,
+                    )
+                } else {
+                    null
+                }
+
+                else -> null
             }
         }
     }
@@ -490,6 +521,7 @@ private fun LibraryGrid(
                     columns,
                     stroke = palette.accent.copy(alpha = 0.40f),
                     fill = palette.seriesFill,
+                    frame = { unfoldState.frame(it, unfolded) },
                 )
                 .testTag(LibraryTestTags.GRID),
         ) {
@@ -556,7 +588,9 @@ private fun LibraryGrid(
 
             itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
                 // Rows after the first get 26 dp above them, from the cells, so the heading gap stays 12 dp.
-                val rowGap = Modifier.padding(top = if (index >= columns) 26.dp else 0.dp)
+                val rowGap = Modifier
+                    .animateItem(fadeInSpec = fade, placementSpec = placement, fadeOutSpec = fade)
+                    .padding(top = if (index >= columns) 26.dp else 0.dp)
                 when (item) {
                     is LibraryGridItem.Single -> BookGridCell(
                         book = item.book,
