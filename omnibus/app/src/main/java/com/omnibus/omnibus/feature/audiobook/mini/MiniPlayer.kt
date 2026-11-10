@@ -6,6 +6,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +18,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +35,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -36,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -46,27 +56,32 @@ import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
+import com.omnibus.omnibus.ui.theme.floatingCardShadow
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /**
- * The mini player bar (P-MINI-1..4). It shows whenever a book is loaded in the controller, playing or paused, and fades
- * in and out with that. The shell mounts it above the tab bar, and the reader docks it at the bottom. Tapping the body
- * calls [onExpand] with the book's uuid, and the host opens the player.
+ * The mini player (P-MINI-1..4). It shows whenever a book is loaded in the controller, playing or paused, and fades in
+ * and out with that. The shell floats it as a card above the content (#271), and the reader docks it at the bottom.
+ * Tapping the body calls [onExpand] with the book's uuid, and the host opens the player.
  *
  * It needs no separate entry point for Immersive read (P-MINI-6): #99 starts the audio with
  * `AudiobookController.load(uuid, fileId, null, autoplay = true)` and then opens the reader, and the dock shows as soon
  * as the load starts.
  *
  * @param onExpand opens the player for the book with this uuid.
- * @param contentWindowInsets insets the row clears, such as the navigation bar when the bar is docked at the screen edge.
+ * @param contentWindowInsets insets the docked row clears, such as the navigation bar when the bar is docked at the screen
+ *   edge. Unused when [floating] is set.
+ * @param floating null draws the docked strip (the reader). Non-null floats the card with that placement (the shell,
+ *   #271).
  * @param viewModel The bar's state. Hilt builds one per host entry.
  */
 @Composable
-fun MiniPlayer(
+internal fun MiniPlayer(
     onExpand: (bookUuid: String) -> Unit,
     modifier: Modifier = Modifier,
     contentWindowInsets: WindowInsets = WindowInsets(0),
+    floating: MiniPlayerFloatPlacement? = null,
     viewModel: MiniPlayerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -82,15 +97,52 @@ fun MiniPlayer(
         enter = if (reduceMotion) EnterTransition.None else fadeIn(Motion.settle()),
         exit = if (reduceMotion) ExitTransition.None else fadeOut(Motion.settle()),
     ) {
-        MiniPlayerContent(
-            uiState = shown.state,
-            onExpand = onExpand,
-            onSkipBack = viewModel::onSkipBack,
-            onPlayPauseToggled = viewModel::onPlayPauseToggled,
-            onStop = viewModel::onStop,
-            contentWindowInsets = contentWindowInsets,
-        )
+        if (floating != null) {
+            MiniPlayerFloatingPlacement(floating) {
+                MiniPlayerContent(
+                    uiState = shown.state,
+                    onExpand = onExpand,
+                    onSkipBack = viewModel::onSkipBack,
+                    onPlayPauseToggled = viewModel::onPlayPauseToggled,
+                    onStop = viewModel::onStop,
+                    floating = true,
+                )
+            }
+        } else {
+            MiniPlayerContent(
+                uiState = shown.state,
+                onExpand = onExpand,
+                onSkipBack = viewModel::onSkipBack,
+                onPlayPauseToggled = viewModel::onPlayPauseToggled,
+                onStop = viewModel::onStop,
+                contentWindowInsets = contentWindowInsets,
+            )
+        }
     }
+}
+
+/**
+ * Places the floating [card] for [placement]: clear of the horizontal system bars and cutout, a margin each side, at
+ * most [MiniPlayerFloatPlacement.maxWidth] wide and centred, with the gap below it. It has no pointer input, so taps in
+ * the margins reach the content underneath.
+ */
+@Composable
+internal fun MiniPlayerFloatingPlacement(
+    placement: MiniPlayerFloatPlacement,
+    modifier: Modifier = Modifier,
+    card: @Composable () -> Unit,
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal))
+            .padding(bottom = placement.bottomGap)
+            .layout { measurable, constraints ->
+                val width = placement.cardWidth(constraints.maxWidth.toDp()).roundToPx().coerceIn(0, constraints.maxWidth)
+                val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                layout(constraints.maxWidth, placeable.height) { placeable.place((constraints.maxWidth - width) / 2, 0) }
+            },
+    ) { card() }
 }
 
 /** The last visible state, kept outside snapshot state so writing it during composition is safe. */
@@ -109,7 +161,8 @@ internal object MiniPlayerTestTags {
 
 /**
  * The bar itself, drawn for [uiState] whatever its visibility. The body is one tap target that opens the player; the
- * three buttons sit beside it and never reach [onExpand].
+ * three buttons sit beside it and never reach [onExpand]. [floating] draws the shell's card (#271) instead of the docked
+ * strip, with the same body, buttons, semantics and test tags.
  */
 @Composable
 internal fun MiniPlayerContent(
@@ -120,89 +173,155 @@ internal fun MiniPlayerContent(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
     contentWindowInsets: WindowInsets = WindowInsets(0),
+    floating: Boolean = false,
+) {
+    val palette = OmnibusTheme.palette
+    if (floating) {
+        val shape = RoundedCornerShape(16.dp)
+        Column(
+            modifier
+                .fillMaxWidth()
+                // The shadow comes before the clip, which would cut it off.
+                .floatingCardShadow(16.dp, palette.bg2, OmnibusTheme.isDark)
+                .clip(shape)
+                .background(palette.bg2)
+                .border(0.5.dp, palette.line, shape)
+                .testTag(MiniPlayerTestTags.BAR),
+        ) {
+            MiniPlayerRow(
+                uiState = uiState,
+                onExpand = onExpand,
+                onSkipBack = onSkipBack,
+                onPlayPauseToggled = onPlayPauseToggled,
+                onStop = onStop,
+                coverWidth = 44.dp,
+                coverRadius = 5.dp,
+                coverGap = 12.dp,
+                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(palette.line2)
+                    .testTag(MiniPlayerTestTags.PROGRESS_TRACK),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(uiState.progress)
+                        .background(palette.accent)
+                        .testTag(MiniPlayerTestTags.PROGRESS_FILL),
+                )
+            }
+        }
+    } else {
+        Column(
+            modifier
+                .fillMaxWidth()
+                .background(palette.bg1.copy(alpha = 0.92f))
+                .testTag(MiniPlayerTestTags.BAR),
+        ) {
+            Box(Modifier.fillMaxWidth().height(0.5.dp).background(palette.line2))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(palette.line2)
+                    .testTag(MiniPlayerTestTags.PROGRESS_TRACK),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(uiState.progress)
+                        .background(palette.accent)
+                        .testTag(MiniPlayerTestTags.PROGRESS_FILL),
+                )
+            }
+            MiniPlayerRow(
+                uiState = uiState,
+                onExpand = onExpand,
+                onSkipBack = onSkipBack,
+                onPlayPauseToggled = onPlayPauseToggled,
+                onStop = onStop,
+                coverWidth = 34.dp,
+                coverRadius = 4.dp,
+                coverGap = 11.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(contentWindowInsets)
+                    .padding(horizontal = Spacing.screen, vertical = 9.dp),
+            )
+        }
+    }
+}
+
+/** The row both variants share: the body that opens the player, then the three buttons. [modifier] sets its padding. */
+@Composable
+private fun MiniPlayerRow(
+    uiState: MiniPlayerUIState,
+    onExpand: (bookUuid: String) -> Unit,
+    onSkipBack: () -> Unit,
+    onPlayPauseToggled: () -> Unit,
+    onStop: () -> Unit,
+    coverWidth: Dp,
+    coverRadius: Dp,
+    coverGap: Dp,
+    modifier: Modifier,
 ) {
     val palette = OmnibusTheme.palette
     val openLabel = stringResource(R.string.audiobook_mini_open_player)
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(palette.bg1.copy(alpha = 0.92f))
-            .testTag(MiniPlayerTestTags.BAR),
-    ) {
-        Box(Modifier.fillMaxWidth().height(0.5.dp).background(palette.line2))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(palette.line2)
-                .testTag(MiniPlayerTestTags.PROGRESS_TRACK),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(uiState.progress)
-                    .background(palette.accent)
-                    .testTag(MiniPlayerTestTags.PROGRESS_FILL),
-            )
-        }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(contentWindowInsets)
-                .padding(horizontal = Spacing.screen, vertical = 9.dp),
+                .weight(1f)
+                .testTag(MiniPlayerTestTags.BODY)
+                .clickable(onClickLabel = openLabel, role = Role.Button) { onExpand(uiState.bookUuid) }
+                .semantics(mergeDescendants = true) {},
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier
-                    .weight(1f)
-                    .testTag(MiniPlayerTestTags.BODY)
-                    .clickable(onClickLabel = openLabel, role = Role.Button) { onExpand(uiState.bookUuid) }
-                    .semantics(mergeDescendants = true) {},
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BookCover(
-                    identity = uiState.cover,
-                    modifier = Modifier.width(34.dp),
-                    size = CoverSize.Sm,
-                    cornerRadius = 4.dp,
+            BookCover(
+                identity = uiState.cover,
+                modifier = Modifier.width(coverWidth),
+                size = CoverSize.Sm,
+                cornerRadius = coverRadius,
+            )
+            Spacer(Modifier.width(coverGap))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = uiState.title,
+                    style = uiTextStyle(13.5.sp, FontWeight.SemiBold, palette.ink0),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.width(11.dp))
-                Column(Modifier.weight(1f)) {
+                uiState.subtitle?.let {
                     Text(
-                        text = uiState.title,
-                        style = uiTextStyle(13.5.sp, FontWeight.SemiBold, palette.ink0),
+                        text = it,
+                        style = uiTextStyle(11, FontWeight.Normal, palette.ink3),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    uiState.subtitle?.let {
-                        Text(
-                            text = it,
-                            style = uiTextStyle(11, FontWeight.Normal, palette.ink3),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
-            MiniButton(
-                iconRes = R.drawable.ic_audiobook_player_back_15,
-                label = stringResource(R.string.audiobook_back_15),
-                tag = MiniPlayerTestTags.BACK_15,
-                onClick = onSkipBack,
-            )
-            MiniButton(
-                iconRes = if (uiState.isPlaying) R.drawable.ic_audiobook_player_pause else R.drawable.ic_play,
-                label = stringResource(if (uiState.isPlaying) R.string.audiobook_pause else R.string.audiobook_play),
-                tag = MiniPlayerTestTags.PLAY_PAUSE,
-                onClick = onPlayPauseToggled,
-            )
-            MiniButton(
-                iconRes = R.drawable.ic_audiobook_mini_close,
-                label = stringResource(R.string.audiobook_mini_stop),
-                tag = MiniPlayerTestTags.STOP,
-                onClick = onStop,
-            )
         }
+        MiniButton(
+            iconRes = R.drawable.ic_audiobook_player_back_15,
+            label = stringResource(R.string.audiobook_back_15),
+            tag = MiniPlayerTestTags.BACK_15,
+            onClick = onSkipBack,
+        )
+        MiniButton(
+            iconRes = if (uiState.isPlaying) R.drawable.ic_audiobook_player_pause else R.drawable.ic_play,
+            label = stringResource(if (uiState.isPlaying) R.string.audiobook_pause else R.string.audiobook_play),
+            tag = MiniPlayerTestTags.PLAY_PAUSE,
+            onClick = onPlayPauseToggled,
+        )
+        MiniButton(
+            iconRes = R.drawable.ic_audiobook_mini_close,
+            label = stringResource(R.string.audiobook_mini_stop),
+            tag = MiniPlayerTestTags.STOP,
+            onClick = onStop,
+        )
     }
 }
 
@@ -304,5 +423,55 @@ private fun MiniPlayerNoProgressPreview() {
             onPlayPauseToggled = {},
             onStop = {},
         )
+    }
+}
+
+@PreviewLightDark
+@Composable
+private fun MiniPlayerFloatingPreview() {
+    OmnibusTheme {
+        Box(Modifier.background(OmnibusTheme.palette.bg0).padding(horizontal = 12.dp, vertical = 24.dp)) {
+            MiniPlayerContent(
+                uiState = MiniPlayerUIState(
+                    visible = true,
+                    bookUuid = "preview",
+                    cover = CoverIdentity(uuid = "preview", title = "The Left Hand of Darkness", creator = "Ursula K. Le Guin", hasCover = true),
+                    title = "The Left Hand of Darkness",
+                    subtitle = "Chapter 7: The Question of Sex",
+                    progress = 0.35f,
+                    isPlaying = true,
+                ),
+                onExpand = {},
+                onSkipBack = {},
+                onPlayPauseToggled = {},
+                onStop = {},
+                floating = true,
+            )
+        }
+    }
+}
+
+@PreviewLightDark
+@Composable
+private fun MiniPlayerFloatingNoSubtitlePreview() {
+    OmnibusTheme {
+        Box(Modifier.background(OmnibusTheme.palette.bg0).padding(horizontal = 12.dp, vertical = 24.dp)) {
+            MiniPlayerContent(
+                uiState = MiniPlayerUIState(
+                    visible = true,
+                    bookUuid = "preview",
+                    cover = CoverIdentity(uuid = "preview", title = "The Left Hand of Darkness", creator = null, hasCover = true),
+                    title = "The Left Hand of Darkness",
+                    subtitle = null,
+                    progress = 0.6f,
+                    isPlaying = false,
+                ),
+                onExpand = {},
+                onSkipBack = {},
+                onPlayPauseToggled = {},
+                onStop = {},
+                floating = true,
+            )
+        }
     }
 }

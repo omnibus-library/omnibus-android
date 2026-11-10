@@ -5,7 +5,6 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +52,7 @@ data object SignedInShellRoute : NavKey
 
 /**
  * The signed-in shell: a navigation stack for the selected tab. Below 600dp it is laid out under a bottom overlay of the
- * mini player and the tab bar; from 600dp wide it sits beside a navigation rail instead.
+ * floating mini player card and the tab bar; from 600dp wide it sits beside a navigation rail instead.
  *
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
@@ -128,20 +127,13 @@ private fun SignedInShellContent(
     if (navigationLayout == ShellNavigationLayout.Bar) DisableNavigationBarScrim()
     ShellLayout(
         overlay = {
-            when (navigationLayout) {
-                ShellNavigationLayout.Bar -> Column {
-                    // The mini player sits above the tab bar. It pads no insets: the tab bar does.
-                    if (showsMiniPlayer) {
-                        MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) })
-                    }
-                    OmnibusTabBar(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect)
-                }
-                ShellNavigationLayout.Rail -> ShellRailOverlay { insets ->
-                    if (showsMiniPlayer) {
-                        MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) }, contentWindowInsets = insets)
-                    }
-                }
-            }
+            ShellBottomOverlay(
+                navigationLayout = navigationLayout,
+                miniPlayer = { placement ->
+                    if (showsMiniPlayer) MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) }, floating = placement)
+                },
+                tabBar = { OmnibusTabBar(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect) },
+            )
         },
         modifier = modifier.fillMaxSize(),
         navigationLayout = navigationLayout,

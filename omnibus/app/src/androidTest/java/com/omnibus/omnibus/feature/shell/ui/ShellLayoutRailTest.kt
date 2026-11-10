@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -133,18 +132,15 @@ class ShellLayoutRailTest {
         assertEquals(0, consumedLeft)
     }
 
-    // TC-7
+    // #271 TC-5 (R6, R8)
     @Test
     fun tc7a_hiddenMiniPlayerStillClearsNavigationBar() {
-        val miniPlayerShown = false
         var navigationBottom = 0
         var overlayBottom = 0
         setShell(
             ShellNavigationLayout.Rail,
             overlay = {
-                ShellRailOverlay { insets ->
-                    if (miniPlayerShown) Box(Modifier.fillMaxWidth().testTag(MINI_TAG).windowInsetsPadding(insets).height(64.dp))
-                }
+                ShellBottomOverlay(ShellNavigationLayout.Rail, miniPlayer = {}, tabBar = {})
             },
             content = {
                 val density = LocalDensity.current
@@ -155,37 +151,6 @@ class ShellLayoutRailTest {
         )
 
         assertEquals(navigationBottom.toFloat(), overlayBottom.toFloat(), 1f)
-    }
-
-    // TC-7
-    @Test
-    fun tc7b_bottomOverlayIsMiniPlayerHeight() {
-        val miniPlayerShown = true
-        var navigationBottom = 0
-        var overlayBottom = 0
-        var sixtyThreeDpPx = 0f
-        setShell(
-            ShellNavigationLayout.Rail,
-            overlay = {
-                ShellRailOverlay { insets ->
-                    if (miniPlayerShown) Box(Modifier.fillMaxWidth().testTag(MINI_TAG).windowInsetsPadding(insets).height(64.dp))
-                }
-            },
-            content = {
-                val density = LocalDensity.current
-                navigationBottom = WindowInsets.navigationBars.getBottom(density)
-                overlayBottom = WindowInsets.bottomOverlay.getBottom(density)
-                sixtyThreeDpPx = with(density) { 63.dp.toPx() }
-                Box(Modifier.fillMaxSize().testTag(CONTENT_TAG))
-            },
-        )
-
-        val miniPlayer = rule.onNodeWithTag(MINI_TAG).bounds()
-        assertEquals(miniPlayer.height, overlayBottom.toFloat(), 1f)
-        assertTrue(
-            "the mini player is ${miniPlayer.height}px, not taller than the navigation bar $navigationBottom + 63dp",
-            miniPlayer.height > navigationBottom + sixtyThreeDpPx,
-        )
     }
 
     // TC-9
@@ -365,6 +330,5 @@ class ShellLayoutRailTest {
         const val RAIL_TAG = "shell-rail"
         const val CONTENT_TAG = "shell-content"
         const val OVERLAY_TAG = "shell-overlay"
-        const val MINI_TAG = "shell-mini-player"
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.components.CoverIdentity
@@ -47,7 +49,7 @@ private val playing = MiniPlayerUIState(
 private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
 /** Sets the bar alone, read from [state] on every composition, so a change to it shows without another setContent. */
-private fun ComposeContentTestRule.setBar(state: () -> MiniPlayerUIState, calls: Calls) {
+private fun ComposeContentTestRule.setBar(state: () -> MiniPlayerUIState, calls: Calls, floating: Boolean = false) {
     setContent {
         OmnibusTheme {
             Box(Modifier.fillMaxSize()) {
@@ -60,6 +62,7 @@ private fun ComposeContentTestRule.setBar(state: () -> MiniPlayerUIState, calls:
                     onSkipBack = { calls.skips++ },
                     onPlayPauseToggled = { calls.toggles++ },
                     onStop = { calls.stops++ },
+                    floating = floating,
                 )
             }
         }
@@ -150,5 +153,81 @@ class MiniPlayerContentTest {
         assertEquals(1, calls.toggles)
         assertEquals(1, calls.stops)
         assertEquals(0, calls.expands)
+    }
+
+    // #271 TC-7 (R4)
+    @Test
+    fun issue271_tc7_floatingBodyTapExpandsOnceWithTheBookUuid() {
+        val calls = Calls()
+        rule.setBar({ playing }, calls, floating = true)
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(MiniPlayerTestTags.BODY).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, calls.expands)
+        assertEquals("book-1", calls.expandedUuid)
+        assertEquals(0, calls.skips + calls.toggles + calls.stops)
+    }
+
+    // #271 TC-7 (R4)
+    @Test
+    fun issue271_tc7_floatingButtonsCallOnlyTheirOwnAction() {
+        val calls = Calls()
+        rule.setBar({ playing }, calls, floating = true)
+        rule.waitForIdle()
+
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_back_15)).performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_pause)).performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_mini_stop)).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, calls.skips)
+        assertEquals(1, calls.toggles)
+        assertEquals(1, calls.stops)
+        assertEquals(0, calls.expands)
+    }
+
+    // #271 TC-8 (R9)
+    @Test
+    fun issue271_tc8_floatingBodyIsOneButtonWithTheOpenLabel() {
+        rule.setBar({ playing }, Calls(), floating = true)
+        rule.waitForIdle()
+
+        val body = rule.onNodeWithTag(MiniPlayerTestTags.BODY).fetchSemanticsNode()
+        assertEquals(Role.Button, body.config.getOrNull(SemanticsProperties.Role))
+        assertEquals(context.getString(R.string.audiobook_mini_open_player), body.config.getOrNull(SemanticsActions.OnClick)?.label)
+        val merged = body.config[SemanticsProperties.Text].map { it.text }
+        assertTrue("the body reads the title: $merged", "Mini Title" in merged)
+        assertTrue("the body reads the subtitle: $merged", merged.any { it.startsWith("Chapter 7") })
+
+        val inside = rule.onNodeWithTag(MiniPlayerTestTags.BODY, useUnmergedTree = true).fetchSemanticsNode().descendantTags()
+        assertTrue(MiniPlayerTestTags.BACK_15 !in inside)
+        assertTrue(MiniPlayerTestTags.PLAY_PAUSE !in inside)
+        assertTrue(MiniPlayerTestTags.STOP !in inside)
+    }
+
+    // #271 TC-8 (R9)
+    @Test
+    fun issue271_tc8_floatingButtonsKeepTheirLabels() {
+        rule.setBar({ playing }, Calls(), floating = true)
+        rule.waitForIdle()
+
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_back_15)).assertIsDisplayed()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_pause)).assertIsDisplayed()
+        rule.onNodeWithContentDescription(context.getString(R.string.audiobook_mini_stop)).assertIsDisplayed()
+    }
+
+    // #271 TC-8 (R9)
+    @Test
+    fun issue271_tc8_floatingButtonsAreAtLeast48dpSquare() {
+        rule.setBar({ playing }, Calls(), floating = true)
+        rule.waitForIdle()
+
+        val minimum = with(rule.density) { 48.dp.toPx() } - 1f
+        listOf(MiniPlayerTestTags.BACK_15, MiniPlayerTestTags.PLAY_PAUSE, MiniPlayerTestTags.STOP).forEach { tag ->
+            val bounds = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag is ${bounds.width} x ${bounds.height}px", bounds.width >= minimum && bounds.height >= minimum)
+        }
     }
 }

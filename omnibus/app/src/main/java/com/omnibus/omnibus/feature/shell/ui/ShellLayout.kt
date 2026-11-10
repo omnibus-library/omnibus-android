@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,11 +28,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.window.layout.WindowInfoTracker
+import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerFloatPlacement
 import com.omnibus.omnibus.feature.shell.ShellNavigationLayout
 import com.omnibus.omnibus.feature.shell.isTabletop
 import com.omnibus.omnibus.feature.shell.shellNavigationLayout
@@ -82,14 +83,28 @@ private val RailStartInsets: WindowInsets
     @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Start)
 
 /**
- * The rail-mode overlay: the mini player, when [miniPlayer] draws it, above a spacer as tall as the navigation bar. The
- * overlay is never shorter than the navigation bar, so entries clear it even when the mini player is hidden or empty.
+ * The shell's bottom overlay: the floating mini player above the tab bar ([ShellNavigationLayout.Bar]) or above a spacer
+ * as tall as the navigation bar ([ShellNavigationLayout.Rail]), so the overlay is never shorter than the navigation bar.
+ * [miniPlayer] is always the first call, so it keeps its composition when the layout changes.
  */
 @Composable
-internal fun ShellRailOverlay(miniPlayer: @Composable (contentWindowInsets: WindowInsets) -> Unit) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
-        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-        miniPlayer(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+internal fun ShellBottomOverlay(
+    navigationLayout: ShellNavigationLayout,
+    miniPlayer: @Composable (MiniPlayerFloatPlacement) -> Unit,
+    tabBar: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val placement = when (navigationLayout) {
+        ShellNavigationLayout.Bar -> MiniPlayerFloatPlacement.Bar
+        ShellNavigationLayout.Rail -> MiniPlayerFloatPlacement.Rail
+    }
+    Column(modifier.fillMaxWidth()) {
+        miniPlayer(placement)
+        if (navigationLayout == ShellNavigationLayout.Bar) {
+            tabBar()
+        } else {
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
     }
 }
 
