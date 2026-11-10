@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.9](https://github.com/omnibus-library/omnibus-android/compare/v0.1.8...v0.1.9) (2026-11-10)
+
+
+### Features
+
+* **library:** add the series unfold motion math ([#264](https://github.com/omnibus-library/omnibus-android/issues/264)) ([8db5e57](https://github.com/omnibus-library/omnibus-android/commit/8db5e57aaff3e421ab6886dbfa6b673a2da42be6))
+* **library:** fill unfolded series containers ([#262](https://github.com/omnibus-library/omnibus-android/issues/262)) ([7f3f4a2](https://github.com/omnibus-library/omnibus-android/commit/7f3f4a29b8fb85ddfef457ddcb551f8a20efc517))
+* **library:** fly the covers out of the series stack ([#267](https://github.com/omnibus-library/omnibus-android/issues/267)) ([e1c191e](https://github.com/omnibus-library/omnibus-android/commit/e1c191e23048a6b6bec2fd063f063dcc3282b473))
+* **library:** grow the series container and glide the grid on unfold ([#266](https://github.com/omnibus-library/omnibus-android/issues/266)) ([c0be164](https://github.com/omnibus-library/omnibus-android/commit/c0be16408faba145587abda893a90ba40d922d81))
+* **shell:** add an adaptive navigation rail for wide windows ([#273](https://github.com/omnibus-library/omnibus-android/issues/273)) ([408b9dc](https://github.com/omnibus-library/omnibus-android/commit/408b9dcceddeea75a5713ce876906ec4bea908f4))
+
 ## [0.1.8](https://github.com/omnibus-library/omnibus-android/compare/v0.1.7...v0.1.8) (2026-11-10)
 
 
