@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,8 +46,8 @@ data class OmnibusTabBarItem(
 )
 
 /**
- * A flush, full-width bottom bar: a hairline rule above outline icons that fill when selected,
- * each with a tight label.
+ * A flush, full-width bottom bar on `bg2`: a hairline rule above outline icons that fill when selected,
+ * each with a tight label. Its items are [OmnibusNavigationEntry]s, the same as the navigation rail's.
  *
  * The bar's background runs under the navigation bar while the items stay above it.
  *
@@ -62,12 +64,11 @@ fun OmnibusTabBar(
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
-    val haptics = LocalHapticFeedback.current
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(palette.bg0)
+            .background(palette.bg2)
     ) {
         Box(
             modifier = Modifier
@@ -79,39 +80,52 @@ fun OmnibusTabBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(top = 9.dp, bottom = 6.dp),
+                .selectableGroup(),
         ) {
             items.forEachIndexed { index, item ->
-                val isSelected = index == selectedIndex
-                TabBarEntry(
+                OmnibusNavigationEntry(
                     item = item,
-                    isSelected = isSelected,
-                    onClick = {
-                        if (!isSelected) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                        onSelect(index)
-                    },
+                    isSelected = index == selectedIndex,
+                    onSelect = { onSelect(index) },
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(top = 9.dp, bottom = 6.dp),
                 )
             }
         }
     }
 }
 
+/**
+ * One destination in [OmnibusTabBar] or the navigation rail: an outline icon and label, filled and SemiBold in
+ * `accent` when selected. Its touch target is the whole entry, including [contentPadding].
+ *
+ * @param onSelect Called when tapped, including when already selected. A haptic tick plays only for a new selection.
+ */
 @Composable
-private fun TabBarEntry(
+internal fun OmnibusNavigationEntry(
     item: OmnibusTabBarItem,
     isSelected: Boolean,
-    onClick: () -> Unit,
+    onSelect: () -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val palette = OmnibusTheme.palette
-    val color = if (isSelected) palette.accent else palette.ink3
+    val haptics = LocalHapticFeedback.current
+    val color = if (isSelected) palette.accent else palette.ink2
 
     Column(
         modifier = modifier
-            .selectable(selected = isSelected, role = Role.Tab, onClick = onClick),
+            .selectable(
+                selected = isSelected,
+                role = Role.Tab,
+                onClick = {
+                    if (!isSelected) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    onSelect()
+                },
+            )
+            .padding(contentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
         // The glyphs carry no description: the label beneath names the tab.
         Icon(

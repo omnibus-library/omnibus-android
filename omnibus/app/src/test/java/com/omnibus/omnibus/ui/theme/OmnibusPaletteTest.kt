@@ -26,4 +26,23 @@ class OmnibusPaletteTest : DescribeSpec({
             }
         }
     }
+
+    describe("the unselected navigation item") {
+
+        context("in the dark theme") {
+            it("TC-4: reads at 4.5:1 or more on bg2") {
+                val palette = OmnibusPalette.Atrium
+
+                (contrastRatio(palette.ink2, palette.bg2) >= 4.5) shouldBe true
+            }
+        }
+
+        context("in the light theme") {
+            it("TC-4: reads at 4.5:1 or more on bg2") {
+                val palette = OmnibusPalette.Light
+
+                (contrastRatio(palette.ink2, palette.bg2) >= 4.5) shouldBe true
+            }
+        }
+    }
 })
