@@ -64,7 +64,7 @@ fun AddRequestResults() {
 @Preview(name = "Dark", widthDp = 411, heightDp = 891, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun AddRequestStarting() {
-    SheetShot(results().copy(starting = true))
+    SheetShot(results().copy(startingKey = "a"))
 }
 
 @PreviewTest

@@ -96,9 +96,10 @@ internal fun RequestButton(
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (width != null) 6.dp else if (emphasis == RequestEmphasis.Ghost) Spacing.xs else 16.dp)
             .then(
-                if (contentDescription != null || busy) {
+                // A busy button says so only when a description replaces its label; otherwise the label already does.
+                if (contentDescription != null) {
                     Modifier.semantics {
-                        contentDescription?.let { this.contentDescription = it }
+                        this.contentDescription = contentDescription
                         if (busy) stateDescription = text
                     }
                 } else {

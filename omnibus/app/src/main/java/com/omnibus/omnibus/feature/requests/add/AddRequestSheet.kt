@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.feature.requests.add
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +25,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -33,12 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,6 +135,9 @@ internal fun AddRequestSheetContent(
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
+    // The message node only exists while a message is set, which a live region can miss, so each one is announced.
+    val view = LocalView.current
+    LaunchedEffect(uiState.message) { uiState.message?.let(view::announceForAccessibility) }
     Box(modifier.fillMaxWidth().fillMaxHeight(SHEET_HEIGHT_FRACTION).background(palette.bg0), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = SheetContentMaxWidth).fillMaxWidth().fillMaxHeight().imePadding()) {
             Row(
@@ -181,10 +183,7 @@ internal fun AddRequestSheetContent(
                     Text(
                         text = it,
                         style = uiTextStyle(13.5.sp, FontWeight.Normal, palette.bad),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { liveRegion = LiveRegionMode.Polite }
-                            .testTag(AddRequestTestTags.MESSAGE),
+                        modifier = Modifier.fillMaxWidth().testTag(AddRequestTestTags.MESSAGE),
                     )
                 }
                 if (uiState.isIdle) {

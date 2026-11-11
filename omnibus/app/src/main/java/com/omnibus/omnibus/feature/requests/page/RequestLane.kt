@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -383,6 +384,7 @@ private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording:
                 color = palette.ink1,
                 size = 14,
                 onClick = { showAll = !showAll },
+                modifier = Modifier.offset(x = -Spacing.xs),
             )
         }
     }
