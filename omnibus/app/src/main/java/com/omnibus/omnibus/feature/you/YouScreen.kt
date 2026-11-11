@@ -77,21 +77,22 @@ internal fun YouScreenContent(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (uiState.showsRequests) {
+    // Nothing while the session is unknown, so the placeholder never flashes before the row.
+    if (uiState.showsRequests == true) {
         Column(modifier.fillMaxSize().padding(horizontal = Spacing.screen, vertical = Spacing.lg)) {
             RequestsRow(needsYouPill(uiState.needsYou, wording), onOpenRequests)
         }
-    } else {
+    } else if (uiState.showsRequests == false) {
         UnderConstructionScreen(UnderConstructionPage.You, modifier.fillMaxSize())
     }
 }
 
 /** The Requests row, with the pill when books wait on the reader. */
 @Composable
-private fun RequestsRow(pill: String?, onOpenRequests: () -> Unit, modifier: Modifier = Modifier) {
+private fun RequestsRow(pill: String?, onOpenRequests: () -> Unit) {
     val palette = OmnibusTheme.palette
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clickable(role = Role.Button, onClick = onOpenRequests)

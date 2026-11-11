@@ -99,7 +99,7 @@ private const val DEFAULT_MESSAGE_MILLIS = 4_000L
 
 /**
  * What the request page shows. A book's requests are lanes: the one the page opened on ([mainId]), then each other one
- * going or stuck. Only a single request's own read carries every version and any cover offer, so a lane waits for its
+ * going, stuck or ready. Only a single request's own read carries every version and any cover offer, so a lane waits for its
  * entry in [reads].
  *
  * @property wanters The readers with the book on a wishlist, or null when that read failed, so the line stays out.
@@ -134,10 +134,10 @@ data class BookRequestUIState(
             return listOf(main) + splitBookRequests(listed, main).lanes.map { it.request.id }
         }
 
-    /** The main lane, then each other request going or stuck. One whose full read hasn't arrived waits. */
+    /** The main lane, then each other request going, stuck or ready. One whose full read hasn't arrived waits. */
     val lanes: List<BookRequest> get() = laneIds.mapNotNull { reads[it] }
 
-    /** The book's past requests: the cancelled ones and any that swapped a version. */
+    /** The book's past requests: the cancelled ones and any that swapped a version, which may also be a lane. */
     val history: List<RequestListing>
         get() = listings?.let { splitBookRequests(it, mainId ?: 0).history }.orEmpty()
 
@@ -345,19 +345,28 @@ class BookRequestViewModel @AssistedInject constructor(
     /** Makes the downloaded cover the book's own. */
     fun takeCover(laneId: Long) {
         viewModelScope.launch {
-            write(RequestAction.TakeCover, Busy.TakingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
+            val taken = write(RequestAction.TakeCover, Busy.TakingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
                 requests.takeCover(laneId)
             }
+            if (taken != null) rereadOtherOffers(laneId)
         }
     }
 
     /** Turns the downloaded cover down. */
     fun keepCover(laneId: Long) {
         viewModelScope.launch {
-            write(RequestAction.KeepCover, Busy.KeepingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
+            val kept = write(RequestAction.KeepCover, Busy.KeepingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
                 requests.keepCover(laneId)
             }
+            if (kept != null) rereadOtherOffers(laneId)
         }
+    }
+
+    /** One cover decision settles the book's cover, so every other lane still offering one is stale and is read again. */
+    private suspend fun rereadOtherOffers(decided: Long) {
+        val stale = _uiState.value.lanes.filter { it.id != decided && it.coverOffer != null }.map { it.id }
+        val fresh = readAll(stale)
+        if (fresh.isNotEmpty()) change { it.copy(reads = it.reads + fresh) }
     }
 
     /** Cancels the request [laneId], then offers Undo for as long as the server will take it back. */

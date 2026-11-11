@@ -168,7 +168,7 @@
     <string name="requests_group_open">Open</string>
     <string name="requests_group_show_hint">Show the books</string>
     <string name="requests_group_hide_hint">Hide the books</string>
-    <!-- The You root's Library group. -->
+    <!-- The You root's Requests row. -->
     <string name="you_requests_row">Requests</string>
 
     <!-- The book page's request slots. -->

@@ -71,7 +71,7 @@ internal object BookRequestTestTags {
 }
 
 /**
- * A book's requests on one page: the book, a lane for the request it opened on and each other one going or stuck, the
+ * A book's requests on one page: the book, a lane for the request it opened on and each other one going, stuck or ready, the
  * formats not yet requested, and the history. It reads when it is shown and polls while it is on screen.
  *
  * Stateful wrapper that feeds [BookRequestScreenContent] from [BookRequestViewModel].

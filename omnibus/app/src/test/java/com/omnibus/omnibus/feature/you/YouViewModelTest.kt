@@ -53,6 +53,16 @@ class YouViewModelTest : DescribeSpec({
         }
     }
 
+    describe("a session not known yet") {
+        it("leaves the row undecided until the session is, rather than saying it is off") {
+            val vm = sut(auth = TestAuthRepository())
+
+            vm.shown()
+
+            vm.uiState.value.showsRequests shouldBe null
+        }
+    }
+
     describe("a session that is confirmed after the screen is shown") {
         it("shows the row and the count once the user arrives") {
             val requests = TestRequestsRepository()
@@ -64,7 +74,7 @@ class YouViewModelTest : DescribeSpec({
 
             auth.currentUserState.value = randomCurrentUser().copy(bookRequests = true, canChooseRequestVersions = true)
 
-            before to vm.uiState.value shouldBe (YouUIState(false, 0) to YouUIState(true, 2))
+            before to vm.uiState.value shouldBe (YouUIState(null, 0) to YouUIState(true, 2))
         }
     }
 

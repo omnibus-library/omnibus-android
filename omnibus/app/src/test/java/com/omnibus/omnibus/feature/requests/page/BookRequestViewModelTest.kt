@@ -18,6 +18,7 @@ import com.omnibus.omnibus.data.requests.RequestsResult
 import com.omnibus.omnibus.data.requests.TestRequestsRepository
 import com.omnibus.omnibus.data.requests.Wanter
 import com.omnibus.omnibus.data.requests.randomBookRequest
+import com.omnibus.omnibus.data.requests.randomCoverOffer
 import com.omnibus.omnibus.data.requests.randomRequestListing
 import com.omnibus.omnibus.data.requests.randomRequestVersion
 import com.omnibus.omnibus.data.requests.randomWanter
@@ -146,8 +147,23 @@ class BookRequestViewModelTest : DescribeSpec({
 
             vm.load()
 
-            vm.uiState.value.let { it.lanes.map { lane -> lane.kind }.toSet() to it.pollInterval } shouldBe
-                (setOf(RequestKind.Ebook, RequestKind.Audiobook) to null)
+            vm.uiState.value.lanes.map { it.kind }.toSet() shouldBe setOf(RequestKind.Ebook, RequestKind.Audiobook)
+        }
+
+        it("doesn't poll for finished lanes alone") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository()
+            requests.serve(
+                uuid,
+                request(uuid, 5, RequestState.Ready, kind = RequestKind.Ebook),
+                request(uuid, 6, RequestState.Ready, kind = RequestKind.Audiobook),
+            )
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER))
+
+            vm.load()
+
+            vm.uiState.value.pollInterval shouldBe null
         }
 
         it("leaves the wishers line out when that read fails") {
@@ -844,6 +860,21 @@ class BookRequestViewModelTest : DescribeSpec({
                 vm.choose(5, 11)
 
                 requests.calls.size - calls shouldBe 1
+            }
+
+            it("reads every other lane that has a cover offer again after a cover write, since their offers went stale too") {
+                val uuid = randomString()
+                val offer = randomCoverOffer()
+                val first = request(uuid, 5, RequestState.Ready, kind = RequestKind.Ebook).copy(coverOffer = offer)
+                val second = request(uuid, 6, RequestState.Ready, kind = RequestKind.Audiobook).copy(coverOffer = offer)
+                val third = request(uuid, 7, RequestState.Ready, kind = RequestKind.Ebook, userId = 2).copy(coverOffer = null)
+                val (vm, requests) = openedPage(uuid, first, second, third)
+                requests.answer("takeCover", ok(first.copy(coverOffer = null)))
+                val before = requests.calls.size
+
+                vm.takeCover(5)
+
+                requests.calls.drop(before).filter { it.function == "request" }.map { it.args.single() } shouldBe listOf(6L)
             }
 
             it("reads the lane and the listings again after a failed cover write, since the request may have moved on") {

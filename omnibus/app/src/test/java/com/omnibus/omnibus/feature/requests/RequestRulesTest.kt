@@ -441,10 +441,12 @@ class RequestRulesTest : DescribeSpec({
             offersRequestAgain(cancelled, ASKER, listOf(live), now) shouldBe false
         }
 
-        it("holds it back while the viewer has that kind finished for the book, which stays on the page") {
-            val finished = request(RequestState.Ready, kind = RequestKind.Ebook).copy(userId = ASKER.id)
+        it("holds it back while anyone has that kind finished for the book, which the library now holds") {
+            val mine = request(RequestState.Ready, kind = RequestKind.Ebook).copy(userId = ASKER.id)
+            val theirs = request(RequestState.Ready, kind = RequestKind.Ebook).copy(userId = 99)
 
-            offersRequestAgain(cancelled, ASKER, listOf(finished), now) shouldBe false
+            listOf(offersRequestAgain(cancelled, ASKER, listOf(mine), now), offersRequestAgain(cancelled, ASKER, listOf(theirs), now)) shouldBe
+                listOf(false, false)
         }
 
         it("offers it beside another reader's live request, or the viewer's live request of the other kind") {
@@ -550,20 +552,19 @@ class RequestRulesTest : DescribeSpec({
             splitBookRequests(listOf(gone), shown).let { it.lanes to it.history } shouldBe (emptyList<Any>() to listOf(gone))
         }
 
-        it("keeps a request that swapped a version in the history, unless it is stuck or finished") {
-            val swapped = listing(request(RequestState.Choose, versions = listOf(version(), version(rejected = true))).copy(id = 3))
+        it("keeps a request that swapped a version in the history, unless it is stuck") {
+            val swapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 3))
             val stuckSwapped = listing(request(RequestState.Stuck, versions = listOf(version(rejected = true))).copy(id = 2))
-            val readySwapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 1))
 
-            splitBookRequests(listOf(swapped, stuckSwapped, readySwapped), shown).history shouldBe listOf(swapped)
+            splitBookRequests(listOf(swapped, stuckSwapped), shown).history shouldBe listOf(swapped)
         }
 
-        it("gives a finished request a lane of its own, and keeps it out of the history") {
+        it("gives a finished request a lane of its own, in the history too when it swapped a version") {
             val ready = listing(request(RequestState.Ready, versions = listOf(version())).copy(id = 3))
             val readySwapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 2))
 
             splitBookRequests(listOf(ready, readySwapped), shown).let { it.lanes to it.history } shouldBe
-                (listOf(ready, readySwapped) to emptyList())
+                (listOf(ready, readySwapped) to listOf(readySwapped))
         }
 
         it("never lists the request on screen") {

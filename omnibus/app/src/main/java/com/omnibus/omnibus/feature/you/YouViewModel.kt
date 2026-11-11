@@ -21,10 +21,11 @@ import kotlinx.coroutines.launch
 /**
  * What the You root shows about requests.
  *
- * @property showsRequests Whether the Requests row is shown: the server has book requests on for the reader.
+ * @property showsRequests Whether the Requests row is shown: the server has book requests on for the reader. Null while
+ * the session isn't known yet, so the screen shows neither the row nor the placeholder.
  * @property needsYou How many books wait on the reader to pick a version. Zero shows no pill.
  */
-data class YouUIState(val showsRequests: Boolean = false, val needsYou: Int = 0)
+data class YouUIState(val showsRequests: Boolean? = null, val needsYou: Int = 0)
 
 /** Owns the You root's Requests row and its "N needs you" pill. */
 @HiltViewModel
@@ -71,10 +72,10 @@ class YouViewModel @Inject constructor(
     }
 
     private suspend fun readCount() {
-        val shows = user?.bookRequests == true
+        val shows = user?.bookRequests
         val viewer = user.toRequestViewer()
         _uiState.update { it.copy(showsRequests = shows, needsYou = 0) }
-        if (!shows || !viewer.canChoose) return
+        if (shows != true || !viewer.canChoose) return
         val listed = (requests.list() as? RequestsResult.Success)?.value ?: return
         _uiState.update { it.copy(needsYou = needsYouCount(listed, viewer)) }
     }

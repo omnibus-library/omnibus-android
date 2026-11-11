@@ -295,8 +295,9 @@ internal fun offersRequestAgain(
     nowMillis: Long,
 ): Boolean {
     val undoOpen = request.cancelAt?.let { nowMillis < it * MILLIS } ?: false
+    // A live request blocks only the viewer's own, as on the web; a finished one means the library holds it for everyone.
     val alreadyGoing = bookRequests.any {
-        it.userId == viewer.id && it.kind == request.kind && (isLive(it.state) || it.state == RequestState.Ready)
+        it.kind == request.kind && ((it.userId == viewer.id && isLive(it.state)) || it.state == RequestState.Ready)
     }
     return request.state == RequestState.Cancelled && viewer.canStart && !undoOpen && !alreadyGoing
 }
@@ -330,7 +331,8 @@ internal data class BookSplit(val lanes: List<RequestListing>, val history: List
 
 /**
  * Splits [listings] around the request [shown]. A request that is going, stuck or ready gets a lane, so a finished one
- * stays on the page. The history takes the cancelled ones and any going request that swapped a version.
+ * stays on the page. The history takes the cancelled ones and any that swapped a version and isn't stuck, so a swapped
+ * request is both a lane and a history row.
  */
 internal fun splitBookRequests(listings: List<RequestListing>, shown: Long): BookSplit {
     val others = listings.filter { it.request.id != shown }
@@ -338,7 +340,7 @@ internal fun splitBookRequests(listings: List<RequestListing>, shown: Long): Boo
         lanes = others.filter { isLive(it.request.state) || it.request.state == RequestState.Stuck || it.request.state == RequestState.Ready },
         history = others.filter {
             it.request.state == RequestState.Cancelled ||
-                (isLive(it.request.state) && it.request.versions.any { v -> v.rejected })
+                (it.request.state != RequestState.Stuck && it.request.versions.any { v -> v.rejected })
         },
     )
 }
