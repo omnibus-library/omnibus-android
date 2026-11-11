@@ -1,7 +1,12 @@
 package com.omnibus.omnibus.feature.requests.add
 
 import android.content.res.Configuration
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.requests.LibraryHit
@@ -13,7 +18,10 @@ import kotlinx.serialization.json.JsonObject
 @Composable
 private fun SheetShot(state: AddRequestUIState, requested: Set<String> = emptySet()) {
     Shot {
-        AddRequestSheetContent(state, requested, RequestWording(), {}, {}, {}, {}, {})
+        // A loud ground behind the content, so a column narrower than the sheet would show strips of it at its edges.
+        Box(Modifier.fillMaxWidth().background(Color.Magenta)) {
+            AddRequestSheetContent(state, requested, RequestWording(), {}, {}, {}, {}, {})
+        }
     }
 }
 

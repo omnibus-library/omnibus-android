@@ -36,11 +36,13 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 import com.omnibus.omnibus.feature.bookdetail.BookDetailTab
 import com.omnibus.omnibus.feature.bookdetail.wishlist.rememberIsWishlistOnly
 import com.omnibus.omnibus.feature.requests.RequestButton
+import com.omnibus.omnibus.feature.requests.RequestButtonWidth
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.kindLabel
 import com.omnibus.omnibus.feature.requests.rememberRequestWording
 import com.omnibus.omnibus.feature.requests.unrequestedKinds
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
@@ -49,9 +51,6 @@ internal object RequestStartTestTags {
     const val SLOTS = "request-slots"
     fun button(kind: RequestKind) = "request-slot-${kind.name.lowercase()}"
 }
-
-/** The width the Request button keeps in every row, so it doesn't change size with its label. */
-internal val RequestSlotButtonWidth = 100.dp
 
 /**
  * A Request button for each kind the library lacks, for a reader who may start requests. It has two hosts that share
@@ -96,11 +95,11 @@ internal class RequestStartSection(private val host: Host) : BookDetailSection {
         if (kinds.isEmpty()) return
         val wording = rememberRequestWording()
         when (host) {
-            Host.Files -> Column(modifier.fillMaxWidth().padding(top = 32.dp)) {
+            Host.Files -> Column(modifier.fillMaxWidth().padding(top = Spacing.xl + Spacing.sm)) {
                 Text(
                     text = stringResource(R.string.requests_not_in_library),
                     style = displayTextStyle(30.sp, OmnibusTheme.palette.ink0, FontWeight.SemiBold),
-                    modifier = Modifier.padding(bottom = 12.dp).semantics { heading() },
+                    modifier = Modifier.padding(bottom = Spacing.md).semantics { heading() },
                 )
                 RequestSlots(kinds, state.starting, state.isOnline, wording, viewModel::start)
             }
@@ -142,8 +141,8 @@ internal fun RequestSlots(
         kinds.forEachIndexed { index, kind ->
             if (index > 0) HorizontalDivider(color = palette.line, thickness = 0.5.dp)
             Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -154,7 +153,8 @@ internal fun RequestSlots(
                 RequestButton(
                     text = stringResource(if (starting == kind) R.string.requests_requesting else R.string.requests_request),
                     onClick = { onStart(kind) },
-                    width = RequestSlotButtonWidth,
+                    width = RequestButtonWidth,
+                    busy = starting == kind,
                     enabled = starting == null && isOnline,
                     contentDescription = stringResource(R.string.requests_request_kind, stringResource(R.string.requests_request), kindLabel(kind, wording).lowercase()),
                     modifier = Modifier.testTag(RequestStartTestTags.button(kind)),

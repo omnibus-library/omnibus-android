@@ -53,6 +53,7 @@ import com.omnibus.omnibus.ui.components.EmptyStateView
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.components.OmnibusBackButton
+import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
@@ -182,13 +183,13 @@ internal fun BookRequestScreenContent(
     }
 }
 
-/** What a failed read says, by why it failed. */
+/** What a failed read says, by why it failed, in the library screens' own words so the same failure reads the same. */
 @Composable
 internal fun requestsErrorText(error: RequestsError): String = when (error) {
-    RequestsError.Unreachable -> stringResource(R.string.requests_error_unreachable)
-    RequestsError.SessionExpired -> stringResource(R.string.requests_error_session_expired)
-    is RequestsError.Http -> error.message ?: stringResource(R.string.requests_error_http, error.code)
-    RequestsError.UnexpectedResponse -> stringResource(R.string.requests_error_unexpected)
+    RequestsError.Unreachable -> stringResource(R.string.library_error_unreachable)
+    RequestsError.SessionExpired -> stringResource(R.string.library_error_session_expired)
+    is RequestsError.Http -> error.message ?: stringResource(R.string.library_error_http, error.code)
+    RequestsError.UnexpectedResponse -> stringResource(R.string.library_error_unexpected_response)
 }
 
 /**
@@ -271,13 +272,12 @@ private fun RequestHeader(book: Book, uiState: BookRequestUIState, wording: Requ
                 Text(book.authorDisplay, style = uiTextStyle(14, FontWeight.Normal, palette.ink2))
             }
             wishers?.let { Text(it, style = uiTextStyle(13, FontWeight.Normal, palette.ink2)) }
-            Text(
+            TextLinkButton(
                 text = stringResource(R.string.requests_open_book_page),
-                style = uiTextStyle(13.5.sp, FontWeight.Medium, palette.accent),
-                modifier = Modifier
-                    .clickable(onClick = onOpenBook)
-                    .padding(vertical = Spacing.xs)
-                    .testTag(BookRequestTestTags.OPEN_BOOK),
+                color = palette.accent,
+                size = 14,
+                onClick = onOpenBook,
+                modifier = Modifier.testTag(BookRequestTestTags.OPEN_BOOK),
             )
         }
     }

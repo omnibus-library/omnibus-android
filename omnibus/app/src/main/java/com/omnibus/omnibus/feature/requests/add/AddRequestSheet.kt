@@ -22,9 +22,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,7 +35,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,12 +50,14 @@ import com.omnibus.omnibus.data.requests.LibraryHit
 import com.omnibus.omnibus.data.requests.ProviderBook
 import com.omnibus.omnibus.feature.requests.AddAction
 import com.omnibus.omnibus.feature.requests.RequestButton
+import com.omnibus.omnibus.feature.requests.RequestButtonWidth
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.addAction
 import com.omnibus.omnibus.feature.requests.providersHeading
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.components.OmnibusTextField
+import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
@@ -64,9 +72,6 @@ internal object AddRequestTestTags {
     fun request(uuidOrTitle: String) = "add-request-request-$uuidOrTitle"
     fun open(uuid: String) = "add-request-open-$uuid"
 }
-
-/** The width Request and Open share, so a row's button doesn't change size with its label. */
-internal val AddRequestButtonWidth = 100.dp
 
 /** How much of the window's height the sheet takes, so it doesn't jump between its idle and results states. */
 private const val SHEET_HEIGHT_FRACTION = 0.92f
@@ -93,10 +98,17 @@ internal fun AddRequestSheet(
     onClose: () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { !uiState.starting })
+    // Back and the scrim still reach the sheet while a start runs, and `confirmValueChange` and `onDismissRequest`
+    // refuse them. The sheet state keeps the lambda it was created with, so it reads the latest value through this.
+    val starting by rememberUpdatedState(uiState.starting)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || !starting },
+    )
     ModalBottomSheet(
         onDismissRequest = { if (!uiState.starting) onClose() },
         sheetState = sheetState,
+        sheetGesturesEnabled = !uiState.starting,
         containerColor = palette.bg0,
         contentColor = palette.ink0,
         tonalElevation = 0.dp,
@@ -135,12 +147,12 @@ internal fun AddRequestSheetContent(
                     style = displayTextStyle(26, palette.ink0),
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
-                Text(
+                TextLinkButton(
                     text = stringResource(R.string.requests_add_cancel),
-                    style = uiTextStyle(15, FontWeight.Medium, if (uiState.starting) palette.ink3 else palette.accent),
-                    modifier = Modifier
-                        .clickable(enabled = !uiState.starting, onClick = onClose)
-                        .padding(horizontal = Spacing.sm, vertical = Spacing.md),
+                    color = if (uiState.starting) palette.ink3 else palette.accent,
+                    size = 15,
+                    onClick = onClose,
+                    enabled = !uiState.starting,
                 )
             }
             Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.screen)) {
@@ -169,7 +181,10 @@ internal fun AddRequestSheetContent(
                     Text(
                         text = it,
                         style = uiTextStyle(13.5.sp, FontWeight.Normal, palette.bad),
-                        modifier = Modifier.fillMaxWidth().testTag(AddRequestTestTags.MESSAGE),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                            .testTag(AddRequestTestTags.MESSAGE),
                     )
                 }
                 if (uiState.isIdle) {
@@ -202,6 +217,7 @@ private fun LibrarySection(
             byline = byline(listOf(hit.authorDisplay, hit.year), action),
             action = action,
             starting = uiState.starting,
+            startingThis = uiState.startingKey == hit.uuid,
             isOnline = uiState.isOnline,
             onRequest = { onRequest(hit) },
             onOpen = { onOpen(hit.uuid) },
@@ -227,6 +243,7 @@ private fun ProviderSection(
             byline = byline(listOf(book.authors.joinToString(", "), book.year), AddAction.Start),
             action = AddAction.Start,
             starting = uiState.starting,
+            startingThis = uiState.startingKey == book.key(),
             isOnline = uiState.isOnline,
             onRequest = { onRequest(book) },
             onOpen = {},
@@ -246,8 +263,15 @@ private fun <T> Section(heading: String, results: SearchResults<T>, row: @Compos
             modifier = Modifier.semantics { heading() },
         )
         when (results) {
-            SearchResults.Loading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.ink2, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+            SearchResults.Loading -> {
+                val label = stringResource(R.string.requests_add_loading)
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        color = palette.ink2,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(24.dp).semantics { contentDescription = label },
+                    )
+                }
             }
             SearchResults.Failed -> Message(stringResource(R.string.requests_add_failed))
             is SearchResults.Done -> if (results.items.isEmpty()) {
@@ -286,6 +310,7 @@ private fun ResultRow(
     byline: String,
     action: AddAction,
     starting: Boolean,
+    startingThis: Boolean,
     isOnline: Boolean,
     onRequest: () -> Unit,
     onOpen: () -> Unit,
@@ -319,15 +344,16 @@ private fun ResultRow(
             AddAction.Open -> RequestButton(
                 text = stringResource(R.string.requests_add_open),
                 onClick = onOpen,
-                width = AddRequestButtonWidth,
+                width = RequestButtonWidth,
                 enabled = !starting,
                 contentDescription = stringResource(R.string.requests_add_open_title, title),
                 modifier = Modifier.testTag(AddRequestTestTags.open(testKey)),
             )
             AddAction.Start -> RequestButton(
-                text = stringResource(if (starting) R.string.requests_requesting else R.string.requests_request),
+                text = stringResource(if (startingThis) R.string.requests_requesting else R.string.requests_request),
                 onClick = onRequest,
-                width = AddRequestButtonWidth,
+                width = RequestButtonWidth,
+                busy = startingThis,
                 enabled = !starting && isOnline,
                 contentDescription = stringResource(R.string.requests_add_request_title, title),
                 modifier = Modifier.testTag(AddRequestTestTags.request(testKey)),

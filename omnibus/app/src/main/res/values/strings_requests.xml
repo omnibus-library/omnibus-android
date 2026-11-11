@@ -116,10 +116,7 @@
     <string name="requests_page_not_found_title">Book not found</string>
     <string name="requests_page_not_found_message">That book is no longer in the library.</string>
     <string name="requests_try_again">Try again</string>
-    <string name="requests_error_unreachable">The server couldn’t be reached. Check your connection and try again.</string>
-    <string name="requests_error_session_expired">Your session has expired. Sign in again.</string>
-    <string name="requests_error_http">The server answered with an error (%1$d).</string>
-    <string name="requests_error_unexpected">The server sent something this app couldn’t read.</string>
+    <string name="requests_opens_source">Opens the source’s page</string>
     <string name="requests_open_book_page">Open book page</string>
     <string name="requests_history">History</string>
     <string name="requests_not_requested">not requested</string>
@@ -155,8 +152,6 @@
     <string name="requests_cover_keep">Keep this one</string>
     <string name="requests_cover_keeping">Keeping…</string>
     <string name="requests_undo">Undo</string>
-    <string name="requests_dismiss">Dismiss</string>
-    <string name="requests_lane_kind">%1$s request</string>
     <string name="requests_added">added %1$s</string>
     <string name="requests_step_current">Current step</string>
     <string name="requests_step_done">Done</string>

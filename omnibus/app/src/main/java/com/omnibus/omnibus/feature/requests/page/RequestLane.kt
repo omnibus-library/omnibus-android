@@ -29,7 +29,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +45,7 @@ import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestVersion
 import com.omnibus.omnibus.feature.requests.RequestButton
+import com.omnibus.omnibus.feature.requests.RequestButtonWidth
 import com.omnibus.omnibus.feature.requests.RequestEmphasis
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.SEP
@@ -70,6 +73,7 @@ import com.omnibus.omnibus.feature.requests.versionsFound
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.ReaderAvatar
+import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Radius
@@ -298,6 +302,7 @@ private fun LaneActionRow(lane: BookRequest, uiState: BookRequestUIState, action
         if (canSwap) {
             RequestButton(
                 text = stringResource(if (uiState.busy == Busy.Swapping(lane.id)) R.string.requests_choosing else R.string.requests_choose_another),
+                busy = uiState.busy == Busy.Swapping(lane.id),
                 onClick = { actions.onSwap(lane.id) },
                 emphasis = RequestEmphasis.Ghost,
                 enabled = !uiState.isLocked,
@@ -323,6 +328,7 @@ private fun CancelButton(lane: BookRequest, uiState: BookRequestUIState, actions
     }
     RequestButton(
         text = if (uiState.busy == Busy.Cancelling(lane.id)) stringResource(R.string.requests_cancelling) else label,
+        busy = uiState.busy == Busy.Cancelling(lane.id),
         onClick = { actions.onCancel(lane.id) },
         emphasis = RequestEmphasis.Ghost,
         enabled = !uiState.isLocked,
@@ -334,6 +340,7 @@ private fun CancelButton(lane: BookRequest, uiState: BookRequestUIState, actions
 private fun TryAgain(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
     RequestButton(
         text = stringResource(if (uiState.busy == Busy.Retrying(lane.id)) R.string.requests_retrying else R.string.requests_retry),
+        busy = uiState.busy == Busy.Retrying(lane.id),
         onClick = { actions.onRetry(lane.id) },
         emphasis = RequestEmphasis.Primary,
         enabled = !uiState.isLocked,
@@ -371,10 +378,11 @@ private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording:
             )
         }
         if (hidden > 0) {
-            Text(
+            TextLinkButton(
                 text = if (showAll) stringResource(R.string.requests_show_fewer) else stringResource(R.string.requests_show_more, hidden),
-                style = uiTextStyle(13.5.sp, FontWeight.Medium, palette.ink1),
-                modifier = Modifier.clickable { showAll = !showAll }.padding(vertical = Spacing.xs),
+                color = palette.ink1,
+                size = 14,
+                onClick = { showAll = !showAll },
             )
         }
     }
@@ -408,6 +416,7 @@ private fun VersionRow(
             if (onChoose != null && !version.rejected) {
                 RequestButton(
                     text = stringResource(if (choosing) R.string.requests_choosing else R.string.requests_choose),
+                    busy = choosing,
                     onClick = onChoose,
                     emphasis = if (best) RequestEmphasis.Primary else RequestEmphasis.Secondary,
                     enabled = !locked,
@@ -425,10 +434,18 @@ private fun VersionName(version: RequestVersion) {
     val page = version.infoUrl?.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
     // The word joiner keeps the arrow on the name's last line.
     val text = if (page != null) "${version.title}⁠ ↗" else version.title
+    val opens = stringResource(R.string.requests_opens_source)
     Text(
         text = text,
         style = uiTextStyle(15, FontWeight.Medium, palette.ink0),
-        modifier = if (page != null) Modifier.clickable { runCatching { uriHandler.openUri(page) } } else Modifier,
+        modifier = if (page != null) {
+            // The arrow is only a sign for the eye, so a screen reader hears the name and that it opens the source.
+            Modifier
+                .clickable(onClickLabel = opens, role = Role.Button) { runCatching { uriHandler.openUri(page) } }
+                .semantics { contentDescription = version.title }
+        } else {
+            Modifier
+        },
     )
 }
 
@@ -525,6 +542,7 @@ private fun CoverOfferCard(
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             RequestButton(
                 text = stringResource(if (uiState.busy == Busy.TakingCover(lane.id)) R.string.requests_cover_using else R.string.requests_cover_use),
+                busy = uiState.busy == Busy.TakingCover(lane.id),
                 onClick = { actions.onTakeCover(lane.id) },
                 emphasis = RequestEmphasis.Primary,
                 fullWidth = true,
@@ -532,6 +550,7 @@ private fun CoverOfferCard(
             )
             RequestButton(
                 text = stringResource(if (uiState.busy == Busy.KeepingCover(lane.id)) R.string.requests_cover_keeping else R.string.requests_cover_keep),
+                busy = uiState.busy == Busy.KeepingCover(lane.id),
                 onClick = { actions.onKeepCover(lane.id) },
                 emphasis = RequestEmphasis.Ghost,
                 fullWidth = true,
@@ -557,7 +576,6 @@ private fun CoverFigure(caption: String, cover: @Composable () -> Unit) {
 @Composable
 internal fun UnrequestedLane(kind: RequestKind, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
-    val shape = RoundedCornerShape(Radius.lg)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -582,6 +600,8 @@ internal fun UnrequestedLane(kind: RequestKind, uiState: BookRequestUIState, wor
 internal fun StartButton(kind: RequestKind, label: String, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions) {
     RequestButton(
         text = if (uiState.busy == Busy.Starting(kind)) stringResource(R.string.requests_requesting) else label,
+        busy = uiState.busy == Busy.Starting(kind),
+        width = RequestButtonWidth,
         onClick = { actions.onStart(kind) },
         enabled = !uiState.isLocked,
         contentDescription = stringResource(R.string.requests_request_kind, label, kindLabel(kind, wording).lowercase()),
