@@ -59,7 +59,9 @@ internal object RequestStartTestTags {
  * stage host steps aside while the Files tab is showing, so the buttons are never twice on screen.
  *
  * A start that succeeds opens the request page in the stack that is showing this page. The ViewModel holds the pending
- * open, so a start that answers while the reader is elsewhere opens it when they return.
+ * open, so a start that answers while the reader is elsewhere opens it when they return. Whichever host is on screen
+ * takes that open and any failure message: the Files host only while its tab is selected, the stage host only while it
+ * is not, so a result is taken once even for a book that shows no buttons on the stage.
  */
 internal class RequestStartSection(private val host: Host) : BookDetailSection {
 
@@ -69,45 +71,62 @@ internal class RequestStartSection(private val host: Host) : BookDetailSection {
     @Composable
     override fun Content(context: BookDetailSectionContext, modifier: Modifier) {
         val book = context.book
-        if (host == Host.Stage && (context.tabs.selected == BookDetailTab.Files || !rememberIsWishlistOnly(book))) return
+        if (host == Host.Stage && context.tabs.selected == BookDetailTab.Files) return
         val viewModel = hiltViewModel<RequestStartViewModel, RequestStartViewModel.Factory>(
             creationCallback = { it.create(book.uuid) },
         )
         val state by viewModel.uiState.collectAsState()
-        val onNavigate by rememberUpdatedState(context.onNavigate)
-        val onShowMessage by rememberUpdatedState(context.onShowMessage)
+        RequestStartContent(host, context, state, viewModel::start, viewModel::opened, viewModel::messageShown, modifier)
+    }
+}
 
-        // The push happens here, while this page is on top of the stack that asked, never from a ViewModel.
-        LaunchedEffect(state.pendingOpen) {
-            state.pendingOpen?.let { uuid ->
-                onNavigate(BookDetailDestination.Request(uuid))
-                viewModel.opened()
-            }
-        }
-        LaunchedEffect(state.message) {
-            state.message?.let { message ->
-                onShowMessage(BookDetailMessage(message.text))
-                viewModel.messageShown(message)
-            }
-        }
+/** What a host shows for [state], and the events it consumes. The ViewModel's calls come in as [onStart], [onOpened] and [onMessageShown]. */
+@Composable
+internal fun RequestStartContent(
+    host: RequestStartSection.Host,
+    context: BookDetailSectionContext,
+    state: RequestStartUIState,
+    onStart: (RequestKind) -> Unit,
+    onOpened: () -> Unit,
+    onMessageShown: (RequestStartMessage) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val book = context.book
+    val onNavigate by rememberUpdatedState(context.onNavigate)
+    val onShowMessage by rememberUpdatedState(context.onShowMessage)
 
-        val kinds = unrequestedKinds(book.formats, emptyList(), state.viewer)
-        if (kinds.isEmpty()) return
-        val wording = rememberRequestWording()
-        when (host) {
-            Host.Files -> Column(modifier.fillMaxWidth().padding(top = Spacing.xl + Spacing.sm)) {
-                Text(
-                    text = stringResource(R.string.requests_not_in_library),
-                    style = displayTextStyle(30.sp, OmnibusTheme.palette.ink0, FontWeight.SemiBold),
-                    modifier = Modifier.padding(bottom = Spacing.md).semantics { heading() },
-                )
-                RequestSlots(kinds, state.starting, state.isOnline, wording, viewModel::start)
-            }
-            Host.Stage -> RequestSlots(
-                kinds, state.starting, state.isOnline, wording, viewModel::start,
-                modifier.padding(top = 30.dp).widthIn(max = 320.dp),
+    // The push happens here, while this page is on top of the stack that asked, never from a ViewModel.
+    LaunchedEffect(state.pendingOpen) {
+        state.pendingOpen?.let { uuid ->
+            onNavigate(BookDetailDestination.Request(uuid))
+            onOpened()
+        }
+    }
+    LaunchedEffect(state.message) {
+        state.message?.let { message ->
+            onShowMessage(BookDetailMessage(message.text))
+            onMessageShown(message)
+        }
+    }
+
+    // The stage host's buttons are only for a wished book; it still takes the events while the Files tab is not showing.
+    if (host == RequestStartSection.Host.Stage && !rememberIsWishlistOnly(book)) return
+    val kinds = unrequestedKinds(book.formats, emptyList(), state.viewer)
+    if (kinds.isEmpty()) return
+    val wording = rememberRequestWording()
+    when (host) {
+        RequestStartSection.Host.Files -> Column(modifier.fillMaxWidth().padding(top = Spacing.xl + Spacing.sm)) {
+            Text(
+                text = stringResource(R.string.requests_not_in_library),
+                style = displayTextStyle(30.sp, OmnibusTheme.palette.ink0, FontWeight.SemiBold),
+                modifier = Modifier.padding(bottom = Spacing.md).semantics { heading() },
             )
+            RequestSlots(kinds, state.starting, state.isOnline, wording, onStart)
         }
+        RequestStartSection.Host.Stage -> RequestSlots(
+            kinds, state.starting, state.isOnline, wording, onStart,
+            modifier.padding(top = 30.dp).widthIn(max = 320.dp),
+        )
     }
 }
 
