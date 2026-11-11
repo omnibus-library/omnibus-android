@@ -259,7 +259,7 @@ private fun RequestHeader(book: Book, uiState: BookRequestUIState, wording: Requ
     val palette = OmnibusTheme.palette
     val wishers = wishersLine(uiState.wanters.orEmpty(), uiState.viewer.id, wording)
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = Alignment.Top) {
-        BookCover(book.coverIdentity(), Modifier.width(COVER_WIDTH))
+        BookCover(book.coverIdentity(), Modifier.width(COVER_WIDTH), revision = uiState.coverRevision)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
             Text(
                 text = book.displayTitle,

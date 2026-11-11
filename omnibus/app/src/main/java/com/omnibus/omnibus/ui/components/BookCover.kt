@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +53,7 @@ private const val COVER_ASPECT_RATIO = 2f / 3f
  * @param cornerRadius 5 dp on the grid, 6 dp on the Continue card and shelf tiles, 0 for mosaic slots.
  * @param keepsAspect When false the cover fills whatever box it's given instead of imposing 2:3, so
  * mosaic slots tile without gaps.
+ * @param revision Changes when the book's art does, so the image is requested again.
  */
 @Composable
 fun BookCover(
@@ -60,6 +62,7 @@ fun BookCover(
     size: CoverSize = CoverSize.Md,
     cornerRadius: Dp = 5.dp,
     keepsAspect: Boolean = true,
+    revision: Int = 0,
 ) {
     val shape = RoundedCornerShape(cornerRadius)
 
@@ -74,24 +77,27 @@ fun BookCover(
     ) {
         GeneratedCoverPlate(identity, Modifier.fillMaxSize())
         if (identity.hasCover && !LocalInspectionMode.current) {
-            CoverArt(identity.uuid, size)
+            CoverArt(identity.uuid, size, revision)
         }
         CoverLighting(Modifier.fillMaxSize())
     }
 }
 
 @Composable
-private fun CoverArt(uuid: String, size: CoverSize) {
+private fun CoverArt(uuid: String, size: CoverSize, revision: Int) {
     val context = LocalPlatformContext.current
     val request = remember(uuid, size, context) {
         ImageRequest.Builder(context).data(CoverThumbnail(uuid, size)).build()
     }
-    AsyncImage(
-        model = request,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.fillMaxSize(),
-    )
+    // A new request equal to the old one wouldn't restart the load, so a changed revision rebuilds the image.
+    key(revision) {
+        AsyncImage(
+            model = request,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
 
 /**

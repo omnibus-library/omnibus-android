@@ -111,6 +111,7 @@ private const val DEFAULT_MESSAGE_MILLIS = 4_000L
  * @property message What the page is saying, with an Undo when the write can be taken back.
  * @property isOnline Whether the device is online. Commands never queue, so every write control waits for it.
  * @property nowMillis The clock when this state was built, which dates the lanes' relative times.
+ * @property coverRevision Counts the covers the reader has taken, so the header's image loads the new one.
  */
 data class BookRequestUIState(
     val book: Book? = null,
@@ -125,6 +126,7 @@ data class BookRequestUIState(
     val message: RequestMessage? = null,
     val isOnline: Boolean = true,
     val nowMillis: Long = 0L,
+    val coverRevision: Int = 0,
 ) {
 
     private val laneIds: List<Long>
@@ -348,8 +350,17 @@ class BookRequestViewModel @AssistedInject constructor(
             val taken = write(RequestAction.TakeCover, Busy.TakingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
                 requests.takeCover(laneId)
             }
-            if (taken != null) rereadOtherOffers(laneId)
+            if (taken != null) {
+                rereadBook()
+                rereadOtherOffers(laneId)
+            }
         }
+    }
+
+    /** The cover is new, so the header's image restarts, and a book that had none is read again to show it. */
+    private suspend fun rereadBook() {
+        val fresh = (library.getBookFlow(uuid).first() as? BookResult.Success)?.book
+        change { it.copy(book = fresh ?: it.book, coverRevision = it.coverRevision + 1) }
     }
 
     /** Turns the downloaded cover down. */

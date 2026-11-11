@@ -877,6 +877,26 @@ class BookRequestViewModelTest : DescribeSpec({
                 requests.calls.drop(before).filter { it.function == "request" }.map { it.args.single() } shouldBe listOf(6L)
             }
 
+            it("reads the book again after a taken cover, so its header shows the new cover") {
+                val uuid = randomString()
+                val ready = request(uuid, 5, RequestState.Ready).copy(coverOffer = randomCoverOffer())
+                val requests = TestRequestsRepository().apply {
+                    serve(uuid, ready)
+                    answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                }
+                val library = TestLibraryRepository().apply {
+                    bookResult = BookResult.Success(randomBook().copy(uniqueIdentifier = uuid, coverUrl = null))
+                }
+                val vm = sut(uuid, requests, library, authAs(CHOOSER))
+                vm.load()
+                requests.answer("takeCover", ok(ready.copy(coverOffer = null)))
+                library.bookResult = BookResult.Success(randomBook().copy(uniqueIdentifier = uuid, coverUrl = "/covers/new"))
+
+                vm.takeCover(5)
+
+                vm.uiState.value.let { it.book?.coverUrl to it.coverRevision } shouldBe ("/covers/new" to 1)
+            }
+
             it("reads the lane and the listings again after a failed cover write, since the request may have moved on") {
                 val uuid = randomString()
                 val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Ready))
