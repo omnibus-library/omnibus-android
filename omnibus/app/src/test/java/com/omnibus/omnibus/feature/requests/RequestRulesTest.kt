@@ -441,6 +441,12 @@ class RequestRulesTest : DescribeSpec({
             offersRequestAgain(cancelled, ASKER, listOf(live), now) shouldBe false
         }
 
+        it("holds it back while the viewer has that kind finished for the book, which stays on the page") {
+            val finished = request(RequestState.Ready, kind = RequestKind.Ebook).copy(userId = ASKER.id)
+
+            offersRequestAgain(cancelled, ASKER, listOf(finished), now) shouldBe false
+        }
+
         it("offers it beside another reader's live request, or the viewer's live request of the other kind") {
             val theirs = request(RequestState.Looking, kind = RequestKind.Ebook).copy(userId = 99)
             val audio = request(RequestState.Looking, kind = RequestKind.Audiobook).copy(userId = ASKER.id)
@@ -485,6 +491,7 @@ class RequestRulesTest : DescribeSpec({
     describe("the kinds a viewer may request") {
         it("lists the kinds the library lacks that no request covers") {
             val covered = randomRequestListing().let { it.copy(request = it.request.copy(kind = RequestKind.Audiobook)) }
+            fun finished(kind: RequestKind) = randomRequestListing().let { it.copy(request = it.request.copy(kind = kind, state = RequestState.Ready)) }
 
             listOf(
                 unrequestedKinds(listOf("PRINT"), emptyList(), ASKER),
@@ -492,10 +499,12 @@ class RequestRulesTest : DescribeSpec({
                 unrequestedKinds(listOf("PRINT"), listOf(covered), ASKER),
                 unrequestedKinds(listOf("PRINT"), emptyList(), ASKER.copy(canStart = false)),
                 unrequestedKinds(listOf("EPUB", "M4B"), emptyList(), ASKER),
+                unrequestedKinds(listOf("PRINT"), listOf(finished(RequestKind.Ebook), finished(RequestKind.Audiobook)), ASKER),
             ) shouldBe listOf(
                 listOf(RequestKind.Ebook, RequestKind.Audiobook),
                 listOf(RequestKind.Audiobook),
                 listOf(RequestKind.Ebook),
+                emptyList(),
                 emptyList(),
                 emptyList(),
             )
@@ -519,7 +528,8 @@ class RequestRulesTest : DescribeSpec({
                 detailPollIntervalMillis(listOf(request(RequestState.Ready), request(RequestState.Chosen))),
                 detailPollIntervalMillis(listOf(request(RequestState.Choose), request(RequestState.Stuck))),
                 detailPollIntervalMillis(emptyList()),
-            ) shouldBe listOf(2_000L, null, null)
+                detailPollIntervalMillis(listOf(request(RequestState.Ready), request(RequestState.Ready))),
+            ) shouldBe listOf(2_000L, null, null, null)
         }
     }
 
@@ -540,17 +550,20 @@ class RequestRulesTest : DescribeSpec({
             splitBookRequests(listOf(gone), shown).let { it.lanes to it.history } shouldBe (emptyList<Any>() to listOf(gone))
         }
 
-        it("keeps a request that swapped a version in the history, unless it is stuck") {
-            val swapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 3))
+        it("keeps a request that swapped a version in the history, unless it is stuck or finished") {
+            val swapped = listing(request(RequestState.Choose, versions = listOf(version(), version(rejected = true))).copy(id = 3))
             val stuckSwapped = listing(request(RequestState.Stuck, versions = listOf(version(rejected = true))).copy(id = 2))
+            val readySwapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 1))
 
-            splitBookRequests(listOf(swapped, stuckSwapped), shown).history shouldBe listOf(swapped)
+            splitBookRequests(listOf(swapped, stuckSwapped, readySwapped), shown).history shouldBe listOf(swapped)
         }
 
-        it("leaves a ready request with nothing swapped out of both") {
+        it("gives a finished request a lane of its own, and keeps it out of the history") {
             val ready = listing(request(RequestState.Ready, versions = listOf(version())).copy(id = 3))
+            val readySwapped = listing(request(RequestState.Ready, versions = listOf(version(), version(rejected = true))).copy(id = 2))
 
-            splitBookRequests(listOf(ready), shown).let { it.lanes to it.history } shouldBe (emptyList<Any>() to emptyList())
+            splitBookRequests(listOf(ready, readySwapped), shown).let { it.lanes to it.history } shouldBe
+                (listOf(ready, readySwapped) to emptyList())
         }
 
         it("never lists the request on screen") {

@@ -132,6 +132,24 @@ class BookRequestViewModelTest : DescribeSpec({
             } shouldBe Triple(listOf(5L, 6L), listOf(4L), 1)
         }
 
+        it("shows a finished ebook and a finished audiobook as lanes again when the page is entered anew") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository()
+            requests.serve(
+                uuid,
+                request(uuid, 5, RequestState.Ready, kind = RequestKind.Ebook),
+                request(uuid, 6, RequestState.Ready, kind = RequestKind.Audiobook),
+            )
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val library = libraryWith(uuid)
+            val vm = sut(uuid, requests, library, authAs(CHOOSER))
+
+            vm.load()
+
+            vm.uiState.value.let { it.lanes.map { lane -> lane.kind }.toSet() to it.pollInterval } shouldBe
+                (setOf(RequestKind.Ebook, RequestKind.Audiobook) to null)
+        }
+
         it("leaves the wishers line out when that read fails") {
             val uuid = randomString()
             val requests = TestRequestsRepository().apply { serve(uuid, request(uuid, 5)) }
@@ -484,6 +502,25 @@ class BookRequestViewModelTest : DescribeSpec({
                 runCurrent()
 
                 vm.uiState.value.let { it.lanes.map { lane -> lane.id } to it.failure } shouldBe (listOf(5L) to null)
+            }
+        }
+
+        it("keeps a lane in view when it finishes while the page stays open") {
+            runTest {
+                val uuid = randomString()
+                val requests = TestRequestsRepository()
+                val chooser = request(uuid, 5, RequestState.Choose, kind = RequestKind.Ebook)
+                val moving = request(uuid, 6, RequestState.OnItsWay, kind = RequestKind.Audiobook, userId = 2, updatedAt = 100)
+                requests.serve(uuid, chooser, moving)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                val vm = openPage(requests, uuid)
+                requests.serve(uuid, chooser, moving.copy(state = RequestState.Ready, updatedAt = 200))
+
+                advanceTimeBy(2_000)
+                runCurrent()
+
+                vm.uiState.value.lanes.map { it.id to it.state } shouldBe
+                    listOf(5L to RequestState.Choose, 6L to RequestState.Ready)
             }
         }
 

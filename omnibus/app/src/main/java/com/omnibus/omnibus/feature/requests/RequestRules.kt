@@ -286,7 +286,7 @@ internal fun undoDelayMillis(cancelAt: Long?, nowMillis: Long): Long? =
 
 /**
  * Whether Request again is offered: a cancelled request whose undo has run out, to a reader who may request and has no
- * request of that kind going for the book already.
+ * request of that kind going or finished for the book already.
  */
 internal fun offersRequestAgain(
     request: BookRequest,
@@ -295,7 +295,9 @@ internal fun offersRequestAgain(
     nowMillis: Long,
 ): Boolean {
     val undoOpen = request.cancelAt?.let { nowMillis < it * MILLIS } ?: false
-    val alreadyGoing = bookRequests.any { it.userId == viewer.id && it.kind == request.kind && isLive(it.state) }
+    val alreadyGoing = bookRequests.any {
+        it.userId == viewer.id && it.kind == request.kind && (isLive(it.state) || it.state == RequestState.Ready)
+    }
     return request.state == RequestState.Cancelled && viewer.canStart && !undoOpen && !alreadyGoing
 }
 
@@ -323,17 +325,20 @@ internal fun unrequestedKinds(formats: List<String>, listings: List<RequestListi
 internal fun detailPollIntervalMillis(requests: List<BookRequest>): Long? =
     DETAIL_POLL_MILLIS.takeIf { requests.any { isMoving(it.state) } }
 
-/** A book's requests besides the one on screen: those going or stuck get a lane, and the history keeps the rest. */
+/** A book's requests besides the one on screen: those going, stuck or finished get a lane, and the history keeps the rest. */
 internal data class BookSplit(val lanes: List<RequestListing>, val history: List<RequestListing>)
 
-/** Splits [listings] around the request [shown]: lanes are live or stuck, history is cancelled or swapped and not stuck. */
+/**
+ * Splits [listings] around the request [shown]. A request that is going, stuck or ready gets a lane, so a finished one
+ * stays on the page. The history takes the cancelled ones and any going request that swapped a version.
+ */
 internal fun splitBookRequests(listings: List<RequestListing>, shown: Long): BookSplit {
     val others = listings.filter { it.request.id != shown }
     return BookSplit(
-        lanes = others.filter { isLive(it.request.state) || it.request.state == RequestState.Stuck },
+        lanes = others.filter { isLive(it.request.state) || it.request.state == RequestState.Stuck || it.request.state == RequestState.Ready },
         history = others.filter {
             it.request.state == RequestState.Cancelled ||
-                (it.request.state != RequestState.Stuck && it.request.versions.any { v -> v.rejected })
+                (isLive(it.request.state) && it.request.versions.any { v -> v.rejected })
         },
     )
 }
