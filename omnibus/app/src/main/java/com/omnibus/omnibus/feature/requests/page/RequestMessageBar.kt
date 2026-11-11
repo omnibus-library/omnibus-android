@@ -59,22 +59,20 @@ internal fun RequestMessageBar(
     val dismissed by rememberUpdatedState(onDismissed)
     val accessibility = LocalAccessibilityManager.current
     LaunchedEffect(message.id) {
-        val left = message.textRemainingMillis(now())
-        delay(
-            if (message.undoRequestId == null) {
-                accessibility?.calculateRecommendedTimeoutMillis(left, containsIcons = false, containsText = true, containsControls = false) ?: left
-            } else {
-                left
-            },
-        )
+        // The timeout counts from when the message was posted, so a bar that comes back doesn't start it over.
+        val recommended = if (message.undoRequestId == null) {
+            val shown = message.textDeadlineMillis - message.postedAtMillis
+            accessibility?.calculateRecommendedTimeoutMillis(shown, containsIcons = false, containsText = true, containsControls = false) ?: 0L
+        } else {
+            0L
+        }
+        delay(message.textRemainingMillis(now(), recommended))
         dismissed()
     }
     var undoOpen by remember(message.id) { mutableStateOf(message.undoRemainingMillis(now()) > 0) }
     LaunchedEffect(message.id) {
-        if (message.undoRequestId != null) {
-            delay(message.undoRemainingMillis(now()))
-            undoOpen = false
-        }
+        delay(message.undoRemainingMillis(now()))
+        undoOpen = false
     }
     Surface(
         modifier = modifier.widthIn(max = MESSAGE_MAX_WIDTH).fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
@@ -93,7 +91,7 @@ internal fun RequestMessageBar(
                 style = uiTextStyle(14, FontWeight.Normal, palette.bg0),
                 modifier = Modifier.weight(1f),
             )
-            if (message.undoRequestId != null && undoOpen) {
+            if (undoOpen) {
                 Text(
                     text = stringResource(R.string.requests_undo),
                     style = uiTextStyle(14, FontWeight.SemiBold, palette.bg0).copy(textDecoration = TextDecoration.Underline),

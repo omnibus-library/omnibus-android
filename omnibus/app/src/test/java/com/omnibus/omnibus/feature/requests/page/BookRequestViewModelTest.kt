@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.requests.BookRequest
+import com.omnibus.omnibus.data.requests.NobodyViewer
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.data.requests.RequestState
@@ -247,19 +248,33 @@ class BookRequestViewModelTest : DescribeSpec({
             vm.uiState.value.viewer shouldBe CHOOSER
         }
 
-        it("reads the lanes again once someone is known, since a first read with nobody files nothing") {
+        it("shows the lanes read-only while nobody is known") {
             val uuid = randomString()
             val requests = TestRequestsRepository().apply { serve(uuid, request(uuid, 5, RequestState.Choose)) }
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), TestAuthRepository())
+
+            vm.load()
+
+            vm.uiState.value.let { it.lanes.map { lane -> lane.id } to it.viewer } shouldBe (listOf(5L) to NobodyViewer)
+        }
+
+        it("picks the lane to open on again, and reads the lanes again, once someone is known") {
+            val uuid = randomString()
+            val looking = request(uuid, 5, RequestState.Looking)
+            val choosing = request(uuid, 6, RequestState.Choose, userId = 2)
+            val requests = TestRequestsRepository().apply { serve(uuid, looking, choosing) }
             requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
             requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
             val auth = TestAuthRepository()
             val vm = sut(uuid, requests, libraryWith(uuid), auth)
             vm.load()
-            val before = vm.uiState.value.lanes
+            val before = vm.uiState.value.lanes.map { it.id }
 
             auth.currentUserState.value = randomCurrentUser().copy(id = 1, bookRequests = true, canStartRequests = true, canChooseRequestVersions = true)
 
-            before.map { it.id } to vm.uiState.value.lanes.map { it.id } shouldBe (emptyList<Long>() to listOf(5L))
+            Triple(before, vm.uiState.value.lanes.map { it.id }, requests.callsTo("bookList").size) shouldBe
+                Triple(listOf(5L, 6L), listOf(6L, 5L), 2)
         }
 
         it("may do nothing when the server has book requests off for the reader") {
@@ -351,11 +366,26 @@ class BookRequestViewModelTest : DescribeSpec({
                 val before = vm.uiState.value.lanes.map { it.id }
                 backgroundScope.launch { vm.keepCurrent() }
 
-                advanceTimeBy(2_000)
+                advanceTimeBy(10_000)
                 runCurrent()
 
                 before to vm.uiState.value.lanes.map { it.id } shouldBe (listOf(5L) to listOf(5L, 6L))
             }
+        }
+
+        it("is read again only at the list's slow pace when nothing is moving, so a read that keeps failing isn't hammered") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository()
+            val main = request(uuid, 5, RequestState.Choose)
+            val other = request(uuid, 6, RequestState.Choose, userId = 2)
+            requests.serve(uuid, main, other)
+            requests.answerAlways("request", UNREACHABLE, 6L)
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER))
+
+            vm.load()
+
+            vm.uiState.value.pollInterval shouldBe 10_000L
         }
     }
 
@@ -855,6 +885,24 @@ class BookRequestViewModelTest : DescribeSpec({
                 vm.uiState.value.reads[6] shouldBe answer
             }
 
+            it("keeps the lane a write started while the reload was out, though the reload listed none of it") {
+                val uuid = randomString()
+                val main = request(uuid, 5, RequestState.Choose, updatedAt = 100)
+                val (vm, requests) = openedPage(uuid, main)
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("request", ok(main), gate, forFirstArg = 5L)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                vm.load()
+                val started = request(uuid, 9, RequestState.Looking, kind = RequestKind.Audiobook)
+                requests.answer("start", ok(started))
+                requests.serve(uuid, main, started)
+                vm.start(RequestKind.Audiobook)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.lanes.map { it.id } shouldBe listOf(5L, 9L)
+            }
+
             it("still shows the error for a first load a write raced, when its main read fails") {
                 val uuid = randomString()
                 val requests = TestRequestsRepository()
@@ -937,7 +985,7 @@ class BookRequestViewModelTest : DescribeSpec({
                 vm.cancel(5)
 
                 vm.uiState.value.let { Triple(it.reads[5], it.busy, it.message?.copy(id = 0)) } shouldBe
-                    Triple(cancelled, null, RequestMessage("Ebook request cancelled", undoRequestId = 5, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500))
+                    Triple(cancelled, null, RequestMessage("Ebook request cancelled", undoRequestId = 5, postedAtMillis = 1_000_000, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500))
             }
 
             it("shows an audiobook request's own kind") {
@@ -1017,14 +1065,25 @@ class BookRequestViewModelTest : DescribeSpec({
             requests.callsTo("undoCancel").size to vm.uiState.value.message?.undoRequestId shouldBe (0 to 5L)
         }
 
-        it("says why when it fails, keeping the Undo while its window is open") {
+        it("says why when it fails for a reason another press may get past, keeping the Undo while its window is open") {
+            val uuid = randomString()
+            val (vm, requests) = cancelledPage(uuid)
+            requests.answer("undoCancel", RequestsResult.Failure(RequestsError.Http(503, "Busy")))
+
+            vm.undo()
+
+            vm.uiState.value.message?.let { it.text to it.undoRequestId } shouldBe ("Couldn’t undo: Busy" to 5L)
+        }
+
+        it("says why and offers no Undo when the server refuses it, since pressing again changes nothing") {
             val uuid = randomString()
             val (vm, requests) = cancelledPage(uuid)
             requests.answer("undoCancel", RequestsResult.Failure(RequestsError.Http(410, "Too late")))
 
             vm.undo()
 
-            vm.uiState.value.message?.let { it.text to it.undoRequestId } shouldBe ("Couldn’t undo: Too late" to 5L)
+            vm.uiState.value.message?.let { Triple(it.text, it.undoRequestId, it.undoDeadlineMillis) } shouldBe
+                Triple("Couldn’t undo: Too late", null, null)
         }
 
         it("keeps the Undo, with its own deadline, when another write fails") {
@@ -1038,7 +1097,7 @@ class BookRequestViewModelTest : DescribeSpec({
 
             vm.uiState.value.message?.copy(id = 0) shouldBe RequestMessage(
                 "You have a lot of requests going. Try again in a few minutes.",
-                undoRequestId = 5, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500,
+                undoRequestId = 5, postedAtMillis = 1_003_000, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500,
             )
         }
 
@@ -1080,6 +1139,16 @@ class BookRequestViewModelTest : DescribeSpec({
 
             listOf(message.textRemainingMillis(4_000), message.textRemainingMillis(9_000), message.undoRemainingMillis(4_000)) shouldBe
                 listOf(6_000L, 1_000L, 3_000L)
+        }
+
+        it("counts a longer accessibility timeout from when the message was posted, and never starts it over") {
+            val message = RequestMessage("x", postedAtMillis = 1_000, textDeadlineMillis = 5_000)
+
+            listOf(
+                message.textRemainingMillis(nowMillis = 5_000, recommendedMillis = 12_000),
+                message.textRemainingMillis(nowMillis = 10_000, recommendedMillis = 12_000),
+                message.textRemainingMillis(nowMillis = 13_500, recommendedMillis = 12_000),
+            ) shouldBe listOf(8_000L, 3_000L, 0L)
         }
 
         it("is none once the deadline has passed, and for an Undo that was never offered") {

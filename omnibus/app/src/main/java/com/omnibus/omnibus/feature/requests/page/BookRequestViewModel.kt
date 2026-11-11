@@ -22,7 +22,7 @@ import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.requests.RequestAction
 import com.omnibus.omnibus.feature.requests.actionFailure
-import com.omnibus.omnibus.feature.requests.DETAIL_POLL_MILLIS
+import com.omnibus.omnibus.feature.requests.LIST_POLL_MILLIS
 import com.omnibus.omnibus.feature.requests.detailPollIntervalMillis
 import com.omnibus.omnibus.feature.requests.isMoving
 import com.omnibus.omnibus.feature.requests.kindLabel
@@ -71,6 +71,7 @@ sealed interface Busy {
  * elsewhere) waits only for what is left and never restarts a window the server is already counting down.
  *
  * @property undoRequestId Set only for a cancel: the request Undo restores.
+ * @property postedAtMillis When the message was posted, in epoch milliseconds. A reader's accessibility timeout counts from here.
  * @property textDeadlineMillis When the text goes away, in epoch milliseconds.
  * @property undoDeadlineMillis When Undo stops being offered: 1.5 s before the server's `cancel_at`. Null without Undo.
  * @property id Numbers the message, so two with the same text each show.
@@ -78,12 +79,17 @@ sealed interface Busy {
 data class RequestMessage(
     val text: String,
     val undoRequestId: Long? = null,
+    val postedAtMillis: Long = 0L,
     val textDeadlineMillis: Long = 0L,
     val undoDeadlineMillis: Long? = null,
     val id: Long = 0,
 ) {
-    /** How long the text has left at [nowMillis]. */
-    fun textRemainingMillis(nowMillis: Long): Long = max(0L, textDeadlineMillis - nowMillis)
+    /**
+     * How long the text has left at [nowMillis]. A [recommendedMillis] longer than its own time holds it until that long
+     * after it was posted, so a bar that comes back never starts the reader's timeout over.
+     */
+    fun textRemainingMillis(nowMillis: Long, recommendedMillis: Long = 0L): Long =
+        max(0L, max(textDeadlineMillis, postedAtMillis + recommendedMillis) - nowMillis)
 
     /** How long Undo has left at [nowMillis]; zero when it was never offered. */
     fun undoRemainingMillis(nowMillis: Long): Long = undoDeadlineMillis?.let { max(0L, it - nowMillis) } ?: 0L
@@ -143,13 +149,13 @@ data class BookRequestUIState(
             return unrequestedKinds(held.formats, listed, viewer)
         }
 
-    /** Counts the listings too, and any listed lane with no read, so a lane whose full read failed keeps polling and is read again. */
+    /**
+     * Every two seconds while a lane is moving, by its read or its listing. A listed lane with no read is tried again
+     * at the list's slower pace, so a read that keeps failing is not hammered.
+     */
     val pollInterval: Long?
-        get() = if (laneIds.any { it !in reads }) {
-            DETAIL_POLL_MILLIS
-        } else {
-            detailPollIntervalMillis(lanes + laneIds.mapNotNull { id -> listings?.firstOrNull { it.request.id == id }?.request })
-        }
+        get() = detailPollIntervalMillis(lanes + laneIds.mapNotNull { id -> listings?.firstOrNull { it.request.id == id }?.request })
+            ?: LIST_POLL_MILLIS.takeIf { laneIds.any { it !in reads } }
 
     /** Who asked for [lane], as the list names them. */
     fun listingFor(lane: BookRequest): RequestListing? = listings?.firstOrNull { it.request.id == lane.id }
@@ -212,11 +218,14 @@ class BookRequestViewModel @AssistedInject constructor(
         // Follows the session, which is not confirmed until the server answers, so a later arrival still counts.
         viewModelScope.launch {
             authRepository.currentUser.catch { emit(null) }.collect { user ->
-                val before = _uiState.value
                 val viewer = user.toRequestViewer()
-                change { it.copy(viewer = viewer) }
-                // A page read with nobody known filed nothing, so it is read again now that someone is.
-                if (before.viewer == NobodyViewer && viewer != NobodyViewer && before.listings != null) load()
+                val arrived = _uiState.value.viewer == NobodyViewer && viewer != NobodyViewer
+                // What is most urgent depends on who is asking, so the lane the page opened on is picked again.
+                change { it.copy(viewer = viewer, mainId = it.mainId.takeUnless { arrived }) }
+                if (arrived && _uiState.value.listings != null) {
+                    settleMain()
+                    load()
+                }
             }
         }
     }
@@ -298,12 +307,12 @@ class BookRequestViewModel @AssistedInject constructor(
         when (main) {
             is RequestsResult.Success -> {
                 val answers = otherReads + (main.value.id to main.value)
-                val listedIds = (others + mainId).toSet()
                 // A lane whose read failed keeps its last good one. A write that landed meanwhile keeps its answers too:
-                // this read only fills the lanes it lacks.
-                change {
-                    val held = it.reads.filterKeys { id -> id in listedIds }
-                    it.copy(reads = if (started == generation) held + answers else answers + held)
+                // this read only fills the lanes it lacks, and what is listed now, not when it started, decides what stays.
+                change { state ->
+                    val listedNow = state.listings.orEmpty().map { it.request.id }.toSet()
+                    val held = state.reads.filterKeys { id -> id in listedNow }
+                    state.copy(reads = if (started == generation) held + answers else answers + held)
                 }
             }
             else -> if (!hadPage && mainId !in _uiState.value.reads) change { it.copy(failure = main.errorOrNull()) }
@@ -364,7 +373,8 @@ class BookRequestViewModel @AssistedInject constructor(
             undoDelayMillis(cancelled.cancelAt, now)?.let { delay ->
                 val text = wordingSource.wording().let { it.requestCancelled(kindLabel(cancelled.kind, it)) }
                 val undoDeadline = now + delay
-                val message = RequestMessage(text, cancelled.id, max(undoDeadline, now + DEFAULT_MESSAGE_MILLIS), undoDeadline, nextMessageId++)
+                val textDeadline = max(undoDeadline, now + DEFAULT_MESSAGE_MILLIS)
+                val message = RequestMessage(text, cancelled.id, now, textDeadline, undoDeadline, nextMessageId++)
                 change { it.copy(message = message) }
             }
             // Read once Undo is up and the controls are free, so a slow list can't eat the server's grace.
@@ -378,9 +388,22 @@ class BookRequestViewModel @AssistedInject constructor(
             val state = _uiState.value
             val id = state.message?.undoRequestId ?: return@launch
             if (state.busy != null || !state.isOnline) return@launch
-            // The Undo stays up until the server has taken the cancel back, so a failure never drops it.
-            val restored = write(RequestAction.Undo, Busy.Undoing(id), allowed = true) { requests.undoCancel(id) }
-            if (restored != null) change { if (it.message?.undoRequestId == id) it.copy(message = null) else it }
+            var refusal: RequestsError? = null
+            val failure = { error: RequestsError ->
+                refusal = error
+                actionFailure(RequestAction.Undo, error, wordingSource.wording())
+            }
+            val restored = write(failure, Busy.Undoing(id), allowed = true) { requests.undoCancel(id) }
+            // The Undo stays up for a failure another press might get past, and goes when the server said no.
+            change {
+                val shown = it.message?.takeIf { message -> message.undoRequestId == id }
+                when {
+                    shown == null -> it
+                    restored != null -> it.copy(message = null)
+                    refusal?.worthRetrying() == false -> it.copy(message = shown.copy(undoRequestId = null, undoDeadlineMillis = null))
+                    else -> it
+                }
+            }
         }
     }
 
@@ -460,12 +483,9 @@ class BookRequestViewModel @AssistedInject constructor(
         val now = timeSource.nowMillis()
         val open = _uiState.value.message?.takeIf { it.undoRequestId != null && it.undoRemainingMillis(now) > 0 }
         val shown = max(now + DEFAULT_MESSAGE_MILLIS, open?.undoDeadlineMillis ?: 0L)
-        val message = RequestMessage(text, open?.undoRequestId, shown, open?.undoDeadlineMillis, nextMessageId++)
+        val message = RequestMessage(text, open?.undoRequestId, now, shown, open?.undoDeadlineMillis, nextMessageId++)
         change { it.copy(message = message) }
     }
-
-    /** The clock the page's messages are timed against. */
-    fun nowMillis(): Long = timeSource.nowMillis()
 
     /** Files a write's answer in the listings, so its lane and its kind hold even when the reread fails. */
     private fun adopt(answer: BookRequest) {
@@ -505,7 +525,7 @@ class BookRequestViewModel @AssistedInject constructor(
     private fun settleMain() {
         val state = _uiState.value
         val listed = state.listings ?: return
-        if (state.viewer == NobodyViewer || listed.any { it.request.id == state.mainId }) return
+        if (listed.any { it.request.id == state.mainId }) return
         change { it.copy(mainId = mainRequest(listed, it.viewer)?.request?.id) }
     }
 
@@ -549,4 +569,9 @@ class BookRequestViewModel @AssistedInject constructor(
         LibraryError.SessionExpired -> RequestsError.SessionExpired
         is LibraryError.Http -> RequestsError.Http(code, serverMessage)
     }
+
+    /** Whether trying the same write again could work: the server was out of reach or failed. A refusal won't change. */
+    private fun RequestsError.worthRetrying(): Boolean = this is RequestsError.Unreachable || (this is RequestsError.Http && code >= SERVER_ERROR)
 }
+
+private const val SERVER_ERROR = 500
