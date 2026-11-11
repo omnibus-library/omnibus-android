@@ -106,6 +106,21 @@ class DefaultRequestsRepositoryTest : DescribeSpec({
             }
         }
 
+        context("when the book has null where the library's lenient reading would default it") {
+            it("decodes the listing, as the library does, while the request stays strict") {
+                withScriptedServer {
+                    val nullFormats = """{"id":5,"unique_identifier":"u-1","filename":"a.epub","title":"Dune","formats":null,"genres":null}"""
+                    script.answer("GET", reply(200, "[" + listing(bareRequest()).replace(NULL_BOOK, nullFormats) + "]"))
+                    val lenient = repository().list()
+                    script.answer("GET", reply(200, "[" + listing(bareRequest(state = "paused")).replace(NULL_BOOK, nullFormats) + "]"))
+                    val strict = repository().list()
+
+                    (lenient as RequestsResult.Success).value.single().book.formats shouldBe emptyList()
+                    strict shouldBe RequestsResult.Failure(RequestsError.UnexpectedResponse)
+                }
+            }
+        }
+
         context("when every field is set") {
             it("decodes the request, its versions and its cover offer") {
                 withScriptedServerAnswering(200, FULL_REQUEST) {

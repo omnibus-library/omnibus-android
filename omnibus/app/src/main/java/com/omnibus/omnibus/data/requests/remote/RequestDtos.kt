@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.data.requests.remote
 
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.remote.BookDto
+import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.CoverOffer
 import com.omnibus.omnibus.data.requests.LibraryHit
@@ -104,12 +106,12 @@ internal data class BookRequestDto(
 @Serializable
 internal data class RequestListingDto(
     val request: BookRequestDto,
-    val book: BookDto,
+    val book: JsonObject,
     @SerialName("requester_name") val requesterName: String = "",
     @SerialName("requester_has_avatar") val requesterHasAvatar: Boolean = false,
     @SerialName("cancelled_by_name") val cancelledByName: String? = null,
 ) {
-    fun toDomain() = RequestListing(request.toDomain(), book.toDomain(), requesterName, requesterHasAvatar, cancelledByName)
+    fun toDomain() = RequestListing(request.toDomain(), book.toBook(), requesterName, requesterHasAvatar, cancelledByName)
 }
 
 /** The body of `POST api/books/{uuid}/requests`. */
@@ -127,9 +129,12 @@ internal data class ChooseVersionDto(@SerialName("result_id") val resultId: Long
 /** The part of a `GET api/wishlists` row the request page reads. */
 @Serializable
 internal data class WishlistBookDto(
-    val book: BookDto,
+    val book: JsonObject,
     @SerialName("wanted_by") val wantedBy: List<WanterDto> = emptyList(),
 )
+
+/** The nested book, read as the library reads a book, so a null where it would default doesn't fail the whole list. */
+internal fun JsonObject.toBook(): Book = LibraryJson.decodeFromJsonElement(BookDto.serializer(), this).toDomain()
 
 @Serializable
 internal data class WanterDto(val id: Long, val name: String) {

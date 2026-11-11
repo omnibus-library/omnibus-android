@@ -121,9 +121,6 @@ data class BookRequestUIState(
     val nowMillis: Long = 0L,
 ) {
 
-    /** Whether nothing has answered yet. */
-    val isLoading: Boolean get() = book == null && failure == null && !isMissing
-
     private val laneIds: List<Long>
         get() {
             val main = mainId ?: return emptyList()

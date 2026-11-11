@@ -76,7 +76,7 @@ data class OmnibusPalette(
             ink1 = Oklch(0.36, 0.008, 70.0).toColor(),
             warn = Oklch(0.78, 0.13, 75.0).toColor(),
             seriesFill = Color(0xFFF0A556).copy(alpha = 0.16f),
-            ok = Oklch(0.62, 0.13, 150.0).toColor(),
+            ok = Oklch(0.48, 0.11, 150.0).toColor(),
         )
     }
 }

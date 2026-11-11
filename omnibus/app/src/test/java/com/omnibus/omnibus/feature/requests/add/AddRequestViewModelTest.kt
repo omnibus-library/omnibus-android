@@ -206,7 +206,7 @@ class AddRequestViewModelTest : DescribeSpec({
 
     describe("starting from a provider's record") {
 
-        fun match(vararg books: MatchedBook, outcome: ScanOutcomeKind = ScanOutcomeKind.CloseMatch) =
+        fun match(vararg books: MatchedBook, outcome: ScanOutcomeKind = ScanOutcomeKind.InLibraryUnowned) =
             RequestsResult.Success(ScanMatch(books.toList(), outcome))
 
         it("resolves the record before it starts anything") {
@@ -231,6 +231,17 @@ class AddRequestViewModelTest : DescribeSpec({
             vm.startFromRecord(randomProviderBook(), emptySet())
 
             vm.uiState.value.pendingOpen shouldBe made
+        }
+
+        it("starts from the record, not on a library book, when the match is only a close one") {
+            val requests = TestRequestsRepository()
+            requests.answer("resolve", match(MatchedBook(randomString(), "Dune", hasFiles = true), outcome = ScanOutcomeKind.CloseMatch))
+            requests.answer("startFromRecord", RequestsResult.Success(randomBookRequest()))
+            val vm = sut(requests)
+
+            vm.startFromRecord(randomProviderBook().copy(title = "Dune Messiah"), emptySet())
+
+            requests.calls.map { it.function } shouldBe listOf("resolve", "startFromRecord")
         }
 
         it("starts on the library book it matches when that book has no ebook") {
@@ -286,6 +297,22 @@ class AddRequestViewModelTest : DescribeSpec({
             vm.startFromRecord(randomProviderBook(), emptySet())
 
             vm.uiState.value.message shouldBe "You have a lot of requests going. Try again in a few minutes."
+        }
+    }
+
+    describe("which result is starting") {
+        it("names the library book, or the provider's record, whose request is running") {
+            val requests = TestRequestsRepository()
+            requests.answer("start", RequestsResult.Success(randomBookRequest()), CompletableDeferred())
+            val library = sut(requests)
+            library.startFromLibrary("u-1")
+            val record = randomProviderBook()
+            val other = TestRequestsRepository()
+            other.answer("resolve", RequestsResult.Success(ScanMatch(emptyList(), ScanOutcomeKind.NotInLibrary)), CompletableDeferred())
+            val fromRecord = sut(other)
+            fromRecord.startFromRecord(record, emptySet())
+
+            library.uiState.value.startingKey to fromRecord.uiState.value.startingKey shouldBe ("u-1" to record.key())
         }
     }
 

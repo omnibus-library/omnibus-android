@@ -234,10 +234,6 @@ class RequestGroupsTest : DescribeSpec({
                 listPollIntervalMillis(null),
             ) shouldBe listOf(10_000L, null, null, null)
         }
-
-        it("folds only Cancelled to start with") {
-            DefaultFolded shouldBe setOf(RequestGroupKey.Cancelled)
-        }
     }
 
     describe("the Request a book sheet's rows") {

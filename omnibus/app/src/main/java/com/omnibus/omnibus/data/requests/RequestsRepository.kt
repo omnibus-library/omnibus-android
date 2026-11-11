@@ -30,8 +30,10 @@ interface RequestsRepository {
     /** Gives up the downloading version and goes back to choosing among the others. */
     suspend fun swap(id: Long): RequestsResult<BookRequest>
 
+    /** Searches again for a stuck or stale request. */
     suspend fun retry(id: Long): RequestsResult<BookRequest>
 
+    /** Cancels a request. The answer carries `cancel_at`, until when the cancel can be taken back. */
     suspend fun cancel(id: Long): RequestsResult<BookRequest>
 
     /** Takes a cancel back, until the server's `cancel_at`. */

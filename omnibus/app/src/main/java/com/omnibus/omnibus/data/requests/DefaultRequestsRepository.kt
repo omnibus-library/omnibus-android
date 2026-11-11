@@ -16,6 +16,7 @@ import com.omnibus.omnibus.data.requests.remote.StartRequestFromMetaDto
 import com.omnibus.omnibus.data.requests.remote.WishlistBookDto
 import com.omnibus.omnibus.data.requests.remote.jsonBody
 import com.omnibus.omnibus.data.requests.remote.parseScanMatch
+import com.omnibus.omnibus.data.requests.remote.toBook
 import com.omnibus.omnibus.data.requests.remote.toProviderBook
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.IOException
@@ -52,7 +53,7 @@ class DefaultRequestsRepository @Inject constructor(
     override suspend fun wanters(uuid: String): RequestsResult<List<Wanter>> =
         call("GET", WISHLISTS_PATH, query = mapOf("user" to "all")) { body ->
             RequestsJson.decodeFromString<List<WishlistBookDto>>(body)
-                .firstOrNull { it.book.toDomain().uuid == uuid }
+                .firstOrNull { it.book.toBook().uuid == uuid }
                 ?.wantedBy.orEmpty().map { it.toDomain() }
         }
 

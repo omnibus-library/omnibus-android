@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
+import com.omnibus.omnibus.data.requests.ScanOutcomeKind
 import com.omnibus.omnibus.feature.requests.AddAction
 import com.omnibus.omnibus.feature.requests.addAction
 import com.omnibus.omnibus.feature.requests.di.RequestWordingSource
@@ -25,6 +26,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** What names a provider's record among the results: its own JSON, which is all there is to tell two apart. */
+internal fun ProviderBook.key(): String = "record:" + meta.hashCode()
+
+/** The outcomes whose library book is the record itself. */
+private val ExactMatches = setOf(ScanOutcomeKind.AlreadyOwned, ScanOutcomeKind.OnWishlist, ScanOutcomeKind.InLibraryUnowned)
 
 /** How long after the last keystroke the sheet searches. */
 private const val SEARCH_DEBOUNCE_MILLIS = 250L
@@ -44,6 +51,7 @@ sealed interface SearchResults<out T> {
  * @property library The books in the library the query matches.
  * @property providers The online providers' records the query matches.
  * @property starting Whether a start is running, so no second one can begin and every Request button waits.
+ * @property startingKey Which result the running start is for, so only its row says "Requesting…".
  * @property message What the last start said, such as why it failed. A new search clears it.
  * @property pendingOpen The book whose request page the Requests screen should open, set when a start succeeds. It lives
  * here, in the ViewModel the nav entry owns, so a fold or a rotation doesn't lose it.
@@ -53,6 +61,7 @@ data class AddRequestUIState(
     val library: SearchResults<LibraryHit> = SearchResults.Loading,
     val providers: SearchResults<ProviderBook> = SearchResults.Loading,
     val starting: Boolean = false,
+    val startingKey: String? = null,
     val message: String? = null,
     val pendingOpen: String? = null,
     val isOnline: Boolean = true,
@@ -108,7 +117,7 @@ class AddRequestViewModel @Inject constructor(
 
     /** Starts an ebook request on a library book. */
     fun startFromLibrary(uuid: String) {
-        launchStart { start(uuid) }
+        launchStart(uuid) { start(uuid) }
     }
 
     /**
@@ -118,12 +127,13 @@ class AddRequestViewModel @Inject constructor(
      * @param requested The books with an ebook request going, which the match opens rather than starts again.
      */
     fun startFromRecord(book: ProviderBook, requested: Set<String>) {
-        launchStart {
+        launchStart(book.key()) {
             val match = when (val resolved = requests.resolve(book)) {
                 is RequestsResult.Success -> resolved.value
                 else -> return@launchStart fail(wordingSource.wording().couldntLookUp(book.title))
             }
-            val found = match.library.firstOrNull()
+            // A close match is only a similar title ("Dune" for "Dune Messiah"), so it never stands for the record.
+            val found = match.library.firstOrNull().takeIf { match.outcome in ExactMatches }
             when (found?.let { addAction(it.uuid, null, it.hasFiles, requested) }) {
                 AddAction.Open -> open(found.uuid)
                 AddAction.Held -> fail(wordingSource.wording().alreadyInLibrary(book.title))
@@ -139,19 +149,19 @@ class AddRequestViewModel @Inject constructor(
     }
 
     /** Runs one start. A start while one runs, or offline, is ignored, and says so. */
-    private fun launchStart(block: suspend () -> Unit) {
+    private fun launchStart(key: String, block: suspend () -> Unit) {
         val state = _uiState.value
         if (!state.isOnline) return
         if (state.starting) {
             _uiState.update { it.copy(message = wordingSource.wording().stillStarting) }
             return
         }
-        _uiState.update { it.copy(starting = true, message = null) }
+        _uiState.update { it.copy(starting = true, startingKey = key, message = null) }
         viewModelScope.launch {
             try {
                 block()
             } finally {
-                _uiState.update { it.copy(starting = false) }
+                _uiState.update { it.copy(starting = false, startingKey = null) }
             }
         }
     }
