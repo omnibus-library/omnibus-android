@@ -60,6 +60,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.requests.PollWhileStarted
 import com.omnibus.omnibus.feature.requests.RequestGroup
 import com.omnibus.omnibus.feature.requests.add.AddRequestSheet
 import com.omnibus.omnibus.feature.requests.add.AddRequestViewModel
@@ -117,9 +118,9 @@ fun RequestsScreen(
     var showsSheet by rememberSaveable { mutableStateOf(false) }
     val wording = rememberRequestWording()
 
-    // Each runs when the entry enters composition, so returning to the list reads again and polling stops off screen.
+    // Each runs when the entry enters composition, so returning to the list reads again. Polling runs only while it is started.
     LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(Unit) { viewModel.keepCurrent() }
+    PollWhileStarted(viewModel::keepCurrent)
 
     // A start that succeeded hides the sheet, then pushes the page from this composed entry, so the push lands on this
     // stack. The list is read again without the push waiting for it.

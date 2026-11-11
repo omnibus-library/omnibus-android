@@ -44,6 +44,7 @@ import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailPaneLayout
 import com.omnibus.omnibus.feature.bookdetail.ui.PaneSplit
 import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.requests.PollWhileStarted
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.rememberRequestWording
 import com.omnibus.omnibus.feature.requests.wishersLine
@@ -103,9 +104,9 @@ fun BookRequestScreen(
         )
     }
 
-    // Each runs when the entry enters composition, so returning to the page reads again and polling stops off screen.
+    // Each runs when the entry enters composition, so returning to the page reads again. Polling runs only while it is started.
     LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(Unit) { viewModel.keepCurrent() }
+    PollWhileStarted(viewModel::keepCurrent)
 
     BookRequestScreenContent(
         uiState = uiState,
