@@ -1,0 +1,104 @@
+package com.omnibus.omnibus.feature.requests
+
+import android.content.res.Resources
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import com.omnibus.omnibus.R
+
+/** The request rules' wording from [resources], so the rules stay pure and every line is a string resource. */
+fun requestWording(resources: Resources): RequestWording = RequestWording(
+    looking = resources.getString(R.string.requests_state_looking),
+    lookingNote = resources.getString(R.string.requests_state_looking_note),
+    choose = resources.getString(R.string.requests_state_choose),
+    chosen = resources.getString(R.string.requests_state_chosen),
+    chosenNote = resources.getString(R.string.requests_state_chosen_note),
+    onItsWay = resources.getString(R.string.requests_state_on_its_way),
+    onItsWayNote = resources.getString(R.string.requests_state_on_its_way_note),
+    readyToRead = resources.getString(R.string.requests_state_ready_read),
+    readyToListen = resources.getString(R.string.requests_state_ready_listen),
+    readyNote = resources.getString(R.string.requests_state_ready_note),
+    stoppedMoving = resources.getString(R.string.requests_state_stopped_moving),
+    stoppedMovingNote = resources.getString(R.string.requests_state_stopped_moving_note),
+    couldntAdd = resources.getString(R.string.requests_state_couldnt_add),
+    couldntAddNote = resources.getString(R.string.requests_state_couldnt_add_note),
+    couldntFind = resources.getString(R.string.requests_state_couldnt_find),
+    couldntFindNote = resources.getString(R.string.requests_state_couldnt_find_note),
+    cancelled = resources.getString(R.string.requests_state_cancelled),
+    cancelledNote = resources.getString(R.string.requests_state_cancelled_note),
+    ebook = resources.getString(R.string.requests_kind_ebook),
+    audiobook = resources.getString(R.string.requests_kind_audiobook),
+    ready = resources.getString(R.string.requests_step_ready),
+    choseAVersion = resources.getString(R.string.requests_step_chose),
+    lookingFound = { resources.getString(R.string.requests_step_looking_found, it) },
+    lookingLabel = resources.getString(R.string.requests_looking_label),
+    lookingSlowLabel = resources.getString(R.string.requests_looking_slow_label),
+    formatUnknown = resources.getString(R.string.requests_format_unknown),
+    sizeUnknown = resources.getString(R.string.requests_size_unknown),
+    unknown = resources.getString(R.string.requests_unknown),
+    usenet = resources.getString(R.string.requests_usenet),
+    seeds = { count, n -> resources.getQuantityString(R.plurals.requests_seeds, n.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), count) },
+    versionsFound = { resources.getQuantityString(R.plurals.requests_versions_found, it, it) },
+    bestMatchFirst = resources.getString(R.string.requests_best_match_first),
+    coverSizes = { w, h, cw, ch -> resources.getString(R.string.requests_cover_sizes, w, h, cw, ch) },
+    lessThanAMinute = resources.getString(R.string.requests_less_than_a_minute),
+    minutesLeft = { resources.getString(R.string.requests_minutes_left, it) },
+    hoursLeft = { resources.getQuantityString(R.plurals.requests_hours_left, it, it) },
+    justNow = resources.getString(R.string.requests_just_now),
+    minutesAgo = { resources.getString(R.string.requests_minutes_ago, it) },
+    hoursAgo = { resources.getString(R.string.requests_hours_ago, it) },
+    yesterday = resources.getString(R.string.requests_yesterday),
+    daysAgo = { resources.getString(R.string.requests_days_ago, it) },
+    you = resources.getString(R.string.requests_you),
+    your = resources.getString(R.string.requests_your),
+    possessive = { resources.getString(R.string.requests_possessive, it) },
+    onWishlist = { resources.getString(R.string.requests_on_wishlist, it) },
+    onWishlists = { others, last -> resources.getString(R.string.requests_on_wishlists, others, last) },
+    cancelledByYou = resources.getString(R.string.requests_cancelled_by_you),
+    cancelledBy = { resources.getString(R.string.requests_cancelled_by, it) },
+    historyLine = { kind, head, day -> resources.getString(R.string.requests_history_line, kind, head, day) },
+    stoppedAt = { resources.getString(R.string.requests_stopped_at, it) },
+    swappedForAnother = resources.getString(R.string.requests_swapped_for_another),
+    stillStarting = resources.getString(R.string.requests_still_starting),
+    tooManyRequests = resources.getString(R.string.requests_failure_too_many),
+    cantRequest = resources.getString(R.string.requests_failure_cant_request),
+    bookGone = resources.getString(R.string.requests_failure_book_gone),
+    couldntStart = resources.getString(R.string.requests_failure_couldnt_start),
+    failureChoose = resources.getString(R.string.requests_failure_choose),
+    failureCancel = resources.getString(R.string.requests_failure_cancel),
+    failureUndo = resources.getString(R.string.requests_failure_undo),
+    failureSwap = resources.getString(R.string.requests_failure_swap),
+    failureRetry = resources.getString(R.string.requests_failure_retry),
+    failureTakeCover = resources.getString(R.string.requests_failure_take_cover),
+    failureKeepCover = resources.getString(R.string.requests_failure_keep_cover),
+    requestCancelled = { resources.getString(R.string.requests_request_cancelled, it) },
+    somethingWentWrong = resources.getString(R.string.requests_failure_something_went_wrong),
+    serverError = { resources.getString(R.string.requests_failure_server_error, it) },
+    failureLine = { prefix, message -> resources.getString(R.string.requests_failure_line, prefix, message) },
+    groupNeedsYou = resources.getString(R.string.requests_group_needs_you),
+    groupOnItsWay = resources.getString(R.string.requests_group_on_its_way),
+    groupLooking = resources.getString(R.string.requests_group_looking),
+    groupStuck = resources.getString(R.string.requests_group_stuck),
+    groupReady = resources.getString(R.string.requests_group_ready),
+    groupCancelled = resources.getString(R.string.requests_group_cancelled),
+    chooseAVersion = resources.getString(R.string.requests_where_choose),
+    choosingAVersion = resources.getString(R.string.requests_where_choosing),
+    lookingForAVersion = resources.getString(R.string.requests_where_looking),
+    onItsWayLower = resources.getString(R.string.requests_where_on_its_way),
+    readyToReadLower = resources.getString(R.string.requests_where_ready_read),
+    readyToListenLower = resources.getString(R.string.requests_where_ready_listen),
+    cancelledLower = resources.getString(R.string.requests_where_cancelled),
+    itemLine = { kind, where -> resources.getString(R.string.requests_item_line, kind, where) },
+    books = { resources.getQuantityString(R.plurals.requests_books, it, it) },
+    needsYou = { resources.getQuantityString(R.plurals.requests_needs_you, it, it) },
+    countsLine = { books, needs -> if (needs == null) books else resources.getString(R.string.requests_counts_line, books, needs) },
+)
+
+/** The wording for the composition's locale. */
+@Composable
+internal fun rememberRequestWording(): RequestWording {
+    val resources = LocalContext.current.resources
+    val configuration = LocalConfiguration.current
+    return remember(resources, configuration) { requestWording(resources) }
+}

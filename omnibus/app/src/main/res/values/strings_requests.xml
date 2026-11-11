@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Book requests (#3078). The wording mirrors the web's, so both clients say a request the same way. -->
+    <!-- A request's state, as the lane and the list say it. -->
+    <string name="requests_state_looking">Looking</string>
+    <string name="requests_state_looking_note">Searching for versions of this book.</string>
+    <string name="requests_state_choose">Choose a version</string>
+    <string name="requests_state_chosen">Version chosen</string>
+    <string name="requests_state_chosen_note">We’ll fetch it next.</string>
+    <string name="requests_state_on_its_way">On its way</string>
+    <string name="requests_state_on_its_way_note">Downloading, then adding it to the library.</string>
+    <string name="requests_state_ready_read">Ready to read</string>
+    <string name="requests_state_ready_listen">Ready to listen</string>
+    <string name="requests_state_ready_note">It’s in the library.</string>
+    <string name="requests_state_stopped_moving">Stopped moving</string>
+    <string name="requests_state_stopped_moving_note">The download stopped making progress.</string>
+    <string name="requests_state_couldnt_add">Couldn’t add it</string>
+    <string name="requests_state_couldnt_add_note">It downloaded but couldn’t be added to the library.</string>
+    <string name="requests_state_couldnt_find">Couldn’t find it</string>
+    <string name="requests_state_couldnt_find_note">Nothing worth showing turned up.</string>
+    <string name="requests_state_cancelled">Cancelled</string>
+    <string name="requests_state_cancelled_note">This request was cancelled.</string>
+    <string name="requests_kind_ebook">Ebook</string>
+    <string name="requests_kind_audiobook">Audiobook</string>
+    <!-- The stepper and the search. -->
+    <string name="requests_step_ready">Ready</string>
+    <string name="requests_step_chose">Chose a version</string>
+    <string name="requests_step_looking_found">Looking · %1$d found</string>
+    <string name="requests_looking_label">Looking for versions…</string>
+    <string name="requests_looking_slow_label">Still searching for versions…</string>
+    <!-- Versions. Separators and sizes carry non-breaking spaces so a line never splits at them. -->
+    <string name="requests_format_unknown">Format unknown</string>
+    <string name="requests_size_unknown">Size unknown</string>
+    <string name="requests_unknown">Unknown</string>
+    <string name="requests_usenet">Usenet</string>
+    <plurals name="requests_seeds">
+        <item quantity="one">%1$s&#160;seed</item>
+        <item quantity="other">%1$s&#160;seeds</item>
+    </plurals>
+    <plurals name="requests_versions_found">
+        <item quantity="one">%1$d version found</item>
+        <item quantity="other">%1$d versions found</item>
+    </plurals>
+    <string name="requests_best_match_first">Best match first</string>
+    <string name="requests_cover_sizes">Its cover is %1$d&#160;×&#160;%2$d. The existing one is %3$d&#160;×&#160;%4$d.</string>
+    <!-- Time. -->
+    <string name="requests_less_than_a_minute">less than a minute left</string>
+    <string name="requests_minutes_left">about %1$d min left</string>
+    <plurals name="requests_hours_left">
+        <item quantity="one">about %1$d hour left</item>
+        <item quantity="other">about %1$d hours left</item>
+    </plurals>
+    <string name="requests_just_now">just now</string>
+    <string name="requests_minutes_ago">%1$dm ago</string>
+    <string name="requests_hours_ago">%1$dh ago</string>
+    <string name="requests_yesterday">yesterday</string>
+    <string name="requests_days_ago">%1$dd ago</string>
+    <!-- Who and when. -->
+    <string name="requests_you">You</string>
+    <string name="requests_your">your</string>
+    <string name="requests_possessive">%1$s’s</string>
+    <string name="requests_on_wishlist">On %1$s wishlist</string>
+    <string name="requests_on_wishlists">On %1$s and %2$s wishlists</string>
+    <string name="requests_cancelled_by_you">Cancelled by you</string>
+    <string name="requests_cancelled_by">Cancelled by %1$s</string>
+    <string name="requests_history_line">%1$s %2$s&#160;· %3$s</string>
+    <string name="requests_stopped_at">stopped at %1$d%%</string>
+    <string name="requests_swapped_for_another">Swapped for another version</string>
+    <!-- Messages for a write that failed or finished. -->
+    <string name="requests_request_cancelled">%1$s request cancelled</string>
+    <string name="requests_still_starting">Still starting the last request.</string>
+    <string name="requests_failure_too_many">You have a lot of requests going. Try again in a few minutes.</string>
+    <string name="requests_failure_cant_request">Your account can’t make requests.</string>
+    <string name="requests_failure_book_gone">That book is no longer in the library.</string>
+    <string name="requests_failure_couldnt_start">Couldn’t start the request.</string>
+    <string name="requests_failure_choose">Couldn’t choose that version</string>
+    <string name="requests_failure_cancel">Couldn’t cancel</string>
+    <string name="requests_failure_undo">Couldn’t undo</string>
+    <string name="requests_failure_swap">Couldn’t choose another</string>
+    <string name="requests_failure_retry">Couldn’t try again</string>
+    <string name="requests_failure_take_cover">Couldn’t use that cover</string>
+    <string name="requests_failure_keep_cover">Couldn’t keep this one</string>
+    <string name="requests_failure_something_went_wrong">Something went wrong.</string>
+    <string name="requests_failure_server_error">Server error (%1$d).</string>
+    <string name="requests_failure_line">%1$s: %2$s</string>
+    <!-- The list's groups and its row lines. -->
+    <string name="requests_group_needs_you">Needs you</string>
+    <string name="requests_group_on_its_way">On its way</string>
+    <string name="requests_group_looking">Looking</string>
+    <string name="requests_group_stuck">Stuck</string>
+    <string name="requests_group_ready">Ready</string>
+    <string name="requests_group_cancelled">Cancelled</string>
+    <string name="requests_where_choose">choose a version</string>
+    <string name="requests_where_choosing">choosing a version</string>
+    <string name="requests_where_looking">looking for a version</string>
+    <string name="requests_where_on_its_way">on its way</string>
+    <string name="requests_where_ready_read">ready to read</string>
+    <string name="requests_where_ready_listen">ready to listen</string>
+    <string name="requests_where_cancelled">cancelled</string>
+    <string name="requests_item_line">%1$s · %2$s</string>
+    <plurals name="requests_books">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <plurals name="requests_needs_you">
+        <item quantity="one">%1$d needs you</item>
+        <item quantity="other">%1$d need you</item>
+    </plurals>
+    <string name="requests_counts_line">%1$s · %2$s</string>
+
+    <!-- The request page. -->
+    <string name="requests_page_loading">Loading the request…</string>
+    <string name="requests_page_error_title">Couldn’t read this request</string>
+    <string name="requests_page_not_found_title">Book not found</string>
+    <string name="requests_page_not_found_message">That book is no longer in the library.</string>
+    <string name="requests_try_again">Try again</string>
+    <string name="requests_error_unreachable">The server couldn’t be reached. Check your connection and try again.</string>
+    <string name="requests_error_session_expired">Your session has expired. Sign in again.</string>
+    <string name="requests_error_http">The server answered with an error (%1$d).</string>
+    <string name="requests_error_unexpected">The server sent something this app couldn’t read.</string>
+    <string name="requests_open_book_page">Open book page</string>
+    <string name="requests_history">History</string>
+    <string name="requests_not_requested">not requested</string>
+    <string name="requests_request">Request</string>
+    <string name="requests_requesting">Requesting…</string>
+    <string name="requests_request_again">Request again</string>
+    <string name="requests_request_kind">%1$s %2$s</string>
+    <string name="requests_choose">Choose</string>
+    <string name="requests_choosing">Choosing…</string>
+    <string name="requests_choose_version">Choose %1$s</string>
+    <string name="requests_choose_another">Choose another</string>
+    <string name="requests_show_more">Show %1$d more</string>
+    <string name="requests_show_fewer">Show fewer</string>
+    <string name="requests_retry">Try again</string>
+    <string name="requests_retrying">Trying…</string>
+    <string name="requests_still_looking">Still looking…</string>
+    <string name="requests_waiting_for_chooser">Waiting for someone who can pick versions.</string>
+    <string name="requests_waiting_for_chooser_retry">Waiting for someone who can pick versions to try again.</string>
+    <string name="requests_cancel_request">Cancel request</string>
+    <string name="requests_cancel">Cancel</string>
+    <string name="requests_cancelling">Cancelling…</string>
+    <string name="requests_cancel_theirs">Cancel %1$s’s request for %2$s</string>
+    <string name="requests_tag_best_match">Best match</string>
+    <string name="requests_tag_didnt_work">Didn’t work</string>
+    <string name="requests_tag_converts">We’ll convert it to EPUB</string>
+    <string name="requests_your_pick">Your pick</string>
+    <string name="requests_adding_to_library">Adding it to the library…</string>
+    <string name="requests_cover_now">Now</string>
+    <string name="requests_cover_from_download">From the download</string>
+    <string name="requests_cover_sharper">The download has a sharper cover</string>
+    <string name="requests_cover_use">Use the downloaded cover</string>
+    <string name="requests_cover_using">Using…</string>
+    <string name="requests_cover_keep">Keep this one</string>
+    <string name="requests_cover_keeping">Keeping…</string>
+    <string name="requests_undo">Undo</string>
+    <string name="requests_dismiss">Dismiss</string>
+    <string name="requests_lane_kind">%1$s request</string>
+    <string name="requests_added">added %1$s</string>
+    <string name="requests_step_current">Current step</string>
+    <string name="requests_step_done">Done</string>
+    <string name="requests_step_todo">Still to come</string>
+</resources>

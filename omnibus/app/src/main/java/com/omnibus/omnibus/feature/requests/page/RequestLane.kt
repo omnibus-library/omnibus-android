@@ -1,0 +1,384 @@
+package com.omnibus.omnibus.feature.requests.page
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.requests.BookRequest
+import com.omnibus.omnibus.data.requests.RequestKind
+import com.omnibus.omnibus.data.requests.RequestState
+import com.omnibus.omnibus.data.requests.RequestVersion
+import com.omnibus.omnibus.feature.requests.RequestWording
+import com.omnibus.omnibus.feature.requests.SEP
+import com.omnibus.omnibus.feature.requests.StepStatus
+import com.omnibus.omnibus.feature.requests.askedBy
+import com.omnibus.omnibus.feature.requests.convertsToEpub
+import com.omnibus.omnibus.feature.requests.downloadPercent
+import com.omnibus.omnibus.feature.requests.firstShown
+import com.omnibus.omnibus.feature.requests.kindChip
+import com.omnibus.omnibus.feature.requests.kindLabel
+import com.omnibus.omnibus.feature.requests.lookingLabel
+import com.omnibus.omnibus.feature.requests.pickedHeading
+import com.omnibus.omnibus.feature.requests.pickedMeta
+import com.omnibus.omnibus.feature.requests.pickedVersion
+import com.omnibus.omnibus.feature.requests.recency
+import com.omnibus.omnibus.feature.requests.stateView
+import com.omnibus.omnibus.feature.requests.stepsFor
+import com.omnibus.omnibus.feature.requests.timeLeft
+import com.omnibus.omnibus.feature.requests.versionSource
+import com.omnibus.omnibus.feature.requests.versionsFound
+import com.omnibus.omnibus.ui.components.ReaderAvatar
+import com.omnibus.omnibus.ui.theme.Motion
+import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import com.omnibus.omnibus.ui.theme.Radius
+import com.omnibus.omnibus.ui.theme.Spacing
+import com.omnibus.omnibus.ui.theme.monoTextStyle
+import com.omnibus.omnibus.ui.theme.rememberReducedMotion
+import com.omnibus.omnibus.ui.theme.uiTextStyle
+
+/** A card's ground and hairline, shared by the lanes and the cards inside them. */
+@Composable
+internal fun LaneCard(
+    modifier: Modifier = Modifier,
+    radius: Dp = Radius.lg,
+    fill: Color = OmnibusTheme.palette.bg2,
+    accented: Boolean = false,
+    spacing: Dp = Spacing.md,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val palette = OmnibusTheme.palette
+    val shape = RoundedCornerShape(radius)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(fill)
+            .border(0.5.dp, if (accented) palette.accent.copy(alpha = ACCENT_BORDER_ALPHA) else palette.line2, shape)
+            .padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+        content = content,
+    )
+}
+
+private const val ACCENT_BORDER_ALPHA = 0.55f
+
+/** The format a lane is for, boxed in mono. */
+@Composable
+internal fun KindChip(kind: RequestKind, modifier: Modifier = Modifier) {
+    val palette = OmnibusTheme.palette
+    Text(
+        text = kindChip(kind),
+        style = monoTextStyle(9.5.sp, palette.ink2),
+        modifier = modifier
+            .clearAndSetSemantics {}
+            .border(0.5.dp, palette.line2, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.5.dp),
+    )
+}
+
+/**
+ * One request's card: its format, who asked, the stepper (or a stuck or cancelled request's words) and the body for
+ * the state it is in.
+ */
+@Composable
+internal fun RequestLane(
+    lane: BookRequest,
+    uiState: BookRequestUIState,
+    wording: RequestWording,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OmnibusTheme.palette
+    val listing = uiState.listingFor(lane)
+    LaneCard(modifier) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            KindChip(lane.kind)
+            Text(kindLabel(lane.kind, wording), style = uiTextStyle(16, FontWeight.Medium, palette.ink0))
+            if (listing != null) {
+                ReaderAvatar(lane.userId, listing.requesterName, listing.requesterHasAvatar, 20.dp)
+                Text(
+                    text = askedBy(listing, uiState.viewer.id, uiState.nowMillis, wording),
+                    style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink3),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        val steps = stepsFor(lane, wording)
+        if (steps != null) Stepper(steps) else StateNote(lane, wording)
+        LaneBody(lane, uiState, wording)
+    }
+}
+
+@Composable
+private fun Stepper(steps: List<com.omnibus.omnibus.feature.requests.RequestStep>) {
+    val palette = OmnibusTheme.palette
+    val current = stringResource(R.string.requests_step_current)
+    val done = stringResource(R.string.requests_step_done)
+    val todo = stringResource(R.string.requests_step_todo)
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        steps.forEach { step ->
+            val tint = when (step.status) {
+                StepStatus.Done -> palette.ok
+                StepStatus.Current -> palette.accent
+                StepStatus.Todo -> palette.ink3
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    stateDescription = when (step.status) {
+                        StepStatus.Current -> current
+                        StepStatus.Done -> done
+                        StepStatus.Todo -> todo
+                    }
+                },
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(tint))
+                Text(
+                    text = step.label,
+                    style = uiTextStyle(
+                        14,
+                        if (step.status == StepStatus.Current) FontWeight.Medium else FontWeight.Normal,
+                        when (step.status) {
+                            StepStatus.Todo -> palette.ink3
+                            StepStatus.Current -> palette.accent
+                            StepStatus.Done -> palette.ink1
+                        },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/** A stuck or cancelled lane says so in words: the heading, and the error or general line under it. */
+@Composable
+private fun StateNote(lane: BookRequest, wording: RequestWording) {
+    val palette = OmnibusTheme.palette
+    val view = stateView(lane.state, lane.stuckReason, lane.kind, lane.stuckDetail, wording)
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.semantics(mergeDescendants = true) {}) {
+        Text(
+            text = view.heading,
+            style = uiTextStyle(14.5.sp, FontWeight.Medium, if (lane.state == RequestState.Stuck) palette.bad else palette.ink1),
+        )
+        view.note?.let { Text(it, style = uiTextStyle(13, FontWeight.Normal, palette.ink2)) }
+    }
+}
+
+@Composable
+private fun LaneBody(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording) {
+    val palette = OmnibusTheme.palette
+    when (lane.state) {
+        RequestState.Looking -> LookingCard(lookingLabel(lane, uiState.nowMillis, wording))
+        RequestState.Choose -> VersionList(lane, uiState, wording)
+        RequestState.Chosen -> PickedCard(lane, meta = null)
+        RequestState.OnItsWay -> DownloadCard(lane, timeLeft(lane, uiState.nowMillis, wording))
+        RequestState.Ready -> if (pickedVersion(lane) != null) {
+            PickedCard(
+                lane,
+                meta = listOfNotNull(
+                    pickedVersion(lane)?.indexer,
+                    stringResource(R.string.requests_added, recency(lane.updatedAt, uiState.nowMillis, wording)),
+                ).joinToString(SEP),
+            )
+        }
+        RequestState.Stuck -> if (!uiState.viewer.canChoose) {
+            Text(
+                text = stringResource(R.string.requests_waiting_for_chooser_retry),
+                style = uiTextStyle(13, FontWeight.Normal, palette.ink2),
+            )
+        }
+        RequestState.Cancelled -> Unit
+    }
+}
+
+/** The Looking card: a spinner and what the search is doing. */
+@Composable
+private fun LookingCard(label: String) {
+    val palette = OmnibusTheme.palette
+    LaneCard(radius = Radius.md, fill = palette.bg1) {
+        Column(
+            modifier = Modifier.fillMaxWidth().height(LOADING_HEIGHT),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(color = palette.ink2, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+            Text(
+                text = label,
+                style = uiTextStyle(13.5.sp, FontWeight.Normal, palette.ink2),
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        }
+    }
+}
+
+private val LOADING_HEIGHT = 64.dp
+
+// Versions
+
+/** The versions found, best first, four at a time. */
+@Composable
+private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording) {
+    val palette = OmnibusTheme.palette
+    var showAll by rememberSaveable(lane.id) { mutableStateOf(false) }
+    val collapsed = firstShown(lane.versions)
+    val hidden = lane.versions.size - collapsed.size
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        lane.note?.let { Text(it, style = uiTextStyle(13, FontWeight.Normal, palette.ink2)) }
+        Text(
+            text = versionsFound(lane.versions, wording).uppercase(),
+            style = monoTextStyle(10, palette.ink3).copy(letterSpacing = 1.sp),
+        )
+        if (!uiState.viewer.canChoose) {
+            Text(
+                text = stringResource(R.string.requests_waiting_for_chooser),
+                style = uiTextStyle(13, FontWeight.Normal, palette.ink2),
+            )
+        }
+        (if (showAll) lane.versions else collapsed).forEach { version ->
+            VersionRow(version, wording)
+        }
+        if (hidden > 0) {
+            Text(
+                text = if (showAll) stringResource(R.string.requests_show_fewer) else stringResource(R.string.requests_show_more, hidden),
+                style = uiTextStyle(13.5.sp, FontWeight.Medium, palette.ink1),
+                modifier = Modifier.clickable { showAll = !showAll }.padding(vertical = Spacing.xs),
+            )
+        }
+    }
+}
+
+/** One version found: its name (a link to the source's page when it gave one), its source line and its tags. */
+@Composable
+private fun VersionRow(version: RequestVersion, wording: RequestWording) {
+    val palette = OmnibusTheme.palette
+    val best = version.bestMatch && !version.rejected
+    LaneCard(radius = Radius.md, fill = palette.bg1, accented = best, spacing = 0.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.weight(1f)) {
+                VersionName(version)
+                Text(versionSource(version, wording), style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink2))
+                if (version.rejected) {
+                    Tag(stringResource(R.string.requests_tag_didnt_work), palette.ink3)
+                } else if (best) {
+                    Tag(stringResource(R.string.requests_tag_best_match), palette.accent)
+                }
+                if (convertsToEpub(version) && !version.rejected) {
+                    Tag(stringResource(R.string.requests_tag_converts), palette.ink3)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersionName(version: RequestVersion) {
+    val palette = OmnibusTheme.palette
+    val uriHandler = LocalUriHandler.current
+    val page = version.infoUrl?.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
+    // The word joiner keeps the arrow on the name's last line.
+    val text = if (page != null) "${version.title}⁠ ↗" else version.title
+    Text(
+        text = text,
+        style = uiTextStyle(15, FontWeight.Medium, palette.ink0),
+        modifier = if (page != null) Modifier.clickable { runCatching { uriHandler.openUri(page) } } else Modifier,
+    )
+}
+
+@Composable
+private fun Tag(text: String, color: Color) {
+    Text(text = text.uppercase(), style = monoTextStyle(9.5.sp, color).copy(letterSpacing = 0.8.sp))
+}
+
+// Picked, downloading, added
+
+/** The version a request picked: its format and size over its name. [meta] is the line under the name; the pick's size and source when null. */
+@Composable
+private fun PickedCard(lane: BookRequest, meta: String?) {
+    val palette = OmnibusTheme.palette
+    val picked = pickedVersion(lane)
+    LaneCard(radius = Radius.md, fill = palette.bg1, spacing = 4.dp, modifier = Modifier.semantics(mergeDescendants = true) {}) {
+        Text(
+            text = picked?.let(::pickedHeading) ?: stringResource(R.string.requests_your_pick),
+            style = uiTextStyle(17, FontWeight.SemiBold, palette.ink0),
+        )
+        picked?.let { Text(it.title, style = uiTextStyle(12, FontWeight.Normal, palette.ink3)) }
+        (meta ?: picked?.let(::pickedMeta))?.takeIf { it.isNotEmpty() }?.let {
+            Text(it, style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink2))
+        }
+    }
+}
+
+/** A download: the pick over its bar, then its percent and time left. */
+@Composable
+private fun DownloadCard(lane: BookRequest, left: String?) {
+    val palette = OmnibusTheme.palette
+    val picked = pickedVersion(lane)
+    val percent = downloadPercent(lane)
+    LaneCard(radius = Radius.md, fill = palette.bg1, spacing = Spacing.sm) {
+        Text(
+            text = picked?.let(::pickedHeading) ?: stringResource(R.string.requests_your_pick),
+            style = uiTextStyle(17, FontWeight.SemiBold, palette.ink0),
+        )
+        picked?.let { Text(it.title, style = uiTextStyle(12, FontWeight.Normal, palette.ink3)) }
+        if ((lane.progress ?: 0.0) >= 1.0) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                CircularProgressIndicator(color = palette.ink2, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                Text(stringResource(R.string.requests_adding_to_library), style = uiTextStyle(13.5.sp, FontWeight.Normal, palette.ink2))
+            }
+        } else {
+            ProgressBar(lane.progress ?: 0.0)
+        }
+        listOfNotNull(percent?.let { "$it%" }, left).joinToString(SEP).takeIf { it.isNotEmpty() }?.let {
+            Text(it, style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink2))
+        }
+    }
+}
+
+/** The download's bar. Its fill settles toward the reported fraction, or jumps there under reduced motion. */
+@Composable
+private fun ProgressBar(fraction: Double) {
+    val palette = OmnibusTheme.palette
+    val reduced = rememberReducedMotion()
+    val shown by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = fraction.coerceIn(0.0, 1.0).toFloat(),
+        animationSpec = if (reduced) androidx.compose.animation.core.snap() else Motion.settle(),
+        label = "requestProgress",
+    )
+    Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(palette.line2)) {
+        Box(Modifier.fillMaxWidth(shown).height(6.dp).clip(CircleShape).background(palette.accent))
+    }
+}

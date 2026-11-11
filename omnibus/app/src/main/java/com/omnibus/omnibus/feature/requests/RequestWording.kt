@@ -4,7 +4,7 @@ package com.omnibus.omnibus.feature.requests
  * The strings the request rules use, so the functions that build a line stay pure. The defaults are the web's English;
  * screens fill it from string resources. Placeholders arrive as function arguments.
  */
-internal data class RequestWording(
+data class RequestWording(
     // A request's state
     val looking: String = "Looking",
     val lookingNote: String = "Searching for versions of this book.",
@@ -76,6 +76,7 @@ internal data class RequestWording(
     val failureRetry: String = "Couldn’t try again",
     val failureTakeCover: String = "Couldn’t use that cover",
     val failureKeepCover: String = "Couldn’t keep this one",
+    val requestCancelled: (kind: String) -> String = { "$it request cancelled" },
     val somethingWentWrong: String = "Something went wrong.",
     val serverError: (Int) -> String = { "Server error ($it)." },
     val failureLine: (prefix: String, message: String) -> String = { prefix, message -> "$prefix: $message" },

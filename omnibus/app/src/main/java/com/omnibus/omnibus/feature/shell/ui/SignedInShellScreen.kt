@@ -32,6 +32,8 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
+import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
 import com.omnibus.omnibus.feature.shell.LibraryRoot
@@ -179,6 +181,15 @@ private fun SignedInShellContent(
                         }
                         entry<ShelvesRoute> {
                             ShellUnderStatusBarEntry { ShelvesScreen(onBack = { navigator.back() }) }
+                        }
+                        entry<BookRequestRoute> { key ->
+                            ShellUnderStatusBarEntry {
+                                BookRequestScreen(
+                                    uuid = key.uuid,
+                                    onBack = { navigator.back() },
+                                    onOpenBook = { openDestination(BookDetailDestination.Book(key.uuid)) },
+                                )
+                            }
                         }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
