@@ -13,4 +13,7 @@ fun randomCurrentUser(): CurrentUser = CurrentUser(
     isAdmin = randomBoolean(),
     canDownload = randomBoolean(),
     kindleEmail = if (randomBoolean()) randomString() else null,
+    bookRequests = randomBoolean(),
+    canStartRequests = randomBoolean(),
+    canChooseRequestVersions = randomBoolean(),
 )

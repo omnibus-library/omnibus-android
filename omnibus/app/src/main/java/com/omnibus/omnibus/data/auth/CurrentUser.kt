@@ -15,6 +15,12 @@ data class CurrentUser(
     val canDownload: Boolean = false,
     /** The user's Kindle address for sending books, if one is set. */
     val kindleEmail: String? = null,
+    /** Whether the server has book requests turned on for this user. Every request surface hides without it. */
+    val bookRequests: Boolean = false,
+    /** Whether this user may start a request. */
+    val canStartRequests: Boolean = false,
+    /** Whether this user may choose a request's version, and so sees the choosing controls. */
+    val canChooseRequestVersions: Boolean = false,
 )
 
 internal fun UserInfoDto.toCurrentUser(): CurrentUser = CurrentUser(
@@ -25,4 +31,7 @@ internal fun UserInfoDto.toCurrentUser(): CurrentUser = CurrentUser(
     isAdmin = isAdmin,
     canDownload = canDownload,
     kindleEmail = kindleEmail,
+    bookRequests = bookRequests,
+    canStartRequests = canStartRequests,
+    canChooseRequestVersions = canChooseRequestVersions,
 )

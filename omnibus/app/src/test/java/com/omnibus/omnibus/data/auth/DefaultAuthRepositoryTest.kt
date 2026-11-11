@@ -591,6 +591,51 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
         }
 
+        context("when the server reports the book request permissions") {
+            it("exposes each of the three, whatever the others are") {
+                checkAll(Exhaustive.of(true, false), Exhaustive.of(true, false), Exhaustive.of(true, false)) { requests, start, choose ->
+                    withMockServer { server ->
+                        val extra = """, "book_requests": $requests, "can_start_requests": $start, "can_choose_request_versions": $choose"""
+                        server.enqueue(reply(200, userJson(extraFields = extra)))
+                        val repository = sut(server.url("/"), storeHolding())
+
+                        repository.verifySession()
+
+                        val user = repository.currentUser.first()!!
+                        listOf(user.bookRequests, user.canStartRequests, user.canChooseRequestVersions) shouldBe
+                            listOf(requests, start, choose)
+                    }
+                }
+            }
+
+            it("exposes them from a sign-in response too") {
+                withMockServer { server ->
+                    val extra = """, "book_requests": true, "can_start_requests": true, "can_choose_request_versions": true"""
+                    server.enqueue(reply(200, acceptedBody(user = userJson(extraFields = extra))))
+                    val repository = sut(server.url("/"))
+
+                    repository.signIn(randomString(), randomString())
+
+                    repository.currentUser.first()!!.canChooseRequestVersions shouldBe true
+                }
+            }
+        }
+
+        context("when the server is older and omits the book request permissions") {
+            it("reads all three as false and still signs in") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, userJson()))
+                    val repository = sut(server.url("/"), storeHolding())
+
+                    val result = repository.verifySession()
+
+                    val user = repository.currentUser.first()!!
+                    listOf(result is AuthSessionResult.Valid, user.bookRequests, user.canStartRequests, user.canChooseRequestVersions) shouldBe
+                        listOf(true, false, false, false)
+                }
+            }
+        }
+
         context("when a session check body can't be read") {
             it("TC-16: is null") {
                 withMockServer { server ->
