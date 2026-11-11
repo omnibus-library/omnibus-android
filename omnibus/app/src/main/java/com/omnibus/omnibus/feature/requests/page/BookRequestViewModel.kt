@@ -9,6 +9,7 @@ import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.requests.BookRequest
+import com.omnibus.omnibus.data.requests.NobodyViewer
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestListing
@@ -17,15 +18,15 @@ import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
 import com.omnibus.omnibus.data.requests.Wanter
+import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.requests.RequestAction
 import com.omnibus.omnibus.feature.requests.actionFailure
-import com.omnibus.omnibus.feature.requests.canCancel
 import com.omnibus.omnibus.feature.requests.detailPollIntervalMillis
-import com.omnibus.omnibus.feature.requests.isCancellable
 import com.omnibus.omnibus.feature.requests.isMoving
 import com.omnibus.omnibus.feature.requests.kindLabel
 import com.omnibus.omnibus.feature.requests.mainRequest
+import com.omnibus.omnibus.feature.requests.offersCancel
 import com.omnibus.omnibus.feature.requests.di.RequestWordingSource
 import com.omnibus.omnibus.feature.requests.offersRequestAgain as ruleOffersRequestAgain
 import com.omnibus.omnibus.feature.requests.splitBookRequests
@@ -88,9 +89,6 @@ data class RequestMessage(
 }
 
 private const val DEFAULT_MESSAGE_MILLIS = 4_000L
-
-/** Nobody signed in: may do nothing. */
-internal val NobodyViewer = RequestViewer(id = 0, canStart = false, canChoose = false)
 
 /**
  * What the request page shows. A book's requests are lanes: the one the page opened on ([mainId]), then each other one
@@ -209,6 +207,16 @@ class BookRequestViewModel @AssistedInject constructor(
         viewModelScope.launch {
             connectivityMonitor.isOnline.collect { online -> change { it.copy(isOnline = online) } }
         }
+        // Follows the session, which is not confirmed until the server answers, so a later arrival still counts.
+        viewModelScope.launch {
+            authRepository.currentUser.catch { emit(null) }.collect { user ->
+                val before = _uiState.value
+                val viewer = user.toRequestViewer()
+                change { it.copy(viewer = viewer) }
+                // A page read with nobody known filed nothing, so it is read again now that someone is.
+                if (before.viewer == NobodyViewer && viewer != NobodyViewer && before.listings != null) load()
+            }
+        }
     }
 
     /** Reads the page. Called each time the page is shown, and by Retry and pull to refresh. */
@@ -257,10 +265,9 @@ class BookRequestViewModel @AssistedInject constructor(
      * page yet, and a write that lands meanwhile keeps its answer.
      */
     private suspend fun loadPage() {
-        val viewer = readViewer()
         val started = generation
         val hadPage = _uiState.value.let { it.book != null && it.failure == null }
-        change { it.copy(viewer = viewer, isMissing = it.isMissing && hadPage, failure = it.failure.takeIf { hadPage }) }
+        change { it.copy(isMissing = it.isMissing && hadPage, failure = it.failure.takeIf { hadPage }) }
 
         val (bookResult, listResult, wishResult) = coroutineScope {
             val book = async { library.getBookFlow(uuid).first() }
@@ -342,7 +349,7 @@ class BookRequestViewModel @AssistedInject constructor(
         viewModelScope.launch {
             val state = _uiState.value
             val lane = state.reads[laneId] ?: return@launch
-            val allowed = canCancel(state.viewer, lane) && isCancellable(lane)
+            val allowed = offersCancel(state.viewer, lane)
             val cancelled = write(
                 RequestAction.Cancel, Busy.Cancelling(laneId), allowed, rereading = laneId, rereadsListings = false,
             ) { requests.cancel(laneId) } ?: return@launch
@@ -478,11 +485,6 @@ class BookRequestViewModel @AssistedInject constructor(
         settleMain()
     }
 
-    private suspend fun readViewer(): RequestViewer {
-        val user = authRepository.currentUser.catch { emit(null) }.first()
-        return user?.let { RequestViewer(it.id, it.canStartRequests, it.canChooseRequestVersions) } ?: NobodyViewer
-    }
-
     private fun failFirstLoad(book: BookResult, list: RequestsResult<List<RequestListing>>) {
         when {
             book is BookResult.NotFound -> change { it.copy(isMissing = true) }
@@ -496,7 +498,7 @@ class BookRequestViewModel @AssistedInject constructor(
     private fun settleMain() {
         val state = _uiState.value
         val listed = state.listings ?: return
-        if (listed.any { it.request.id == state.mainId }) return
+        if (state.viewer == NobodyViewer || listed.any { it.request.id == state.mainId }) return
         change { it.copy(mainId = mainRequest(listed, it.viewer)?.request?.id) }
     }
 

@@ -4,17 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
+import com.omnibus.omnibus.data.requests.NobodyViewer
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.data.requests.RequestViewer
 import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
+import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.feature.requests.DefaultFolded
 import com.omnibus.omnibus.feature.requests.RequestGroup
 import com.omnibus.omnibus.feature.requests.RequestGroupKey
 import com.omnibus.omnibus.feature.requests.groupRequests
 import com.omnibus.omnibus.feature.requests.listPollIntervalMillis
-import com.omnibus.omnibus.feature.requests.page.NobodyViewer
 import com.omnibus.omnibus.feature.requests.requestedBooks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -25,7 +26,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -74,6 +74,12 @@ class RequestsViewModel @Inject constructor(
         viewModelScope.launch {
             connectivityMonitor.isOnline.collect { online -> _uiState.update { it.copy(isOnline = online) } }
         }
+        // Follows the session, which is not confirmed until the server answers, so a later arrival still counts.
+        viewModelScope.launch {
+            authRepository.currentUser.catch { emit(null) }.collect { user ->
+                _uiState.update { it.copy(viewer = user.toRequestViewer()) }
+            }
+        }
     }
 
     /** Reads the list. Called each time the screen is shown, and by Retry. */
@@ -110,18 +116,16 @@ class RequestsViewModel @Inject constructor(
         }
     }
 
-    private fun fail(error: RequestsError, viewer: RequestViewer) {
-        _uiState.update { it.copy(failure = error.takeIf { _ -> it.listings == null }, viewer = viewer) }
+    private fun fail(error: RequestsError) {
+        _uiState.update { it.copy(failure = error.takeIf { _ -> it.listings == null }) }
     }
 
     /** One read. A failure shows only while there is nothing else on screen, and leaves the rows as they were. */
     private suspend fun read() {
-        val user = authRepository.currentUser.catch { emit(null) }.first()
-        val viewer = user?.let { RequestViewer(it.id, it.canStartRequests, it.canChooseRequestVersions) } ?: NobodyViewer
         when (val result = requests.list()) {
-            is RequestsResult.Success -> _uiState.update { it.copy(listings = result.value, failure = null, viewer = viewer) }
-            is RequestsResult.Failure -> fail(result.error, viewer)
-            RequestsResult.NoServer -> fail(RequestsError.Unreachable, viewer)
+            is RequestsResult.Success -> _uiState.update { it.copy(listings = result.value, failure = null) }
+            is RequestsResult.Failure -> fail(result.error)
+            RequestsResult.NoServer -> fail(RequestsError.Unreachable)
         }
     }
 }

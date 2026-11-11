@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.requests
 
+import com.omnibus.omnibus.data.auth.CurrentUser
 import com.omnibus.omnibus.data.library.Book
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -120,6 +121,17 @@ data class RequestListing(
 
 /** What the signed-in reader may do with requests. */
 data class RequestViewer(val id: Long, val canStart: Boolean, val canChoose: Boolean)
+
+/** Nobody signed in: may do nothing. */
+val NobodyViewer = RequestViewer(id = 0, canStart = false, canChoose = false)
+
+/**
+ * The viewer a session makes. Every permission waits on the server having book requests on for the reader, so with it
+ * off nothing is offered whatever the stored grants say. No user is nobody.
+ */
+fun CurrentUser?.toRequestViewer(): RequestViewer = this?.let {
+    RequestViewer(it.id, canStart = it.bookRequests && it.canStartRequests, canChoose = it.bookRequests && it.canChooseRequestVersions)
+} ?: NobodyViewer
 
 /** A reader who has a book on their wishlist. */
 data class Wanter(val id: Long, val name: String)

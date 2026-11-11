@@ -39,7 +39,7 @@ import com.omnibus.omnibus.feature.requests.RequestButton
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.kindLabel
 import com.omnibus.omnibus.feature.requests.rememberRequestWording
-import com.omnibus.omnibus.feature.requests.requestSlots
+import com.omnibus.omnibus.feature.requests.unrequestedKinds
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
@@ -92,7 +92,7 @@ internal class RequestStartSection(private val host: Host) : BookDetailSection {
             }
         }
 
-        val kinds = requestSlots(book.formats, state.canStart)
+        val kinds = unrequestedKinds(book.formats, emptyList(), state.viewer)
         if (kinds.isEmpty()) return
         val wording = rememberRequestWording()
         when (host) {

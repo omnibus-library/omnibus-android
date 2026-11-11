@@ -491,30 +491,25 @@ class RequestRulesTest : DescribeSpec({
                 unrequestedKinds(listOf("EPUB"), emptyList(), ASKER),
                 unrequestedKinds(listOf("PRINT"), listOf(covered), ASKER),
                 unrequestedKinds(listOf("PRINT"), emptyList(), ASKER.copy(canStart = false)),
+                unrequestedKinds(listOf("EPUB", "M4B"), emptyList(), ASKER),
             ) shouldBe listOf(
                 listOf(RequestKind.Ebook, RequestKind.Audiobook),
                 listOf(RequestKind.Audiobook),
                 listOf(RequestKind.Ebook),
                 emptyList(),
+                emptyList(),
             )
         }
     }
 
-    describe("the kinds the book page offers to request") {
-        it("lists each kind the library lacks, whatever requests the book has") {
-            listOf(
-                requestSlots(listOf("EPUB"), canStart = true),
-                requestSlots(listOf("PRINT"), canStart = true),
-                requestSlots(listOf("EPUB", "M4B"), canStart = true),
-            ) shouldBe listOf(
-                listOf(RequestKind.Audiobook),
-                listOf(RequestKind.Ebook, RequestKind.Audiobook),
-                emptyList(),
-            )
-        }
+    describe("whether Cancel is offered") {
+        it("needs both the right to cancel and a request that can still be cancelled") {
+            val mine = request(RequestState.Looking).copy(userId = ASKER.id)
+            val theirs = request(RequestState.Looking).copy(userId = 99)
+            val finished = request(RequestState.Ready).copy(userId = ASKER.id)
 
-        it("lists none for a reader who may not start requests") {
-            requestSlots(listOf("PRINT"), canStart = false) shouldBe emptyList()
+            listOf(offersCancel(ASKER, mine), offersCancel(ASKER, theirs), offersCancel(CHOOSER, theirs), offersCancel(ASKER, finished)) shouldBe
+                listOf(true, false, true, false)
         }
     }
 

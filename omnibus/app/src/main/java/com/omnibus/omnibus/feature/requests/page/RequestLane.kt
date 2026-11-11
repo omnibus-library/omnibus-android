@@ -48,8 +48,6 @@ import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.SEP
 import com.omnibus.omnibus.feature.requests.StepStatus
 import com.omnibus.omnibus.feature.requests.askedBy
-import com.omnibus.omnibus.feature.requests.canCancel
-import com.omnibus.omnibus.feature.requests.isCancellable
 import com.omnibus.omnibus.feature.requests.convertsToEpub
 import com.omnibus.omnibus.feature.requests.coverSizesLine
 import com.omnibus.omnibus.feature.requests.isDownloading
@@ -59,6 +57,7 @@ import com.omnibus.omnibus.feature.requests.firstShown
 import com.omnibus.omnibus.feature.requests.kindChip
 import com.omnibus.omnibus.feature.requests.kindLabel
 import com.omnibus.omnibus.feature.requests.lookingLabel
+import com.omnibus.omnibus.feature.requests.offersCancel
 import com.omnibus.omnibus.feature.requests.pickedHeading
 import com.omnibus.omnibus.feature.requests.pickedMeta
 import com.omnibus.omnibus.feature.requests.pickedVersion
@@ -293,7 +292,7 @@ private val LOADING_HEIGHT = 64.dp
 @Composable
 private fun LaneActionRow(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
     val canSwap = lane.state == RequestState.OnItsWay && uiState.viewer.canChoose && isDownloading(lane)
-    val canCancel = canCancel(uiState.viewer, lane) && isCancellable(lane)
+    val canCancel = offersCancel(uiState.viewer, lane)
     if (!canSwap && !canCancel) return
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         if (canSwap) {

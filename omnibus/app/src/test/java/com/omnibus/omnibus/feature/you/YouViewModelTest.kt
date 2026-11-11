@@ -52,6 +52,21 @@ class YouViewModelTest : DescribeSpec({
         }
     }
 
+    describe("a session that is confirmed after the screen is shown") {
+        it("shows the row and the count once the user arrives") {
+            val requests = TestRequestsRepository()
+            requests.answer("list", picking("a", "b"))
+            val auth = TestAuthRepository()
+            val vm = sut(requests, auth)
+            vm.shown()
+            val before = vm.uiState.value
+
+            auth.currentUserState.value = randomCurrentUser().copy(bookRequests = true, canChooseRequestVersions = true)
+
+            before to vm.uiState.value shouldBe (YouUIState(false, 0) to YouUIState(true, 2))
+        }
+    }
+
     describe("the count of books waiting on the reader") {
 
         it("counts the books waiting on a reader who can pick versions") {

@@ -98,6 +98,9 @@ internal fun isCancellable(request: BookRequest): Boolean =
 internal fun canCancel(viewer: RequestViewer, request: BookRequest): Boolean =
     viewer.canChoose || viewer.id == request.userId
 
+/** Whether Cancel is offered on [request]: the viewer may cancel it and it can still be cancelled. */
+internal fun offersCancel(viewer: RequestViewer, request: BookRequest): Boolean = canCancel(viewer, request) && isCancellable(request)
+
 /** A download's progress as a whole percent, rounded down and held under 100 until it is done, so the bar never reads done early. */
 internal fun progressPercent(progress: Double?): Int {
     // Rounded to a hundredth of a percent first, so 0.29 * 100 = 28.999… still reads 29.
@@ -315,10 +318,6 @@ internal fun unrequestedKinds(formats: List<String>, listings: List<RequestListi
     if (!viewer.canStart) return emptyList()
     return RequestKind.entries.filter { kind -> !holds(kind, formats) && listings.none { it.request.kind == kind } }
 }
-
-/** The kinds the book page offers to request: each one the library lacks, for a reader who may start a request. */
-internal fun requestSlots(formats: List<String>, canStart: Boolean): List<RequestKind> =
-    if (canStart) RequestKind.entries.filter { !holds(it, formats) } else emptyList()
 
 /** How often the page reads again: every two seconds while any lane is moving, else null. */
 internal fun detailPollIntervalMillis(requests: List<BookRequest>): Long? =

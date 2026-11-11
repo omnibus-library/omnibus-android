@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
+import com.omnibus.omnibus.data.requests.NobodyViewer
 import com.omnibus.omnibus.data.requests.RequestKind
+import com.omnibus.omnibus.data.requests.RequestViewer
 import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
+import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.feature.requests.di.RequestWordingSource
 import com.omnibus.omnibus.feature.requests.startFailure
 import dagger.assisted.Assisted
@@ -27,19 +30,22 @@ data class RequestStartMessage(val text: String, val id: Long)
 /**
  * What the book page's request buttons show.
  *
- * @property canStart Whether the reader has book requests on and may start one. Without it nothing is offered.
+ * @property viewer What the reader may do with requests. Without the right to start one nothing is offered.
  * @property starting The kind being started, so only its button reads "Requesting…" and every button waits.
  * @property pendingOpen The book whose request page the page should open, set when a start succeeds. It lives here, in
  * the ViewModel the nav entry owns, so a fold or a rotation doesn't lose it.
  * @property message Why the last start failed, until it has been shown.
  */
 data class RequestStartUIState(
-    val canStart: Boolean = false,
+    val viewer: RequestViewer = NobodyViewer,
     val starting: RequestKind? = null,
     val pendingOpen: String? = null,
     val message: RequestStartMessage? = null,
     val isOnline: Boolean = true,
-)
+) {
+    /** Whether the reader may start a request. */
+    val canStart: Boolean get() = viewer.canStart
+}
 
 /** Owns the request buttons on one book's page: starting a request, and opening its page once it has started. */
 @HiltViewModel(assistedFactory = RequestStartViewModel.Factory::class)
@@ -67,7 +73,7 @@ class RequestStartViewModel @AssistedInject constructor(
     init {
         viewModelScope.launch {
             authRepository.currentUser.catch { emit(null) }.collect { user ->
-                _uiState.update { it.copy(canStart = user?.bookRequests == true && user.canStartRequests) }
+                _uiState.update { it.copy(viewer = user.toRequestViewer()) }
             }
         }
         viewModelScope.launch {

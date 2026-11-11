@@ -141,6 +141,29 @@ class RequestsViewModelTest : DescribeSpec({
         }
     }
 
+    describe("a session confirmed after the list opened") {
+        it("files the picks for the user once they arrive, without another read") {
+            val requests = TestRequestsRepository()
+            requests.answer("list", ok(listing("a", RequestState.Choose)))
+            val auth = TestAuthRepository()
+            val vm = sut(requests, auth)
+            vm.load()
+            val before = vm.uiState.value.groups.map { it.key }
+
+            auth.currentUserState.value = randomCurrentUser().copy(id = 1, bookRequests = true, canStartRequests = true, canChooseRequestVersions = true)
+
+            before to vm.uiState.value.groups.map { it.key } shouldBe (listOf(RequestGroupKey.Looking) to listOf(RequestGroupKey.NeedsYou))
+        }
+
+        it("offers no request when the server has book requests off for the reader") {
+            val auth = TestAuthRepository().apply {
+                currentUserState.value = randomCurrentUser().copy(bookRequests = false, canStartRequests = true)
+            }
+
+            sut(auth = auth).uiState.value.viewer.canStart shouldBe false
+        }
+    }
+
     describe("keeping the list current") {
 
         it("reads again every ten seconds while anything moves") {

@@ -236,6 +236,41 @@ class BookRequestViewModelTest : DescribeSpec({
         }
     }
 
+    describe("a session confirmed after the page opened") {
+
+        it("takes the user's permissions when they arrive") {
+            val auth = TestAuthRepository()
+            val vm = sut(auth = auth)
+
+            auth.currentUserState.value = randomCurrentUser().copy(id = 1, bookRequests = true, canStartRequests = true, canChooseRequestVersions = true)
+
+            vm.uiState.value.viewer shouldBe CHOOSER
+        }
+
+        it("reads the lanes again once someone is known, since a first read with nobody files nothing") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository().apply { serve(uuid, request(uuid, 5, RequestState.Choose)) }
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val auth = TestAuthRepository()
+            val vm = sut(uuid, requests, libraryWith(uuid), auth)
+            vm.load()
+            val before = vm.uiState.value.lanes
+
+            auth.currentUserState.value = randomCurrentUser().copy(id = 1, bookRequests = true, canStartRequests = true, canChooseRequestVersions = true)
+
+            before.map { it.id } to vm.uiState.value.lanes.map { it.id } shouldBe (emptyList<Long>() to listOf(5L))
+        }
+
+        it("may do nothing when the server has book requests off for the reader") {
+            val auth = TestAuthRepository().apply {
+                currentUserState.value = randomCurrentUser().copy(id = 1, bookRequests = false, canStartRequests = true, canChooseRequestVersions = true)
+            }
+
+            sut(auth = auth).uiState.value.viewer shouldBe RequestViewer(1, canStart = false, canChoose = false)
+        }
+    }
+
     describe("the lane the page opened on") {
 
         it("stays the main lane when a reload brings a more urgent request") {
