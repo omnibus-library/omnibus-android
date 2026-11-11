@@ -318,6 +318,47 @@ class BookRequestViewModelTest : DescribeSpec({
         }
     }
 
+    describe("a lane whose own read fails") {
+
+        it("stays on the page, with its last good read, when a reload can't read it") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository()
+            val main = request(uuid, 5, RequestState.Choose)
+            val other = request(uuid, 6, RequestState.Choose, userId = 2)
+            requests.serve(uuid, main, other)
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER))
+            vm.load()
+            requests.answer("request", UNREACHABLE, forFirstArg = 6L)
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+
+            vm.load()
+
+            vm.uiState.value.lanes.map { it.id } shouldBe listOf(5L, 6L)
+        }
+
+        it("is read again by the poll, even when nothing is moving") {
+            runTest {
+                val uuid = randomString()
+                val requests = TestRequestsRepository()
+                val main = request(uuid, 5, RequestState.Choose)
+                val other = request(uuid, 6, RequestState.Choose, userId = 2)
+                requests.serve(uuid, main, other)
+                requests.answer("request", UNREACHABLE, forFirstArg = 6L)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER))
+                vm.load()
+                val before = vm.uiState.value.lanes.map { it.id }
+                backgroundScope.launch { vm.keepCurrent() }
+
+                advanceTimeBy(2_000)
+                runCurrent()
+
+                before to vm.uiState.value.lanes.map { it.id } shouldBe (listOf(5L) to listOf(5L, 6L))
+            }
+        }
+    }
+
     describe("the kinds the page offers to request") {
         it("lists each kind the library lacks and no request covers, for a reader who can start one") {
             val uuid = randomString()
@@ -412,7 +453,7 @@ class BookRequestViewModelTest : DescribeSpec({
                 advanceTimeBy(2_000)
                 runCurrent()
 
-                vm.uiState.value.lanes.map { it.id } shouldBe listOf(5L)
+                vm.uiState.value.let { it.lanes.map { lane -> lane.id } to it.failure } shouldBe (listOf(5L) to null)
             }
         }
 

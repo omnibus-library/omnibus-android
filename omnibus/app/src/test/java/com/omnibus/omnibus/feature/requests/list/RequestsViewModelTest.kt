@@ -17,6 +17,7 @@ import com.omnibus.omnibus.feature.requests.RequestGroupKey
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -161,6 +162,29 @@ class RequestsViewModelTest : DescribeSpec({
             }
 
             sut(auth = auth).uiState.value.viewer.canStart shouldBe false
+        }
+    }
+
+    describe("a read that answers after a newer one") {
+        it("is dropped, so a slow poll can't overwrite a refresh") {
+            runTest {
+                val requests = TestRequestsRepository()
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("list", ok(listing("old", RequestState.OnItsWay)))
+                val vm = sut(requests, authAs(CHOOSER))
+                vm.load()
+                backgroundScope.launch { vm.keepCurrent() }
+                requests.answer("list", ok(listing("stale", RequestState.OnItsWay)), gate)
+                advanceTimeBy(10_000)
+                runCurrent()
+                requests.answer("list", ok(listing("fresh", RequestState.OnItsWay)))
+                vm.refresh()
+
+                gate.complete(Unit)
+                runCurrent()
+
+                vm.uiState.value.listings!!.map { it.book.uuid } shouldBe listOf("fresh")
+            }
         }
     }
 

@@ -66,6 +66,8 @@ class RequestsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RequestsUIState())
+    private var readSeq = 0
+    private var appliedSeq = 0
 
     /** The list's state. */
     val uiState: StateFlow<RequestsUIState> = _uiState.asStateFlow()
@@ -122,7 +124,12 @@ class RequestsViewModel @Inject constructor(
 
     /** One read. A failure shows only while there is nothing else on screen, and leaves the rows as they were. */
     private suspend fun read() {
-        when (val result = requests.list()) {
+        val seq = ++readSeq
+        val result = requests.list()
+        // An answer older than one already applied would put back what a newer read just replaced.
+        if (seq < appliedSeq) return
+        appliedSeq = seq
+        when (result) {
             is RequestsResult.Success -> _uiState.update { it.copy(listings = result.value, failure = null) }
             is RequestsResult.Failure -> fail(result.error)
             RequestsResult.NoServer -> fail(RequestsError.Unreachable)

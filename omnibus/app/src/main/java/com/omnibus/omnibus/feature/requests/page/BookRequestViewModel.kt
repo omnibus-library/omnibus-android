@@ -22,6 +22,7 @@ import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.requests.RequestAction
 import com.omnibus.omnibus.feature.requests.actionFailure
+import com.omnibus.omnibus.feature.requests.DETAIL_POLL_MILLIS
 import com.omnibus.omnibus.feature.requests.detailPollIntervalMillis
 import com.omnibus.omnibus.feature.requests.isMoving
 import com.omnibus.omnibus.feature.requests.kindLabel
@@ -145,9 +146,13 @@ data class BookRequestUIState(
             return unrequestedKinds(held.formats, listed, viewer)
         }
 
-    /** Counts the listings too, so a lane whose full read failed keeps polling and its read is retried. */
+    /** Counts the listings too, and any listed lane with no read, so a lane whose full read failed keeps polling and is read again. */
     val pollInterval: Long?
-        get() = detailPollIntervalMillis(lanes + laneIds.mapNotNull { id -> listings?.firstOrNull { it.request.id == id }?.request })
+        get() = if (laneIds.any { it !in reads }) {
+            DETAIL_POLL_MILLIS
+        } else {
+            detailPollIntervalMillis(lanes + laneIds.mapNotNull { id -> listings?.firstOrNull { it.request.id == id }?.request })
+        }
 
     /** Who asked for [lane], as the list names them. */
     fun listingFor(lane: BookRequest): RequestListing? = listings?.firstOrNull { it.request.id == lane.id }
@@ -296,8 +301,13 @@ class BookRequestViewModel @AssistedInject constructor(
         when (main) {
             is RequestsResult.Success -> {
                 val answers = otherReads + (main.value.id to main.value)
-                // A write that landed meanwhile keeps its answers; this read only fills the lanes it lacks.
-                change { it.copy(reads = if (started == generation) answers else answers + it.reads) }
+                val listedIds = (others + mainId).toSet()
+                // A lane whose read failed keeps its last good one. A write that landed meanwhile keeps its answers too:
+                // this read only fills the lanes it lacks.
+                change {
+                    val held = it.reads.filterKeys { id -> id in listedIds }
+                    it.copy(reads = if (started == generation) held + answers else answers + held)
+                }
             }
             else -> if (!hadPage && mainId !in _uiState.value.reads) change { it.copy(failure = main.errorOrNull()) }
         }
@@ -518,7 +528,11 @@ class BookRequestViewModel @AssistedInject constructor(
         }
         val answers = readAll((moving + stale).distinct())
         if (started != generation) return
-        change { it.copy(listings = fresh, reads = it.reads + answers) }
+        change {
+            val reads = it.reads + answers
+            // Once the main lane reads, a first load's failure is over.
+            it.copy(listings = fresh, reads = reads, failure = it.failure.takeUnless { _ -> mainId in reads })
+        }
     }
 
     /** Each id's full request, concurrently; one that fails is left out. */
