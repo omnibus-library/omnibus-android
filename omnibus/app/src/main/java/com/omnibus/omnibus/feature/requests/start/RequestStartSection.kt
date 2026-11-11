@@ -15,7 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
@@ -61,7 +65,8 @@ internal object RequestStartTestTags {
  * A start that succeeds opens the request page in the stack that is showing this page. The ViewModel holds the pending
  * open, so a start that answers while the reader is elsewhere opens it when they return. Whichever host is on screen
  * takes that open and any failure message: the Files host only while its tab is selected, the stage host only while it
- * is not, so a result is taken once even for a book that shows no buttons on the stage.
+ * is not, so a result is taken once even for a book that shows no buttons on the stage. The stage host reaches for the
+ * Hilt ViewModel only when it has something to do: a wished book's buttons, or a start made from Files.
  */
 internal class RequestStartSection(private val host: Host) : BookDetailSection {
 
@@ -72,20 +77,39 @@ internal class RequestStartSection(private val host: Host) : BookDetailSection {
     override fun Content(context: BookDetailSectionContext, modifier: Modifier) {
         val book = context.book
         if (host == Host.Stage && context.tabs.selected == BookDetailTab.Files) return
+        val startedFromFiles = viewModel<StartedFromFiles>()
+        val offersSlots = host == Host.Files || rememberIsWishlistOnly(book)
+        if (!offersSlots && !startedFromFiles.value) return
         val viewModel = hiltViewModel<RequestStartViewModel, RequestStartViewModel.Factory>(
             creationCallback = { it.create(book.uuid) },
         )
         val state by viewModel.uiState.collectAsState()
-        RequestStartContent(host, context, state, viewModel::start, viewModel::opened, viewModel::messageShown, modifier)
+        val onStart: (RequestKind) -> Unit = { kind ->
+            if (host == Host.Files) startedFromFiles.value = true
+            viewModel.start(kind)
+        }
+        RequestStartContent(host, context, state, offersSlots, onStart, viewModel::opened, viewModel::messageShown, modifier)
     }
 }
 
-/** What a host shows for [state], and the events it consumes. The ViewModel's calls come in as [onStart], [onOpened] and [onMessageShown]. */
+/**
+ * Whether a start was made from the Files tab on this page. The stage host has an event to take only then, so until it
+ * is set the stage host never touches Hilt, as the page's tests rely on.
+ */
+internal class StartedFromFiles : ViewModel() {
+    var value by mutableStateOf(false)
+}
+
+/**
+ * What a host shows for [state], and the events it consumes. The ViewModel's calls come in as [onStart], [onOpened] and
+ * [onMessageShown]. [offersSlots] is false for a host that only takes events, which then draws nothing.
+ */
 @Composable
 internal fun RequestStartContent(
     host: RequestStartSection.Host,
     context: BookDetailSectionContext,
     state: RequestStartUIState,
+    offersSlots: Boolean,
     onStart: (RequestKind) -> Unit,
     onOpened: () -> Unit,
     onMessageShown: (RequestStartMessage) -> Unit,
@@ -109,8 +133,7 @@ internal fun RequestStartContent(
         }
     }
 
-    // The stage host's buttons are only for a wished book; it still takes the events while the Files tab is not showing.
-    if (host == RequestStartSection.Host.Stage && !rememberIsWishlistOnly(book)) return
+    if (!offersSlots) return
     val kinds = unrequestedKinds(book.formats, emptyList(), state.viewer)
     if (kinds.isEmpty()) return
     val wording = rememberRequestWording()

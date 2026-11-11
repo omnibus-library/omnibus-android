@@ -26,7 +26,7 @@ class RequestStartContentTest {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 RequestStartContent(
-                    RequestStartSection.Host.Stage, context, state,
+                    RequestStartSection.Host.Stage, context, state, offersSlots = false,
                     onStart = {}, onOpened = { opened += Unit }, onMessageShown = { shown += it },
                     modifier = Modifier,
                 )
