@@ -64,6 +64,61 @@ class ShellNavigatorTest : DescribeSpec({
         }
     }
 
+    describe("pushing a destination") {
+        it("ignores a destination already on top, so a double tap stacks nothing") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val pushed = randomPushed()
+            val navigator = sut(stacks, tab)
+
+            navigator.navigateTo(pushed)
+            navigator.navigateTo(pushed)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, pushed)
+        }
+
+        it("lands on the tab that asked, whichever tab is selected by then") {
+            val stacks = rootStacks()
+            val asking = randomEnum<ShellTab>()
+            val selected = tabOtherThan(asking)
+            val pushed = randomPushed()
+            val navigator = sut(stacks, selected)
+
+            navigator.navigateTo(pushed, asking)
+
+            listOf(stacks.getValue(asking).toList(), stacks.getValue(selected).toList()) shouldBe
+                listOf(listOf(asking.root, pushed), listOf(selected.root))
+        }
+    }
+
+    describe("opening a destination that may already be underneath") {
+        it("goes back to it when it is just below the top") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val below = randomPushed()
+            val navigator = sut(stacks, tab)
+            navigator.navigateTo(below)
+            navigator.navigateTo(Pushed(below.id + 1))
+
+            navigator.openOrPop(below, tab)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, below)
+        }
+
+        it("pushes it when it is not just below the top") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val top = randomPushed()
+            val wanted = Pushed(top.id + 1)
+            val navigator = sut(stacks, tab)
+            navigator.navigateTo(top)
+
+            navigator.openOrPop(wanted, tab)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, top, wanted)
+        }
+    }
+
     describe("the flattened back stack") {
         it("ends with the selected tab's stack") {
             val tab = randomEnum<ShellTab>()

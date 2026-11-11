@@ -36,6 +36,9 @@ class ShellNavigator(
         get() = ShellTab.entries.filter { it != selected }.flatMap { stacks.getValue(it) } +
             stacks.getValue(selected)
 
+    /** The top of [tab]'s stack, the selected tab's by default. */
+    fun top(tab: ShellTab = selected): NavKey? = stacks.getValue(tab).lastOrNull()
+
     /** Selects [tab], or pops to its root if it already is selected. */
     fun select(tab: ShellTab) {
         if (tab == selected) {
@@ -45,9 +48,19 @@ class ShellNavigator(
         }
     }
 
-    /** Pushes [key] onto the selected tab's stack. */
-    fun navigateTo(key: NavKey) {
-        stacks.getValue(selected).add(key)
+    /**
+     * Pushes [key] onto [tab]'s stack, the selected tab's by default. Pass the tab whose screen asked, so a push made
+     * while another tab is fading in lands where it was meant. A [key] already on top is not pushed again.
+     */
+    fun navigateTo(key: NavKey, tab: ShellTab = selected) {
+        val stack = stacks.getValue(tab)
+        if (stack.lastOrNull() != key) stack.add(key)
+    }
+
+    /** Goes back to [key] when it is just below [tab]'s top, so a loop of links doesn't grow the stack, else pushes it. */
+    fun openOrPop(key: NavKey, tab: ShellTab = selected) {
+        val stack = stacks.getValue(tab)
+        if (stack.size >= 2 && stack[stack.lastIndex - 1] == key) stack.removeAt(stack.lastIndex) else navigateTo(key, tab)
     }
 
     /**
