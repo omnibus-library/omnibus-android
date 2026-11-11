@@ -2,7 +2,6 @@ package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
-import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
@@ -31,7 +30,6 @@ private fun BookDetailDestination.dispatched(
     titles: PlaceholderTitles = randomPlaceholderTitles(),
 ): Opened = Opened().also { opened ->
     dispatch(
-        top = null,
         titles = titles,
         push = { opened.pushed += it },
         openReader = { uuid, cfi -> opened.readers += uuid to cfi },
@@ -77,12 +75,6 @@ class BookDetailDestinationTest : DescribeSpec({
 
                 BookDetailDestination.Request(uuid).shellRoute(randomPlaceholderTitles()) shouldBe BookRequestRoute(uuid)
             }
-
-            it("pushes nothing when that page is already on top, so two starts that both answer open it once") {
-                val uuid = randomString()
-
-                BookDetailDestination.Request(uuid).pushTarget(BookRequestRoute(uuid), randomPlaceholderTitles()).shouldBeNull()
-            }
         }
 
         context("when the destination opens outside the shell") {
@@ -96,14 +88,6 @@ class BookDetailDestinationTest : DescribeSpec({
                 ) { destination ->
                     destination.shellRoute(randomPlaceholderTitles()).shouldBeNull()
                 }
-            }
-        }
-
-        context("when the route is already on top") {
-            it("#93 TC-46: pushes nothing") {
-                val uuid = randomString()
-
-                BookDetailDestination.Book(uuid).pushTarget(BookDetailRoute(uuid), randomPlaceholderTitles()).shouldBeNull()
             }
         }
     }
@@ -143,8 +127,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 it("#93 TC-134: swallows the failure") {
                     shouldNotThrowAny {
                         BookDetailDestination.ExternalUrl(randomString()).dispatch(
-                            top = null,
-                            titles = randomPlaceholderTitles(),
+                                                titles = randomPlaceholderTitles(),
                             push = {},
                             openReader = { _, _ -> },
                             openPlayer = { _, _, _ -> },

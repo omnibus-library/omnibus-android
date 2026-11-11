@@ -64,13 +64,8 @@ internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey
     BookDetailDestination.Settings -> BookDetailPlaceholderRoute(titles.settings)
 }
 
-/** [shellRoute], or null when it equals [top], so a second tap never stacks the same screen (or shares one entry's state). */
-internal fun BookDetailDestination.pushTarget(top: NavKey?, titles: PlaceholderTitles): NavKey? =
-    shellRoute(titles)?.takeIf { it != top }
-
 /** Sends this destination to the shell. A link no app can open is ignored. */
 internal fun BookDetailDestination.dispatch(
-    top: NavKey?,
     titles: PlaceholderTitles,
     push: (NavKey) -> Unit,
     openReader: (bookUuid: String, startCfi: String?) -> Unit,
@@ -81,6 +76,6 @@ internal fun BookDetailDestination.dispatch(
         is BookDetailDestination.Reader -> openReader(bookUuid, startCfi)
         is BookDetailDestination.Player -> openPlayer(bookUuid, bookFileId, positionSeconds)
         is BookDetailDestination.ExternalUrl -> runCatching { openUri(url) }
-        else -> pushTarget(top, titles)?.let(push)
+        else -> shellRoute(titles)?.let(push)
     }
 }

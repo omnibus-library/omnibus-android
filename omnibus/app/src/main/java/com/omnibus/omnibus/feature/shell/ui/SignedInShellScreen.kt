@@ -111,12 +111,11 @@ private fun SignedInShellContent(
         checkIn = stringResource(R.string.book_detail_placeholder_check_in),
         settings = stringResource(R.string.book_detail_placeholder_settings),
     )
-    // [owner] is the tab whose entry asked, so a link made while another tab is fading in is pushed where it was meant.
-    val openDestination: (BookDetailDestination, ShellTab) -> Unit = { destination, owner ->
+    // [asking] is the entry's own key: the tab is resolved when the link is tapped, not when the entry composed.
+    val openDestination: (BookDetailDestination, NavKey) -> Unit = { destination, asking ->
         destination.dispatch(
-            top = navigator.top(owner),
             titles = titles,
-            push = { navigator.navigateTo(it, owner) },
+            push = { navigator.navigateTo(it, navigator.ownerOf(asking)) },
             openReader = onOpenReader,
             openPlayer = onOpenPlayer,
             openUri = { uriHandler.openUri(it) },
@@ -163,21 +162,20 @@ private fun SignedInShellContent(
                         // The Library fills the window and reads the insets itself, so it takes no wrapper.
                         entry<LibraryRoot> {
                             LibraryScreen(
-                                onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                                onOpenBook = { navigator.navigateTo(BookDetailRoute(it), ShellTab.Library) },
                                 onAddBooks = { /* Add books sheet: later ticket */ },
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
-                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name)) },
-                                onOpenShelves = { navigator.navigateTo(ShelvesRoute) },
+                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },
+                                onOpenShelves = { navigator.navigateTo(ShelvesRoute, ShellTab.Library) },
                             )
                         }
                         entry<BookDetailRoute> { key ->
-                            val owner = remember { navigator.selected }
                             ShellUnderStatusBarEntry {
                                 BookDetailScreen(
                                     uuid = key.uuid,
-                                    onNavigate = { openDestination(it, owner) },
-                                    onClose = { navigator.back() },
+                                    onNavigate = { openDestination(it, key) },
+                                    onClose = { navigator.back(navigator.ownerOf(key)) },
                                 )
                             }
                         }
@@ -188,27 +186,24 @@ private fun SignedInShellContent(
                             ShellUnderStatusBarEntry { ShelvesScreen(onBack = { navigator.back() }) }
                         }
                         entry<BookRequestRoute> { key ->
-                            val owner = remember { navigator.selected }
                             ShellUnderStatusBarEntry {
                                 BookRequestScreen(
                                     uuid = key.uuid,
-                                    onBack = { navigator.back() },
-                                    onOpenBook = { navigator.openOrPop(BookDetailRoute(key.uuid), owner) },
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpenBook = { navigator.openOrPop(BookDetailRoute(key.uuid), navigator.ownerOf(key)) },
                                 )
                             }
                         }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
                         entry<YouRoot> {
-                            val owner = remember { navigator.selected }
-                            ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, owner) }) }
+                            ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) }) }
                         }
                         entry<RequestsRoute> {
-                            val owner = remember { navigator.selected }
                             ShellUnderStatusBarEntry {
                                 RequestsScreen(
-                                    onBack = { navigator.back() },
-                                    onOpenRequest = { navigator.navigateTo(BookRequestRoute(it), owner) },
+                                    onBack = { navigator.back(navigator.ownerOf(RequestsRoute)) },
+                                    onOpenRequest = { navigator.navigateTo(BookRequestRoute(it), navigator.ownerOf(RequestsRoute)) },
                                 )
                             }
                         }
