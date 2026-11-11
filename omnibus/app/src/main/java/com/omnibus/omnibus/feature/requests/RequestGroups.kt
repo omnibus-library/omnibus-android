@@ -138,3 +138,13 @@ internal fun addAction(uuid: String, formats: List<String>?, hasFiles: Boolean, 
     (formats?.let { holds(RequestKind.Ebook, it) } ?: hasFiles) -> AddAction.Held
     else -> AddAction.Start
 }
+
+/** The heading over the providers' results: "From Hardcover and Open Library", or a general line when none answered. */
+internal fun providersHeading(sources: List<String>, wording: RequestWording = RequestWording()): String {
+    val names = sources.map { source -> source.split('_').joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } } }.distinct()
+    return when (names.size) {
+        0 -> wording.fromOnlineProviders
+        1 -> wording.fromProviders(names.single())
+        else -> wording.fromProviders(names.dropLast(1).joinToString(", ") + " ${wording.and} " + names.last())
+    }
+}

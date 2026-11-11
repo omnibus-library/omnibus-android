@@ -175,6 +175,7 @@ internal fun DeleteBookSheetContent(
             }
             is DeleteSheet.Choosing, is DeleteSheet.Confirming -> Column(
                 Modifier
+                    .fillMaxWidth()
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, bottom = 28.dp),

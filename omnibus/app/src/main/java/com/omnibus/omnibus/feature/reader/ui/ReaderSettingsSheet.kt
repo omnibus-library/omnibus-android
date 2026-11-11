@@ -325,6 +325,7 @@ internal fun ReaderSettingsSheetContent(
         SheetHeader(onDone = onDone)
         Column(
             modifier = Modifier
+                .fillMaxWidth()
                 .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp),

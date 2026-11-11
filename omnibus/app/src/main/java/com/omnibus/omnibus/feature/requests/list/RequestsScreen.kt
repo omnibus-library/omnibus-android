@@ -34,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +60,8 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.feature.requests.RequestGroup
+import com.omnibus.omnibus.feature.requests.add.AddRequestSheet
+import com.omnibus.omnibus.feature.requests.add.AddRequestViewModel
 import com.omnibus.omnibus.feature.requests.RequestGroupKey
 import com.omnibus.omnibus.feature.requests.RequestTone
 import com.omnibus.omnibus.feature.requests.RequestWording
@@ -95,34 +100,66 @@ internal object RequestsScreenTestTags {
  * Stateful wrapper that feeds [RequestsScreenContent] from [RequestsViewModel].
  *
  * @param onBack Called when the back arrow is tapped.
- * @param onOpenRequest Called with a book's uuid when its row is tapped. The shell pushes the request page.
- * @param onAdd Called by the Request a book button.
+ * @param onOpenRequest Called with a book's uuid when its row is tapped, or when a request has been started from the
+ * Request a book sheet. The shell pushes the request page onto this screen's own stack.
  */
 @Composable
 fun RequestsScreen(
     onBack: () -> Unit,
     onOpenRequest: (uuid: String) -> Unit,
-    onAdd: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: RequestsViewModel = hiltViewModel(),
+    addViewModel: AddRequestViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val addState by addViewModel.uiState.collectAsState()
+    var showsSheet by rememberSaveable { mutableStateOf(false) }
+    val wording = rememberRequestWording()
 
     // Each runs when the entry enters composition, so returning to the list reads again and polling stops off screen.
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(Unit) { viewModel.keepCurrent() }
 
+    // A start that succeeded hides the sheet, then pushes the page from this composed entry, so the push lands on this
+    // stack. The list is read again without the push waiting for it.
+    LaunchedEffect(addState.pendingOpen) {
+        addState.pendingOpen?.let { uuid ->
+            showsSheet = false
+            onOpenRequest(uuid)
+            addViewModel.opened()
+            viewModel.refresh()
+        }
+    }
+
     RequestsScreenContent(
         uiState = uiState,
-        wording = rememberRequestWording(),
+        wording = wording,
         onBack = onBack,
         onRetry = viewModel::load,
         onRefresh = viewModel::refresh,
         onToggleFold = viewModel::toggleFold,
         onOpenRequest = onOpenRequest,
-        onAdd = onAdd,
+        onAdd = {
+            addViewModel.updateQuery("")
+            showsSheet = true
+        },
         modifier = modifier,
     )
+    if (showsSheet) {
+        AddRequestSheet(
+            uiState = addState,
+            requested = uiState.requested,
+            wording = wording,
+            onQueryChange = addViewModel::updateQuery,
+            onRequestLibrary = { addViewModel.startFromLibrary(it.uuid) },
+            onRequestRecord = { addViewModel.startFromRecord(it, uiState.requested) },
+            onOpen = { uuid ->
+                showsSheet = false
+                onOpenRequest(uuid)
+            },
+            onClose = { showsSheet = false },
+        )
+    }
 }
 
 /** The list's state-driven layout, without the ViewModel. Internal so screenshot tests can render each state. */

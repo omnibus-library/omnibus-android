@@ -63,8 +63,14 @@ data class RequestWording(
     val historyLine: (kind: String, head: String, day: String) -> String = { kind, head, day -> "$kind $head · $day" },
     val stoppedAt: (Int) -> String = { "stopped at $it%" },
     val swappedForAnother: String = "Swapped for another version",
+    // The Request a book sheet
+    val fromProviders: (names: String) -> String = { "From $it" },
+    val fromOnlineProviders: String = "From online providers",
+    val and: String = "and",
     // Failures
     val stillStarting: String = "Still starting the last request.",
+    val alreadyInLibrary: (title: String) -> String = { "$it is already in the library." },
+    val couldntLookUp: (title: String) -> String = { "Couldn’t look up $it." },
     val tooManyRequests: String = "You have a lot of requests going. Try again in a few minutes.",
     val cantRequest: String = "Your account can’t make requests.",
     val bookGone: String = "That book is no longer in the library.",

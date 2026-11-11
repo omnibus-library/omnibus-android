@@ -204,7 +204,6 @@ private fun SignedInShellContent(
                                 RequestsScreen(
                                     onBack = { navigator.back() },
                                     onOpenRequest = { navigator.navigateTo(BookRequestRoute(it)) },
-                                    onAdd = { /* the Request a book sheet */ },
                                 )
                             }
                         }

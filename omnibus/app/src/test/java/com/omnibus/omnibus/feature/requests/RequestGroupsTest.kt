@@ -270,6 +270,22 @@ class RequestGroupsTest : DescribeSpec({
         }
     }
 
+    describe("the heading over the providers' results") {
+        it("names whichever providers answered, once each") {
+            listOf(
+                providersHeading(emptyList()),
+                providersHeading(listOf("hardcover")),
+                providersHeading(listOf("open_library", "hardcover", "open_library")),
+                providersHeading(listOf("google_books", "hardcover", "open_library")),
+            ) shouldBe listOf(
+                "From online providers",
+                "From Hardcover",
+                "From Open Library and Hardcover",
+                "From Google Books, Hardcover and Open Library",
+            )
+        }
+    }
+
     describe("the request a page opens a lane on") {
         it("is the first item of the first group") {
             val listings = listOf(listing("a", RequestState.Ready, id = 1), listing("b", RequestState.OnItsWay, id = 2))

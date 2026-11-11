@@ -69,6 +69,8 @@
     <!-- Messages for a write that failed or finished. -->
     <string name="requests_request_cancelled">%1$s request cancelled</string>
     <string name="requests_still_starting">Still starting the last request.</string>
+    <string name="requests_already_in_library">%1$s is already in the library.</string>
+    <string name="requests_couldnt_look_up">Couldn’t look up %1$s.</string>
     <string name="requests_failure_too_many">You have a lot of requests going. Try again in a few minutes.</string>
     <string name="requests_failure_cant_request">Your account can’t make requests.</string>
     <string name="requests_failure_book_gone">That book is no longer in the library.</string>
@@ -177,4 +179,23 @@
 
     <!-- The book page's request slots. -->
     <string name="requests_not_in_library">Not in the library</string>
+
+    <!-- The Request a book sheet. -->
+    <string name="requests_add_title">Request a book</string>
+    <string name="requests_add_cancel">Cancel</string>
+    <string name="requests_add_field">Title, author or ISBN</string>
+    <string name="requests_add_hint">Title, author or ISBN. Starts an ebook request.</string>
+    <string name="requests_add_idle">Search for a book by title, author or ISBN.</string>
+    <string name="requests_add_in_library">In your library</string>
+    <string name="requests_from_providers">From %1$s</string>
+    <string name="requests_from_online_providers">From online providers</string>
+    <string name="requests_and">and</string>
+    <string name="requests_add_loading">Searching…</string>
+    <string name="requests_add_failed">Couldn’t search just now.</string>
+    <string name="requests_add_empty">Nothing matches</string>
+    <string name="requests_add_note_requested">requested</string>
+    <string name="requests_add_note_in_library">in the library</string>
+    <string name="requests_add_open">Open</string>
+    <string name="requests_add_open_title">Open %1$s</string>
+    <string name="requests_add_request_title">Request %1$s</string>
 </resources>
