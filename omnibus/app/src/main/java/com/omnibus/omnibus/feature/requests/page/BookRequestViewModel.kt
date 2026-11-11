@@ -65,18 +65,27 @@ sealed interface Busy {
 }
 
 /**
- * A short message over the page.
+ * A short message over the page. Its times are absolute, so a screen that comes back (a rotation, a fold, a visit
+ * elsewhere) waits only for what is left and never restarts a window the server is already counting down.
  *
  * @property undoRequestId Set only for a cancel: the request Undo restores.
- * @property durationMillis How long it stays. A cancel's lasts until the server stops taking it back.
+ * @property textDeadlineMillis When the text goes away, in epoch milliseconds.
+ * @property undoDeadlineMillis When Undo stops being offered: 1.5 s before the server's `cancel_at`. Null without Undo.
  * @property id Numbers the message, so two with the same text each show.
  */
 data class RequestMessage(
     val text: String,
     val undoRequestId: Long? = null,
-    val durationMillis: Long = DEFAULT_MESSAGE_MILLIS,
+    val textDeadlineMillis: Long = 0L,
+    val undoDeadlineMillis: Long? = null,
     val id: Long = 0,
-)
+) {
+    /** How long the text has left at [nowMillis]. */
+    fun textRemainingMillis(nowMillis: Long): Long = max(0L, textDeadlineMillis - nowMillis)
+
+    /** How long Undo has left at [nowMillis]; zero when it was never offered. */
+    fun undoRemainingMillis(nowMillis: Long): Long = undoDeadlineMillis?.let { max(0L, it - nowMillis) } ?: 0L
+}
 
 private const val DEFAULT_MESSAGE_MILLIS = 4_000L
 
@@ -211,9 +220,11 @@ class BookRequestViewModel @AssistedInject constructor(
      * Polls while any lane is moving. The screen runs it while the page is on screen, so polling stops when the entry
      * leaves. It waits while nothing moves and starts again when a lane does, and a failed first load doesn't end it.
      */
-    suspend fun keepCurrent() = coroutineScope {
-        launch { pollWhileMoving() }
-        launch { wakeAtWindowCloses() }
+    suspend fun keepCurrent() {
+        coroutineScope {
+            launch { pollWhileMoving() }
+            launch { wakeAtWindowCloses() }
+        }
     }
 
     private suspend fun pollWhileMoving() {
@@ -335,9 +346,12 @@ class BookRequestViewModel @AssistedInject constructor(
             val cancelled = write(
                 RequestAction.Cancel, Busy.Cancelling(laneId), allowed, rereading = laneId, rereadsListings = false,
             ) { requests.cancel(laneId) } ?: return@launch
-            undoDelayMillis(cancelled.cancelAt, timeSource.nowMillis())?.let { delay ->
+            val now = timeSource.nowMillis()
+            undoDelayMillis(cancelled.cancelAt, now)?.let { delay ->
                 val text = wordingSource.wording().let { it.requestCancelled(kindLabel(cancelled.kind, it)) }
-                change { it.copy(message = RequestMessage(text, cancelled.id, delay, nextMessageId++)) }
+                val undoDeadline = now + delay
+                val message = RequestMessage(text, cancelled.id, max(undoDeadline, now + DEFAULT_MESSAGE_MILLIS), undoDeadline, nextMessageId++)
+                change { it.copy(message = message) }
             }
             // Read once Undo is up and the controls are free, so a slow list can't eat the server's grace.
             rereadListings()
@@ -350,8 +364,9 @@ class BookRequestViewModel @AssistedInject constructor(
             val state = _uiState.value
             val id = state.message?.undoRequestId ?: return@launch
             if (state.busy != null || !state.isOnline) return@launch
-            change { it.copy(message = null) }
-            write(RequestAction.Undo, Busy.Undoing(id), allowed = true) { requests.undoCancel(id) }
+            // The Undo stays up until the server has taken the cancel back, so a failure never drops it.
+            val restored = write(RequestAction.Undo, Busy.Undoing(id), allowed = true) { requests.undoCancel(id) }
+            if (restored != null) change { if (it.message?.undoRequestId == id) it.copy(message = null) else it }
         }
     }
 
@@ -423,18 +438,20 @@ class BookRequestViewModel @AssistedInject constructor(
         }
     }
 
-    /** Says a write failed. An open Undo rides along for the window that remains, since losing it loses the only way back. */
+    /**
+     * Says a write failed, for at least the usual time. An Undo still open rides along with its own deadline, since
+     * losing it loses the only way back.
+     */
     private fun showFailure(text: String) {
-        val state = _uiState.value
-        val open = state.message?.undoRequestId
-        val left = open?.let { undoDelayMillis(state.reads[it]?.cancelAt, timeSource.nowMillis()) ?: 0L }
-        val message = if (open == null) {
-            RequestMessage(text, id = nextMessageId++)
-        } else {
-            RequestMessage(text, open, left ?: 0L, nextMessageId++)
-        }
+        val now = timeSource.nowMillis()
+        val open = _uiState.value.message?.takeIf { it.undoRequestId != null && it.undoRemainingMillis(now) > 0 }
+        val shown = max(now + DEFAULT_MESSAGE_MILLIS, open?.undoDeadlineMillis ?: 0L)
+        val message = RequestMessage(text, open?.undoRequestId, shown, open?.undoDeadlineMillis, nextMessageId++)
         change { it.copy(message = message) }
     }
+
+    /** The clock the page's messages are timed against. */
+    fun nowMillis(): Long = timeSource.nowMillis()
 
     /** Files a write's answer in the listings, so its lane and its kind hold even when the reread fails. */
     private fun adopt(answer: BookRequest) {

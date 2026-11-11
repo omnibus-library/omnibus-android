@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.StuckReason
 import com.omnibus.omnibus.feature.requests.RequestWording
+import com.omnibus.omnibus.feature.requests.SHOT_NOW_MILLIS
 import com.omnibus.omnibus.feature.requests.SHOT_NOW_SECS
 import com.omnibus.omnibus.feature.requests.ShotAsker
 import com.omnibus.omnibus.feature.requests.shotPage
@@ -250,14 +251,14 @@ fun RequestStuckCouldntAddTwoPane() {
 @Preview(name = "Dark", widthDp = 411, heightDp = 891, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RequestCancelledUndoPhone() {
-    PageShot(shotPage(listOf(shotRequest(RequestState.Cancelled, cancelAt = SHOT_NOW_SECS + 8, cancelledBy = 1)), message = RequestMessage("Ebook request cancelled", undoRequestId = 1, id = 1)))
+    PageShot(shotPage(listOf(shotRequest(RequestState.Cancelled, cancelAt = SHOT_NOW_SECS + 8, cancelledBy = 1)), message = RequestMessage("Ebook request cancelled", undoRequestId = 1, textDeadlineMillis = SHOT_NOW_MILLIS + 8_000, undoDeadlineMillis = SHOT_NOW_MILLIS + 8_000, id = 1)))
 }
 
 @PreviewTest
 @Preview(name = "TwoPane", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RequestCancelledUndoTwoPane() {
-    PageShot(shotPage(listOf(shotRequest(RequestState.Cancelled, cancelAt = SHOT_NOW_SECS + 8, cancelledBy = 1)), message = RequestMessage("Ebook request cancelled", undoRequestId = 1, id = 1)))
+    PageShot(shotPage(listOf(shotRequest(RequestState.Cancelled, cancelAt = SHOT_NOW_SECS + 8, cancelledBy = 1)), message = RequestMessage("Ebook request cancelled", undoRequestId = 1, textDeadlineMillis = SHOT_NOW_MILLIS + 8_000, undoDeadlineMillis = SHOT_NOW_MILLIS + 8_000, id = 1)))
 }
 
 @PreviewTest

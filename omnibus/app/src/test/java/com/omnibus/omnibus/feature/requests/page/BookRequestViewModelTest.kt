@@ -861,7 +861,7 @@ class BookRequestViewModelTest : DescribeSpec({
                 vm.cancel(5)
 
                 vm.uiState.value.let { Triple(it.reads[5], it.busy, it.message?.copy(id = 0)) } shouldBe
-                    Triple(cancelled, null, RequestMessage("Ebook request cancelled", undoRequestId = 5, durationMillis = 8_500))
+                    Triple(cancelled, null, RequestMessage("Ebook request cancelled", undoRequestId = 5, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500))
             }
 
             it("shows an audiobook request's own kind") {
@@ -941,17 +941,17 @@ class BookRequestViewModelTest : DescribeSpec({
             requests.callsTo("undoCancel").size to vm.uiState.value.message?.undoRequestId shouldBe (0 to 5L)
         }
 
-        it("says why when it fails") {
+        it("says why when it fails, keeping the Undo while its window is open") {
             val uuid = randomString()
             val (vm, requests) = cancelledPage(uuid)
             requests.answer("undoCancel", RequestsResult.Failure(RequestsError.Http(410, "Too late")))
 
             vm.undo()
 
-            vm.uiState.value.message?.text shouldBe "Couldn’t undo: Too late"
+            vm.uiState.value.message?.let { it.text to it.undoRequestId } shouldBe ("Couldn’t undo: Too late" to 5L)
         }
 
-        it("keeps the Undo, for the window that remains, when another write fails") {
+        it("keeps the Undo, with its own deadline, when another write fails") {
             val uuid = randomString()
             val time = TestTimeSource(1_000_000)
             val (vm, requests) = cancelledPage(uuid, time)
@@ -960,8 +960,22 @@ class BookRequestViewModelTest : DescribeSpec({
 
             vm.start(RequestKind.Audiobook)
 
-            vm.uiState.value.message?.copy(id = 0) shouldBe
-                RequestMessage("You have a lot of requests going. Try again in a few minutes.", undoRequestId = 5, durationMillis = 5_500)
+            vm.uiState.value.message?.copy(id = 0) shouldBe RequestMessage(
+                "You have a lot of requests going. Try again in a few minutes.",
+                undoRequestId = 5, textDeadlineMillis = 1_008_500, undoDeadlineMillis = 1_008_500,
+            )
+        }
+
+        it("shows a failure for at least the usual time when the Undo is about to run out") {
+            val uuid = randomString()
+            val time = TestTimeSource(1_000_000)
+            val (vm, requests) = cancelledPage(uuid, time)
+            time.advanceBy(8_400)
+            requests.answer("start", RequestsResult.Failure(RequestsError.Http(429, null)))
+
+            vm.start(RequestKind.Audiobook)
+
+            vm.uiState.value.message!!.textRemainingMillis(1_008_400) shouldBe 4_000
         }
 
         it("sends nothing while the device is offline") {
@@ -981,6 +995,21 @@ class BookRequestViewModelTest : DescribeSpec({
             vm.undo()
 
             requests.callsTo("undoCancel").size to vm.uiState.value.message?.undoRequestId shouldBe (0 to 5L)
+        }
+    }
+
+    describe("how long a message has left") {
+        it("is the time to its deadline, so a message shown again later has less left") {
+            val message = RequestMessage("x", undoRequestId = 1, textDeadlineMillis = 10_000, undoDeadlineMillis = 7_000)
+
+            listOf(message.textRemainingMillis(4_000), message.textRemainingMillis(9_000), message.undoRemainingMillis(4_000)) shouldBe
+                listOf(6_000L, 1_000L, 3_000L)
+        }
+
+        it("is none once the deadline has passed, and for an Undo that was never offered") {
+            val message = RequestMessage("x", textDeadlineMillis = 10_000)
+
+            listOf(message.textRemainingMillis(12_000), message.undoRemainingMillis(0)) shouldBe listOf(0L, 0L)
         }
     }
 

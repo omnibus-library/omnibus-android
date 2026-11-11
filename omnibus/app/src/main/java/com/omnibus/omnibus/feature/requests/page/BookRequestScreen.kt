@@ -115,6 +115,7 @@ fun BookRequestScreen(
         onRetry = viewModel::load,
         actions = actions,
         onMessageDismissed = viewModel::messageDismissed,
+        now = viewModel::nowMillis,
         modifier = modifier,
     )
 }
@@ -134,6 +135,7 @@ internal fun BookRequestScreenContent(
     actions: RequestActions,
     onMessageDismissed: (RequestMessage) -> Unit,
     modifier: Modifier = Modifier,
+    now: () -> Long = { uiState.nowMillis },
 ) {
     val palette = OmnibusTheme.palette
     // Measured over the whole window, top bar included, so the split is the book page's rule on the same window.
@@ -168,6 +170,7 @@ internal fun BookRequestScreenContent(
                 uiState.message?.let { message ->
                     RequestMessageBar(
                         message = message,
+                        now = now,
                         canUndo = !uiState.isLocked,
                         onUndo = actions.onUndo,
                         onDismissed = { onMessageDismissed(message) },
