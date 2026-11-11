@@ -581,16 +581,16 @@ class RequestRulesTest : DescribeSpec({
             )
 
             listOf(line(1, "Ada"), line(2, "Jordan"), line(null, null)) shouldBe listOf(
-                "Ebook cancelled by you$DOT" + "Oct 12",
-                "Ebook cancelled by Jordan$DOT" + "Oct 12",
-                "Ebook cancelled$DOT" + "Oct 12",
+                "Ebook cancelled by you$DOT" + "Oct${NBSP}12",
+                "Ebook cancelled by Jordan$DOT" + "Oct${NBSP}12",
+                "Ebook cancelled$DOT" + "Oct${NBSP}12",
             )
         }
 
         it("heads a ready audiobook by its kind") {
             val ready = randomRequestListing().let { it.copy(request = it.request.copy(state = RequestState.Ready, kind = RequestKind.Audiobook, updatedAt = lateOnOct12Utc)) }
 
-            historyLine(ready, 1, utc) shouldBe "Audiobook ready to listen$DOT" + "Oct 12"
+            historyLine(ready, 1, utc) shouldBe "Audiobook ready to listen$DOT" + "Oct${NBSP}12"
         }
 
         it("names the version and how far it got, only for an ended request") {

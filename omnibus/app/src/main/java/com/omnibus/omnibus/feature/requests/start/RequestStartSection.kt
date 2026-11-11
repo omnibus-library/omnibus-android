@@ -106,7 +106,7 @@ internal class RequestStartSection(private val host: Host) : BookDetailSection {
             }
             Host.Stage -> RequestSlots(
                 kinds, state.starting, state.isOnline, wording, viewModel::start,
-                modifier.padding(top = 16.dp).widthIn(max = 320.dp),
+                modifier.padding(top = 30.dp).widthIn(max = 320.dp),
             )
         }
     }

@@ -211,7 +211,9 @@ private fun RequestPage(
             split = split,
             trailingSpace = 0.dp,
             overhang = 0.dp,
-            modifier = Modifier.fillMaxSize().then(if (twoPane) Modifier else Modifier.verticalScroll(pageScroll)),
+            // In one column the page only scrolls: filling the window would make the layout taller than its content, and the
+            // scroll would centre the content in the extra height.
+            modifier = if (twoPane) Modifier.fillMaxSize() else Modifier.fillMaxWidth().verticalScroll(pageScroll),
             stagePane = {
                 Pane(if (twoPane) headerScroll else null, Modifier.testTag(BookRequestTestTags.HEADER_PANE)) {
                     RequestHeader(book, uiState, wording, onOpenBook)

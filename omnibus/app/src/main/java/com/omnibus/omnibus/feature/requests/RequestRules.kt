@@ -363,7 +363,12 @@ internal fun historyLine(
         listing.cancelledByName != null -> wording.cancelledBy(listing.cancelledByName)
         else -> wording.cancelled
     }
-    return wording.historyLine(kindLabel(request.kind, wording), head.replaceFirstChar { it.lowercase() }, historyDay(request.updatedAt, zone))
+    // The day keeps its space unbreakable, so "Nov 10" never wraps between its words.
+    return wording.historyLine(
+        kindLabel(request.kind, wording),
+        head.replaceFirstChar { it.lowercase() },
+        historyDay(request.updatedAt, zone).replace(' ', '\u00a0'),
+    )
 }
 
 /** The version and how far it got: "EPUB · 2.4 MB · stopped at 40%". Null when neither is known. */

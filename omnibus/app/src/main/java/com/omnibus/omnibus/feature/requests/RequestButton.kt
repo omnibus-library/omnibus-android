@@ -64,7 +64,7 @@ internal fun RequestButton(
     val palette = OmnibusTheme.palette
     val background = when (emphasis) {
         RequestEmphasis.Primary -> palette.accent
-        RequestEmphasis.Secondary -> palette.bg2
+        RequestEmphasis.Secondary -> palette.ink0.copy(alpha = SECONDARY_FILL_ALPHA)
         RequestEmphasis.Ghost -> Color.Transparent
     }
     val content = when (emphasis) {
@@ -99,3 +99,6 @@ internal fun RequestButton(
 }
 
 private const val DISABLED_ALPHA = 0.45f
+
+/** The secondary button's fill, a wash of the ink, so it reads on any ground a card puts it on. */
+private const val SECONDARY_FILL_ALPHA = 0.08f
