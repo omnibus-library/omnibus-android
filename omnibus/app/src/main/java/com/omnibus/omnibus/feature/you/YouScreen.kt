@@ -39,7 +39,6 @@ import com.omnibus.omnibus.feature.shell.ui.UnderConstructionPage
 import com.omnibus.omnibus.feature.shell.ui.UnderConstructionScreen
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
-import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /** Test tags for the You root. */
@@ -49,8 +48,8 @@ internal object YouScreenTestTags {
 }
 
 /**
- * The You tab's root: the Library group's Requests row, with its "N needs you" pill, above the page's under-construction
- * body, which the rest of the tab will replace. The row is hidden unless the server has book requests on.
+ * The You tab's root: the Requests row with its "N needs you" pill, when the server has book requests on for the reader.
+ * Without that the tab keeps its under-construction page.
  *
  * Stateful wrapper that feeds [YouScreenContent] from [YouViewModel].
  *
@@ -78,57 +77,51 @@ internal fun YouScreenContent(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize()) {
-        if (uiState.showsRequests) {
-            LibraryGroup(needsYouPill(uiState.needsYou, wording), onOpenRequests)
+    if (uiState.showsRequests) {
+        Column(modifier.fillMaxSize().padding(horizontal = Spacing.screen, vertical = Spacing.lg)) {
+            RequestsRow(needsYouPill(uiState.needsYou, wording), onOpenRequests)
         }
-        UnderConstructionScreen(UnderConstructionPage.You, Modifier.weight(1f))
+    } else {
+        UnderConstructionScreen(UnderConstructionPage.You, modifier.fillMaxSize())
     }
 }
 
-/** The LIBRARY label over the Requests row. */
+/** The Requests row, with the pill when books wait on the reader. */
 @Composable
-private fun LibraryGroup(pill: String?, onOpenRequests: () -> Unit) {
+private fun RequestsRow(pill: String?, onOpenRequests: () -> Unit, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
-    Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.screen).padding(top = Spacing.lg)) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(role = Role.Button, onClick = onOpenRequests)
+            .semantics(mergeDescendants = true) {}
+            .testTag(YouScreenTestTags.REQUESTS_ROW),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
-            text = stringResource(R.string.you_library_label).uppercase(),
-            style = monoTextStyle(10.5.sp, palette.ink3).copy(letterSpacing = 1.2.sp),
-            modifier = Modifier.padding(bottom = Spacing.xs),
+            text = stringResource(R.string.you_requests_row),
+            style = uiTextStyle(16, FontWeight.Medium, palette.ink0),
+            modifier = Modifier.weight(1f),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .clickable(role = Role.Button, onClick = onOpenRequests)
-                .semantics(mergeDescendants = true) {}
-                .testTag(YouScreenTestTags.REQUESTS_ROW),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.you_requests_row),
-                style = uiTextStyle(16, FontWeight.Medium, palette.ink0),
-                modifier = Modifier.weight(1f),
-            )
-            if (pill != null) {
-                Box(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(palette.accent.copy(alpha = PILL_ALPHA))
-                        .padding(horizontal = 10.dp, vertical = 3.dp)
-                        .testTag(YouScreenTestTags.REQUESTS_PILL),
-                ) {
-                    Text(pill, style = uiTextStyle(12.5.sp, FontWeight.Medium, palette.accent))
-                }
+        if (pill != null) {
+            Box(
+                Modifier
+                    .clip(CircleShape)
+                    .background(palette.accent.copy(alpha = PILL_ALPHA))
+                    .padding(horizontal = 10.dp, vertical = 3.dp)
+                    .testTag(YouScreenTestTags.REQUESTS_PILL),
+            ) {
+                Text(pill, style = uiTextStyle(12.5.sp, FontWeight.Medium, palette.accent))
             }
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_back),
-                contentDescription = null,
-                tint = palette.ink3,
-                modifier = Modifier.size(16.dp).rotate(180f),
-            )
         }
+        Icon(
+            painter = painterResource(R.drawable.ic_arrow_back),
+            contentDescription = null,
+            tint = palette.ink3,
+            modifier = Modifier.size(16.dp).rotate(180f),
+        )
     }
 }
 
