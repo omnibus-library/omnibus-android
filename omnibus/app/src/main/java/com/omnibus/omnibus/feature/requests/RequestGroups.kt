@@ -13,7 +13,7 @@ import com.omnibus.omnibus.data.requests.holds
 internal const val LIST_POLL_MILLIS = 10_000L
 
 /** Where a book stands on the list, most urgent first. */
-internal enum class RequestGroupKey {
+enum class RequestGroupKey {
     NeedsYou, OnItsWay, Looking, Stuck, Ready, Cancelled;
 
     /** The colour of a row's status dot. */
@@ -28,13 +28,13 @@ internal enum class RequestGroupKey {
 }
 
 /** A palette colour, named so the decision stays testable. */
-internal enum class RequestTone { Accent, Bad, Ok, Ink1, Ink3 }
+enum class RequestTone { Accent, Bad, Ok, Ink1, Ink3 }
 
 /** Only Cancelled starts folded. */
 internal val DefaultFolded: Set<RequestGroupKey> = setOf(RequestGroupKey.Cancelled)
 
 /** One group of the list: its books, each by the request it is filed under. */
-internal data class RequestGroup(val key: RequestGroupKey, val items: List<RequestListing>)
+data class RequestGroup(val key: RequestGroupKey, val items: List<RequestListing>)
 
 /** [key]'s label above its books. */
 internal fun groupLabel(key: RequestGroupKey, wording: RequestWording = RequestWording()): String = when (key) {

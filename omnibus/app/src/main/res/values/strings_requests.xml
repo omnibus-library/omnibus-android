@@ -159,4 +159,19 @@
     <string name="requests_step_current">Current step</string>
     <string name="requests_step_done">Done</string>
     <string name="requests_step_todo">Still to come</string>
+
+    <!-- The Requests list. -->
+    <string name="requests_list_title">Requests</string>
+    <string name="requests_list_add">Request a book</string>
+    <string name="requests_list_loading">Loading the requests…</string>
+    <string name="requests_list_error_title">Couldn’t read the requests</string>
+    <string name="requests_list_empty_title">No requests yet</string>
+    <string name="requests_list_empty_message">A book anyone in the household asks for shows up here.</string>
+    <string name="requests_group_folded">Folded</string>
+    <string name="requests_group_open">Open</string>
+    <string name="requests_group_show_hint">Shows the books</string>
+    <string name="requests_group_hide_hint">Hides the books</string>
+    <!-- The You root's Library group. -->
+    <string name="you_library_label">Library</string>
+    <string name="you_requests_row">Requests</string>
 </resources>

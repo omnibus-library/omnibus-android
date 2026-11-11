@@ -33,6 +33,8 @@ import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.requests.RequestsRoute
+import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
@@ -43,6 +45,7 @@ import com.omnibus.omnibus.feature.shell.ShellNavigator
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
+import com.omnibus.omnibus.feature.you.YouScreen
 import com.omnibus.omnibus.ui.components.OmnibusNavigationRail
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
@@ -193,7 +196,18 @@ private fun SignedInShellContent(
                         }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
-                        entry<YouRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.You) } }
+                        entry<YouRoot> {
+                            ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute) }) }
+                        }
+                        entry<RequestsRoute> {
+                            ShellUnderStatusBarEntry {
+                                RequestsScreen(
+                                    onBack = { navigator.back() },
+                                    onOpenRequest = { navigator.navigateTo(BookRequestRoute(it)) },
+                                    onAdd = { /* the Request a book sheet */ },
+                                )
+                            }
+                        }
                     },
                 )
             }
