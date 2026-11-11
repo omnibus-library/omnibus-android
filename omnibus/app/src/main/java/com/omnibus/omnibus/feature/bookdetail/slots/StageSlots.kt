@@ -6,6 +6,8 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSection
 internal val stageAboveTitle: List<BookDetailSection> = listOfNotNull(
     // #119 Wishlist Books
     com.omnibus.omnibus.feature.bookdetail.wishlist.WishlistStageSection,
+    // #3078 Book Requests: the request buttons for a wished book
+    com.omnibus.omnibus.feature.requests.start.RequestStageSection,
 )
 
 /** The start of the status row under the byline. */

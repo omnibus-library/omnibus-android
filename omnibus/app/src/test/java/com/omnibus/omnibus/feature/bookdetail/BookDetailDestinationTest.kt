@@ -2,7 +2,7 @@ package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
-import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
@@ -30,7 +30,6 @@ private fun BookDetailDestination.dispatched(
     titles: PlaceholderTitles = randomPlaceholderTitles(),
 ): Opened = Opened().also { opened ->
     dispatch(
-        top = null,
         titles = titles,
         push = { opened.pushed += it },
         openReader = { uuid, cfi -> opened.readers += uuid to cfi },
@@ -70,6 +69,14 @@ class BookDetailDestinationTest : DescribeSpec({
             }
         }
 
+        context("when the destination is a book's request page") {
+            it("is the request route for that book") {
+                val uuid = randomString()
+
+                BookDetailDestination.Request(uuid).shellRoute(randomPlaceholderTitles()) shouldBe BookRequestRoute(uuid)
+            }
+        }
+
         context("when the destination opens outside the shell") {
             it("#93 TC-45 / #165 TC-6 / #165 TC-8: is none, for reader, player or external url") {
                 checkAll(
@@ -81,14 +88,6 @@ class BookDetailDestinationTest : DescribeSpec({
                 ) { destination ->
                     destination.shellRoute(randomPlaceholderTitles()).shouldBeNull()
                 }
-            }
-        }
-
-        context("when the route is already on top") {
-            it("#93 TC-46: pushes nothing") {
-                val uuid = randomString()
-
-                BookDetailDestination.Book(uuid).pushTarget(BookDetailRoute(uuid), randomPlaceholderTitles()).shouldBeNull()
             }
         }
     }
@@ -128,8 +127,7 @@ class BookDetailDestinationTest : DescribeSpec({
                 it("#93 TC-134: swallows the failure") {
                     shouldNotThrowAny {
                         BookDetailDestination.ExternalUrl(randomString()).dispatch(
-                            top = null,
-                            titles = randomPlaceholderTitles(),
+                                                titles = randomPlaceholderTitles(),
                             push = {},
                             openReader = { _, _ -> },
                             openPlayer = { _, _, _ -> },
@@ -137,6 +135,14 @@ class BookDetailDestinationTest : DescribeSpec({
                         )
                     }
                 }
+            }
+        }
+
+        context("when the destination is a request page") {
+            it("pushes it onto the stack that asked") {
+                val uuid = randomString()
+
+                BookDetailDestination.Request(uuid).dispatched().pushed shouldContainExactly listOf(BookRequestRoute(uuid))
             }
         }
 

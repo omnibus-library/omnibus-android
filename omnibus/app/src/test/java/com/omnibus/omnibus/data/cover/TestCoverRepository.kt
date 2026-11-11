@@ -14,7 +14,12 @@ class TestCoverRepository(
         return result
     }
 
-    override suspend fun invalidate(uuid: String) = Unit
+    /** The uuids [invalidate] was called for, in order. */
+    val invalidated = mutableListOf<String>()
+
+    override suspend fun invalidate(uuid: String) {
+        invalidated += uuid
+    }
 
     override suspend fun clear() = Unit
 }

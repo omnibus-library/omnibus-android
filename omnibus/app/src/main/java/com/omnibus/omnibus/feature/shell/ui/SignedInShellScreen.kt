@@ -32,6 +32,10 @@ import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransit
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
+import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.requests.RequestsRoute
+import com.omnibus.omnibus.feature.requests.list.RequestsScreen
+import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
 import com.omnibus.omnibus.feature.shell.LibraryRoot
@@ -41,6 +45,7 @@ import com.omnibus.omnibus.feature.shell.ShellNavigator
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
+import com.omnibus.omnibus.feature.you.YouScreen
 import com.omnibus.omnibus.ui.components.OmnibusNavigationRail
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
@@ -106,11 +111,11 @@ private fun SignedInShellContent(
         checkIn = stringResource(R.string.book_detail_placeholder_check_in),
         settings = stringResource(R.string.book_detail_placeholder_settings),
     )
-    val openDestination: (BookDetailDestination) -> Unit = { destination ->
+    // [asking] is the entry's own key: the tab is resolved when the link is tapped, not when the entry composed.
+    val openDestination: (BookDetailDestination, NavKey) -> Unit = { destination, asking ->
         destination.dispatch(
-            top = navigator.backStack.lastOrNull(),
             titles = titles,
-            push = { navigator.navigateTo(it) },
+            push = { navigator.navigateTo(it, navigator.ownerOf(asking)) },
             openReader = onOpenReader,
             openPlayer = onOpenPlayer,
             openUri = { uriHandler.openUri(it) },
@@ -157,20 +162,20 @@ private fun SignedInShellContent(
                         // The Library fills the window and reads the insets itself, so it takes no wrapper.
                         entry<LibraryRoot> {
                             LibraryScreen(
-                                onOpenBook = { navigator.navigateTo(BookDetailRoute(it)) },
+                                onOpenBook = { navigator.navigateTo(BookDetailRoute(it), ShellTab.Library) },
                                 onAddBooks = { /* Add books sheet: later ticket */ },
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
-                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name)) },
-                                onOpenShelves = { navigator.navigateTo(ShelvesRoute) },
+                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },
+                                onOpenShelves = { navigator.navigateTo(ShelvesRoute, ShellTab.Library) },
                             )
                         }
                         entry<BookDetailRoute> { key ->
                             ShellUnderStatusBarEntry {
                                 BookDetailScreen(
                                     uuid = key.uuid,
-                                    onNavigate = openDestination,
-                                    onClose = { navigator.back() },
+                                    onNavigate = { openDestination(it, key) },
+                                    onClose = { navigator.back(navigator.ownerOf(key)) },
                                 )
                             }
                         }
@@ -180,9 +185,28 @@ private fun SignedInShellContent(
                         entry<ShelvesRoute> {
                             ShellUnderStatusBarEntry { ShelvesScreen(onBack = { navigator.back() }) }
                         }
+                        entry<BookRequestRoute> { key ->
+                            ShellUnderStatusBarEntry {
+                                BookRequestScreen(
+                                    uuid = key.uuid,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpenBook = { navigator.openOrPop(BookDetailRoute(key.uuid), navigator.ownerOf(key)) },
+                                )
+                            }
+                        }
                         entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
-                        entry<YouRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.You) } }
+                        entry<YouRoot> {
+                            ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) }) }
+                        }
+                        entry<RequestsRoute> {
+                            ShellUnderStatusBarEntry {
+                                RequestsScreen(
+                                    onBack = { navigator.back(navigator.ownerOf(RequestsRoute)) },
+                                    onOpenRequest = { navigator.navigateTo(BookRequestRoute(it), navigator.ownerOf(RequestsRoute)) },
+                                )
+                            }
+                        }
                     },
                 )
             }

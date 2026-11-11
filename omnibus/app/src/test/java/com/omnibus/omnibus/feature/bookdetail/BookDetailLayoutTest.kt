@@ -5,6 +5,8 @@ import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeLength
 import com.omnibus.omnibus.feature.bookdetail.ui.EdgeFadeReach
 import com.omnibus.omnibus.feature.bookdetail.ui.FadeBand
 import com.omnibus.omnibus.feature.bookdetail.ui.StageActionRowHeight
+import com.omnibus.omnibus.feature.bookdetail.ui.STAGE_COVER_SHARE
+import com.omnibus.omnibus.feature.bookdetail.ui.StageCoverHeight
 import com.omnibus.omnibus.feature.bookdetail.ui.StageRestTop
 import com.omnibus.omnibus.feature.bookdetail.ui.TopBarRowHeight
 import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
@@ -151,8 +153,12 @@ class BookDetailLayoutTest : DescribeSpec({
         context("when the pane is of middle height") {
             it("#211 TC-17: equals the free height times 0.44 over the cover height") {
                 checkAll(Exhaustive.of(true, false)) { underBar ->
-                    val height = randomDouble(400.0, 630.0).toFloat()
-                    val free = height - 62f - (if (underBar) 0f else TopBarRowHeight.value)
+                    // Only heights whose scale lands between the 0.5 and 1 clamps, which differ with the bar row.
+                    val bar = if (underBar) 0f else TopBarRowHeight.value
+                    val unclampedFrom = StageCoverHeight.value * 0.5f / STAGE_COVER_SHARE + StageActionRowHeight.value + bar
+                    val unclampedTo = StageCoverHeight.value / STAGE_COVER_SHARE + StageActionRowHeight.value + bar
+                    val height = randomDouble(unclampedFrom + 1.0, unclampedTo - 1.0).toFloat()
+                    val free = height - 62f - bar
                     val expected = free * 0.44f / 252f
 
                     val actual = stageCoverScale(height.dp, underBar)

@@ -13,14 +13,18 @@ import androidx.compose.ui.unit.Dp
  * modifiers alone. Keep it that way: no conditional composable above a stateful child.
  *
  * In column mode the two children stack at full width, and [trailingSpace] is reserved below them for the action
- * area. In two-pane mode the stage pane takes the leading width, plus [StageHaloOverhang] on each side so the cover's
+ * area. In two-pane mode the stage pane takes the leading width, plus [overhang] on each side so the cover's
  * halo is not cut, and the host takes the rest, drawn above the overhang.
+ *
+ * @param overhang How far the stage pane reaches past each side of its width. The request page, which has no halo,
+ * passes zero.
  */
 @Composable
 internal fun BookDetailPaneLayout(
     split: PaneSplit?,
     trailingSpace: Dp,
     modifier: Modifier = Modifier,
+    overhang: Dp = StageHaloOverhang,
     stagePane: @Composable () -> Unit,
     tabHost: @Composable () -> Unit,
 ) {
@@ -40,7 +44,7 @@ internal fun BookDetailPaneLayout(
         } else {
             val height = constraints.maxHeight
             val lead = split.leading.roundToPx().coerceAtMost(width)
-            val over = StageHaloOverhang.roundToPx()
+            val over = overhang.roundToPx()
             val stage = stageMeasurable.measure(Constraints.fixed(lead + 2 * over, height))
             // The trailing width is the rest in pixels, so rounding never leaves a gap between the panes.
             val host = hostMeasurable.measure(Constraints.fixed(width - lead, height))

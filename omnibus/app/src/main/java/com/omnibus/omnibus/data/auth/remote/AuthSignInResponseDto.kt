@@ -39,4 +39,10 @@ data class UserInfoDto(
     val hiddenFormats: List<String> = emptyList(),
     @SerialName("book_detail_scroll_stops")
     val bookDetailScrollStops: Boolean = false,
+    @SerialName("book_requests")
+    val bookRequests: Boolean = false,
+    @SerialName("can_start_requests")
+    val canStartRequests: Boolean = false,
+    @SerialName("can_choose_request_versions")
+    val canChooseRequestVersions: Boolean = false,
 )

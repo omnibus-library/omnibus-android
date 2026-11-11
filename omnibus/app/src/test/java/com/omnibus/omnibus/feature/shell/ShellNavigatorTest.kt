@@ -64,6 +64,105 @@ class ShellNavigatorTest : DescribeSpec({
         }
     }
 
+    describe("pushing a destination") {
+        it("ignores a destination already on top, so a double tap stacks nothing") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val pushed = randomPushed()
+            val navigator = sut(stacks, tab)
+
+            navigator.navigateTo(pushed)
+            navigator.navigateTo(pushed)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, pushed)
+        }
+
+        it("lands on the tab that asked, whichever tab is selected by then") {
+            val stacks = rootStacks()
+            val asking = randomEnum<ShellTab>()
+            val selected = tabOtherThan(asking)
+            val pushed = randomPushed()
+            val navigator = sut(stacks, selected)
+
+            navigator.navigateTo(pushed, asking)
+
+            listOf(stacks.getValue(asking).toList(), stacks.getValue(selected).toList()) shouldBe
+                listOf(listOf(asking.root, pushed), listOf(selected.root))
+        }
+    }
+
+    describe("opening a destination that may already be underneath") {
+        it("goes back to it when it is just below the top") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val below = randomPushed()
+            val navigator = sut(stacks, tab)
+            navigator.navigateTo(below)
+            navigator.navigateTo(Pushed(below.id + 1))
+
+            navigator.openOrPop(below, tab)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, below)
+        }
+
+        it("goes back on the tab that asked, whichever tab is selected by then") {
+            val stacks = rootStacks()
+            val asking = randomEnum<ShellTab>()
+            val below = randomPushed()
+            val navigator = sut(stacks, tabOtherThan(asking))
+            navigator.navigateTo(below, asking)
+            navigator.navigateTo(Pushed(below.id + 1), asking)
+
+            navigator.openOrPop(below, asking)
+
+            stacks.getValue(asking).toList() shouldBe listOf(asking.root, below)
+        }
+
+        it("pushes it when it is not just below the top") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val top = randomPushed()
+            val wanted = Pushed(top.id + 1)
+            val navigator = sut(stacks, tab)
+            navigator.navigateTo(top)
+
+            navigator.openOrPop(wanted, tab)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, top, wanted)
+        }
+    }
+
+    describe("finding the tab a destination belongs to") {
+        it("is the selected tab when both tabs have it on top") {
+            val stacks = rootStacks()
+            val selected = randomEnum<ShellTab>()
+            val other = tabOtherThan(selected)
+            val shared = randomPushed()
+            val navigator = sut(stacks, selected)
+            navigator.navigateTo(shared, selected)
+            navigator.navigateTo(shared, other)
+
+            navigator.ownerOf(shared) shouldBe selected
+        }
+
+        it("is the other tab when only it has the destination on top, as it fades out") {
+            val stacks = rootStacks()
+            val selected = randomEnum<ShellTab>()
+            val other = tabOtherThan(selected)
+            val pushed = randomPushed()
+            val navigator = sut(stacks, selected)
+            navigator.navigateTo(pushed, other)
+
+            navigator.ownerOf(pushed) shouldBe other
+        }
+
+        it("is the selected tab when no tab has the destination on top") {
+            val selected = randomEnum<ShellTab>()
+
+            sut(selected = selected).ownerOf(randomPushed()) shouldBe selected
+        }
+    }
+
     describe("the flattened back stack") {
         it("ends with the selected tab's stack") {
             val tab = randomEnum<ShellTab>()
@@ -97,6 +196,19 @@ class ShellNavigatorTest : DescribeSpec({
                 navigator.back() shouldBe true
 
                 stacks.getValue(tab).toList() shouldBe listOf(tab.root)
+            }
+        }
+
+        context("when the asking tab is not the selected one") {
+            it("pops that tab's top destination") {
+                val stacks = rootStacks()
+                val asking = randomEnum<ShellTab>()
+                val navigator = sut(stacks, tabOtherThan(asking))
+                navigator.navigateTo(randomPushed(), asking)
+
+                navigator.back(asking) shouldBe true
+
+                stacks.getValue(asking).toList() shouldBe listOf(asking.root)
             }
         }
 

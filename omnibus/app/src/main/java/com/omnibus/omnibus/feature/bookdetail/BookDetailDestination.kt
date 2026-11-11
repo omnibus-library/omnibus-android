@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.requests.BookRequestRoute
 
 /** Where a tap on the Book Detail page leads. The shell maps each destination to a route or a platform action. */
 sealed interface BookDetailDestination {
@@ -36,6 +37,9 @@ sealed interface BookDetailDestination {
 
     data class CheckIn(val bookUuid: String) : BookDetailDestination
 
+    /** Opens the book's request page. */
+    data class Request(val bookUuid: String) : BookDetailDestination
+
     data object Settings : BookDetailDestination
 
     data class ExternalUrl(val url: String) : BookDetailDestination
@@ -51,6 +55,7 @@ data class PlaceholderTitles(val checkIn: String, val settings: String)
 internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey? = when (this) {
     is BookDetailDestination.Reader, is BookDetailDestination.Player, is BookDetailDestination.ExternalUrl -> null
     is BookDetailDestination.Book -> BookDetailRoute(bookUuid)
+    is BookDetailDestination.Request -> BookRequestRoute(bookUuid)
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Series -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Genre -> BookDetailPlaceholderRoute(name)
@@ -59,13 +64,8 @@ internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey
     BookDetailDestination.Settings -> BookDetailPlaceholderRoute(titles.settings)
 }
 
-/** [shellRoute], or null when it equals [top], so a second tap never stacks the same screen (or shares one entry's state). */
-internal fun BookDetailDestination.pushTarget(top: NavKey?, titles: PlaceholderTitles): NavKey? =
-    shellRoute(titles)?.takeIf { it != top }
-
 /** Sends this destination to the shell. A link no app can open is ignored. */
 internal fun BookDetailDestination.dispatch(
-    top: NavKey?,
     titles: PlaceholderTitles,
     push: (NavKey) -> Unit,
     openReader: (bookUuid: String, startCfi: String?) -> Unit,
@@ -76,6 +76,6 @@ internal fun BookDetailDestination.dispatch(
         is BookDetailDestination.Reader -> openReader(bookUuid, startCfi)
         is BookDetailDestination.Player -> openPlayer(bookUuid, bookFileId, positionSeconds)
         is BookDetailDestination.ExternalUrl -> runCatching { openUri(url) }
-        else -> pushTarget(top, titles)?.let(push)
+        else -> shellRoute(titles)?.let(push)
     }
 }

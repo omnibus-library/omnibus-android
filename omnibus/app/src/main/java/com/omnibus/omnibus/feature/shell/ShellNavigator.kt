@@ -36,6 +36,15 @@ class ShellNavigator(
         get() = ShellTab.entries.filter { it != selected }.flatMap { stacks.getValue(it) } +
             stacks.getValue(selected)
 
+    /**
+     * The tab a screen showing [key] belongs to. NavDisplay shows one flattened stack, so two tabs can both have [key] on
+     * top and a screen can outlive its tab's selection: the selected tab wins, else the tab fading out, else the selected one.
+     */
+    fun ownerOf(key: NavKey): ShellTab = when {
+        stacks.getValue(selected).lastOrNull() == key -> selected
+        else -> ShellTab.entries.firstOrNull { stacks.getValue(it).lastOrNull() == key } ?: selected
+    }
+
     /** Selects [tab], or pops to its root if it already is selected. */
     fun select(tab: ShellTab) {
         if (tab == selected) {
@@ -45,18 +54,28 @@ class ShellNavigator(
         }
     }
 
-    /** Pushes [key] onto the selected tab's stack. */
-    fun navigateTo(key: NavKey) {
-        stacks.getValue(selected).add(key)
+    /**
+     * Pushes [key] onto [tab]'s stack, the selected tab's by default. Pass the tab whose screen asked, so a push made
+     * while another tab is fading in lands where it was meant. A [key] already on top is not pushed again.
+     */
+    fun navigateTo(key: NavKey, tab: ShellTab = selected) {
+        val stack = stacks.getValue(tab)
+        if (stack.lastOrNull() != key) stack.add(key)
+    }
+
+    /** Goes back to [key] when it is just below [tab]'s top, so a loop of links doesn't grow the stack, else pushes it. */
+    fun openOrPop(key: NavKey, tab: ShellTab) {
+        val stack = stacks.getValue(tab)
+        if (stack.size >= 2 && stack[stack.lastIndex - 1] == key) stack.removeAt(stack.lastIndex) else navigateTo(key, tab)
     }
 
     /**
-     * Pops the selected tab, or returns to [ShellTab.Start] from the root of any other tab.
+     * Pops [tab]'s stack (the selected tab's by default), or returns to [ShellTab.Start] from the root of any other tab.
      *
      * @return False when there was nowhere to go, so the caller should leave the shell.
      */
-    fun back(): Boolean {
-        val stack = stacks.getValue(selected)
+    fun back(tab: ShellTab = selected): Boolean {
+        val stack = stacks.getValue(tab)
         return when {
             stack.size > 1 -> {
                 stack.removeAt(stack.lastIndex)
