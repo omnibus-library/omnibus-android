@@ -35,6 +35,7 @@ internal fun RequestHistory(
     rows: List<RequestListing>,
     uiState: BookRequestUIState,
     wording: RequestWording,
+    actions: RequestActions,
     modifier: Modifier = Modifier,
 ) {
     if (rows.isEmpty()) return
@@ -45,13 +46,13 @@ internal fun RequestHistory(
             style = monoTextStyle(10.5.sp, palette.ink3).copy(letterSpacing = 1.2.sp),
             modifier = Modifier.semantics { heading() },
         )
-        rows.forEach { HistoryRow(it, uiState, wording) }
+        rows.forEach { HistoryRow(it, uiState, wording, actions) }
     }
 }
 
 /** One past request, saying only what was recorded. */
 @Composable
-private fun HistoryRow(listing: RequestListing, uiState: BookRequestUIState, wording: RequestWording) {
+private fun HistoryRow(listing: RequestListing, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions) {
     val palette = OmnibusTheme.palette
     Row(
         modifier = Modifier
@@ -67,6 +68,9 @@ private fun HistoryRow(listing: RequestListing, uiState: BookRequestUIState, wor
             swapFacts(listing, wording).forEach {
                 Text(it.text, style = uiTextStyle(12, FontWeight.Normal, palette.ink3))
             }
+        }
+        if (uiState.offersRequestAgain(listing.request)) {
+            StartButton(listing.request.kind, stringResource(R.string.requests_request_again), uiState, wording, actions)
         }
     }
 }

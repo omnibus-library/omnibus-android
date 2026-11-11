@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.RequestKind
+import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.data.requests.RequestViewer
 import com.omnibus.omnibus.data.requests.RequestsError
@@ -19,12 +20,17 @@ import com.omnibus.omnibus.data.requests.Wanter
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.requests.RequestAction
 import com.omnibus.omnibus.feature.requests.actionFailure
+import com.omnibus.omnibus.feature.requests.canCancel
 import com.omnibus.omnibus.feature.requests.detailPollIntervalMillis
+import com.omnibus.omnibus.feature.requests.isCancellable
 import com.omnibus.omnibus.feature.requests.isMoving
+import com.omnibus.omnibus.feature.requests.kindLabel
 import com.omnibus.omnibus.feature.requests.mainRequest
 import com.omnibus.omnibus.feature.requests.di.RequestWordingSource
+import com.omnibus.omnibus.feature.requests.offersRequestAgain as ruleOffersRequestAgain
 import com.omnibus.omnibus.feature.requests.splitBookRequests
 import com.omnibus.omnibus.feature.requests.startFailure
+import com.omnibus.omnibus.feature.requests.undoDelayMillis
 import com.omnibus.omnibus.feature.requests.unrequestedKinds
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -44,6 +50,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 /** A write in flight, naming the request and the button that started it. One runs at a time, so every other button locks. */
 sealed interface Busy {
@@ -137,7 +144,24 @@ data class BookRequestUIState(
 
     /** Who asked for [lane], as the list names them. */
     fun listingFor(lane: BookRequest): RequestListing? = listings?.firstOrNull { it.request.id == lane.id }
+
+    /** Whether Request again is offered on [request] now. */
+    fun offersRequestAgain(request: BookRequest): Boolean =
+        ruleOffersRequestAgain(request, viewer, listings.orEmpty().map { it.request }, nowMillis)
+
+    /** When the next cancel's Undo window closes, so the page can read the clock again then. Null when none is open. */
+    val nextWindowCloseMillis: Long?
+        get() = (lanes + history.map { it.request })
+            .filter { it.state == RequestState.Cancelled }
+            .mapNotNull { it.cancelAt?.let { at -> at * MILLIS } }
+            .filter { it > nowMillis }
+            .minOrNull()
 }
+
+private const val MILLIS = 1_000L
+
+/** How long past a window's close the page wakes, so it never lands a hair before it and finds the window still open. */
+private const val WINDOW_WAKE_MARGIN_MILLIS = 250L
 
 /**
  * Owns one book's request page: its lanes, its history, and the reads that keep them current. A poll that started
@@ -187,13 +211,28 @@ class BookRequestViewModel @AssistedInject constructor(
      * Polls while any lane is moving. The screen runs it while the page is on screen, so polling stops when the entry
      * leaves. It waits while nothing moves and starts again when a lane does, and a failed first load doesn't end it.
      */
-    suspend fun keepCurrent() {
+    suspend fun keepCurrent() = coroutineScope {
+        launch { pollWhileMoving() }
+        launch { wakeAtWindowCloses() }
+    }
+
+    private suspend fun pollWhileMoving() {
         uiState.map { it.pollInterval }.distinctUntilChanged().collectLatest { interval ->
             if (interval != null) {
                 while (true) {
                     delay(interval)
                     poll()
                 }
+            }
+        }
+    }
+
+    /** Reads the clock again at each Undo window's close, then arms for the next open window. */
+    private suspend fun wakeAtWindowCloses() {
+        uiState.map { it.nextWindowCloseMillis }.distinctUntilChanged().collectLatest { close ->
+            if (close != null) {
+                delay(max(0L, close - timeSource.nowMillis()) + WINDOW_WAKE_MARGIN_MILLIS)
+                change { it }
             }
         }
     }
@@ -287,6 +326,35 @@ class BookRequestViewModel @AssistedInject constructor(
         }
     }
 
+    /** Cancels the request [laneId], then offers Undo for as long as the server will take it back. */
+    fun cancel(laneId: Long) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val lane = state.reads[laneId] ?: return@launch
+            val allowed = canCancel(state.viewer, lane) && isCancellable(lane)
+            val cancelled = write(
+                RequestAction.Cancel, Busy.Cancelling(laneId), allowed, rereading = laneId, rereadsListings = false,
+            ) { requests.cancel(laneId) } ?: return@launch
+            undoDelayMillis(cancelled.cancelAt, timeSource.nowMillis())?.let { delay ->
+                val text = wordingSource.wording().let { it.requestCancelled(kindLabel(cancelled.kind, it)) }
+                change { it.copy(message = RequestMessage(text, cancelled.id, delay, nextMessageId++)) }
+            }
+            // Read once Undo is up and the controls are free, so a slow list can't eat the server's grace.
+            rereadListings()
+        }
+    }
+
+    /** Takes the open cancel back and shows whatever the server returns. A press while another write runs is kept for later. */
+    fun undo() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val id = state.message?.undoRequestId ?: return@launch
+            if (state.busy != null || !state.isOnline) return@launch
+            change { it.copy(message = null) }
+            write(RequestAction.Undo, Busy.Undoing(id), allowed = true) { requests.undoCancel(id) }
+        }
+    }
+
     /** Starts a request of [kind] and stays on the page. The new lane arrives with the answer. */
     fun start(kind: RequestKind) {
         viewModelScope.launch {
@@ -339,7 +407,7 @@ class BookRequestViewModel @AssistedInject constructor(
                     return answer
                 }
                 else -> {
-                    show(failure(result.errorOrNull() ?: RequestsError.UnexpectedResponse))
+                    showFailure(failure(result.errorOrNull() ?: RequestsError.UnexpectedResponse))
                     if (rereading != null) {
                         (requests.request(rereading) as? RequestsResult.Success)?.let { fresh ->
                             change { it.copy(reads = it.reads + (rereading to fresh.value)) }
@@ -355,8 +423,17 @@ class BookRequestViewModel @AssistedInject constructor(
         }
     }
 
-    private fun show(text: String) {
-        change { it.copy(message = RequestMessage(text, id = nextMessageId++)) }
+    /** Says a write failed. An open Undo rides along for the window that remains, since losing it loses the only way back. */
+    private fun showFailure(text: String) {
+        val state = _uiState.value
+        val open = state.message?.undoRequestId
+        val left = open?.let { undoDelayMillis(state.reads[it]?.cancelAt, timeSource.nowMillis()) ?: 0L }
+        val message = if (open == null) {
+            RequestMessage(text, id = nextMessageId++)
+        } else {
+            RequestMessage(text, open, left ?: 0L, nextMessageId++)
+        }
+        change { it.copy(message = message) }
     }
 
     /** Files a write's answer in the listings, so its lane and its kind hold even when the reread fails. */

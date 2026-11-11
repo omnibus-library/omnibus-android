@@ -48,6 +48,8 @@ import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.SEP
 import com.omnibus.omnibus.feature.requests.StepStatus
 import com.omnibus.omnibus.feature.requests.askedBy
+import com.omnibus.omnibus.feature.requests.canCancel
+import com.omnibus.omnibus.feature.requests.isCancellable
 import com.omnibus.omnibus.feature.requests.convertsToEpub
 import com.omnibus.omnibus.feature.requests.coverSizesLine
 import com.omnibus.omnibus.feature.requests.isDownloading
@@ -85,6 +87,8 @@ internal data class RequestActions(
     val onTakeCover: (laneId: Long) -> Unit = {},
     val onKeepCover: (laneId: Long) -> Unit = {},
     val onStart: (RequestKind) -> Unit = {},
+    val onCancel: (laneId: Long) -> Unit = {},
+    val onUndo: () -> Unit = {},
 )
 
 /** Commands never queue offline, so every write control waits for the server to be reachable and for any write to finish. */
@@ -257,7 +261,9 @@ private fun LaneBody(lane: BookRequest, uiState: BookRequestUIState, wording: Re
                 style = uiTextStyle(13, FontWeight.Normal, palette.ink2),
             )
         }
-        RequestState.Cancelled -> Unit
+        RequestState.Cancelled -> if (uiState.offersRequestAgain(lane)) {
+            StartButton(lane.kind, stringResource(R.string.requests_request_again), uiState, wording, actions)
+        }
     }
 }
 
@@ -283,19 +289,46 @@ private fun LookingCard(label: String) {
 
 private val LOADING_HEIGHT = 64.dp
 
-/** Choose another while a version downloads. */
+/** Choose another while a version downloads, and Cancel while the request is still going. */
 @Composable
 private fun LaneActionRow(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
     val canSwap = lane.state == RequestState.OnItsWay && uiState.viewer.canChoose && isDownloading(lane)
-    if (!canSwap) return
+    val canCancel = canCancel(uiState.viewer, lane) && isCancellable(lane)
+    if (!canSwap && !canCancel) return
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        RequestButton(
-            text = stringResource(if (uiState.busy == Busy.Swapping(lane.id)) R.string.requests_choosing else R.string.requests_choose_another),
-            onClick = { actions.onSwap(lane.id) },
-            emphasis = RequestEmphasis.Ghost,
-            enabled = !uiState.isLocked,
+        if (canSwap) {
+            RequestButton(
+                text = stringResource(if (uiState.busy == Busy.Swapping(lane.id)) R.string.requests_choosing else R.string.requests_choose_another),
+                onClick = { actions.onSwap(lane.id) },
+                emphasis = RequestEmphasis.Ghost,
+                enabled = !uiState.isLocked,
+            )
+        }
+        if (canCancel) CancelButton(lane, uiState, actions)
+    }
+}
+
+@Composable
+private fun CancelButton(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
+    val early = lane.state == RequestState.Looking || lane.state == RequestState.Choose
+    val label = stringResource(if (early) R.string.requests_cancel_request else R.string.requests_cancel)
+    // Another reader's Cancel names whose request it is.
+    val description = if (lane.userId == uiState.viewer.id) {
+        label
+    } else {
+        stringResource(
+            R.string.requests_cancel_theirs,
+            uiState.listingFor(lane)?.requesterName.orEmpty(),
+            uiState.book?.displayTitle.orEmpty(),
         )
     }
+    RequestButton(
+        text = if (uiState.busy == Busy.Cancelling(lane.id)) stringResource(R.string.requests_cancelling) else label,
+        onClick = { actions.onCancel(lane.id) },
+        emphasis = RequestEmphasis.Ghost,
+        enabled = !uiState.isLocked,
+        contentDescription = description,
+    )
 }
 
 @Composable

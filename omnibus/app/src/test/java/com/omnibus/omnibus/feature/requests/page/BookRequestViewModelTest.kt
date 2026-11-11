@@ -797,4 +797,265 @@ class BookRequestViewModelTest : DescribeSpec({
             }
         }
     }
+
+    describe("cancelling a request") {
+
+        /** A page open on [lanes] for [viewer], with the clock at [now] seconds. */
+        fun cancellablePage(
+            uuid: String,
+            vararg lanes: BookRequest,
+            viewer: RequestViewer = CHOOSER,
+            now: Long = 1_000,
+            time: TestTimeSource = TestTimeSource(now * 1000),
+        ): Pair<BookRequestViewModel, TestRequestsRepository> {
+            val requests = TestRequestsRepository().apply { serve(uuid, *lanes) }
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(viewer), time)
+            vm.load()
+            return vm to requests
+        }
+
+        it("sends the cancel for a request that is still going") {
+            val uuid = randomString()
+            val (vm, requests) = cancellablePage(uuid, request(uuid, 5, RequestState.Looking))
+            requests.answer("cancel", ok(request(uuid, 5, RequestState.Cancelled)))
+
+            vm.cancel(5)
+
+            requests.callsTo("cancel").map { it.args } shouldBe listOf(listOf<Any?>(5L))
+        }
+
+        it("sends nothing for a request that can no longer be cancelled") {
+            val uuid = randomString()
+            val finished = request(uuid, 5, RequestState.OnItsWay).copy(progress = 1.0)
+            val (vm, requests) = cancellablePage(uuid, finished, request(uuid, 6, RequestState.Stuck))
+
+            vm.cancel(5)
+            vm.cancel(6)
+
+            requests.callsTo("cancel") shouldBe emptyList()
+        }
+
+        it("lets a reader who can pick versions cancel another reader's request, and an asker only their own") {
+            val uuid = randomString()
+            val theirs = request(uuid, 5, RequestState.Looking, userId = 2)
+            val mine = request(uuid, 6, RequestState.Looking, userId = ASKER.id)
+            val (asker, askerRequests) = cancellablePage(uuid, theirs, mine, viewer = ASKER)
+            val (chooser, chooserRequests) = cancellablePage(uuid, theirs, viewer = CHOOSER)
+            listOf(askerRequests, chooserRequests).forEach { it.answer("cancel", ok(request(uuid, 5, RequestState.Cancelled))) }
+
+            asker.cancel(5)
+            chooser.cancel(5)
+
+            listOf(askerRequests.callsTo("cancel").size, chooserRequests.callsTo("cancel").size) shouldBe listOf(0, 1)
+        }
+
+        describe("the moment the answer arrives") {
+            it("takes the cancelled answer, frees the controls and offers Undo before the listings read answers") {
+                val uuid = randomString()
+                val (vm, requests) = cancellablePage(uuid, request(uuid, 5, RequestState.Looking, kind = RequestKind.Ebook), now = 1_000)
+                val cancelled = request(uuid, 5, RequestState.Cancelled, kind = RequestKind.Ebook).copy(cancelAt = 1_010)
+                requests.answer("cancel", ok(cancelled))
+                requests.answer("bookList", UNREACHABLE, CompletableDeferred())
+
+                vm.cancel(5)
+
+                vm.uiState.value.let { Triple(it.reads[5], it.busy, it.message?.copy(id = 0)) } shouldBe
+                    Triple(cancelled, null, RequestMessage("Ebook request cancelled", undoRequestId = 5, durationMillis = 8_500))
+            }
+
+            it("shows an audiobook request's own kind") {
+                val uuid = randomString()
+                val (vm, requests) = cancellablePage(uuid, request(uuid, 5, RequestState.Looking, kind = RequestKind.Audiobook))
+                requests.answer("cancel", ok(request(uuid, 5, RequestState.Cancelled, kind = RequestKind.Audiobook).copy(cancelAt = 1_010)))
+                requests.serve(uuid, request(uuid, 5, RequestState.Cancelled, kind = RequestKind.Audiobook))
+
+                vm.cancel(5)
+
+                vm.uiState.value.message?.text shouldBe "Audiobook request cancelled"
+            }
+
+            it("offers no Undo when the answer has no cancel_at") {
+                val uuid = randomString()
+                val (vm, requests) = cancellablePage(uuid, request(uuid, 5, RequestState.Looking))
+                requests.answer("cancel", ok(request(uuid, 5, RequestState.Cancelled)))
+                requests.serve(uuid, request(uuid, 5, RequestState.Cancelled))
+
+                vm.cancel(5)
+
+                vm.uiState.value.message shouldBe null
+            }
+        }
+
+        describe("a cancel that fails") {
+            it("says why, with no Undo, and reads the request again") {
+                val uuid = randomString()
+                val (vm, requests) = cancellablePage(uuid, request(uuid, 5, RequestState.Looking))
+                requests.answer("cancel", RequestsResult.Failure(RequestsError.Http(409, "Too late")))
+                val before = requests.calls.size
+
+                vm.cancel(5)
+
+                vm.uiState.value.message?.let { it.text to it.undoRequestId } shouldBe ("Couldn’t cancel: Too late" to null)
+                requests.calls.drop(before).map { it.function } shouldBe listOf("cancel", "request", "bookList")
+            }
+        }
+    }
+
+    describe("undoing a cancel") {
+
+        /** A page where request 5 was just cancelled, with Undo showing. */
+        fun cancelledPage(uuid: String, time: TestTimeSource = TestTimeSource(1_000_000)): Pair<BookRequestViewModel, TestRequestsRepository> {
+            val looking = request(uuid, 5, RequestState.Looking)
+            val requests = TestRequestsRepository().apply { serve(uuid, looking) }
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER), time)
+            vm.load()
+            val cancelled = looking.copy(state = RequestState.Cancelled, cancelAt = 1_010)
+            requests.answer("cancel", ok(cancelled))
+            requests.serve(uuid, cancelled)
+            vm.cancel(5)
+            return vm to requests
+        }
+
+        it("restores whatever the server returns") {
+            val uuid = randomString()
+            val (vm, requests) = cancelledPage(uuid)
+            val restored = request(uuid, 5, RequestState.Choose, updatedAt = 500)
+            requests.answer("undoCancel", ok(restored))
+            requests.serve(uuid, restored)
+
+            vm.undo()
+
+            vm.uiState.value.let { it.reads[5] to it.message } shouldBe (restored to null)
+        }
+
+        it("sends nothing and keeps the message while another write runs") {
+            val uuid = randomString()
+            val (vm, requests) = cancelledPage(uuid)
+            requests.answer("start", ok(request(uuid, 9, kind = RequestKind.Audiobook)), CompletableDeferred())
+            vm.start(RequestKind.Audiobook)
+
+            vm.undo()
+
+            requests.callsTo("undoCancel").size to vm.uiState.value.message?.undoRequestId shouldBe (0 to 5L)
+        }
+
+        it("says why when it fails") {
+            val uuid = randomString()
+            val (vm, requests) = cancelledPage(uuid)
+            requests.answer("undoCancel", RequestsResult.Failure(RequestsError.Http(410, "Too late")))
+
+            vm.undo()
+
+            vm.uiState.value.message?.text shouldBe "Couldn’t undo: Too late"
+        }
+
+        it("keeps the Undo, for the window that remains, when another write fails") {
+            val uuid = randomString()
+            val time = TestTimeSource(1_000_000)
+            val (vm, requests) = cancelledPage(uuid, time)
+            time.advanceBy(3_000)
+            requests.answer("start", RequestsResult.Failure(RequestsError.Http(429, null)))
+
+            vm.start(RequestKind.Audiobook)
+
+            vm.uiState.value.message?.copy(id = 0) shouldBe
+                RequestMessage("You have a lot of requests going. Try again in a few minutes.", undoRequestId = 5, durationMillis = 5_500)
+        }
+
+        it("sends nothing while the device is offline") {
+            val uuid = randomString()
+            val requests = TestRequestsRepository()
+            val looking = request(uuid, 5, RequestState.Looking)
+            requests.serve(uuid, looking)
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val monitor = TestConnectivityMonitor(true)
+            val vm = BookRequestViewModel(uuid, requests, libraryWith(uuid), authAs(CHOOSER), TestTimeSource(1_000_000), monitor) { RequestWording() }
+            vm.load()
+            requests.answer("cancel", ok(looking.copy(state = RequestState.Cancelled, cancelAt = 1_010)))
+            requests.serve(uuid, looking.copy(state = RequestState.Cancelled))
+            vm.cancel(5)
+            monitor.isOnline.value = false
+
+            vm.undo()
+
+            requests.callsTo("undoCancel").size to vm.uiState.value.message?.undoRequestId shouldBe (0 to 5L)
+        }
+    }
+
+    describe("offering Request again") {
+
+        /** A page with one cancelled lane per entry of [cancelAts] (Unix seconds), the clock at 1000 s, and the clock loop running. */
+        suspend fun TestScope.cancelledLanes(vararg cancelAts: Long, viewer: RequestViewer = CHOOSER, time: TestTimeSource = TestTimeSource(1_000_000)): Pair<BookRequestViewModel, List<BookRequest>> {
+            val uuid = randomString()
+            val lanes = cancelAts.mapIndexed { i, at -> request(uuid, 10L + i, RequestState.Cancelled).copy(cancelAt = at, updatedAt = 900L + i) }
+            val requests = TestRequestsRepository().apply { serve(uuid, *lanes.toTypedArray()) }
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(viewer), time)
+            vm.load()
+            backgroundScope.launch { vm.keepCurrent() }
+            runCurrent()
+            return vm to lanes
+        }
+
+        it("appears once the Undo window passes, with no reload") {
+            runTest {
+                val time = TestTimeSource(1_000_000)
+                val (vm, lanes) = cancelledLanes(1_010, time = time)
+                val before = vm.uiState.value.offersRequestAgain(lanes.single())
+
+                time.advanceBy(10_000)
+                advanceTimeBy(10_300)
+                runCurrent()
+
+                before to vm.uiState.value.offersRequestAgain(lanes.single()) shouldBe (false to true)
+            }
+        }
+
+        it("appears on the second cancelled lane too, when its window closes later") {
+            runTest {
+                val time = TestTimeSource(1_000_000)
+                val (vm, lanes) = cancelledLanes(1_010, 1_030, time = time)
+
+                time.advanceBy(10_000)
+                advanceTimeBy(10_300)
+                runCurrent()
+                val afterFirst = lanes.map { vm.uiState.value.offersRequestAgain(it) }
+                time.advanceBy(20_000)
+                advanceTimeBy(20_300)
+                runCurrent()
+
+                afterFirst to lanes.map { vm.uiState.value.offersRequestAgain(it) } shouldBe (listOf(true, false) to listOf(true, true))
+            }
+        }
+
+        it("is held back from a reader who can't start requests") {
+            runTest {
+                val time = TestTimeSource(1_000_000)
+                val (vm, lanes) = cancelledLanes(1_010, viewer = BLOCKED, time = time)
+
+                time.advanceBy(10_000)
+                advanceTimeBy(10_300)
+                runCurrent()
+
+                vm.uiState.value.offersRequestAgain(lanes.single()) shouldBe false
+            }
+        }
+
+        it("is held back while the viewer has that kind going") {
+            runTest {
+                val uuid = randomString()
+                val cancelled = request(uuid, 10, RequestState.Cancelled, kind = RequestKind.Ebook).copy(cancelAt = null)
+                val going = request(uuid, 11, RequestState.Looking, kind = RequestKind.Ebook, userId = CHOOSER.id)
+                val requests = TestRequestsRepository().apply { serve(uuid, going, cancelled) }
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER), TestTimeSource(1_000_000))
+
+                vm.load()
+
+                vm.uiState.value.offersRequestAgain(cancelled) shouldBe false
+            }
+        }
+    }
 })

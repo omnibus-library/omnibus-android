@@ -97,6 +97,8 @@ fun BookRequestScreen(
             onTakeCover = viewModel::takeCover,
             onKeepCover = viewModel::keepCover,
             onStart = viewModel::start,
+            onCancel = viewModel::cancel,
+            onUndo = viewModel::undo,
         )
     }
 
@@ -162,8 +164,8 @@ internal fun BookRequestScreenContent(
             uiState.message?.let { message ->
                 RequestMessageBar(
                     message = message,
-                    canUndo = false,
-                    onUndo = {},
+                    canUndo = !uiState.isLocked,
+                    onUndo = actions.onUndo,
                     onDismissed = { onMessageDismissed(message) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.md),
                 )
@@ -208,7 +210,7 @@ private fun RequestPage(book: Book, uiState: BookRequestUIState, wording: Reques
                 Pane(if (twoPane) lanesScroll else null, Modifier.testTag(BookRequestTestTags.LANES_PANE)) {
                     uiState.lanes.forEach { RequestLane(it, uiState, wording, actions) }
                     uiState.unrequested.forEach { UnrequestedLane(it, uiState, wording, actions) }
-                    RequestHistory(uiState.history, uiState, wording)
+                    RequestHistory(uiState.history, uiState, wording, actions)
                 }
             },
         )
