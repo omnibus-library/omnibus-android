@@ -172,6 +172,14 @@ class DefaultRequestsRepositoryTest : DescribeSpec({
                 }
             }
 
+            it("reads a wishlist row whose book has null formats, as the server writes a book with none") {
+                val nullFormats = """{"id":5,"unique_identifier":"u-1","filename":"a.epub","title":"Dune","formats":null,"genres":null}"""
+                val body = """[{"book":$nullFormats,"added_at":1,"wanted_by":[{"id":3,"name":"Jordan"}],"holdings":[]}]"""
+                withScriptedServerAnswering(200, body) {
+                    repository().wanters("u-1") shouldBe RequestsResult.Success(listOf(Wanter(3, "Jordan")))
+                }
+            }
+
             it("answers empty when no row matches") {
                 withScriptedServerAnswering(200, "[]") {
                     repository().wanters("u-1") shouldBe RequestsResult.Success(emptyList<Wanter>())

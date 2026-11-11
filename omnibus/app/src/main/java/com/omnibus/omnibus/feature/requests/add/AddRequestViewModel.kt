@@ -50,8 +50,7 @@ sealed interface SearchResults<out T> {
  *
  * @property library The books in the library the query matches.
  * @property providers The online providers' records the query matches.
- * @property starting Whether a start is running, so no second one can begin and every Request button waits.
- * @property startingKey Which result the running start is for, so only its row says "Requesting…".
+ * @property startingKey Which result the running start is for, so only its row says "Requesting…". Null when none runs.
  * @property message What the last start said, such as why it failed. A new search clears it.
  * @property pendingOpen The book whose request page the Requests screen should open, set when a start succeeds. It lives
  * here, in the ViewModel the nav entry owns, so a fold or a rotation doesn't lose it.
@@ -60,12 +59,14 @@ data class AddRequestUIState(
     val query: String = "",
     val library: SearchResults<LibraryHit> = SearchResults.Loading,
     val providers: SearchResults<ProviderBook> = SearchResults.Loading,
-    val starting: Boolean = false,
     val startingKey: String? = null,
     val message: String? = null,
     val pendingOpen: String? = null,
     val isOnline: Boolean = true,
 ) {
+    /** Whether a start is running, so no second one can begin and every Request button waits. */
+    val starting: Boolean get() = startingKey != null
+
     /** Whether there is nothing to search for yet. */
     val isIdle: Boolean get() = query.isBlank()
 }
@@ -156,12 +157,12 @@ class AddRequestViewModel @Inject constructor(
             _uiState.update { it.copy(message = wordingSource.wording().stillStarting) }
             return
         }
-        _uiState.update { it.copy(starting = true, startingKey = key, message = null) }
+        _uiState.update { it.copy(startingKey = key, message = null) }
         viewModelScope.launch {
             try {
                 block()
             } finally {
-                _uiState.update { it.copy(starting = false, startingKey = null) }
+                _uiState.update { it.copy(startingKey = null) }
             }
         }
     }

@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.requests.toRequestViewer
 import com.omnibus.omnibus.feature.requests.needsYouCount
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,13 +41,16 @@ class YouViewModel @Inject constructor(
     private var user: CurrentUser? = null
     private var isShown = false
 
+    /** The read in flight. A newer one replaces it, so an older answer can't land after it. */
+    private var counting: Job? = null
+
     init {
         // Follows the session, which is not confirmed until the server answers, so a user arriving after the screen
         // was shown still gets the row and the count.
         viewModelScope.launch {
             authRepository.currentUser.catch { emit(null) }.collect {
                 user = it
-                if (isShown) readCount()
+                if (isShown) recount()
             }
         }
     }
@@ -58,7 +62,12 @@ class YouViewModel @Inject constructor(
      */
     fun shown() {
         isShown = true
-        viewModelScope.launch { readCount() }
+        recount()
+    }
+
+    private fun recount() {
+        counting?.cancel()
+        counting = viewModelScope.launch { readCount() }
     }
 
     private suspend fun readCount() {

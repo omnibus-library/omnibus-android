@@ -12,6 +12,7 @@ import com.omnibus.omnibus.data.requests.randomBookRequest
 import com.omnibus.omnibus.data.requests.randomRequestListing
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -90,6 +91,20 @@ class YouViewModelTest : DescribeSpec({
             vm.shown()
 
             first to vm.uiState.value.needsYou shouldBe (1 to 3)
+        }
+
+        it("keeps the newest read's count when an older one answers last") {
+            val requests = TestRequestsRepository()
+            val gate = CompletableDeferred<Unit>()
+            requests.answer("list", picking("a"), gate)
+            val vm = sut(requests)
+            vm.shown()
+            requests.answer("list", picking("a", "b", "c"))
+            vm.shown()
+
+            gate.complete(Unit)
+
+            vm.uiState.value.needsYou shouldBe 3
         }
 
         it("shows no count, never a stale one, when the read fails") {

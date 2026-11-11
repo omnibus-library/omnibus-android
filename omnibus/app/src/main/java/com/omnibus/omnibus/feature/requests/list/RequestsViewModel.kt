@@ -122,15 +122,20 @@ class RequestsViewModel @Inject constructor(
         _uiState.update { it.copy(failure = error.takeIf { _ -> it.listings == null }) }
     }
 
-    /** One read. A failure shows only while there is nothing else on screen, and leaves the rows as they were. */
+    /**
+     * One read. A failure shows only while there is nothing else on screen, and leaves the rows as they were. An answer
+     * older than a rows read already applied is dropped, but only rows advance that mark: a failure must not drop a
+     * slower read that is still out.
+     */
     private suspend fun read() {
         val seq = ++readSeq
         val result = requests.list()
-        // An answer older than one already applied would put back what a newer read just replaced.
         if (seq < appliedSeq) return
-        appliedSeq = seq
         when (result) {
-            is RequestsResult.Success -> _uiState.update { it.copy(listings = result.value, failure = null) }
+            is RequestsResult.Success -> {
+                appliedSeq = seq
+                _uiState.update { it.copy(listings = result.value, failure = null) }
+            }
             is RequestsResult.Failure -> fail(result.error)
             RequestsResult.NoServer -> fail(RequestsError.Unreachable)
         }

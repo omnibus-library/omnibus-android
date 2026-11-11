@@ -157,11 +157,13 @@ class RequestsViewModelTest : DescribeSpec({
         }
 
         it("offers no request when the server has book requests off for the reader") {
-            val auth = TestAuthRepository().apply {
-                currentUserState.value = randomCurrentUser().copy(bookRequests = false, canStartRequests = true)
-            }
+            val user = randomCurrentUser().copy(bookRequests = false, canStartRequests = true, canChooseRequestVersions = true)
+            val auth = TestAuthRepository()
+            val vm = sut(auth = auth)
 
-            sut(auth = auth).uiState.value.viewer.canStart shouldBe false
+            auth.currentUserState.value = user
+
+            vm.uiState.value.viewer shouldBe RequestViewer(user.id, canStart = false, canChoose = false)
         }
     }
 
@@ -184,6 +186,25 @@ class RequestsViewModelTest : DescribeSpec({
                 runCurrent()
 
                 vm.uiState.value.listings!!.map { it.book.uuid } shouldBe listOf("fresh")
+            }
+        }
+    }
+
+    describe("a read that fails while a slower one is still out") {
+        it("doesn't drop the slower one's rows when they arrive, nor leave the error over them") {
+            runTest {
+                val requests = TestRequestsRepository()
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("list", ok(listing("slow", RequestState.OnItsWay)), gate)
+                val vm = sut(requests, authAs(CHOOSER))
+                vm.load()
+                requests.answer("list", UNREACHABLE)
+                vm.refresh()
+
+                gate.complete(Unit)
+                runCurrent()
+
+                vm.uiState.value.let { state -> state.listings?.map { it.book.uuid } to state.failure } shouldBe (listOf("slow") to null)
             }
         }
     }
