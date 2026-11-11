@@ -179,6 +179,22 @@ fun RequestReadyPhone() {
     PageShot(shotPage(listOf(shotRequest(RequestState.Ready, chosen = 1, progress = 1.0, updatedAt = SHOT_NOW_SECS - 120, versions = shotVersions().take(1)))))
 }
 
+/** An ebook and an audiobook both finished: each stays as a lane in its Ready state. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 411, heightDp = 891)
+@Preview(name = "Dark", widthDp = 411, heightDp = 891, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun RequestTwoReadyPhone() {
+    PageShot(
+        shotPage(
+            listOf(
+                shotRequest(RequestState.Ready, id = 2, kind = RequestKind.Audiobook, chosen = 1, progress = 1.0, updatedAt = SHOT_NOW_SECS - 60, versions = shotVersions().take(1)),
+                shotRequest(RequestState.Ready, id = 1, chosen = 1, progress = 1.0, updatedAt = SHOT_NOW_SECS - 120, versions = shotVersions().take(1)),
+            ),
+        ),
+    )
+}
+
 @PreviewTest
 @Preview(name = "TwoPane", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -281,14 +297,14 @@ fun RequestCancelledAgainTwoPane() {
 @Preview(name = "Dark", widthDp = 411, heightDp = 891, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RequestHistoryPhone() {
-    PageShot(shotPage(listOf(shotRequest(RequestState.OnItsWay, id = 3, chosen = 1, progress = 0.3, versions = shotVersions().take(1))), history = listOf(shotRequest(RequestState.Cancelled, id = 2, kind = RequestKind.Audiobook, cancelledBy = 2, progress = 0.4, chosen = 1, versions = shotVersions().take(1), updatedAt = SHOT_NOW_SECS - 200_000))))
+    PageShot(shotPage(listOf(shotRequest(RequestState.OnItsWay, id = 3, chosen = 1, progress = 0.3, versions = shotVersions().take(1))), history = listOf(shotRequest(RequestState.Cancelled, id = 2, kind = RequestKind.Audiobook, cancelledBy = 2, progress = 0.4, chosen = 1, versions = shotVersions().take(1), updatedAt = SHOT_NOW_SECS - 200_000), shotRequest(RequestState.Ready, id = 1, chosen = 1, versions = shotVersions().take(2).mapIndexed { i, v -> if (i == 1) v.copy(rejected = true) else v }, updatedAt = SHOT_NOW_SECS - 900_000))))
 }
 
 @PreviewTest
 @Preview(name = "TwoPane", widthDp = 1280, heightDp = 800, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun RequestHistoryTwoPane() {
-    PageShot(shotPage(listOf(shotRequest(RequestState.OnItsWay, id = 3, chosen = 1, progress = 0.3, versions = shotVersions().take(1))), history = listOf(shotRequest(RequestState.Cancelled, id = 2, kind = RequestKind.Audiobook, cancelledBy = 2, progress = 0.4, chosen = 1, versions = shotVersions().take(1), updatedAt = SHOT_NOW_SECS - 200_000))))
+    PageShot(shotPage(listOf(shotRequest(RequestState.OnItsWay, id = 3, chosen = 1, progress = 0.3, versions = shotVersions().take(1))), history = listOf(shotRequest(RequestState.Cancelled, id = 2, kind = RequestKind.Audiobook, cancelledBy = 2, progress = 0.4, chosen = 1, versions = shotVersions().take(1), updatedAt = SHOT_NOW_SECS - 200_000), shotRequest(RequestState.Ready, id = 1, chosen = 1, versions = shotVersions().take(2).mapIndexed { i, v -> if (i == 1) v.copy(rejected = true) else v }, updatedAt = SHOT_NOW_SECS - 900_000))))
 }
 
 @PreviewTest
