@@ -42,6 +42,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.requests.RequestsError
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailPaneLayout
+import com.omnibus.omnibus.feature.bookdetail.ui.PaneSplit
 import com.omnibus.omnibus.feature.bookdetail.ui.bookDetailPaneSplit
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
 import com.omnibus.omnibus.feature.requests.RequestWording
@@ -135,40 +136,44 @@ internal fun BookRequestScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
-    Column(modifier.fillMaxSize().background(palette.bg0)) {
-        TopAppBar(
-            title = {},
-            navigationIcon = { OmnibusBackButton(onClick = onBack, modifier = Modifier.testTag(BookRequestTestTags.BACK)) },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = palette.bg0,
-                scrolledContainerColor = palette.bg0,
-                navigationIconContentColor = palette.ink0,
-            ),
-        )
-        Box(Modifier.weight(1f)) {
-            val book = uiState.book
-            when {
-                uiState.isMissing -> EmptyStateView(
-                    title = stringResource(R.string.requests_page_not_found_title),
-                    message = stringResource(R.string.requests_page_not_found_message),
-                )
-                uiState.failure != null -> ErrorStateView(
-                    title = stringResource(R.string.requests_page_error_title),
-                    message = requestsErrorText(uiState.failure),
-                    actionLabel = stringResource(R.string.requests_try_again),
-                    onRetry = onRetry,
-                )
-                book == null -> LoadingStateView(label = stringResource(R.string.requests_page_loading))
-                else -> RequestPage(book, uiState, wording, actions, onOpenBook)
-            }
-            uiState.message?.let { message ->
-                RequestMessageBar(
-                    message = message,
-                    canUndo = !uiState.isLocked,
-                    onUndo = actions.onUndo,
-                    onDismissed = { onMessageDismissed(message) },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.md),
-                )
+    // Measured over the whole window, top bar included, so the split is the book page's rule on the same window.
+    BoxWithConstraints(modifier.fillMaxSize().background(palette.bg0)) {
+        val split = bookDetailPaneSplit(maxWidth, maxHeight)
+        Column(Modifier.fillMaxSize()) {
+            TopAppBar(
+                title = {},
+                navigationIcon = { OmnibusBackButton(onClick = onBack, modifier = Modifier.testTag(BookRequestTestTags.BACK)) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = palette.bg0,
+                    scrolledContainerColor = palette.bg0,
+                    navigationIconContentColor = palette.ink0,
+                ),
+            )
+            Box(Modifier.weight(1f)) {
+                val book = uiState.book
+                when {
+                    uiState.isMissing -> EmptyStateView(
+                        title = stringResource(R.string.requests_page_not_found_title),
+                        message = stringResource(R.string.requests_page_not_found_message),
+                    )
+                    uiState.failure != null -> ErrorStateView(
+                        title = stringResource(R.string.requests_page_error_title),
+                        message = requestsErrorText(uiState.failure),
+                        actionLabel = stringResource(R.string.requests_try_again),
+                        onRetry = onRetry,
+                    )
+                    book == null -> LoadingStateView(label = stringResource(R.string.requests_page_loading))
+                    else -> RequestPage(book, uiState, wording, actions, split, onOpenBook)
+                }
+                uiState.message?.let { message ->
+                    RequestMessageBar(
+                        message = message,
+                        canUndo = !uiState.isLocked,
+                        onUndo = actions.onUndo,
+                        onDismissed = { onMessageDismissed(message) },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.md),
+                    )
+                }
             }
         }
     }
@@ -189,9 +194,15 @@ internal fun requestsErrorText(error: RequestsError): String = when (error) {
  * that holds state (such as Show more) is lost when a fold opens.
  */
 @Composable
-private fun RequestPage(book: Book, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions, onOpenBook: () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val split = bookDetailPaneSplit(maxWidth, maxHeight)
+private fun RequestPage(
+    book: Book,
+    uiState: BookRequestUIState,
+    wording: RequestWording,
+    actions: RequestActions,
+    split: PaneSplit?,
+    onOpenBook: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
         val pageScroll = rememberScrollState()
         val headerScroll = rememberScrollState()
         val lanesScroll = rememberScrollState()
