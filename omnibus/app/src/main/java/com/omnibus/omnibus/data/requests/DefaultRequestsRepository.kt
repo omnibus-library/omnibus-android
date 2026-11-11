@@ -28,6 +28,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.RequestBody
+import okhttp3.Response
 
 /**
  * Default [RequestsRepository]. Every failure becomes a result, so no exception leaves this class, except
@@ -91,6 +92,9 @@ class DefaultRequestsRepository @Inject constructor(
     override suspend fun keepCover(id: Long): RequestsResult<BookRequest> =
         call("DELETE", REQUESTS_PATH, listOf(id.toString(), COVER), decode = ::decodeRequest)
 
+    override suspend fun offeredCover(id: Long): RequestsResult<ByteArray> =
+        send("GET", REQUESTS_PATH, listOf(id.toString(), COVER), read = { it.body.bytes() })
+
     override suspend fun searchLibrary(query: String): RequestsResult<List<LibraryHit>> =
         call("GET", PALETTE_PATH, query = mapOf("q" to query)) { body ->
             RequestsJson.decodeFromString<PaletteResultsDto>(body).books.map { it.toDomain() }
@@ -128,6 +132,16 @@ class DefaultRequestsRepository @Inject constructor(
         query: Map<String, String> = emptyMap(),
         body: RequestBody? = null,
         decode: (String) -> T,
+    ): RequestsResult<T> = send(method, path, segments, query, body, read = { decode(it.body.string()) })
+
+    /** [call] for a route whose answer [read] takes from the response itself, such as image bytes. */
+    private suspend fun <T> send(
+        method: String,
+        path: String,
+        segments: List<String> = emptyList(),
+        query: Map<String, String> = emptyMap(),
+        body: RequestBody? = null,
+        read: (Response) -> T,
     ): RequestsResult<T> = withContext(ioDispatcher) {
         val builder = omnibusHttpClient.request(path) ?: return@withContext RequestsResult.NoServer
         val url = builder.build().url.newBuilder().apply {
@@ -139,7 +153,7 @@ class DefaultRequestsRepository @Inject constructor(
         try {
             omnibusHttpClient.execute(request).use { response ->
                 when {
-                    response.isSuccessful -> RequestsResult.Success(decode(response.body.string()))
+                    response.isSuccessful -> RequestsResult.Success(read(response))
                     response.code == HTTP_UNAUTHORIZED -> RequestsResult.Failure(RequestsError.SessionExpired)
                     else -> RequestsResult.Failure(
                         RequestsError.Http(response.code, serverMessage(response.body.string())),

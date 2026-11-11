@@ -7,6 +7,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryRepository
+import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestListing
@@ -16,10 +17,14 @@ import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
 import com.omnibus.omnibus.data.requests.Wanter
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.feature.requests.RequestAction
+import com.omnibus.omnibus.feature.requests.actionFailure
 import com.omnibus.omnibus.feature.requests.detailPollIntervalMillis
 import com.omnibus.omnibus.feature.requests.isMoving
 import com.omnibus.omnibus.feature.requests.mainRequest
+import com.omnibus.omnibus.feature.requests.di.RequestWordingSource
 import com.omnibus.omnibus.feature.requests.splitBookRequests
+import com.omnibus.omnibus.feature.requests.startFailure
 import com.omnibus.omnibus.feature.requests.unrequestedKinds
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -40,6 +45,34 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** A write in flight, naming the request and the button that started it. One runs at a time, so every other button locks. */
+sealed interface Busy {
+    data class Choosing(val request: Long, val version: Long) : Busy
+    data class Swapping(val request: Long) : Busy
+    data class Retrying(val request: Long) : Busy
+    data class TakingCover(val request: Long) : Busy
+    data class KeepingCover(val request: Long) : Busy
+    data class Cancelling(val request: Long) : Busy
+    data class Undoing(val request: Long) : Busy
+    data class Starting(val kind: RequestKind) : Busy
+}
+
+/**
+ * A short message over the page.
+ *
+ * @property undoRequestId Set only for a cancel: the request Undo restores.
+ * @property durationMillis How long it stays. A cancel's lasts until the server stops taking it back.
+ * @property id Numbers the message, so two with the same text each show.
+ */
+data class RequestMessage(
+    val text: String,
+    val undoRequestId: Long? = null,
+    val durationMillis: Long = DEFAULT_MESSAGE_MILLIS,
+    val id: Long = 0,
+)
+
+private const val DEFAULT_MESSAGE_MILLIS = 4_000L
+
 /** Nobody signed in: may do nothing. */
 internal val NobodyViewer = RequestViewer(id = 0, canStart = false, canChoose = false)
 
@@ -53,6 +86,9 @@ internal val NobodyViewer = RequestViewer(id = 0, canStart = false, canChoose = 
  * @property mainId The request the page opened on. It stays the main lane while it is listed.
  * @property failure Why the first load failed. Only a failed first load shows it.
  * @property isMissing Whether the book itself is gone.
+ * @property busy The write in flight, if any.
+ * @property message What the page is saying, with an Undo when the write can be taken back.
+ * @property isOnline Whether the device is online. Commands never queue, so every write control waits for it.
  * @property nowMillis The clock when this state was built, which dates the lanes' relative times.
  */
 data class BookRequestUIState(
@@ -64,6 +100,9 @@ data class BookRequestUIState(
     val failure: RequestsError? = null,
     val isMissing: Boolean = false,
     val viewer: RequestViewer = NobodyViewer,
+    val busy: Busy? = null,
+    val message: RequestMessage? = null,
+    val isOnline: Boolean = true,
     val nowMillis: Long = 0L,
 ) {
 
@@ -113,6 +152,8 @@ class BookRequestViewModel @AssistedInject constructor(
     private val library: LibraryRepository,
     private val authRepository: AuthRepository,
     private val timeSource: TimeSource,
+    connectivityMonitor: ConnectivityMonitor,
+    private val wordingSource: RequestWordingSource,
 ) : ViewModel() {
 
     /** Creates a [BookRequestViewModel] for the book with [uuid]. */
@@ -128,6 +169,14 @@ class BookRequestViewModel @AssistedInject constructor(
 
     /** Numbers each write, so a read that started before one is dropped when it answers after it. */
     private var generation = 0
+
+    private var nextMessageId = 1L
+
+    init {
+        viewModelScope.launch {
+            connectivityMonitor.isOnline.collect { online -> change { it.copy(isOnline = online) } }
+        }
+    }
 
     /** Reads the page. Called each time the page is shown, and by Retry and pull to refresh. */
     fun load() {
@@ -195,6 +244,144 @@ class BookRequestViewModel @AssistedInject constructor(
             }
             else -> if (!hadPage && mainId !in _uiState.value.reads) change { it.copy(failure = main.errorOrNull()) }
         }
+    }
+
+    /** Picks version [versionId] for the request [laneId]. */
+    fun choose(laneId: Long, versionId: Long) {
+        viewModelScope.launch {
+            write(RequestAction.Choose, Busy.Choosing(laneId, versionId), allowed = _uiState.value.viewer.canChoose) {
+                requests.choose(laneId, versionId)
+            }
+        }
+    }
+
+    /** Gives up the downloading version and goes back to choosing among the others. */
+    fun swap(laneId: Long) {
+        viewModelScope.launch {
+            write(RequestAction.Swap, Busy.Swapping(laneId), allowed = _uiState.value.viewer.canChoose) { requests.swap(laneId) }
+        }
+    }
+
+    /** Searches again for a stuck or stale request. */
+    fun retry(laneId: Long) {
+        viewModelScope.launch {
+            write(RequestAction.Retry, Busy.Retrying(laneId), allowed = _uiState.value.viewer.canChoose) { requests.retry(laneId) }
+        }
+    }
+
+    /** Makes the downloaded cover the book's own. */
+    fun takeCover(laneId: Long) {
+        viewModelScope.launch {
+            write(RequestAction.TakeCover, Busy.TakingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
+                requests.takeCover(laneId)
+            }
+        }
+    }
+
+    /** Turns the downloaded cover down. */
+    fun keepCover(laneId: Long) {
+        viewModelScope.launch {
+            write(RequestAction.KeepCover, Busy.KeepingCover(laneId), allowed = _uiState.value.viewer.canChoose, rereading = laneId) {
+                requests.keepCover(laneId)
+            }
+        }
+    }
+
+    /** Starts a request of [kind] and stays on the page. The new lane arrives with the answer. */
+    fun start(kind: RequestKind) {
+        viewModelScope.launch {
+            val start = { error: RequestsError -> startFailure(error, wordingSource.wording()) }
+            write(start, Busy.Starting(kind), allowed = _uiState.value.viewer.canStart) { requests.start(uuid, kind) }
+        }
+    }
+
+    /** Clears [message] once it has been shown for its duration, unless a newer one has replaced it. */
+    fun messageDismissed(message: RequestMessage) {
+        change { if (it.message?.id == message.id) it.copy(message = null) else it }
+    }
+
+    private suspend fun write(
+        action: RequestAction,
+        busy: Busy,
+        allowed: Boolean,
+        rereading: Long? = null,
+        rereadsListings: Boolean = true,
+        call: suspend () -> RequestsResult<BookRequest>,
+    ): BookRequest? = write(
+        { error -> actionFailure(action, error, wordingSource.wording()) },
+        busy, allowed, rereading, rereadsListings, call,
+    )
+
+    /**
+     * Runs one write: the request takes the server's answer and the listings are read again. A failure says so, and
+     * where [rereading] names a request, the refusal may mean it moved on, so it is read again. The control that
+     * started it is busy meanwhile and every other write waits. Answers what the server returned.
+     */
+    private suspend fun write(
+        failure: (RequestsError) -> String,
+        busy: Busy,
+        allowed: Boolean,
+        rereading: Long? = null,
+        rereadsListings: Boolean = true,
+        call: suspend () -> RequestsResult<BookRequest>,
+    ): BookRequest? {
+        val before = _uiState.value
+        if (before.busy != null || !allowed || !before.isOnline) return null
+        change { it.copy(busy = busy) }
+        generation++
+        try {
+            when (val result = call()) {
+                is RequestsResult.Success -> {
+                    val answer = result.value
+                    change { it.copy(reads = it.reads + (answer.id to answer)) }
+                    adopt(answer)
+                    if (rereadsListings) rereadListings()
+                    return answer
+                }
+                else -> {
+                    show(failure(result.errorOrNull() ?: RequestsError.UnexpectedResponse))
+                    if (rereading != null) {
+                        (requests.request(rereading) as? RequestsResult.Success)?.let { fresh ->
+                            change { it.copy(reads = it.reads + (rereading to fresh.value)) }
+                        }
+                        rereadListings()
+                    }
+                    return null
+                }
+            }
+        } finally {
+            change { it.copy(busy = null) }
+            generation++
+        }
+    }
+
+    private fun show(text: String) {
+        change { it.copy(message = RequestMessage(text, id = nextMessageId++)) }
+    }
+
+    /** Files a write's answer in the listings, so its lane and its kind hold even when the reread fails. */
+    private fun adopt(answer: BookRequest) {
+        val state = _uiState.value
+        val listed = state.listings ?: return
+        val book = state.book ?: return
+        val at = listed.indexOfFirst { it.request.id == answer.id }
+        // shortcut: the requester's name stays blank until the next listings read fills it.
+        val updated = if (at >= 0) {
+            listed.toMutableList().also { it[at] = it[at].copy(request = answer) }
+        } else {
+            listed + RequestListing(answer, book, requesterName = "", requesterHasAvatar = false, cancelledByName = null)
+        }
+        change { it.copy(listings = updated) }
+        settleMain()
+    }
+
+    /** A write that lands meanwhile has the newer listings, so this read is dropped. */
+    private suspend fun rereadListings() {
+        val started = generation
+        val fresh = (requests.bookList(uuid) as? RequestsResult.Success)?.value ?: return
+        if (started != generation) return
+        change { it.copy(listings = fresh) }
+        settleMain()
     }
 
     private suspend fun readViewer(): RequestViewer {

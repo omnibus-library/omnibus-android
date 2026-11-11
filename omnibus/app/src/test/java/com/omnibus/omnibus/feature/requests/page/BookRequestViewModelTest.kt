@@ -6,6 +6,7 @@ import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestListing
@@ -17,11 +18,14 @@ import com.omnibus.omnibus.data.requests.TestRequestsRepository
 import com.omnibus.omnibus.data.requests.Wanter
 import com.omnibus.omnibus.data.requests.randomBookRequest
 import com.omnibus.omnibus.data.requests.randomRequestListing
+import com.omnibus.omnibus.data.requests.randomRequestVersion
 import com.omnibus.omnibus.data.requests.randomWanter
+import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -34,6 +38,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
 private val CHOOSER = RequestViewer(id = 1, canStart = true, canChoose = true)
+private val ASKER = RequestViewer(id = 1, canStart = true, canChoose = false)
+private val BLOCKED = RequestViewer(id = 1, canStart = false, canChoose = false)
 
 private fun authAs(viewer: RequestViewer) = TestAuthRepository().apply {
     currentUserState.value = randomCurrentUser().copy(
@@ -82,7 +88,8 @@ class BookRequestViewModelTest : DescribeSpec({
         library: TestLibraryRepository = TestLibraryRepository(),
         auth: TestAuthRepository = TestAuthRepository(),
         time: TestTimeSource = TestTimeSource(),
-    ) = BookRequestViewModel(uuid, requests, library, auth, time)
+        online: Boolean = true,
+    ) = BookRequestViewModel(uuid, requests, library, auth, time, TestConnectivityMonitor(online)) { RequestWording() }
 
     /** A library that has the book [uuid]. */
     fun libraryWith(uuid: String) = TestLibraryRepository().apply {
@@ -466,6 +473,327 @@ class BookRequestViewModelTest : DescribeSpec({
                 runCurrent()
 
                 requests.callsTo("bookList").size shouldBe 3
+            }
+        }
+    }
+
+    describe("writing to a request") {
+
+        /** A page open on [lanes], with every lane's full read served. */
+        fun openedPage(
+            uuid: String,
+            vararg lanes: BookRequest,
+            viewer: RequestViewer = CHOOSER,
+            requests: TestRequestsRepository = TestRequestsRepository(),
+            online: Boolean = true,
+            time: TestTimeSource = TestTimeSource(),
+        ): Pair<BookRequestViewModel, TestRequestsRepository> {
+            requests.serve(uuid, *lanes)
+            requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+            val vm = sut(uuid, requests, libraryWith(uuid), authAs(viewer), time, online)
+            vm.load()
+            return vm to requests
+        }
+
+        context("while one write runs") {
+            it("shows which control was pressed") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                requests.answer("choose", ok(request(uuid, 5, RequestState.Chosen)), CompletableDeferred())
+
+                vm.choose(5, 11)
+
+                vm.uiState.value.busy shouldBe Busy.Choosing(5, 11)
+            }
+
+            it("ignores a second write, which sends nothing") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.OnItsWay))
+                requests.answer("swap", ok(request(uuid, 5, RequestState.Choose)), CompletableDeferred())
+                vm.swap(5)
+
+                vm.retry(5)
+                vm.start(RequestKind.Audiobook)
+
+                requests.calls.map { it.function }.filter { it in setOf("swap", "retry", "start") } shouldBe listOf("swap")
+            }
+
+            it("frees the controls once the write answers") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("choose", ok(request(uuid, 5, RequestState.Chosen)), gate)
+                requests.serve(uuid, request(uuid, 5, RequestState.Chosen))
+                vm.choose(5, 11)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.busy shouldBe null
+            }
+        }
+
+        it("sends nothing while the device is offline") {
+            val uuid = randomString()
+            val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose), online = false)
+
+            vm.choose(5, 11)
+
+            requests.callsTo("choose") shouldBe emptyList()
+        }
+
+        describe("a write that succeeds") {
+
+            it("stores the answer as the lane's read") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                val answer = request(uuid, 5, RequestState.Chosen, updatedAt = 300)
+                requests.answer("choose", ok(answer))
+                requests.serve(uuid, answer)
+
+                vm.choose(5, 11)
+
+                vm.uiState.value.reads[5] shouldBe answer
+            }
+
+            it("folds the answer into the listings before the follow-up read answers") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                val answer = request(uuid, 5, RequestState.Chosen, updatedAt = 300)
+                requests.answer("choose", ok(answer))
+                requests.answer("bookList", RequestsResult.Success(emptyList<RequestListing>()), CompletableDeferred())
+
+                vm.choose(5, 11)
+
+                vm.uiState.value.listings!!.single().request shouldBe answer
+            }
+
+            it("reads the listings again") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                requests.answer("choose", ok(request(uuid, 5, RequestState.Chosen)))
+                val before = requests.callsTo("bookList").size
+
+                vm.choose(5, 11)
+
+                requests.callsTo("bookList").size - before shouldBe 1
+            }
+
+            it("sends the lane's id and the version's id to choose") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                requests.answer("choose", ok(request(uuid, 5, RequestState.Chosen)))
+
+                vm.choose(5, 11)
+
+                requests.callsTo("choose").map { it.args } shouldBe listOf(listOf<Any?>(5L, 11L))
+            }
+        }
+
+        describe("starting a request") {
+
+            it("makes a request on an empty page the main lane") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid)
+                val started = request(uuid, 9, RequestState.Looking)
+                requests.answer("start", ok(started))
+                requests.serve(uuid, started)
+
+                vm.start(RequestKind.Ebook)
+
+                vm.uiState.value.let { it.mainId to it.lanes.map { lane -> lane.id } } shouldBe (9L to listOf(9L))
+            }
+
+            it("still becomes a lane, starts polling and stops offering its kind when the follow-up read fails") {
+                runTest {
+                    val uuid = randomString()
+                    val (vm, requests) = openedPage(uuid)
+                    backgroundScope.launch { vm.keepCurrent() }
+                    val started = request(uuid, 9, RequestState.Looking)
+                    requests.answer("start", ok(started))
+                    requests.answer("bookList", UNREACHABLE)
+                    requests.answerAlways("request", ok(started), 9L)
+
+                    vm.start(RequestKind.Ebook)
+                    runCurrent()
+
+                    vm.uiState.value.let { Triple(it.lanes.map { lane -> lane.id }, it.pollInterval, it.unrequested) } shouldBe
+                        Triple(listOf(9L), 2_000L, listOf(RequestKind.Audiobook))
+                }
+            }
+
+            it("sends the book and the kind") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid)
+                requests.answer("start", ok(request(uuid, 9)))
+
+                vm.start(RequestKind.Audiobook)
+
+                requests.callsTo("start").map { it.args } shouldBe listOf(listOf<Any?>(uuid, RequestKind.Audiobook))
+            }
+
+            it("is refused for a reader who can't start requests, with nothing sent") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, viewer = BLOCKED)
+
+                vm.start(RequestKind.Ebook)
+
+                requests.callsTo("start") shouldBe emptyList()
+            }
+
+            it("says why in the message when it fails") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid)
+                requests.answer("start", RequestsResult.Failure(RequestsError.Http(429, null)))
+
+                vm.start(RequestKind.Ebook)
+
+                vm.uiState.value.message?.text shouldBe "You have a lot of requests going. Try again in a few minutes."
+            }
+        }
+
+        describe("the writes only a reader who can pick versions may make") {
+            it("sends none for a reader who can't") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.OnItsWay), viewer = ASKER)
+
+                vm.choose(5, 11)
+                vm.swap(5)
+                vm.retry(5)
+                vm.takeCover(5)
+                vm.keepCover(5)
+
+                requests.calls.map { it.function }.filter { it in setOf("choose", "swap", "retry", "takeCover", "keepCover") } shouldBe emptyList()
+            }
+
+            it("sends each for a reader who can") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.OnItsWay))
+                listOf("swap", "retry", "takeCover", "keepCover").forEach { requests.answer(it, ok(request(uuid, 5))) }
+
+                vm.swap(5)
+                vm.retry(5)
+                vm.takeCover(5)
+                vm.keepCover(5)
+
+                requests.calls.map { it.function }.filter { it in setOf("swap", "retry", "takeCover", "keepCover") } shouldBe
+                    listOf("swap", "retry", "takeCover", "keepCover")
+            }
+        }
+
+        describe("a write that fails") {
+
+            it("says what failed and why, and frees the controls") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                requests.answer("choose", RequestsResult.Failure(RequestsError.Http(409, "Already chosen")))
+
+                vm.choose(5, 11)
+
+                vm.uiState.value.let { it.message?.text to it.busy } shouldBe ("Couldn’t choose that version: Already chosen" to null)
+            }
+
+            it("doesn't read again after a failed choose") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Choose))
+                requests.answer("choose", RequestsResult.Failure(RequestsError.Unreachable))
+                val calls = requests.calls.size
+
+                vm.choose(5, 11)
+
+                requests.calls.size - calls shouldBe 1
+            }
+
+            it("reads the lane and the listings again after a failed cover write, since the request may have moved on") {
+                val uuid = randomString()
+                val (vm, requests) = openedPage(uuid, request(uuid, 5, RequestState.Ready))
+                requests.answer("takeCover", RequestsResult.Failure(RequestsError.Http(409, "No offer")))
+                val before = requests.calls.size
+
+                vm.takeCover(5)
+
+                requests.calls.drop(before).map { it.function } shouldBe listOf("takeCover", "request", "bookList")
+            }
+        }
+
+        describe("a read that started before a write") {
+
+            it("is dropped by a poll that answers after the write") {
+                runTest {
+                    val uuid = randomString()
+                    val chooser = request(uuid, 5, RequestState.Choose, updatedAt = 100)
+                    val moving = request(uuid, 6, RequestState.OnItsWay, userId = 2)
+                    val (vm, requests) = openedPage(uuid, chooser, moving)
+                    backgroundScope.launch { vm.keepCurrent() }
+                    val stale = RequestsResult.Success(listOf(listingOf(chooser), listingOf(moving)))
+                    val gate = CompletableDeferred<Unit>()
+                    requests.answer("bookList", stale, gate)
+                    advanceTimeBy(2_000)
+                    runCurrent()
+                    val answer = chooser.copy(state = RequestState.Chosen, updatedAt = 300)
+                    requests.answer("choose", ok(answer))
+                    requests.serve(uuid, answer, moving)
+                    vm.choose(5, 11)
+
+                    gate.complete(Unit)
+                    runCurrent()
+
+                    vm.uiState.value.listings!!.first { it.request.id == 5L }.request.state shouldBe RequestState.Chosen
+                }
+            }
+
+            it("is dropped by a full reload that answers after the write") {
+                val uuid = randomString()
+                val chooser = request(uuid, 5, RequestState.Choose, updatedAt = 100)
+                val (vm, requests) = openedPage(uuid, chooser)
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("bookList", RequestsResult.Success(listOf(listingOf(chooser))), gate)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                vm.load()
+                val answer = chooser.copy(state = RequestState.Chosen, updatedAt = 300)
+                requests.answer("choose", ok(answer))
+                requests.serve(uuid, answer)
+                vm.choose(5, 11)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.listings!!.single().request.state shouldBe RequestState.Chosen
+            }
+
+            it("only fills the lanes the write did not answer, when a reload was raced after its listings") {
+                val uuid = randomString()
+                val main = request(uuid, 5, RequestState.Choose, updatedAt = 100)
+                val other = request(uuid, 6, RequestState.Choose, userId = 2, updatedAt = 100)
+                val (vm, requests) = openedPage(uuid, main, other)
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("request", ok(main), gate, forFirstArg = 5L)
+                requests.answer("request", ok(other), forFirstArg = 6L)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                vm.load()
+                val answer = other.copy(state = RequestState.Chosen, updatedAt = 300)
+                requests.answer("choose", ok(answer))
+                requests.serve(uuid, main, answer)
+                vm.choose(6, 11)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.reads[6] shouldBe answer
+            }
+
+            it("still shows the error for a first load a write raced, when its main read fails") {
+                val uuid = randomString()
+                val requests = TestRequestsRepository()
+                requests.answerAlways("bookList", RequestsResult.Success(listOf(listingOf(request(uuid, 5)))), uuid)
+                requests.answer("wanters", RequestsResult.Success(emptyList<Wanter>()))
+                val gate = CompletableDeferred<Unit>()
+                requests.answer("request", RequestsResult.Failure(RequestsError.Unreachable), gate, forFirstArg = 5L)
+                val vm = sut(uuid, requests, libraryWith(uuid), authAs(CHOOSER))
+                vm.load()
+                requests.answer("start", ok(request(uuid, 9, RequestState.Looking, kind = RequestKind.Audiobook)))
+                vm.start(RequestKind.Audiobook)
+
+                gate.complete(Unit)
+
+                vm.uiState.value.failure shouldBe RequestsError.Unreachable
             }
         }
     }

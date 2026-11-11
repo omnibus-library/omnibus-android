@@ -257,6 +257,23 @@ class DefaultRequestsRepositoryTest : DescribeSpec({
         }
     }
 
+    describe("the cover a download brought") {
+        it("GETs the image bytes from the request's cover route") {
+            withScriptedServerAnswering(200, "pixels") {
+                val result = repository().offeredCover(5)
+
+                (result as RequestsResult.Success).value.decodeToString() shouldBe "pixels"
+                nextRequest().let { it.method to it.url.encodedPath } shouldBe ("GET" to "/api/requests/5/cover")
+            }
+        }
+
+        it("fails like any other read when the server says no") {
+            withScriptedServerAnswering(404, "") {
+                repository().offeredCover(5) shouldBe RequestsResult.Failure(RequestsError.Http(404, null))
+            }
+        }
+    }
+
     describe("searching") {
 
         it("GETs the palette with the query") {

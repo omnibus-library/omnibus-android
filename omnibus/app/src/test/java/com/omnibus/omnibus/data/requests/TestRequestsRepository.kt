@@ -78,6 +78,8 @@ class TestRequestsRepository : RequestsRepository {
 
     override suspend fun keepCover(id: Long) = reply<BookRequest>("keepCover", false, id)
 
+    override suspend fun offeredCover(id: Long) = reply<ByteArray>("offeredCover", true, id)
+
     override suspend fun searchLibrary(query: String) = reply<List<LibraryHit>>("searchLibrary", true, query)
 
     override suspend fun searchProviders(query: String) = reply<List<ProviderBook>>("searchProviders", true, query)

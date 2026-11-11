@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -40,11 +42,16 @@ import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.RequestKind
 import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestVersion
+import com.omnibus.omnibus.feature.requests.RequestButton
+import com.omnibus.omnibus.feature.requests.RequestEmphasis
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.SEP
 import com.omnibus.omnibus.feature.requests.StepStatus
 import com.omnibus.omnibus.feature.requests.askedBy
 import com.omnibus.omnibus.feature.requests.convertsToEpub
+import com.omnibus.omnibus.feature.requests.coverSizesLine
+import com.omnibus.omnibus.feature.requests.isDownloading
+import com.omnibus.omnibus.feature.requests.offersLookingRetry
 import com.omnibus.omnibus.feature.requests.downloadPercent
 import com.omnibus.omnibus.feature.requests.firstShown
 import com.omnibus.omnibus.feature.requests.kindChip
@@ -59,6 +66,8 @@ import com.omnibus.omnibus.feature.requests.stepsFor
 import com.omnibus.omnibus.feature.requests.timeLeft
 import com.omnibus.omnibus.feature.requests.versionSource
 import com.omnibus.omnibus.feature.requests.versionsFound
+import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.ReaderAvatar
 import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -67,6 +76,19 @@ import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import com.omnibus.omnibus.ui.theme.uiTextStyle
+
+/** What a lane's controls do. Each is a user intent on the page's ViewModel. */
+internal data class RequestActions(
+    val onChoose: (laneId: Long, versionId: Long) -> Unit = { _, _ -> },
+    val onSwap: (laneId: Long) -> Unit = {},
+    val onRetry: (laneId: Long) -> Unit = {},
+    val onTakeCover: (laneId: Long) -> Unit = {},
+    val onKeepCover: (laneId: Long) -> Unit = {},
+    val onStart: (RequestKind) -> Unit = {},
+)
+
+/** Commands never queue offline, so every write control waits for the server to be reachable and for any write to finish. */
+internal val BookRequestUIState.isLocked: Boolean get() = busy != null || !isOnline
 
 /** A card's ground and hairline, shared by the lanes and the cards inside them. */
 @Composable
@@ -117,6 +139,7 @@ internal fun RequestLane(
     lane: BookRequest,
     uiState: BookRequestUIState,
     wording: RequestWording,
+    actions: RequestActions,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -138,7 +161,8 @@ internal fun RequestLane(
         }
         val steps = stepsFor(lane, wording)
         if (steps != null) Stepper(steps) else StateNote(lane, wording)
-        LaneBody(lane, uiState, wording)
+        LaneBody(lane, uiState, wording, actions)
+        LaneActionRow(lane, uiState, actions)
     }
 }
 
@@ -199,23 +223,35 @@ private fun StateNote(lane: BookRequest, wording: RequestWording) {
 }
 
 @Composable
-private fun LaneBody(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording) {
+private fun LaneBody(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions) {
     val palette = OmnibusTheme.palette
     when (lane.state) {
-        RequestState.Looking -> LookingCard(lookingLabel(lane, uiState.nowMillis, wording))
-        RequestState.Choose -> VersionList(lane, uiState, wording)
+        RequestState.Looking -> {
+            LookingCard(lookingLabel(lane, uiState.nowMillis, wording))
+            if (offersLookingRetry(lane, uiState.viewer, uiState.nowMillis)) {
+                Text(stringResource(R.string.requests_still_looking), style = uiTextStyle(13, FontWeight.Normal, palette.ink2))
+                TryAgain(lane, uiState, actions)
+            }
+        }
+        RequestState.Choose -> VersionList(lane, uiState, wording, actions)
         RequestState.Chosen -> PickedCard(lane, meta = null)
         RequestState.OnItsWay -> DownloadCard(lane, timeLeft(lane, uiState.nowMillis, wording))
-        RequestState.Ready -> if (pickedVersion(lane) != null) {
-            PickedCard(
-                lane,
-                meta = listOfNotNull(
-                    pickedVersion(lane)?.indexer,
-                    stringResource(R.string.requests_added, recency(lane.updatedAt, uiState.nowMillis, wording)),
-                ).joinToString(SEP),
-            )
+        RequestState.Ready -> {
+            if (pickedVersion(lane) != null) {
+                PickedCard(
+                    lane,
+                    meta = listOfNotNull(
+                        pickedVersion(lane)?.indexer,
+                        stringResource(R.string.requests_added, recency(lane.updatedAt, uiState.nowMillis, wording)),
+                    ).joinToString(SEP),
+                )
+            }
+            val offer = lane.coverOffer
+            if (uiState.viewer.canChoose && offer != null) CoverOfferCard(lane, offer, uiState, wording, actions)
         }
-        RequestState.Stuck -> if (!uiState.viewer.canChoose) {
+        RequestState.Stuck -> if (uiState.viewer.canChoose) {
+            TryAgain(lane, uiState, actions)
+        } else {
             Text(
                 text = stringResource(R.string.requests_waiting_for_chooser_retry),
                 style = uiTextStyle(13, FontWeight.Normal, palette.ink2),
@@ -247,11 +283,36 @@ private fun LookingCard(label: String) {
 
 private val LOADING_HEIGHT = 64.dp
 
+/** Choose another while a version downloads. */
+@Composable
+private fun LaneActionRow(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
+    val canSwap = lane.state == RequestState.OnItsWay && uiState.viewer.canChoose && isDownloading(lane)
+    if (!canSwap) return
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        RequestButton(
+            text = stringResource(if (uiState.busy == Busy.Swapping(lane.id)) R.string.requests_choosing else R.string.requests_choose_another),
+            onClick = { actions.onSwap(lane.id) },
+            emphasis = RequestEmphasis.Ghost,
+            enabled = !uiState.isLocked,
+        )
+    }
+}
+
+@Composable
+private fun TryAgain(lane: BookRequest, uiState: BookRequestUIState, actions: RequestActions) {
+    RequestButton(
+        text = stringResource(if (uiState.busy == Busy.Retrying(lane.id)) R.string.requests_retrying else R.string.requests_retry),
+        onClick = { actions.onRetry(lane.id) },
+        emphasis = RequestEmphasis.Primary,
+        enabled = !uiState.isLocked,
+    )
+}
+
 // Versions
 
 /** The versions found, best first, four at a time. */
 @Composable
-private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording) {
+private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions) {
     val palette = OmnibusTheme.palette
     var showAll by rememberSaveable(lane.id) { mutableStateOf(false) }
     val collapsed = firstShown(lane.versions)
@@ -269,7 +330,13 @@ private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording:
             )
         }
         (if (showAll) lane.versions else collapsed).forEach { version ->
-            VersionRow(version, wording)
+            VersionRow(
+                version = version,
+                wording = wording,
+                onChoose = if (uiState.viewer.canChoose) ({ actions.onChoose(lane.id, version.id) }) else null,
+                choosing = uiState.busy == Busy.Choosing(lane.id, version.id),
+                locked = uiState.isLocked,
+            )
         }
         if (hidden > 0) {
             Text(
@@ -283,7 +350,13 @@ private fun VersionList(lane: BookRequest, uiState: BookRequestUIState, wording:
 
 /** One version found: its name (a link to the source's page when it gave one), its source line and its tags. */
 @Composable
-private fun VersionRow(version: RequestVersion, wording: RequestWording) {
+private fun VersionRow(
+    version: RequestVersion,
+    wording: RequestWording,
+    onChoose: (() -> Unit)?,
+    choosing: Boolean,
+    locked: Boolean,
+) {
     val palette = OmnibusTheme.palette
     val best = version.bestMatch && !version.rejected
     LaneCard(radius = Radius.md, fill = palette.bg1, accented = best, spacing = 0.dp) {
@@ -299,6 +372,15 @@ private fun VersionRow(version: RequestVersion, wording: RequestWording) {
                 if (convertsToEpub(version) && !version.rejected) {
                     Tag(stringResource(R.string.requests_tag_converts), palette.ink3)
                 }
+            }
+            if (onChoose != null && !version.rejected) {
+                RequestButton(
+                    text = stringResource(if (choosing) R.string.requests_choosing else R.string.requests_choose),
+                    onClick = onChoose,
+                    emphasis = if (best) RequestEmphasis.Primary else RequestEmphasis.Secondary,
+                    enabled = !locked,
+                    contentDescription = stringResource(R.string.requests_choose_version, version.title),
+                )
             }
         }
     }
@@ -381,4 +463,107 @@ private fun ProgressBar(fraction: Double) {
     Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(palette.line2)) {
         Box(Modifier.fillMaxWidth(shown).height(6.dp).clip(CircleShape).background(palette.accent))
     }
+}
+
+// Cover offer
+
+/** The sharper cover a finished download brought, beside the book's own, with Use and Keep. */
+@Composable
+private fun CoverOfferCard(
+    lane: BookRequest,
+    offer: com.omnibus.omnibus.data.requests.CoverOffer,
+    uiState: BookRequestUIState,
+    wording: RequestWording,
+    actions: RequestActions,
+) {
+    val palette = OmnibusTheme.palette
+    LaneCard(radius = Radius.md, fill = palette.bg1) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg), verticalAlignment = Alignment.Top) {
+            CoverFigure(stringResource(R.string.requests_cover_now)) {
+                uiState.book?.let { BookCover(it.coverIdentity(), Modifier.width(COVER_FIGURE_WIDTH)) }
+            }
+            CoverFigure(stringResource(R.string.requests_cover_from_download)) {
+                OfferedCover(lane.id, Modifier.width(COVER_FIGURE_WIDTH))
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(stringResource(R.string.requests_cover_sharper), style = uiTextStyle(15, FontWeight.SemiBold, palette.ink0))
+            Text(coverSizesLine(offer, wording), style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink2))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            RequestButton(
+                text = stringResource(if (uiState.busy == Busy.TakingCover(lane.id)) R.string.requests_cover_using else R.string.requests_cover_use),
+                onClick = { actions.onTakeCover(lane.id) },
+                emphasis = RequestEmphasis.Primary,
+                fullWidth = true,
+                enabled = !uiState.isLocked,
+            )
+            RequestButton(
+                text = stringResource(if (uiState.busy == Busy.KeepingCover(lane.id)) R.string.requests_cover_keeping else R.string.requests_cover_keep),
+                onClick = { actions.onKeepCover(lane.id) },
+                emphasis = RequestEmphasis.Ghost,
+                fullWidth = true,
+                enabled = !uiState.isLocked,
+            )
+        }
+    }
+}
+
+private val COVER_FIGURE_WIDTH = 64.dp
+
+@Composable
+private fun CoverFigure(caption: String, cover: @Composable () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        cover()
+        Text(caption, style = uiTextStyle(12, FontWeight.Normal, OmnibusTheme.palette.ink3))
+    }
+}
+
+// Unrequested
+
+/** A format the book has neither in the library nor among its requests, with a button to ask for it. */
+@Composable
+internal fun UnrequestedLane(kind: RequestKind, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions, modifier: Modifier = Modifier) {
+    val palette = OmnibusTheme.palette
+    val shape = RoundedCornerShape(Radius.lg)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .dashedBorder(palette.line2, Radius.lg)
+            .padding(Spacing.md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KindChip(kind)
+        Text(kindLabel(kind, wording), style = uiTextStyle(16, FontWeight.Medium, palette.ink0))
+        Text(
+            text = stringResource(R.string.requests_not_requested),
+            style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink3),
+            modifier = Modifier.weight(1f),
+        )
+        StartButton(kind, label = stringResource(R.string.requests_request), uiState, wording, actions)
+    }
+}
+
+/** Starts a request of [kind]: the unrequested lane's Request and a cancelled request's Request again. */
+@Composable
+internal fun StartButton(kind: RequestKind, label: String, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions) {
+    RequestButton(
+        text = if (uiState.busy == Busy.Starting(kind)) stringResource(R.string.requests_requesting) else label,
+        onClick = { actions.onStart(kind) },
+        enabled = !uiState.isLocked,
+        contentDescription = stringResource(R.string.requests_request_kind, label, kindLabel(kind, wording).lowercase()),
+    )
+}
+
+/** A dashed hairline around the content, as the design draws an empty slot. */
+private fun Modifier.dashedBorder(color: Color, radius: Dp): Modifier = this.drawBehind {
+    drawRoundRect(
+        color = color,
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = 1.dp.toPx(),
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
+        ),
+    )
 }

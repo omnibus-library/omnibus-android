@@ -43,6 +43,9 @@ interface RequestsRepository {
     /** Keeps the book's current cover and drops the offer. */
     suspend fun keepCover(id: Long): RequestsResult<BookRequest>
 
+    /** The image bytes of the cover a finished download brought, shown beside the book's own while the offer is open. */
+    suspend fun offeredCover(id: Long): RequestsResult<ByteArray>
+
     /** Library books matching [query], from the search palette. */
     suspend fun searchLibrary(query: String): RequestsResult<List<LibraryHit>>
 

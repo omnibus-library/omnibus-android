@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -88,6 +89,16 @@ fun BookRequestScreen(
     ),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val actions = remember(viewModel) {
+        RequestActions(
+            onChoose = viewModel::choose,
+            onSwap = viewModel::swap,
+            onRetry = viewModel::retry,
+            onTakeCover = viewModel::takeCover,
+            onKeepCover = viewModel::keepCover,
+            onStart = viewModel::start,
+        )
+    }
 
     // Each runs when the entry enters composition, so returning to the page reads again and polling stops off screen.
     LaunchedEffect(Unit) { viewModel.load() }
@@ -99,6 +110,8 @@ fun BookRequestScreen(
         onBack = onBack,
         onOpenBook = onOpenBook,
         onRetry = viewModel::load,
+        actions = actions,
+        onMessageDismissed = viewModel::messageDismissed,
         modifier = modifier,
     )
 }
@@ -115,6 +128,8 @@ internal fun BookRequestScreenContent(
     onBack: () -> Unit,
     onOpenBook: () -> Unit,
     onRetry: () -> Unit,
+    actions: RequestActions,
+    onMessageDismissed: (RequestMessage) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -142,7 +157,16 @@ internal fun BookRequestScreenContent(
                     onRetry = onRetry,
                 )
                 book == null -> LoadingStateView(label = stringResource(R.string.requests_page_loading))
-                else -> RequestPage(book, uiState, wording, onOpenBook)
+                else -> RequestPage(book, uiState, wording, actions, onOpenBook)
+            }
+            uiState.message?.let { message ->
+                RequestMessageBar(
+                    message = message,
+                    canUndo = false,
+                    onUndo = {},
+                    onDismissed = { onMessageDismissed(message) },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.md),
+                )
             }
         }
     }
@@ -163,7 +187,7 @@ internal fun requestsErrorText(error: RequestsError): String = when (error) {
  * that holds state (such as Show more) is lost when a fold opens.
  */
 @Composable
-private fun RequestPage(book: Book, uiState: BookRequestUIState, wording: RequestWording, onOpenBook: () -> Unit) {
+private fun RequestPage(book: Book, uiState: BookRequestUIState, wording: RequestWording, actions: RequestActions, onOpenBook: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val split = bookDetailPaneSplit(maxWidth, maxHeight)
         val pageScroll = rememberScrollState()
@@ -182,7 +206,8 @@ private fun RequestPage(book: Book, uiState: BookRequestUIState, wording: Reques
             },
             tabHost = {
                 Pane(if (twoPane) lanesScroll else null, Modifier.testTag(BookRequestTestTags.LANES_PANE)) {
-                    uiState.lanes.forEach { RequestLane(it, uiState, wording) }
+                    uiState.lanes.forEach { RequestLane(it, uiState, wording, actions) }
+                    uiState.unrequested.forEach { UnrequestedLane(it, uiState, wording, actions) }
                     RequestHistory(uiState.history, uiState, wording)
                 }
             },
