@@ -500,6 +500,24 @@ class RequestRulesTest : DescribeSpec({
         }
     }
 
+    describe("the kinds the book page offers to request") {
+        it("lists each kind the library lacks, whatever requests the book has") {
+            listOf(
+                requestSlots(listOf("EPUB"), canStart = true),
+                requestSlots(listOf("PRINT"), canStart = true),
+                requestSlots(listOf("EPUB", "M4B"), canStart = true),
+            ) shouldBe listOf(
+                listOf(RequestKind.Audiobook),
+                listOf(RequestKind.Ebook, RequestKind.Audiobook),
+                emptyList(),
+            )
+        }
+
+        it("lists none for a reader who may not start requests") {
+            requestSlots(listOf("PRINT"), canStart = false) shouldBe emptyList()
+        }
+    }
+
     describe("when the page reads again") {
         it("polls every two seconds while any lane is moving, and not at all otherwise") {
             listOf(

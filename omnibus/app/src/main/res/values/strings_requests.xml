@@ -174,4 +174,7 @@
     <!-- The You root's Library group. -->
     <string name="you_library_label">Library</string>
     <string name="you_requests_row">Requests</string>
+
+    <!-- The book page's request slots. -->
+    <string name="requests_not_in_library">Not in the library</string>
 </resources>

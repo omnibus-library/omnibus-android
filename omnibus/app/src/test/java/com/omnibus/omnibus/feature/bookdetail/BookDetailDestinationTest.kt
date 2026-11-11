@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
@@ -67,6 +68,20 @@ class BookDetailDestinationTest : DescribeSpec({
                 BookDetailDestination.CheckIn(randomString()).shellRoute(titles) shouldBe
                     BookDetailPlaceholderRoute(titles.checkIn)
                 BookDetailDestination.Settings.shellRoute(titles) shouldBe BookDetailPlaceholderRoute(titles.settings)
+            }
+        }
+
+        context("when the destination is a book's request page") {
+            it("is the request route for that book") {
+                val uuid = randomString()
+
+                BookDetailDestination.Request(uuid).shellRoute(randomPlaceholderTitles()) shouldBe BookRequestRoute(uuid)
+            }
+
+            it("pushes nothing when that page is already on top, so two starts that both answer open it once") {
+                val uuid = randomString()
+
+                BookDetailDestination.Request(uuid).pushTarget(BookRequestRoute(uuid), randomPlaceholderTitles()).shouldBeNull()
             }
         }
 
@@ -137,6 +152,14 @@ class BookDetailDestinationTest : DescribeSpec({
                         )
                     }
                 }
+            }
+        }
+
+        context("when the destination is a request page") {
+            it("pushes it onto the stack that asked") {
+                val uuid = randomString()
+
+                BookDetailDestination.Request(uuid).dispatched().pushed shouldContainExactly listOf(BookRequestRoute(uuid))
             }
         }
 

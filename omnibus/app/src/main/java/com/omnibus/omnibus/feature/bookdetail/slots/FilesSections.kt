@@ -8,6 +8,8 @@ internal val filesSections: List<BookDetailSection> = listOfNotNull(
     null,
     // #115 Link Ebook and Audiobook Positions
     null,
+    // #3078 Book Requests: the kinds the library lacks
+    com.omnibus.omnibus.feature.requests.start.RequestFilesSection,
     // #114 Book Details
     com.omnibus.omnibus.feature.bookdetail.files.details.BookDetailsSection,
 )

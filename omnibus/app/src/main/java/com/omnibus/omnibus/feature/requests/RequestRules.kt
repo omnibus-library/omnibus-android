@@ -316,6 +316,10 @@ internal fun unrequestedKinds(formats: List<String>, listings: List<RequestListi
     return RequestKind.entries.filter { kind -> !holds(kind, formats) && listings.none { it.request.kind == kind } }
 }
 
+/** The kinds the book page offers to request: each one the library lacks, for a reader who may start a request. */
+internal fun requestSlots(formats: List<String>, canStart: Boolean): List<RequestKind> =
+    if (canStart) RequestKind.entries.filter { !holds(it, formats) } else emptyList()
+
 /** How often the page reads again: every two seconds while any lane is moving, else null. */
 internal fun detailPollIntervalMillis(requests: List<BookRequest>): Long? =
     DETAIL_POLL_MILLIS.takeIf { requests.any { isMoving(it.state) } }
