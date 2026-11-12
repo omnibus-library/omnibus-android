@@ -215,6 +215,12 @@ data class ShelfDetailUIState(
     /** What the viewer may do to the shelf. */
     val actions: ShelfActions get() = shelfActionsOf(identity, viewer)
 
+    /** Whether the facet row shows: not for the unreachable state, nor for an unfiltered empty shelf. */
+    val showsFacets: Boolean
+        get() = screen == ShelfDetailScreenState.Content &&
+            content !is ShelfContentState.Unreachable &&
+            !(content is ShelfContentState.Empty && clauses.isEmpty())
+
     /** The covers of the hero's mosaic. */
     val mosaicCovers: List<String> get() = mosaicCoversOf(unfilteredBooks, preview)
 

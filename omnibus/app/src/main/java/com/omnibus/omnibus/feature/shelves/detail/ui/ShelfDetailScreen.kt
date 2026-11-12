@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -75,6 +78,7 @@ internal object ShelfDetailTestTags {
     const val BAR_TITLE = "shelf-detail-bar-title"
     const val BACK = "shelf-detail-back"
     const val ADD_BOOKS = "shelf-detail-add-books"
+    const val EMPTY_ADD_BOOKS = "shelf-detail-empty-add-books"
     const val EDIT = "shelf-detail-edit"
     const val MORE = "shelf-detail-more"
     const val HERO_NAME = "shelf-detail-hero-name"
@@ -209,10 +213,21 @@ internal fun ShelfDetailContent(
 
     Box(modifier.fillMaxSize().background(palette.bg0)) {
         Column(Modifier.fillMaxSize()) {
+            val showsContent = screen == ShelfDetailScreenState.Content && identity != null
             ShelfDetailTopBar(
-                title = if (screen == ShelfDetailScreenState.Content && identity != null) identity.name else "",
+                title = if (showsContent) identity?.name.orEmpty() else "",
                 titleAlpha = titleAlpha,
                 onBack = onBack,
+                actions = {
+                    if (showsContent && uiState.actions.canAddBooks) {
+                        IconButton(onClick = onAddBooks, modifier = Modifier.testTag(ShelfDetailTestTags.ADD_BOOKS)) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_reader_plus),
+                                contentDescription = stringResource(R.string.shelf_detail_add_books_description),
+                            )
+                        }
+                    }
+                },
             )
             when (screen) {
                 ShelfDetailScreenState.Loading -> LoadingStateView(
@@ -228,14 +243,9 @@ internal fun ShelfDetailContent(
                     modifier = Modifier.weight(1f),
                 )
 
-                // The full-screen Gone state comes with the empty and gone states; until then it reads as not found.
-                ShelfDetailScreenState.Gone -> ErrorStateView(
-                    title = stringResource(R.string.library_error_title),
-                    message = shelfErrorText(ShelvesError.NotFound),
-                    actionLabel = stringResource(R.string.library_try_again),
-                    onRetry = onRetry,
-                    modifier = Modifier.weight(1f),
-                )
+                ShelfDetailScreenState.Gone -> Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    ShelfGoneMessage(onBack = onBack)
+                }
 
                 ShelfDetailScreenState.Content -> PullToRefreshBox(
                     isRefreshing = uiState.isRefreshing,
@@ -267,7 +277,12 @@ internal fun ShelfDetailContent(
                                         onNamePositioned = { nameCoords = it },
                                         modifier = Modifier.padding(top = HeroTop),
                                     )
-                                    ShelfDetailHeaderBody(content = content, onRetry = onRetry)
+                                    ShelfDetailHeaderBody(
+                                        content = content,
+                                        canAddBooks = uiState.actions.canAddBooks,
+                                        onRetry = onRetry,
+                                        onAddBooks = onAddBooks,
+                                    )
                                 }
                             },
                         )
@@ -286,11 +301,24 @@ internal fun ShelfDetailContent(
     }
 }
 
-/** What sits under the hero: a spinner while the page loads, or the failure with a retry. */
+/** What sits under the hero: a spinner while the page loads, a state's message, or the failure with a retry. */
 @Composable
-private fun ShelfDetailHeaderBody(content: ShelfContentState, onRetry: () -> Unit) {
+private fun ShelfDetailHeaderBody(
+    content: ShelfContentState,
+    canAddBooks: Boolean,
+    onRetry: () -> Unit,
+    onAddBooks: () -> Unit,
+) {
     val palette = OmnibusTheme.palette
     when (content) {
+        is ShelfContentState.Empty -> ShelfEmptyMessage(
+            kind = content.kind,
+            canAddBooks = canAddBooks,
+            onAddBooks = onAddBooks,
+        )
+
+        is ShelfContentState.Unreachable -> ShelfUnreachableMessage(count = content.count)
+
         ShelfContentState.Loading -> Box(
             Modifier.fillMaxWidth().padding(top = 26.dp),
             contentAlignment = Alignment.Center,
@@ -310,7 +338,7 @@ private fun ShelfDetailHeaderBody(content: ShelfContentState, onRetry: () -> Uni
             modifier = Modifier.heightIn(min = 320.dp),
         )
 
-        // Remaining states come with the empty, offline and filter states.
+        // The filter states come with the facets.
         else -> Unit
     }
 }

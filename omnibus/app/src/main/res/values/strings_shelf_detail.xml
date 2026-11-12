@@ -6,4 +6,27 @@
     <string name="shelf_detail_matches_any">Matches any of</string>
     <!-- The top bar's Add books action, and the placeholder it opens until the Add books ticket lands. -->
     <string name="shelf_detail_add_books">Add books</string>
+    <string name="shelf_detail_add_books_description">Add books to this shelf</string>
+    <!-- The empty states: a hand-picked shelf, a smart shelf whose rules match nothing, and the wishlist. -->
+    <string name="shelf_detail_empty_kicker">Empty shelf</string>
+    <string name="shelf_detail_empty_title">Nothing on this shelf</string>
+    <string name="shelf_detail_empty_message">Pick books out of your library and they gather here, in the order you add them.</string>
+    <string name="shelf_detail_no_matches_kicker">No matches</string>
+    <string name="shelf_detail_no_matches_title">Nothing matches yet</string>
+    <string name="shelf_detail_no_matches_message">This shelf fills itself from its rules. Nothing in the library meets them right now.</string>
+    <string name="shelf_detail_wishlist_kicker">Wishlist</string>
+    <string name="shelf_detail_wishlist_title">Nothing on the wishlist</string>
+    <string name="shelf_detail_wishlist_message">Check in a book you don\'t own yet and it waits here until a copy arrives.</string>
+    <!-- The books are on the server but have not reached this device. The count is the shelf's book count. -->
+    <string name="shelf_detail_unreachable_kicker">Off the network</string>
+    <string name="shelf_detail_unreachable_title">Not here yet</string>
+    <plurals name="shelf_detail_unreachable_message">
+        <item quantity="one">This shelf holds one book, but it hasn\'t reached this device. It\'ll appear the next time you\'re online.</item>
+        <item quantity="other">This shelf holds %d books, but they haven\'t reached this device. They\'ll appear the next time you\'re online.</item>
+    </plurals>
+    <!-- The full-screen state for a shelf that was deleted or whose owner stopped sharing it. -->
+    <string name="shelf_detail_gone_kicker">Shelf</string>
+    <string name="shelf_detail_gone_title">This shelf is gone</string>
+    <string name="shelf_detail_gone_message">It was deleted, or its owner stopped sharing it.</string>
+    <string name="shelf_detail_gone_back">Back to shelves</string>
 </resources>

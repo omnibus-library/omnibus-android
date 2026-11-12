@@ -32,8 +32,10 @@ import com.omnibus.omnibus.data.shelves.ShelfRule
 import com.omnibus.omnibus.data.shelves.ShelfRuleField
 import com.omnibus.omnibus.data.shelves.ShelfRuleOp
 import com.omnibus.omnibus.data.shelves.ShelfRules
+import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.feature.library.ui.LibraryTestTags
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailUIState
+import com.omnibus.omnibus.feature.shelves.detail.ShelfViewer
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -155,8 +157,10 @@ class ShelfDetailScreenTest {
 
     private fun setScreen(
         uiState: ShelfDetailUIState,
+        onBack: () -> Unit = {},
         onOpenBook: (String) -> Unit = {},
         onUnfoldSeries: (Long) -> Unit = {},
+        onAddBooks: () -> Unit = {},
         reducedMotion: Boolean = false,
     ) {
         rule.setContent {
@@ -164,7 +168,7 @@ class ShelfDetailScreenTest {
                 Box(Modifier.fillMaxSize()) {
                     ShelfDetailContent(
                         uiState = uiState,
-                        onBack = {},
+                        onBack = onBack,
                         onOpenBook = onOpenBook,
                         onOpenSeries = { _, _ -> },
                         onRefresh = {},
@@ -172,11 +176,70 @@ class ShelfDetailScreenTest {
                         onUnfoldSeries = onUnfoldSeries,
                         onFoldUpSeries = {},
                         onTransientErrorShown = {},
+                        onAddBooks = onAddBooks,
                         gridState = rememberLazyGridState(),
                         reducedMotion = reducedMotion,
                     )
                 }
             }
+        }
+    }
+
+    @Test
+    fun issue232_tc20_aGoneShelfShowsOnlyTheBackArrowAndItsMessage() {
+        var backs = 0
+        setScreen(uiState = stateWith(books = emptyList()).copy(isGone = true), onBack = { backs++ })
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.BACK).assertPresent()
+        rule.onNodeWithText("This shelf is gone").assertPresent()
+        rule.onAllNodesWithTag(ShelfDetailTestTags.HERO_NAME).assertCountEquals(0)
+        rule.onAllNodesWithTag(ShelfDetailTestTags.ADD_BOOKS).assertCountEquals(0)
+
+        rule.onNodeWithText("Back to shelves").performClick()
+
+        assertEquals(1, backs)
+    }
+
+    @Test
+    fun issue232_tc21_anEmptyHandPickedShelfOffersAddBooksToItsEditor() {
+        val res = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        var added = 0
+        setScreen(
+            uiState = stateWith(books = emptyList()).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)),
+            onAddBooks = { added++ },
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithText(res.getString(R.string.shelf_detail_empty_title)).assertPresent()
+        rule.onNodeWithTag(ShelfDetailTestTags.EMPTY_ADD_BOOKS).performClick()
+
+        assertEquals(1, added)
+    }
+
+    @Test
+    fun issue232_tc21_anEmptyHandPickedShelfHidesAddBooksFromAViewerWhoCannotAdd() {
+        val res = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        setScreen(uiState = stateWith(books = emptyList()).copy(viewer = ShelfViewer(VIEWER_ID + 1, isAdmin = false)))
+        rule.waitForIdle()
+
+        rule.onNodeWithText(res.getString(R.string.shelf_detail_empty_title)).assertPresent()
+        rule.onAllNodesWithTag(ShelfDetailTestTags.EMPTY_ADD_BOOKS).assertCountEquals(0)
+    }
+
+    @Test
+    fun issue232_tc21_anUnreachableShelfSaysThatItsBooksHaveNotArrivedWithThePluralCount() {
+        val res = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        listOf(1L, 5L).forEach { count ->
+            val uiState = stateWith(shelf = shelfOf(ShelfKind.Manual, ShelfVisibility.Private, bookCount = count))
+                .copy(books = null, unfilteredBooks = null, pageError = ShelvesError.Unreachable)
+            setScreen(uiState = uiState)
+            rule.waitForIdle()
+
+            rule.onNodeWithText(res.getString(R.string.shelf_detail_unreachable_title)).assertPresent()
+            rule.onNodeWithText(res.getQuantityString(R.plurals.shelf_detail_unreachable_message, count.toInt(), count.toInt()))
+                .assertPresent()
+            rule.onNodeWithTag(ShelfDetailTestTags.HERO_NAME).assertPresent()
         }
     }
 
