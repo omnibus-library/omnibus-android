@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onChildAt
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,7 +49,6 @@ import com.omnibus.omnibus.feature.shelves.detail.ShelfViewer
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -246,19 +246,26 @@ class ShelfDetailScreenTest {
     }
 
     @Test
-    fun issue232_tc21_anUnreachableShelfSaysThatItsBooksHaveNotArrivedWithThePluralCount() {
-        val res = InstrumentationRegistry.getInstrumentation().targetContext.resources
-        listOf(1L, 5L).forEach { count ->
-            val uiState = stateWith(shelf = shelfOf(ShelfKind.Manual, ShelfVisibility.Private, bookCount = count))
-                .copy(books = null, unfilteredBooks = null, pageError = ShelvesError.Unreachable)
-            setScreen(uiState = uiState)
-            rule.waitForIdle()
+    fun issue232_tc21_anUnreachableShelfSaysThatItsBooksHaveNotArrivedWithTheSingularCount() {
+        assertUnreachableShelfMessage(count = 1L)
+    }
 
-            rule.onNodeWithText(res.getString(R.string.shelf_detail_unreachable_title)).assertPresent()
-            rule.onNodeWithText(res.getQuantityString(R.plurals.shelf_detail_unreachable_message, count.toInt(), count.toInt()))
-                .assertPresent()
-            rule.onNodeWithTag(ShelfDetailTestTags.HERO_NAME).assertPresent()
-        }
+    @Test
+    fun issue232_tc21_anUnreachableShelfSaysThatItsBooksHaveNotArrivedWithThePluralCount() {
+        assertUnreachableShelfMessage(count = 5L)
+    }
+
+    private fun assertUnreachableShelfMessage(count: Long) {
+        val res = InstrumentationRegistry.getInstrumentation().targetContext.resources
+        val uiState = stateWith(shelf = shelfOf(ShelfKind.Manual, ShelfVisibility.Private, bookCount = count))
+            .copy(books = null, unfilteredBooks = null, pageError = ShelvesError.Unreachable)
+        setScreen(uiState = uiState)
+        rule.waitForIdle()
+
+        rule.onNodeWithText(res.getString(R.string.shelf_detail_unreachable_title)).assertPresent()
+        rule.onNodeWithText(res.getQuantityString(R.plurals.shelf_detail_unreachable_message, count.toInt(), count.toInt()))
+            .assertPresent()
+        rule.onNodeWithTag(ShelfDetailTestTags.HERO_NAME).assertPresent()
     }
 
     @Test
@@ -271,11 +278,13 @@ class ShelfDetailScreenTest {
         rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Genre))
             .assert(hasContentDescriptionExactly("Genre filter, Fantasy"))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        // The row is lazy, so judge the order by its first composed children rather than by positions of far chips.
+        val row = rule.onNodeWithTag(ShelfDetailTestTags.FACET_ROW)
+        row.onChildAt(0).assert(hasTestTag(ShelfDetailTestTags.CLEAR_FACETS))
+        row.onChildAt(1).assert(hasTestTag(ShelfDetailTestTags.facet(FilterField.Genre)))
+        row.performScrollToNode(hasTestTag(ShelfDetailTestTags.facet(FilterField.Tag)))
         rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Tag))
             .assert(hasContentDescriptionExactly("Tag filter"))
-        val genreX = rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Genre)).fetchSemanticsNode().positionInRoot.x
-        val tagX = rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Tag)).fetchSemanticsNode().positionInRoot.x
-        assertTrue(genreX < tagX)
     }
 
     @Test

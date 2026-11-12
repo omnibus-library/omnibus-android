@@ -56,11 +56,11 @@ class ShelfTileTest {
     }
 
     @Test
-    fun issue257_tc17_aTileHasNoClickAction() {
+    fun issue257_tc17_aTileOpensItsShelf() {
         setTiles(shelf(1L), ownerLabels = mapOf(1L to "You"))
 
         rule.onNodeWithTag(ShelfTileTestTags.tile(1L))
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
     }
 
     @Test
