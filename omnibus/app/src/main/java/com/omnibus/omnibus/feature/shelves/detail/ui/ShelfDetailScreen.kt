@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,13 +30,15 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -62,6 +63,8 @@ import com.omnibus.omnibus.feature.library.ui.BookGrid
 import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.feature.shelves.detail.ShelfContentState
 import com.omnibus.omnibus.feature.shelves.detail.facets.FacetRow
+import com.omnibus.omnibus.feature.shelves.detail.edit.EDIT_DIALOG_CENTERED_MIN_WIDTH
+import com.omnibus.omnibus.feature.shelves.detail.edit.EditShelfDialog
 import com.omnibus.omnibus.feature.shelves.detail.facets.FacetSheet
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailScreenState
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailUIState
@@ -124,6 +127,7 @@ fun ShelfDetailScreen(
         creationCallback = { it.create(shelfId) },
     )
     val uiState by viewModel.uiState.collectAsState()
+    var editing by rememberSaveable { mutableStateOf(false) }
 
     // Runs each time the entry is composed again, so returning to the shelf reloads it.
     LaunchedEffect(Unit) { viewModel.screenShown() }
@@ -140,7 +144,23 @@ fun ShelfDetailScreen(
         onTransientErrorShown = viewModel::transientErrorShown,
         modifier = modifier,
         onAddBooks = onAddBooks,
+        onEdit = { editing = true },
+        onApplyFacet = viewModel::applyFacet,
+        onClearFacets = viewModel::clearFacets,
     )
+
+    val identity = uiState.identity
+    if (editing && identity != null) {
+        EditShelfDialog(
+            seed = identity,
+            centered = LocalWindowInfo.current.containerDpSize.width >= EDIT_DIALOG_CENTERED_MIN_WIDTH,
+            onDismiss = { editing = false },
+            onSaved = {
+                editing = false
+                viewModel.refresh()
+            },
+        )
+    }
 }
 
 /**
@@ -170,6 +190,7 @@ internal fun ShelfDetailContent(
     onTransientErrorShown: () -> Unit,
     modifier: Modifier = Modifier,
     onAddBooks: () -> Unit = {},
+    onEdit: () -> Unit = {},
     onApplyFacet: (FilterClause) -> Unit = {},
     onClearFacets: () -> Unit = {},
     facetSheet: @Composable (FilterField, FilterClause?, (FilterClause) -> Unit, () -> Unit) -> Unit = { field, initial, onApply, onDismiss ->
@@ -236,6 +257,14 @@ internal fun ShelfDetailContent(
                             Icon(
                                 painter = painterResource(R.drawable.ic_reader_plus),
                                 contentDescription = stringResource(R.string.shelf_detail_add_books_description),
+                            )
+                        }
+                    }
+                    if (showsContent && uiState.actions.canEdit) {
+                        IconButton(onClick = onEdit, modifier = Modifier.testTag(ShelfDetailTestTags.EDIT)) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_shelf_edit),
+                                contentDescription = stringResource(R.string.shelf_detail_edit_description),
                             )
                         }
                     }

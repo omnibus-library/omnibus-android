@@ -171,6 +171,7 @@ class ShelfDetailScreenTest {
         onUnfoldSeries: (Long) -> Unit = {},
         onAddBooks: () -> Unit = {},
         onClearFacets: () -> Unit = {},
+        onEdit: () -> Unit = {},
         reducedMotion: Boolean = false,
     ) {
         rule.setContent {
@@ -188,6 +189,7 @@ class ShelfDetailScreenTest {
                         onTransientErrorShown = {},
                         onAddBooks = onAddBooks,
                         onClearFacets = onClearFacets,
+                        onEdit = onEdit,
                         gridState = rememberLazyGridState(),
                         reducedMotion = reducedMotion,
                     )
@@ -327,6 +329,50 @@ class ShelfDetailScreenTest {
             "Filters need a connection to the server. Clear them to browse what's on this device.",
         ).assertPresent()
         rule.onNodeWithText("Clear filters").assertPresent()
+    }
+
+    @Test
+    fun issue232_tc36_anEditorOfAHandPickedShelfSeesAddBooksAndEdit() {
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.ADD_BOOKS).assert(hasContentDescriptionExactly("Add books to this shelf"))
+        rule.onNodeWithTag(ShelfDetailTestTags.EDIT).assert(hasContentDescriptionExactly("Edit this shelf"))
+    }
+
+    @Test
+    fun issue232_tc36_anEditorOfASmartShelfSeesEditButNotAddBooks() {
+        setScreen(
+            uiState = stateWith(shelf = shelfOf(ShelfKind.Smart, ShelfVisibility.Private), books = emptyList())
+                .copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)),
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.EDIT).assertPresent()
+        rule.onAllNodesWithTag(ShelfDetailTestTags.ADD_BOOKS).assertCountEquals(0)
+    }
+
+    @Test
+    fun issue232_tc36_aViewerWhoCannotEditSeesNeitherAction() {
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))).copy(viewer = ShelfViewer(VIEWER_ID + 1, isAdmin = false)))
+        rule.waitForIdle()
+
+        rule.onAllNodesWithTag(ShelfDetailTestTags.EDIT).assertCountEquals(0)
+        rule.onAllNodesWithTag(ShelfDetailTestTags.ADD_BOOKS).assertCountEquals(0)
+    }
+
+    @Test
+    fun issue232_tc36_tappingEditOpensTheEditor() {
+        var edits = 0
+        setScreen(
+            uiState = stateWith(books = listOf(plainBook(0))).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)),
+            onEdit = { edits++ },
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.EDIT).performClick()
+
+        assertEquals(1, edits)
     }
 
     /** Scrolls the grid to the facet row, then the row to the first chip or the Clear chip in it. */
