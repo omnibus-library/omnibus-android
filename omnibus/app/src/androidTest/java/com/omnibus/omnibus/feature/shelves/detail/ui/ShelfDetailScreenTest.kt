@@ -13,6 +13,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -172,6 +173,8 @@ class ShelfDetailScreenTest {
         onAddBooks: () -> Unit = {},
         onClearFacets: () -> Unit = {},
         onEdit: () -> Unit = {},
+        onDelete: () -> Unit = {},
+        onRemoveBook: (String) -> Unit = {},
         reducedMotion: Boolean = false,
     ) {
         rule.setContent {
@@ -190,6 +193,8 @@ class ShelfDetailScreenTest {
                         onAddBooks = onAddBooks,
                         onClearFacets = onClearFacets,
                         onEdit = onEdit,
+                        onDelete = onDelete,
+                        onRemoveBook = onRemoveBook,
                         gridState = rememberLazyGridState(),
                         reducedMotion = reducedMotion,
                     )
@@ -375,6 +380,133 @@ class ShelfDetailScreenTest {
         assertEquals(1, edits)
     }
 
+    @Test
+    fun issue232_tc39_theOverflowOffersDeleteShelfOnlyToAnEditor() {
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.MORE).performClick()
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_menu)).assertPresent()
+    }
+
+    @Test
+    fun issue232_tc39_theConfirmationSaysTheShelfIsEmptyWhenItHoldsNoBooks() {
+        openDeleteConfirmation(bookCount = 0L)
+
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_title, "Weekend reads")).assertPresent()
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_empty)).assertPresent()
+    }
+
+    @Test
+    fun issue232_tc39_theConfirmationSaysTheBookStaysWhenItHoldsOne() {
+        openDeleteConfirmation(bookCount = 1L)
+
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_one)).assertPresent()
+    }
+
+    @Test
+    fun issue232_tc39_theConfirmationCountsItsBooksWhenItHoldsMany() {
+        openDeleteConfirmation(bookCount = 5L)
+
+        rule.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext.resources
+                .getQuantityString(R.plurals.shelf_detail_delete_many, 5, 5),
+        ).assertPresent()
+    }
+
+    @Test
+    fun issue232_tc39_cancelDismissesTheConfirmationWithoutDeleting() {
+        var deletes = 0
+        openDeleteConfirmation(bookCount = 0L, onDelete = { deletes++ })
+
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_cancel)).performClick()
+        rule.waitForIdle()
+
+        rule.onAllNodesWithText(res(R.string.shelf_detail_delete_empty)).assertCountEquals(0)
+        assertEquals(0, deletes)
+    }
+
+    @Test
+    fun issue232_tc39_deleteCallsBack() {
+        var deletes = 0
+        openDeleteConfirmation(bookCount = 0L, onDelete = { deletes++ })
+
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_confirm)).performClick()
+
+        assertEquals(1, deletes)
+    }
+
+    @Test
+    fun issue232_tc40_aRemoverLongPressingABookOffersOpenAndRemove() {
+        val books = listOf(plainBook(0))
+        setScreen(uiState = stateWith(books = books).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)))
+        rule.waitForIdle()
+
+        longPressBook(books.first().id)
+
+        rule.onNodeWithText(res(R.string.shelf_detail_open_book)).assertPresent()
+        rule.onNodeWithText(res(R.string.shelf_detail_remove_book)).assertPresent()
+    }
+
+    @Test
+    fun issue232_tc40_removeFromShelfCallsBackWithTheBooksUuid() {
+        val books = listOf(plainBook(0))
+        var removed: String? = null
+        setScreen(
+            uiState = stateWith(books = books).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)),
+            onRemoveBook = { removed = it },
+        )
+        rule.waitForIdle()
+
+        longPressBook(books.first().id)
+        rule.onNodeWithText(res(R.string.shelf_detail_remove_book)).performClick()
+
+        assertEquals(books.first().uuid, removed)
+    }
+
+    @Test
+    fun issue232_tc40_aViewerWhoCannotRemoveGetsNoMenu() {
+        val books = listOf(plainBook(0))
+        setScreen(uiState = stateWith(books = books).copy(viewer = ShelfViewer(VIEWER_ID + 1, isAdmin = false)))
+        rule.waitForIdle()
+
+        longPressBook(books.first().id)
+
+        rule.onAllNodesWithText(res(R.string.shelf_detail_remove_book)).assertCountEquals(0)
+    }
+
+    @Test
+    fun issue232_tc40_aStackGetsNoMenu() {
+        setScreen(uiState = stateWith(books = seriesBooks(seriesId = 42L)).copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)))
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.GRID).performScrollToNode(hasTestTag(LibraryTestTags.stack(42L)))
+        rule.onNodeWithTag(LibraryTestTags.stack(42L)).performTouchInput { down(center); advanceEventTime(LONG_PRESS_MS); up() }
+
+        rule.onAllNodesWithText(res(R.string.shelf_detail_remove_book)).assertCountEquals(0)
+    }
+
+    /** Opens the overflow and its Delete shelf item, for a shelf of [bookCount] books the viewer owns. */
+    private fun openDeleteConfirmation(bookCount: Long, onDelete: () -> Unit = {}) {
+        setScreen(
+            uiState = stateWith(shelf = shelfOf(ShelfKind.Manual, ShelfVisibility.Private, bookCount = bookCount), books = emptyList())
+                .copy(viewer = ShelfViewer(VIEWER_ID, isAdmin = false)),
+            onDelete = onDelete,
+        )
+        rule.waitForIdle()
+        rule.onNodeWithTag(ShelfDetailTestTags.MORE).performClick()
+        rule.onNodeWithText(res(R.string.shelf_detail_delete_menu)).performClick()
+    }
+
+    /** Scrolls the grid to the cell of [bookId] and long-presses it. */
+    private fun longPressBook(bookId: Long) {
+        rule.onNodeWithTag(ShelfDetailTestTags.GRID).performScrollToNode(hasTestTag(LibraryTestTags.cell(bookId)))
+        rule.onNodeWithTag(LibraryTestTags.cell(bookId)).performTouchInput { down(center); advanceEventTime(LONG_PRESS_MS); up() }
+    }
+
+    private fun res(id: Int, vararg args: Any): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
+
     /** Scrolls the grid to the facet row, then the row to the first chip or the Clear chip in it. */
     private fun revealFacetRow() {
         rule.onNodeWithTag(ShelfDetailTestTags.GRID).performScrollToNode(hasTestTag(ShelfDetailTestTags.FACET_ROW))
@@ -446,5 +578,6 @@ class ShelfDetailScreenTest {
 
     private companion object {
         const val VIEWER_ID = 7L
+        const val LONG_PRESS_MS = 1000L
     }
 }

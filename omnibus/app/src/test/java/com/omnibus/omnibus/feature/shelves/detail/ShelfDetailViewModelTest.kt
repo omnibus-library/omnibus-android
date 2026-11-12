@@ -10,9 +10,11 @@ import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.data.shelves.FilterField
 import com.omnibus.omnibus.data.shelves.FilterMode
 import com.omnibus.omnibus.data.shelves.ShelfDetailResult
+import com.omnibus.omnibus.data.shelves.ShelfWriteResult
 import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.data.shelves.randomShelfDetail
 import com.omnibus.omnibus.feature.bookdetail.more.shelves.ScriptedShelvesRepository
+import com.omnibus.omnibus.feature.bookdetail.more.shelves.ShelfWrite
 import com.omnibus.omnibus.testing.randomLong
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -210,6 +212,79 @@ class ShelfDetailViewModelTest : DescribeSpec({
 
             viewModel.uiState.value.clauses shouldBe listOf(clause)
             shelves.booksRequests.last() shouldBe (shelfId to listOf(clause))
+        }
+    }
+
+    describe("deleting the shelf") {
+
+        it("#232 TC-38: closes the screen once the server deletes the shelf") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val viewModel = sut(shelves, shelfId = shelfId)
+
+            viewModel.deleteShelf()
+
+            shelves.deletes shouldBe listOf(shelfId)
+            viewModel.uiState.value.closed shouldBe true
+        }
+
+        it("#232 TC-38: keeps the screen and shows the failure when the delete fails") {
+            val shelves = ScriptedShelvesRepository().apply { deleteResult = ShelfWriteResult.Failure(ShelvesError.Unreachable) }
+            val viewModel = sut(shelves)
+
+            viewModel.deleteShelf()
+
+            viewModel.uiState.value.closed shouldBe false
+            viewModel.uiState.value.transientError shouldBe ShelvesError.Unreachable
+        }
+    }
+
+    describe("removing a book") {
+
+        it("#232 TC-38: takes the book off the grid at once, before the server answers") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val first = randomBook().copy(uniqueIdentifier = "first")
+            val second = randomBook().copy(uniqueIdentifier = "second")
+            shelves.enqueueBooks(ShelfBooksResult.Success(listOf(first, second)))
+            val hold = shelves.holdWrite(shelfId)
+            val viewModel = sut(shelves, shelfId = shelfId)
+            viewModel.screenShown()
+
+            viewModel.removeBook("first")
+
+            viewModel.uiState.value.books shouldBe listOf(second)
+            hold.complete(ShelfWriteResult.Success)
+        }
+
+        it("#232 TC-38: keeps the book removed after the server accepts it") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val first = randomBook().copy(uniqueIdentifier = "first")
+            val second = randomBook().copy(uniqueIdentifier = "second")
+            shelves.enqueueBooks(ShelfBooksResult.Success(listOf(first, second)))
+            shelves.enqueueBooks(ShelfBooksResult.Success(listOf(second)))
+            val viewModel = sut(shelves, shelfId = shelfId)
+            viewModel.screenShown()
+
+            viewModel.removeBook("first")
+
+            viewModel.uiState.value.books shouldBe listOf(second)
+            shelves.writes.last() shouldBe ShelfWrite(add = false, shelfId = shelfId, bookUuid = "first")
+        }
+
+        it("#232 TC-38: puts the book back and shows the failure when the server refuses") {
+            val shelves = ScriptedShelvesRepository().apply { writeResult = ShelfWriteResult.Failure(ShelvesError.Unreachable) }
+            val first = randomBook().copy(uniqueIdentifier = "first")
+            val second = randomBook().copy(uniqueIdentifier = "second")
+            shelves.enqueueBooks(ShelfBooksResult.Success(listOf(first, second)))
+            val viewModel = sut(shelves)
+            viewModel.screenShown()
+
+            viewModel.removeBook("first")
+
+            viewModel.uiState.value.books shouldBe listOf(first, second)
+            viewModel.uiState.value.transientError shouldBe ShelvesError.Unreachable
         }
     }
 })

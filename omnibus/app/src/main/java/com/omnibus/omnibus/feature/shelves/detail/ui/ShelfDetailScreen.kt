@@ -18,7 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -77,6 +84,7 @@ import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
+import com.omnibus.omnibus.ui.theme.uiTextStyle
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.launch
 
@@ -145,6 +153,9 @@ fun ShelfDetailScreen(
         modifier = modifier,
         onAddBooks = onAddBooks,
         onEdit = { editing = true },
+        onDelete = viewModel::deleteShelf,
+        onRemoveBook = viewModel::removeBook,
+        onClosedHandled = viewModel::closedHandled,
         onApplyFacet = viewModel::applyFacet,
         onClearFacets = viewModel::clearFacets,
     )
@@ -191,6 +202,9 @@ internal fun ShelfDetailContent(
     modifier: Modifier = Modifier,
     onAddBooks: () -> Unit = {},
     onEdit: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onRemoveBook: (uuid: String) -> Unit = {},
+    onClosedHandled: () -> Unit = {},
     onApplyFacet: (FilterClause) -> Unit = {},
     onClearFacets: () -> Unit = {},
     facetSheet: @Composable (FilterField, FilterClause?, (FilterClause) -> Unit, () -> Unit) -> Unit = { field, initial, onApply, onDismiss ->
@@ -203,6 +217,17 @@ internal fun ShelfDetailContent(
     val palette = OmnibusTheme.palette
     val scope = rememberCoroutineScope()
     var openFacet by rememberSaveable { mutableStateOf<FilterField?>(null) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var menuFor by remember { mutableStateOf<String?>(null) }
+
+    // A successful delete closes the screen once, and the flag is cleared so a recomposition can't close it twice.
+    LaunchedEffect(uiState.closed) {
+        if (uiState.closed) {
+            onClosedHandled()
+            onBack()
+        }
+    }
     val screen = uiState.screen
     val identity = uiState.identity
 
@@ -267,6 +292,35 @@ internal fun ShelfDetailContent(
                                 contentDescription = stringResource(R.string.shelf_detail_edit_description),
                             )
                         }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag(ShelfDetailTestTags.MORE)) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_book_detail_more_dots),
+                                    contentDescription = stringResource(R.string.shelf_detail_more),
+                                )
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = stringResource(R.string.shelf_detail_delete_menu),
+                                            style = uiTextStyle(15.sp, FontWeight.Normal, palette.bad),
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_book_detail_more_delete),
+                                            contentDescription = null,
+                                            tint = palette.bad,
+                                        )
+                                    },
+                                    onClick = {
+                                        menuOpen = false
+                                        confirmDelete = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -308,6 +362,31 @@ internal fun ShelfDetailContent(
                             isLoadingMore = false,
                             reducedMotion = reducedMotion,
                             gridTestTag = ShelfDetailTestTags.GRID,
+                            onLongPressBook = if (uiState.actions.canRemoveBooks) {
+                                { book -> menuFor = book.uuid }
+                            } else {
+                                null
+                            },
+                            bookMenu = { book ->
+                                DropdownMenu(expanded = menuFor == book.uuid, onDismissRequest = { menuFor = null }) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.shelf_detail_open_book)) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_book), contentDescription = null) },
+                                        onClick = {
+                                            menuFor = null
+                                            onOpenBook(book.uuid)
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.shelf_detail_remove_book)) },
+                                        leadingIcon = { Icon(painterResource(R.drawable.ic_minus_circle), contentDescription = null) },
+                                        onClick = {
+                                            menuFor = null
+                                            onRemoveBook(book.uuid)
+                                        },
+                                    )
+                                }
+                            },
                             header = {
                                 Column(Modifier.onGloballyPositioned { headerCoords = it }) {
                                     ShelfDetailHero(
@@ -360,6 +439,36 @@ internal fun ShelfDetailContent(
                     openFacet = null
                 },
                 { openFacet = null },
+            )
+        }
+
+        if (confirmDelete && identity != null) {
+            val count = identity.bookCount
+            val message = when {
+                count == 0L -> stringResource(R.string.shelf_detail_delete_empty)
+                count == 1L -> stringResource(R.string.shelf_detail_delete_one)
+                else -> {
+                    val n = count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    pluralStringResource(R.plurals.shelf_detail_delete_many, n, n)
+                }
+            }
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text(stringResource(R.string.shelf_detail_delete_title, identity.name)) },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDelete = false
+                        onDelete()
+                    }) {
+                        Text(stringResource(R.string.shelf_detail_delete_confirm), color = palette.bad)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDelete = false }) {
+                        Text(stringResource(R.string.shelf_detail_delete_cancel), color = palette.ink1)
+                    }
+                },
             )
         }
 

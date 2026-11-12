@@ -99,4 +99,18 @@
     <string name="shelf_edit_op_before">before</string>
     <string name="shelf_edit_op_after">after</string>
     <string name="shelf_detail_edit_description">Edit this shelf</string>
+    <!-- Deleting the shelf: the overflow menu, the confirmation's title and body by book count, and its buttons. -->
+    <string name="shelf_detail_more">More options</string>
+    <string name="shelf_detail_delete_menu">Delete shelf</string>
+    <string name="shelf_detail_delete_title">Delete \u201c%1$s\u201d?</string>
+    <string name="shelf_detail_delete_empty">The shelf is empty. This can\'t be undone.</string>
+    <string name="shelf_detail_delete_one">The book on it stays in your library. This can\'t be undone.</string>
+    <plurals name="shelf_detail_delete_many">
+        <item quantity="other">Its %d books stay in your library. This can\'t be undone.</item>
+    </plurals>
+    <string name="shelf_detail_delete_cancel">Cancel</string>
+    <string name="shelf_detail_delete_confirm">Delete</string>
+    <!-- The long-press menu on a book of a hand-picked shelf the viewer may edit. -->
+    <string name="shelf_detail_open_book">Open book</string>
+    <string name="shelf_detail_remove_book">Remove from shelf</string>
 </resources>

@@ -14,6 +14,7 @@ import com.omnibus.omnibus.data.shelves.ShelfBooksResult
 import com.omnibus.omnibus.data.shelves.ShelfDetail
 import com.omnibus.omnibus.data.shelves.ShelfDetailResult
 import com.omnibus.omnibus.data.shelves.ShelvesError
+import com.omnibus.omnibus.data.shelves.ShelfWriteResult
 import com.omnibus.omnibus.data.shelves.ShelvesRepository
 import com.omnibus.omnibus.feature.library.LibraryGridItem
 import com.omnibus.omnibus.feature.library.libraryGridItems
@@ -88,6 +89,63 @@ class ShelfDetailViewModel @AssistedInject constructor(
     /** Folds the unfolded series [seriesId] back into a stack. */
     fun foldUpSeries(seriesId: Long) {
         _uiState.update { it.copy(unfoldedSeries = it.unfoldedSeries - seriesId) }
+    }
+
+    /** Deletes the shelf. On success the screen closes. On failure it stays, with the failure shown. */
+    fun deleteShelf() {
+        if (_uiState.value.deleting) return
+        _uiState.update { it.copy(deleting = true) }
+        viewModelScope.launch {
+            when (val result = shelvesRepository.deleteShelf(shelfId)) {
+                ShelfWriteResult.Success -> _uiState.update { it.copy(deleting = false, closed = true) }
+                is ShelfWriteResult.Failure -> _uiState.update {
+                    it.copy(deleting = false, transientError = result.error, transientNoServer = false)
+                }
+                ShelfWriteResult.NoServer -> _uiState.update {
+                    it.copy(deleting = false, transientError = null, transientNoServer = true)
+                }
+            }
+        }
+    }
+
+    /** Clears the one-shot [ShelfDetailUIState.closed] once the screen has closed. */
+    fun closedHandled() {
+        _uiState.update { it.copy(closed = false) }
+    }
+
+    /**
+     * Takes the book [uuid] off the shelf. It leaves the grid at once, then the shelf reloads quietly. A failure puts it
+     * back and shows the failure.
+     */
+    fun removeBook(uuid: String) {
+        val before = _uiState.value
+        _uiState.update { state ->
+            state.copy(
+                books = state.books?.filterNot { it.uuid == uuid },
+                unfilteredBooks = state.unfilteredBooks?.filterNot { it.uuid == uuid },
+            )
+        }
+        viewModelScope.launch {
+            when (val result = shelvesRepository.removeBook(shelfId, uuid)) {
+                ShelfWriteResult.Success -> load(refreshing = false)
+                is ShelfWriteResult.Failure -> _uiState.update {
+                    it.copy(
+                        books = before.books,
+                        unfilteredBooks = before.unfilteredBooks,
+                        transientError = result.error,
+                        transientNoServer = false,
+                    )
+                }
+                ShelfWriteResult.NoServer -> _uiState.update {
+                    it.copy(
+                        books = before.books,
+                        unfilteredBooks = before.unfilteredBooks,
+                        transientError = null,
+                        transientNoServer = true,
+                    )
+                }
+            }
+        }
     }
 
     /** Clears the one-shot transient failure once the screen has shown it. */
@@ -236,6 +294,8 @@ data class ShelfDetailUIState(
     val transientError: ShelvesError? = null,
     val transientNoServer: Boolean = false,
     val shelfNames: Map<Long, String> = emptyMap(),
+    val deleting: Boolean = false,
+    val closed: Boolean = false,
 ) {
 
     /** The shelf's identity: the detail once it has landed, else the cached preview's. */

@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.library.LibraryGridItem
 import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.SeriesGroup
@@ -57,6 +58,8 @@ private val GRID_BOTTOM_GAP = 40.dp
  * @param onOpenBook Called with the uuid of a tapped book. The caller wraps it to record where the cover was tapped.
  * @param onLoadMore Called with how many grid items follow the last visible one whenever that changes.
  * @param gridTestTag The test tag of the grid.
+ * @param onLongPressBook Called with a book whose single or unfolded cell is long-pressed. Null makes long presses do nothing.
+ * @param bookMenu The menu anchored to a book's cell, drawn inside that cell.
  * @param header The full-width first item of the grid.
  */
 @Composable
@@ -76,6 +79,8 @@ internal fun BookGrid(
     modifier: Modifier = Modifier,
     onLoadMore: (itemsAfterLastVisible: Int) -> Unit = {},
     gridTestTag: String = LibraryTestTags.GRID,
+    onLongPressBook: ((Book) -> Unit)? = null,
+    bookMenu: @Composable (Book) -> Unit = {},
     header: @Composable () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
@@ -177,6 +182,8 @@ internal fun BookGrid(
                         width = cellWidth,
                         onClick = { onOpenBook(item.book.uuid) },
                         modifier = rowGap,
+                        onLongClick = onLongPressBook?.let { press -> { press(item.book) } },
+                        menu = { bookMenu(item.book) },
                     )
 
                     is LibraryGridItem.Stack -> {
@@ -224,6 +231,8 @@ internal fun BookGrid(
                         onClick = { onOpenBook(item.book.uuid) },
                         modifier = if (unfoldState.ghosting(item.group.seriesId, unfolded)) rowGap.alpha(0f) else rowGap,
                         subtitle = memberSubtitle(item.book),
+                        onLongClick = onLongPressBook?.let { press -> { press(item.book) } },
+                        menu = { bookMenu(item.book) },
                     )
                 }
             }

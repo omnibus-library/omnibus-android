@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -57,15 +59,31 @@ internal fun BookGridCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    menu: @Composable () -> Unit = {},
 ) {
-    Column(
-        modifier = modifier
-            .testTag(LibraryTestTags.cell(book.id))
-            .width(width)
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {},
-    ) {
-        BookCellContent(book, subtitle, modifier = Modifier, captionModifier = Modifier)
+    if (onLongClick == null) {
+        Column(
+            modifier = modifier
+                .testTag(LibraryTestTags.cell(book.id))
+                .width(width)
+                .clickable(onClick = onClick)
+                .semantics(mergeDescendants = true) {},
+        ) {
+            BookCellContent(book, subtitle, modifier = Modifier, captionModifier = Modifier)
+        }
+    } else {
+        // A long press opens [menu], anchored to the cell, so the cell and the menu share one box.
+        Box(modifier = modifier.testTag(LibraryTestTags.cell(book.id)).width(width)) {
+            Column(
+                modifier = Modifier
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    .semantics(mergeDescendants = true) {},
+            ) {
+                BookCellContent(book, subtitle, modifier = Modifier, captionModifier = Modifier)
+            }
+            menu()
+        }
     }
 }
 
