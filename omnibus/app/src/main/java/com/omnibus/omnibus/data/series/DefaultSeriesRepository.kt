@@ -1,9 +1,11 @@
 package com.omnibus.omnibus.data.series
 
 import android.util.Log
+import com.omnibus.omnibus.data.metadata.VocabularyEntry
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.series.remote.SeriesDetailDto
 import com.omnibus.omnibus.data.series.remote.SeriesJson
+import com.omnibus.omnibus.data.series.remote.SeriesSummaryDto
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -49,6 +51,37 @@ class DefaultSeriesRepository @Inject constructor(
         } catch (ex: Exception) {
             Log.e(TAG, "Unexpected failure reading series $seriesId", ex)
             SeriesResult.Failure(SeriesError.UnexpectedResponse)
+        }
+    }
+
+    override suspend fun getSeriesList(): SeriesListResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(SERIES_PATH) ?: return@withContext SeriesListResult.NoServer
+        val request = builder.get().build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                when {
+                    response.isSuccessful -> SeriesListResult.Success(
+                        SeriesJson.decodeFromString<List<SeriesSummaryDto>>(response.body.string())
+                            .filter { it.name.isNotBlank() }
+                            .map { VocabularyEntry(name = it.name, count = it.bookCount) },
+                    )
+                    response.code == HTTP_UNAUTHORIZED -> SeriesListResult.Failure(SeriesError.SessionExpired)
+                    response.code == HTTP_NOT_FOUND -> SeriesListResult.Failure(SeriesError.NotFound)
+                    else -> SeriesListResult.Failure(SeriesError.Http(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server for $SERIES_PATH", ex)
+            SeriesListResult.Failure(SeriesError.Unreachable)
+        } catch (ex: IllegalArgumentException) {
+            Log.w(TAG, "Unexpected series list response", ex)
+            SeriesListResult.Failure(SeriesError.UnexpectedResponse)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure reading the series list", ex)
+            SeriesListResult.Failure(SeriesError.UnexpectedResponse)
         }
     }
 

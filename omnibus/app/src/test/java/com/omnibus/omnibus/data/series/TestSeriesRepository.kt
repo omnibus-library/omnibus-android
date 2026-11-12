@@ -24,4 +24,15 @@ class TestSeriesRepository : SeriesRepository {
         gates.removeFirstOrNull()?.await()
         return result
     }
+
+    /** The answer to [getSeriesList]. */
+    var listResult: SeriesListResult = SeriesListResult.NoServer
+
+    /** How many times [getSeriesList] was called. */
+    var listCalls = 0
+
+    override suspend fun getSeriesList(): SeriesListResult {
+        listCalls++
+        return listResult
+    }
 }

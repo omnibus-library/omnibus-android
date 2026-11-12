@@ -2,7 +2,9 @@ package com.omnibus.omnibus.data.authors
 
 import android.util.Log
 import com.omnibus.omnibus.data.authors.remote.AuthorDetailDto
+import com.omnibus.omnibus.data.authors.remote.AuthorSummaryDto
 import com.omnibus.omnibus.data.library.remote.LibraryJson
+import com.omnibus.omnibus.data.metadata.VocabularyEntry
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
@@ -46,6 +48,35 @@ class DefaultAuthorsRepository @Inject constructor(
         } catch (ex: Exception) {
             Log.e(TAG, "Unexpected failure reading $AUTHORS_PATH", ex)
             AuthorResult.Failure(AuthorsError.UnexpectedResponse)
+        }
+    }
+
+    override suspend fun getAuthors(): AuthorListResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(AUTHORS_PATH) ?: return@withContext AuthorListResult.NoServer
+        val request = builder.get().build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                if (response.isSuccessful) {
+                    val entries = LibraryJson.decodeFromString<List<AuthorSummaryDto>>(response.body.string())
+                        .filter { it.name.isNotBlank() }
+                        .map { VocabularyEntry(name = it.name, count = it.bookCount) }
+                    AuthorListResult.Success(entries)
+                } else {
+                    AuthorListResult.Failure(errorOf(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server for $AUTHORS_PATH", ex)
+            AuthorListResult.Failure(AuthorsError.Unreachable)
+        } catch (ex: IllegalArgumentException) {
+            Log.w(TAG, "Unexpected response for $AUTHORS_PATH", ex)
+            AuthorListResult.Failure(AuthorsError.UnexpectedResponse)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure reading $AUTHORS_PATH", ex)
+            AuthorListResult.Failure(AuthorsError.UnexpectedResponse)
         }
     }
 

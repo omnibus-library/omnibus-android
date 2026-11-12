@@ -12,4 +12,15 @@ class TestAuthorsRepository(
         requested += authorId
         return result
     }
+
+    /** The answer to [getAuthors]. */
+    var listResult: AuthorListResult = AuthorListResult.NoServer
+
+    /** How many times [getAuthors] was called. */
+    var listCalls = 0
+
+    override suspend fun getAuthors(): AuthorListResult {
+        listCalls++
+        return listResult
+    }
 }

@@ -6,6 +6,9 @@ import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.shelves.ShelfBooksResult
 import com.omnibus.omnibus.data.shelves.ShelfDetail
+import com.omnibus.omnibus.data.shelves.FilterClause
+import com.omnibus.omnibus.data.shelves.FilterField
+import com.omnibus.omnibus.data.shelves.FilterMode
 import com.omnibus.omnibus.data.shelves.ShelfDetailResult
 import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.data.shelves.randomShelfDetail
@@ -141,6 +144,72 @@ class ShelfDetailViewModelTest : DescribeSpec({
             viewModel.screenShown()
 
             viewModel.uiState.value.isGone shouldBe true
+        }
+    }
+
+    describe("filtering") {
+
+        it("#232 TC-26: applying a facet reloads the page with the new clauses") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val clause = FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))
+            val viewModel = sut(shelves, shelfId = shelfId)
+            viewModel.screenShown()
+
+            viewModel.applyFacet(clause)
+
+            shelves.booksRequests.last() shouldBe (shelfId to listOf(clause))
+        }
+
+        it("#232 TC-26: clearing the facets reloads the unfiltered page") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val clause = FilterClause(FilterField.Tag, FilterMode.Exclude, listOf("Long"))
+            val viewModel = sut(shelves, shelfId = shelfId)
+            viewModel.applyFacet(clause)
+
+            viewModel.clearFacets()
+
+            shelves.booksRequests.last() shouldBe (shelfId to emptyList())
+        }
+
+        it("#232 TC-26: a facet change does not reload the detail") {
+            val shelves = ScriptedShelvesRepository()
+            val viewModel = sut(shelves)
+            viewModel.screenShown()
+            val detailReads = shelves.shelfRequests.size
+
+            viewModel.applyFacet(FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy")))
+
+            shelves.shelfRequests.size shouldBe detailReads
+        }
+
+        it("#232 TC-26: a facet change cancels the page read still in flight") {
+            val shelves = ScriptedShelvesRepository()
+            val slow = CompletableDeferred<ShelfBooksResult>()
+            val fresh = List(2) { randomBook() }
+            shelves.enqueueBooks(slow)
+            shelves.enqueueBooks(ShelfBooksResult.Success(fresh))
+            val viewModel = sut(shelves)
+            viewModel.screenShown()
+
+            viewModel.applyFacet(FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy")))
+            slow.complete(ShelfBooksResult.Success(List(4) { randomBook() }))
+
+            viewModel.uiState.value.books shouldBe fresh
+        }
+
+        it("#232 TC-26: keeps the clauses when the screen is shown again") {
+            val shelves = ScriptedShelvesRepository()
+            val shelfId = randomLong()
+            val clause = FilterClause(FilterField.Author, FilterMode.Include, listOf("Le Guin"))
+            val viewModel = sut(shelves, shelfId = shelfId)
+            viewModel.applyFacet(clause)
+
+            viewModel.screenShown()
+
+            viewModel.uiState.value.clauses shouldBe listOf(clause)
+            shelves.booksRequests.last() shouldBe (shelfId to listOf(clause))
         }
     }
 })

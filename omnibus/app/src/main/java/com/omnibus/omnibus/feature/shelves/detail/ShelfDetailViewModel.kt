@@ -17,10 +17,12 @@ import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.data.shelves.ShelvesRepository
 import com.omnibus.omnibus.feature.library.LibraryGridItem
 import com.omnibus.omnibus.feature.library.libraryGridItems
+import com.omnibus.omnibus.feature.shelves.detail.facets.withClause
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +58,10 @@ class ShelfDetailViewModel @AssistedInject constructor(
     /** Bumped by every load, so results from an older load are ignored. */
     private var loadToken = 0
     private var loadJob: Job? = null
+
+    /** Bumped by every books read, so a superseded page read never overwrites a newer one. */
+    private var booksToken = 0
+    private var booksJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -97,11 +103,30 @@ class ShelfDetailViewModel @AssistedInject constructor(
             coroutineScope {
                 launch { readPreview(token) }
                 launch { readDetail(token, refreshing) }
-                launch { readBooks(token, refreshing) }
+                startBooks(refreshing, this)
             }
             if (token == loadToken) _uiState.update { it.copy(isRefreshing = false) }
         }
     }
+
+    /** Starts the page read for the current clauses in [scope], cancelling a read still in flight. */
+    private fun startBooks(refreshing: Boolean, scope: CoroutineScope) {
+        val token = ++booksToken
+        booksJob?.cancel()
+        booksJob = scope.launch { readBooks(token, refreshing) }
+    }
+
+    /** Reloads the page for the clauses a facet change left. The detail is not reloaded. */
+    private fun reloadBooks(change: (ShelfDetailUIState) -> ShelfDetailUIState) {
+        _uiState.update { change(it).copy(books = null, pageError = null, pageNoServer = false) }
+        startBooks(refreshing = false, scope = viewModelScope)
+    }
+
+    /** Sets the facet [clause] (no values removes its field's clause) and reloads the page with the new filter. */
+    fun applyFacet(clause: FilterClause) = reloadBooks { it.copy(clauses = it.clauses.withClause(clause)) }
+
+    /** Removes every facet and reloads the unfiltered page. */
+    fun clearFacets() = reloadBooks { it.copy(clauses = emptyList()) }
 
     private suspend fun readPreview(token: Int) {
         libraryRepository.getShelfPreviewsFlow().collect { result ->
@@ -109,7 +134,10 @@ class ShelfDetailViewModel @AssistedInject constructor(
             // A failed shelves read is ignored here: the detail read reports its own failure.
             if (result is ShelfPreviewsResult.Success) {
                 _uiState.update { state ->
-                    state.copy(preview = result.previews.firstOrNull { it.shelf.id == shelfId } ?: state.preview)
+                    state.copy(
+                        preview = result.previews.firstOrNull { it.shelf.id == shelfId } ?: state.preview,
+                        shelfNames = result.previews.associate { it.shelf.id to it.shelf.name },
+                    )
                 }
             }
         }
@@ -125,7 +153,7 @@ class ShelfDetailViewModel @AssistedInject constructor(
     private suspend fun readBooks(token: Int, refreshing: Boolean) {
         val clauses = _uiState.value.clauses
         shelvesRepository.getShelfBooksFlow(shelfId, clauses).collect { result ->
-            if (token != loadToken) return@collect
+            if (token != booksToken) return@collect
             _uiState.update { it.applyBooks(result, clauses, refreshing) }
         }
     }
@@ -207,6 +235,7 @@ data class ShelfDetailUIState(
     val viewer: ShelfViewer? = null,
     val transientError: ShelvesError? = null,
     val transientNoServer: Boolean = false,
+    val shelfNames: Map<Long, String> = emptyMap(),
 ) {
 
     /** The shelf's identity: the detail once it has landed, else the cached preview's. */

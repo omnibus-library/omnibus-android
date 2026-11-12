@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.data.series
 
+import com.omnibus.omnibus.data.metadata.VocabularyEntry
+
 /**
  * The series read for the Book Detail page (contract C11). Each call is one request, answered
  * with a result rather than an exception.
@@ -8,6 +10,21 @@ interface SeriesRepository {
 
     /** The books in series [seriesId], in series order. */
     suspend fun getSeries(seriesId: Long): SeriesResult
+
+    /** Every series the library has, with how many books each holds, in the server's order. */
+    suspend fun getSeriesList(): SeriesListResult
+}
+
+/** The outcome of [SeriesRepository.getSeriesList]. Each entry is a series' name and book count. */
+sealed interface SeriesListResult {
+
+    data class Success(val entries: List<VocabularyEntry>) : SeriesListResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : SeriesListResult
+
+    /** [error] is why the read failed. */
+    data class Failure(val error: SeriesError) : SeriesListResult
 }
 
 /**
