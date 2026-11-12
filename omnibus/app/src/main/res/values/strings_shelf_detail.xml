@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The shelf detail screen's loading label, and the kicker above a smart shelf's rules. -->
+    <string name="shelf_detail_loading">Loading shelf</string>
+    <string name="shelf_detail_matches_all">Matches all of</string>
+    <string name="shelf_detail_matches_any">Matches any of</string>
+    <!-- The top bar's Add books action, and the placeholder it opens until the Add books ticket lands. -->
+    <string name="shelf_detail_add_books">Add books</string>
+</resources>

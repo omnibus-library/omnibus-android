@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.shelves.ShelfRuleField
 import com.omnibus.omnibus.data.shelves.ShelfRuleOp
 import com.omnibus.omnibus.data.shelves.ShelfRules
 import com.omnibus.omnibus.data.shelves.acceptedOps
+import java.util.Locale
 
 /**
  * The localized words a smart shelf's rule text is built from. [rememberRuleWords] loads them from
@@ -81,6 +82,14 @@ private fun clauseOf(rule: ShelfRule, words: RuleWords): String? {
     }
     return words.clause(words.field(field), opPhrase)
 }
+
+/**
+ * One rule as a chip on a shelf: its clause with the first letter capitalised, or its raw tokens when the rule
+ * can't be phrased, so a rule the app can't read still shows what it tests.
+ */
+internal fun smartShelfRuleChip(rule: ShelfRule, words: RuleWords, locale: Locale): String =
+    clauseOf(rule, words)?.replaceFirstChar { it.titlecase(locale) }
+        ?: "${rule.field?.wire ?: "?"} ${rule.op?.wire ?: "?"} ${rule.value}"
 
 /** The [RuleWords] for the current locale, remembered for the resources they come from. */
 @Composable

@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -14,6 +16,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -23,6 +26,7 @@ import com.omnibus.omnibus.data.library.ShelfPreview
 import com.omnibus.omnibus.data.library.ShelfVisibility
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -59,12 +63,26 @@ class ShelvesRailTest {
     }
 
     @Test
-    fun issue233_tc20_aCardHasNoClickAction() {
+    fun issue232_tc14_aCardIsAButtonThatOpensItsShelf() {
         setRail(listOf(shelf(1L)), viewerId = 7L, fraction = 1f)
         rule.waitForIdle()
 
         rule.onNodeWithTag(ShelvesRailTestTags.card(1L))
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+    }
+
+    @Test
+    fun issue232_tc14_tappingACardOpensThatShelf() {
+        val opened = mutableListOf<Long>()
+        setRail(listOf(shelf(1L), shelf(2L)), viewerId = 7L, fraction = 1f, onOpenShelf = { opened += it })
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(ShelvesRailTestTags.ROW).performScrollToIndex(1)
+        rule.onNodeWithTag(ShelvesRailTestTags.card(2L)).performClick()
+
+        rule.waitUntil { opened.isNotEmpty() }
+        assertEquals(listOf(2L), opened)
     }
 
     @Test
@@ -121,11 +139,12 @@ class ShelvesRailTest {
         viewerId: Long?,
         fraction: Float,
         state: LazyListState = LazyListState(),
+        onOpenShelf: (Long) -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
                 Box(Modifier.fillMaxWidth(fraction)) {
-                    ShelvesRail(shelves = shelves, viewerId = viewerId, state = state)
+                    ShelvesRail(shelves = shelves, viewerId = viewerId, state = state, onOpenShelf = onOpenShelf)
                 }
             }
         }

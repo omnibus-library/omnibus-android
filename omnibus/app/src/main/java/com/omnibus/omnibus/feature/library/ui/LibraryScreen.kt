@@ -152,6 +152,7 @@ fun LibraryScreen(
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
     onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
     onOpenShelves: () -> Unit = {},
+    onOpenShelf: (Long) -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -178,6 +179,7 @@ fun LibraryScreen(
         onFoldUpSeries = viewModel::foldUpSeries,
         onOpenSeries = onOpenSeries,
         onOpenShelves = onOpenShelves,
+        onOpenShelf = onOpenShelf,
         onScrolledToTop = viewModel::scrolledToTop,
         gridState = gridState,
         continueState = continueState,
@@ -205,6 +207,7 @@ fun LibraryScreen(
  * @param onFoldUpSeries Called with the series id when an unfolded series' "Fold up" is tapped.
  * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
  * @param onOpenShelves Called when the Shelves rail's All link is tapped.
+ * @param onOpenShelf Called with a shelf's id when its rail card is tapped.
  * @param onScrolledToTop Called once the grid has scrolled to its first item for a query change.
  * @param gridState The grid's scroll state. Hoist it so scroll survives leaving the screen.
  * @param snackbarHostState Hosts the transient error snackbar.
@@ -237,6 +240,7 @@ internal fun LibraryScreenContent(
     onFoldUpSeries: (seriesId: Long) -> Unit = {},
     onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
     onOpenShelves: () -> Unit = {},
+    onOpenShelf: (Long) -> Unit = {},
     onScrolledToTop: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -338,6 +342,7 @@ internal fun LibraryScreenContent(
                         onFoldUpSeries = onFoldUpSeries,
                         onOpenSeries = onOpenSeries,
                         onOpenShelves = onOpenShelves,
+                        onOpenShelf = onOpenShelf,
                         gridState = gridState,
                         topInset = statusTop,
                         bottomInset = overlayBottom,
@@ -425,6 +430,7 @@ private fun LibraryGrid(
     onFoldUpSeries: (seriesId: Long) -> Unit,
     onOpenSeries: (seriesId: Long, name: String) -> Unit,
     onOpenShelves: () -> Unit,
+    onOpenShelf: (Long) -> Unit,
     gridState: LazyGridState,
     topInset: Dp,
     bottomInset: Dp,
@@ -487,6 +493,7 @@ private fun LibraryGrid(
                         shelves = railShelves,
                         viewerId = uiState.viewerId,
                         onOpenAll = onOpenShelves,
+                        onOpenShelf = onOpenShelf,
                     )
                     // 30 dp to the heading, as between the Continue card and the heading.
                     Spacer(Modifier.height(30.dp))

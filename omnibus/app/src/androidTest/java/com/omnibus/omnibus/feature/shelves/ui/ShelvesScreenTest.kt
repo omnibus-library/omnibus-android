@@ -120,13 +120,17 @@ class ShelvesScreenTest {
     }
 
     @Test
-    fun issue257_tc20_aTileHasNoClickAction() {
+    fun issue232_tc15_tappingATileOpensItsShelf() {
+        val opened = mutableListOf<Long>()
         setShelves(
             mutableStateOf(ShelvesUIState(previews = listOf(shelf(1L)), viewerId = VIEWER_ID)),
+            onOpenShelf = { opened += it },
         )
 
-        rule.onNodeWithTag(ShelfTileTestTags.tile(1L))
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        rule.onNodeWithTag(ShelfTileTestTags.tile(1L)).performClick()
+
+        rule.waitUntil { opened.isNotEmpty() }
+        assertEquals(listOf(1L), opened)
     }
 
     @Test
@@ -407,6 +411,7 @@ class ShelvesScreenTest {
         onRefresh: () -> Unit = {},
         onRetry: () -> Unit = {},
         onTransientErrorShown: () -> Unit = {},
+        onOpenShelf: (Long) -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -417,6 +422,7 @@ class ShelvesScreenTest {
                         onRefresh = onRefresh,
                         onRetry = onRetry,
                         onTransientErrorShown = onTransientErrorShown,
+                        onOpenShelf = onOpenShelf,
                     )
                 }
             }

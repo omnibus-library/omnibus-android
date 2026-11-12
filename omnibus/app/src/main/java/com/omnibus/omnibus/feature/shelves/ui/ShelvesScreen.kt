@@ -111,10 +111,12 @@ private const val CENSUS_SEPARATOR = " · "
  * Stateful wrapper that feeds [ShelvesScreenContent] from [ShelvesViewModel].
  *
  * @param onBack Called when the back arrow is tapped.
+ * @param onOpenShelf Called with a shelf's id when its tile is tapped.
  */
 @Composable
 fun ShelvesScreen(
     onBack: () -> Unit,
+    onOpenShelf: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ShelvesViewModel = hiltViewModel(),
 ) {
@@ -130,6 +132,7 @@ fun ShelvesScreen(
         onRetry = viewModel::retry,
         onTransientErrorShown = viewModel::transientErrorShown,
         modifier = modifier,
+        onOpenShelf = onOpenShelf,
     )
 }
 
@@ -154,6 +157,7 @@ internal fun ShelvesScreenContent(
     onRetry: () -> Unit,
     onTransientErrorShown: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenShelf: (Long) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     topBarState: TopAppBarState = rememberTopAppBarState(),
     reducedMotion: Boolean = rememberReducedMotion(),
@@ -207,7 +211,7 @@ internal fun ShelvesScreenContent(
                     onRefresh = onRefresh,
                     modifier = Modifier.weight(1f),
                 ) {
-                    ShelvesGrid(uiState, barScroll)
+                    ShelvesGrid(uiState, barScroll, onOpenShelf = onOpenShelf)
                 }
             }
         }
@@ -331,7 +335,7 @@ internal fun shelvesCensusText(census: ShelvesCensus): String {
  * column count and cell width come from [ShelvesGridMetrics] for the width left after the screen insets.
  */
 @Composable
-private fun ShelvesGrid(uiState: ShelvesUIState, modifier: Modifier = Modifier) {
+private fun ShelvesGrid(uiState: ShelvesUIState, modifier: Modifier = Modifier, onOpenShelf: (Long) -> Unit = {}) {
     val groups = remember(uiState.previews, uiState.viewerId) { uiState.groups }
     val census = remember(uiState.previews, uiState.viewerId) { uiState.census }
     val showsNotice = remember(uiState.previews, uiState.viewerId) { uiState.showsNotice }
@@ -361,6 +365,7 @@ private fun ShelvesGrid(uiState: ShelvesUIState, modifier: Modifier = Modifier) 
                         preview = preview,
                         ownerLabel = if (group.isViewer) you else group.ownerName,
                         modifier = Modifier.widthIn(max = cellWidth).fillMaxWidth(),
+                        onClick = { onOpenShelf(preview.shelf.id) },
                     )
                 }
             }
