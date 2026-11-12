@@ -2,7 +2,7 @@ package com.omnibus.omnibus.feature.shelves.detail.edit
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,7 +74,8 @@ internal fun EditShelfDialog(
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             Surface(Modifier.fillMaxSize(), color = OmnibusTheme.palette.bg0) {
-                Column(Modifier.imePadding()) {
+                // The dialog draws edge to edge, so the bars, the cutout and the keyboard are kept clear here.
+                Column(Modifier.safeDrawingPadding()) {
                     EditShelfFullScreenFrame(
                         canSave = state.canSave,
                         onClose = onDismiss,
