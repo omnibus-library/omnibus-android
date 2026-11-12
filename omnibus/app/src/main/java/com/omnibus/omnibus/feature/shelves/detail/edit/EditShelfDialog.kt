@@ -2,7 +2,9 @@ package com.omnibus.omnibus.feature.shelves.detail.edit
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,8 +76,9 @@ internal fun EditShelfDialog(
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
             Surface(Modifier.fillMaxSize(), color = OmnibusTheme.palette.bg0) {
-                // The dialog draws edge to edge, so the bars, the cutout and the keyboard are kept clear here.
-                Column(Modifier.safeDrawingPadding()) {
+                // The dialog draws edge to edge, so the bars and the keyboard are kept clear here, as the review sheet does.
+                // The display cutout is left out: it is taller than the status bar on some devices and only adds dead space.
+                Column(Modifier.statusBarsPadding().imePadding().navigationBarsPadding()) {
                     EditShelfFullScreenFrame(
                         canSave = state.canSave,
                         onClose = onDismiss,
