@@ -1,12 +1,10 @@
 package com.omnibus.omnibus.feature.library.ui
 
 import android.content.res.Configuration
-import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,17 +21,12 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -48,12 +41,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -73,8 +63,6 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ContinueCard
-import com.omnibus.omnibus.feature.library.LibraryGridItem
-import com.omnibus.omnibus.feature.library.LibraryGridMetrics
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
@@ -82,7 +70,6 @@ import com.omnibus.omnibus.feature.library.LibraryViewModel
 import com.omnibus.omnibus.feature.library.PositionLabel
 import com.omnibus.omnibus.feature.library.RelativeAge
 import com.omnibus.omnibus.feature.library.ResumeTarget
-import com.omnibus.omnibus.feature.library.SeriesGroup
 import com.omnibus.omnibus.feature.library.UnavailableBook
 import com.omnibus.omnibus.feature.library.libraryGridItems
 import com.omnibus.omnibus.ui.components.EdgeFade
@@ -94,15 +81,11 @@ import com.omnibus.omnibus.ui.components.Masthead
 import com.omnibus.omnibus.ui.components.MastheadAddButton
 import com.omnibus.omnibus.ui.components.OfflinePill
 import com.omnibus.omnibus.ui.components.bottomOverlay
-import com.omnibus.omnibus.ui.theme.Motion
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
 import com.omnibus.omnibus.ui.theme.rememberReducedMotion
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** Test tags for the Library screen's grid, heading and cells, so UI tests can find them. */
@@ -421,14 +404,12 @@ private fun EmptyLibrary() {
  * The masthead, the category heading with its filter control, and the cover grid, as one scrolling
  * surface.
  *
- * The column count and cell width come from [LibraryGridMetrics] for the width left after the
- * screen insets. Reports the grid items after the last visible one to [onLoadMore], with the footer counted as
- * none. The filter menu's choices go to the three
+ * The masthead, the Continue carousel, the Shelves rail and the heading form the grid's full-width header
+ * item, above the cells that [BookGrid] lays out. The filter menu's choices go to the three
  * `onSelect*`/`onToggleDirection` callbacks. The Continue carousel sits between the masthead and the
- * heading when there are cards.
+ * rail when there are cards.
  *
- * [topInset] and [bottomInset] are the status bar and the bottom overlay the grid scrolls under: they pad the
- * content so it starts and ends clear of them.
+ * [topInset] and [bottomInset] are passed through to [BookGrid].
  */
 @Composable
 private fun LibraryGrid(
@@ -459,231 +440,86 @@ private fun LibraryGrid(
     val openFromGrid = rememberBookCoverOpener(BookCoverOrigin.Grid, onOpenBook)
     val openFromContinue = rememberBookCoverOpener(BookCoverOrigin.Continue, onOpenBook)
 
-    val unfolded = uiState.unfoldedSeries
-    val unfoldState = rememberSeriesUnfoldState(unfolded, reducedMotion)
-    LaunchedEffect(unfolded, uiState.groupBySeries) { unfoldState.sync(unfolded, uiState.groupBySeries) }
-    val folding = unfoldState.folding(unfolded)
-    val placement = unfoldState.placementSpec(unfolded, uiState.groupBySeries)
-    val fade: FiniteAnimationSpec<Float>? = if (reducedMotion) Motion.crossfade() else null
-    val density = LocalDensity.current
-    val rowGapPx = with(density) { ROW_GAP.toPx() }
-    val columnGapPx = with(density) { COLUMN_GAP.toPx() }
-    val screenPx = with(density) { Spacing.screen.toPx() }
-
     val items = remember(uiState.books, uiState.seriesBooks, uiState.groupBySeries, uiState.unfoldedSeries) {
-        libraryGridItems(uiState.entries, unfolded)
-    }
-    val gridItemCount = items.size
-    // A folding series keeps its container over its stack's cell, which shrinks back into it.
-    val runs = remember(items, folding) {
-        items.mapIndexedNotNull { i, item ->
-            when (item) {
-                is LibraryGridItem.Summary -> OutlineRun(
-                    firstGridIndex = i + HEADER_ITEM_COUNT,
-                    cellCount = 1 + item.group.count,
-                    seriesId = item.group.seriesId,
-                )
-
-                is LibraryGridItem.Stack -> if (item.group.seriesId in folding) {
-                    OutlineRun(
-                        firstGridIndex = i + HEADER_ITEM_COUNT,
-                        cellCount = 1 + item.group.count,
-                        seriesId = item.group.seriesId,
-                    )
-                } else {
-                    null
-                }
-
-                else -> null
-            }
-        }
-    }
-    LaunchedEffect(gridState, uiState.books.size, gridItemCount) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .filterNotNull()
-            .filter { it >= HEADER_ITEM_COUNT } // only the header visible: no report, as today
-            .map { (HEADER_ITEM_COUNT + gridItemCount - 1 - it).coerceAtLeast(0) } // the footer counts as 0
-            .distinctUntilChanged()
-            .collect { onLoadMore(it) }
+        libraryGridItems(uiState.entries, uiState.unfoldedSeries)
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val available = maxWidth - Spacing.screen * 2
-        val columns = LibraryGridMetrics.columns(available.value)
-        val cellWidth = LibraryGridMetrics.cellWidth(available.value).dp
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            state = gridState,
-            contentPadding = PaddingValues(
-                start = Spacing.screen,
-                end = Spacing.screen,
-                top = topInset,
-                bottom = GRID_BOTTOM_GAP + bottomInset,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .seriesOutlines(
-                    gridState,
-                    runs,
-                    columns,
-                    stroke = palette.accent.copy(alpha = 0.40f),
-                    fill = palette.seriesFill,
-                    frame = { unfoldState.frame(it, unfolded) },
-                )
-                .testTag(LibraryTestTags.GRID),
-        ) {
-            item(key = HEADER_KEY, span = { GridItemSpan(maxLineSpan) }) {
-                // The masthead and heading carry their own 20 dp inset, so the header undoes the grid's padding.
-                Column(Modifier.bleedHorizontally(Spacing.screen)) {
-                    Masthead(title = stringResource(R.string.library_title)) {
-                        OfflinePill(visible = uiState.isOffline)
-                        MastheadAddButton(onAddBooks = onAddBooks)
-                    }
-                    if (uiState.continueCards.isNotEmpty()) {
-                        // 30 dp from the masthead's own bottom padding, and 30 dp from the card or its dots to the heading,
-                        // as iOS LibraryView's VStack(spacing: 30).
-                        Spacer(Modifier.height(30.dp))
-                        ContinueCarousel(
-                            cards = uiState.continueCards,
-                            selectedId = uiState.continueSelectedId,
-                            state = continueState,
-                            onSettled = onContinueSettled,
-                            onOpenBook = openFromContinue,
-                            onResume = onResume,
-                            onShowContextMenu = onShowContextMenu,
-                        )
-                        Spacer(Modifier.height(30.dp))
-                    }
-                    val railShelves = uiState.railShelves
-                    if (railShelves.isNotEmpty()) {
-                        ShelvesRail(
-                            shelves = railShelves,
-                            viewerId = uiState.viewerId,
-                            onOpenAll = onOpenShelves,
-                        )
-                        // 30 dp to the heading, as between the Continue card and the heading.
-                        Spacer(Modifier.height(30.dp))
-                    }
-                    Column(Modifier.padding(horizontal = Spacing.screen)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                        ) {
-                            Text(
-                                text = stringResource(uiState.category.headingRes()),
-                                style = displayTextStyle(27, palette.ink0),
-                                modifier = Modifier.weight(1f).testTag(LibraryTestTags.HEADING),
-                            )
-                            GroupBySeriesSwitch(
-                                checked = uiState.groupBySeries,
-                                onToggle = onToggleGroupBySeries,
-                            )
-                            LibraryFilterControl(
-                                category = uiState.category,
-                                sort = uiState.sort,
-                                direction = uiState.direction,
-                                isFiltered = uiState.isFiltered,
-                                onSelectCategory = onSelectCategory,
-                                onSelectSort = onSelectSort,
-                                onToggleDirection = onToggleDirection,
-                            )
-                        }
-                        Spacer(Modifier.height(12.dp))
-                    }
+    BookGrid(
+        items = items,
+        unfolded = uiState.unfoldedSeries,
+        groupBySeries = uiState.groupBySeries,
+        onOpenBook = openFromGrid,
+        onUnfoldSeries = onUnfoldSeries,
+        onFoldUpSeries = onFoldUpSeries,
+        onOpenSeries = onOpenSeries,
+        gridState = gridState,
+        topInset = topInset,
+        bottomInset = bottomInset,
+        isLoadingMore = uiState.isLoadingMore,
+        reducedMotion = reducedMotion,
+        modifier = modifier,
+        onLoadMore = onLoadMore,
+        header = {
+            // The masthead and heading carry their own 20 dp inset, so the header undoes the grid's padding.
+            Column(Modifier.bleedHorizontally(Spacing.screen)) {
+                Masthead(title = stringResource(R.string.library_title)) {
+                    OfflinePill(visible = uiState.isOffline)
+                    MastheadAddButton(onAddBooks = onAddBooks)
                 }
-            }
-
-            itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
-                // Rows after the first get 26 dp above them, from the cells, so the heading gap stays 12 dp.
-                val rowGap = Modifier
-                    .animateItem(fadeInSpec = fade, placementSpec = placement, fadeOutSpec = fade)
-                    .padding(top = if (index >= columns) 26.dp else 0.dp)
-                // The slot of member [member] of [group] relative to this item, which is the series' anchor cell.
-                fun slotOf(group: SeriesGroup, member: Int) = memberCoverOffset(
-                    gridState.layoutInfo,
-                    index + HEADER_ITEM_COUNT,
-                    member,
-                    LibraryGridItem.Member(group, group.books[member]).key,
-                    columns,
-                    rowGapPx,
-                    columnGapPx,
-                    screenPx,
-                )
-                when (item) {
-                    is LibraryGridItem.Single -> BookGridCell(
-                        book = item.book,
-                        width = cellWidth,
-                        onClick = { openFromGrid(item.book.uuid) },
-                        modifier = rowGap,
+                if (uiState.continueCards.isNotEmpty()) {
+                    // 30 dp from the masthead's own bottom padding, and 30 dp from the card or its dots to the heading,
+                    // as iOS LibraryView's VStack(spacing: 30).
+                    Spacer(Modifier.height(30.dp))
+                    ContinueCarousel(
+                        cards = uiState.continueCards,
+                        selectedId = uiState.continueSelectedId,
+                        state = continueState,
+                        onSettled = onContinueSettled,
+                        onOpenBook = openFromContinue,
+                        onResume = onResume,
+                        onShowContextMenu = onShowContextMenu,
                     )
-
-                    is LibraryGridItem.Stack -> {
-                        val id = item.group.seriesId
-                        SeriesGhostHost(
-                            ghosting = unfoldState.ghosting(id, unfolded),
-                            group = item.group,
-                            width = cellWidth,
-                            t = { unfoldState.t(id, unfolded) ?: if (id in unfolded) 1f else 0f },
-                            memberOffset = { i -> slotOf(item.group, i) },
-                            modifier = rowGap,
-                        ) { hidden ->
-                            SeriesStackCell(
-                                group = item.group,
-                                width = cellWidth,
-                                onUnfold = { onUnfoldSeries(item.group.seriesId) },
-                                modifier = hidden,
-                            )
-                        }
-                    }
-
-                    is LibraryGridItem.Summary -> {
-                        val id = item.group.seriesId
-                        SeriesGhostHost(
-                            ghosting = unfoldState.ghosting(id, unfolded),
-                            group = item.group,
-                            width = cellWidth,
-                            t = { unfoldState.t(id, unfolded) ?: if (id in unfolded) 1f else 0f },
-                            memberOffset = { i -> slotOf(item.group, i) },
-                            modifier = rowGap,
-                        ) { hidden ->
-                            SeriesSummaryCell(
-                                group = item.group,
-                                width = cellWidth,
-                                onOpenSeries = { onOpenSeries(item.group.seriesId, item.group.name) },
-                                onFoldUp = { onFoldUpSeries(item.group.seriesId) },
-                                modifier = hidden,
-                            )
-                        }
-                    }
-
-                    is LibraryGridItem.Member -> BookGridCell(
-                        book = item.book,
-                        width = cellWidth,
-                        onClick = { openFromGrid(item.book.uuid) },
-                        modifier = if (unfoldState.ghosting(item.group.seriesId, unfolded)) rowGap.alpha(0f) else rowGap,
-                        subtitle = memberSubtitle(item.book),
-                    )
+                    Spacer(Modifier.height(30.dp))
                 }
-            }
-
-            if (uiState.isLoadingMore) {
-                item(key = FOOTER_KEY, span = { GridItemSpan(maxLineSpan) }) {
-                    Box(
-                        Modifier.fillMaxWidth().padding(top = 26.dp),
-                        contentAlignment = Alignment.Center,
+                val railShelves = uiState.railShelves
+                if (railShelves.isNotEmpty()) {
+                    ShelvesRail(
+                        shelves = railShelves,
+                        viewerId = uiState.viewerId,
+                        onOpenAll = onOpenShelves,
+                    )
+                    // 30 dp to the heading, as between the Continue card and the heading.
+                    Spacer(Modifier.height(30.dp))
+                }
+                Column(Modifier.padding(horizontal = Spacing.screen)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        CircularProgressIndicator(
-                            color = palette.ink3,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(20.dp).testTag(LibraryTestTags.FOOTER_SPINNER),
+                        Text(
+                            text = stringResource(uiState.category.headingRes()),
+                            style = displayTextStyle(27, palette.ink0),
+                            modifier = Modifier.weight(1f).testTag(LibraryTestTags.HEADING),
+                        )
+                        GroupBySeriesSwitch(
+                            checked = uiState.groupBySeries,
+                            onToggle = onToggleGroupBySeries,
+                        )
+                        LibraryFilterControl(
+                            category = uiState.category,
+                            sort = uiState.sort,
+                            direction = uiState.direction,
+                            isFiltered = uiState.isFiltered,
+                            onSelectCategory = onSelectCategory,
+                            onSelectSort = onSelectSort,
+                            onToggleDirection = onToggleDirection,
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
                 }
             }
-        }
-    }
+        },
+    )
 }
 
 /**
