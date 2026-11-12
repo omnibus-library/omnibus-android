@@ -13,6 +13,9 @@ import com.omnibus.omnibus.data.library.Shelf
 import com.omnibus.omnibus.data.library.ShelfKind
 import com.omnibus.omnibus.data.library.ShelfPreview
 import com.omnibus.omnibus.data.library.ShelfVisibility
+import com.omnibus.omnibus.data.shelves.FilterClause
+import com.omnibus.omnibus.data.shelves.FilterField
+import com.omnibus.omnibus.data.shelves.FilterMode
 import com.omnibus.omnibus.data.shelves.ShelfDetail
 import com.omnibus.omnibus.data.shelves.ShelfMatchMode
 import com.omnibus.omnibus.data.shelves.ShelfRule
@@ -23,7 +26,7 @@ import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailUIState
 import com.omnibus.omnibus.feature.shelves.detail.ShelfViewer
 import com.omnibus.omnibus.screenshot.Shot
 
-/** A populated smart shelf in the dark palette: its hero with rules and a description, and a series stack in the grid. */
+/** A populated smart shelf in the dark palette: its hero with rules, an active facet with its N of M line, and a series stack in the grid. */
 @PreviewTest
 @Preview(name = "Dark", widthDp = 390, heightDp = 1100, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
@@ -91,8 +94,9 @@ private fun populatedSmartShelf(): ShelfDetailUIState {
                 ),
             ),
         ),
-        books = books,
+        books = books.take(4),
         unfilteredBooks = books,
+        clauses = listOf(FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))),
     )
 }
 
