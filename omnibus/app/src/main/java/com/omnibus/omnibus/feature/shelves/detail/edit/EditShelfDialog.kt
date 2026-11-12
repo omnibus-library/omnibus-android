@@ -25,17 +25,20 @@ internal val EDIT_DIALOG_CENTERED_MIN_WIDTH: Dp = 600.dp
 
 /**
  * The edit shelf dialog for [seed]: full screen below [EDIT_DIALOG_CENTERED_MIN_WIDTH], a centered card from it. It closes
- * itself once a save succeeds, with [onSaved].
+ * itself once a save succeeds, with [onSaved]. Each [session] has its own form: the view model outlives the dialog in the
+ * screen's store, so without it a form that was saved would report itself saved again the next time the dialog opens, and
+ * close at once.
  */
 @Composable
 internal fun EditShelfDialog(
     seed: Shelf,
+    session: Int,
     centered: Boolean,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
 ) {
     val viewModel = hiltViewModel<EditShelfViewModel, EditShelfViewModel.Factory>(
-        key = "edit-shelf-${seed.id}",
+        key = "edit-shelf-${seed.id}-$session",
         creationCallback = { it.create(seed) },
     )
     val state by viewModel.uiState.collectAsState()

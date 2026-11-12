@@ -38,6 +38,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -139,6 +140,8 @@ fun ShelfDetailScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     var editing by rememberSaveable { mutableStateOf(false) }
+    // Each opening of the editor gets its own form state, so a saved or abandoned form never greets the next opening.
+    var editSession by rememberSaveable { mutableIntStateOf(0) }
 
     // Runs each time the entry is composed again, so returning to the shelf reloads it.
     LaunchedEffect(Unit) { viewModel.screenShown() }
@@ -155,7 +158,10 @@ fun ShelfDetailScreen(
         onTransientErrorShown = viewModel::transientErrorShown,
         modifier = modifier,
         onAddBooks = onAddBooks,
-        onEdit = { editing = true },
+        onEdit = {
+            editSession++
+            editing = true
+        },
         onDelete = viewModel::deleteShelf,
         onRemoveBook = viewModel::removeBook,
         onClosedHandled = viewModel::closedHandled,
@@ -167,6 +173,7 @@ fun ShelfDetailScreen(
     if (editing && identity != null) {
         EditShelfDialog(
             seed = identity,
+            session = editSession,
             centered = LocalWindowInfo.current.containerDpSize.width >= EDIT_DIALOG_CENTERED_MIN_WIDTH,
             onDismiss = { editing = false },
             onSaved = {
