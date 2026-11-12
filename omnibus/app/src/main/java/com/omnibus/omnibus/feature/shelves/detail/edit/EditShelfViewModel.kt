@@ -103,7 +103,7 @@ class EditShelfViewModel @AssistedInject constructor(
     fun ruleFieldChanged(id: Int, field: ShelfRuleField) = updateRule(id) { it.withField(field) }
 
     /** Sets the op of condition [id]. */
-    fun ruleOpChanged(id: Int, op: ShelfRuleOp) = updateRule(id) { it.copy(op = op) }
+    fun ruleOpChanged(id: Int, op: ShelfRuleOp) = updateRule(id) { it.withOp(op) }
 
     /** Sets the value of condition [id]. */
     fun ruleValueChanged(id: Int, value: String) = updateRule(id) { it.copy(value = value) }
@@ -173,7 +173,13 @@ class EditShelfViewModel @AssistedInject constructor(
             emptyList()
         } else {
             rules.rules.mapIndexed { index, rule ->
-                EditableRule(id = index, field = rule.field!!, op = rule.op!!, value = rule.value)
+                EditableRule(
+                    id = index,
+                    field = rule.field!!,
+                    op = rule.op!!,
+                    // A value a menu offers is shown as the menu spells it; any other is kept as the server has it.
+                    value = fixedValuesOf(rule.field!!, rule.op!!)?.let { canonicalValue(it, rule.value) } ?: rule.value,
+                )
             }
         }
         nextRuleId = rules.rules.size

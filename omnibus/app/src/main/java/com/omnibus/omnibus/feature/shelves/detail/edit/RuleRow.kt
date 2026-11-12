@@ -15,6 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -55,11 +59,12 @@ internal object RuleRowTestTags {
     const val REMOVE = "rule-row-remove"
     const val FIELD_MENU = "rule-row-field-menu"
     const val OP_MENU = "rule-row-op-menu"
+    const val VALUE_MENU = "rule-row-value-menu"
 }
 
 /**
  * One condition of a smart shelf: a field menu, an op menu, a value and a remove button. The op menu lists only the
- * ops the field accepts. The value sits inline after the chips when [centered], else under them.
+ * ops the field accepts. The value is a menu when the field has a fixed set of values (see [fixedValuesOf]), else text.
  */
 @Composable
 internal fun RuleRow(
@@ -108,16 +113,76 @@ internal fun RuleRow(
                 )
             }
         }
+        val fixed = fixedValuesOf(rule.field, rule.op)
+        if (fixed != null) {
+            ValueMenu(
+                value = rule.value,
+                options = fixed.map { it to valueLabel(rule.field, it, words) },
+                onSelect = onValue,
+            )
+        } else {
+            OutlinedTextField(
+                value = rule.value,
+                onValueChange = onValue,
+                label = { Text(stringResource(R.string.shelf_edit_value)) },
+                singleLine = true,
+                colors = fieldColors(),
+                shape = RoundedCornerShape(Spacing.md),
+                modifier = Modifier.fillMaxWidth().testTag(RuleRowTestTags.VALUE),
+            )
+        }
+    }
+}
+
+/**
+ * The value of a condition whose values are a fixed set: a read-only field that opens a menu of [options]. A [value] the
+ * menu does not offer is still shown, as it is.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ValueMenu(
+    value: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = rule.value,
-            onValueChange = onValue,
+            value = options.firstOrNull { it.first == value }?.second ?: value,
+            onValueChange = {},
+            readOnly = true,
             label = { Text(stringResource(R.string.shelf_edit_value)) },
-            singleLine = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             colors = fieldColors(),
             shape = RoundedCornerShape(Spacing.md),
-            modifier = Modifier.fillMaxWidth().testTag(RuleRowTestTags.VALUE),
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+                .testTag(RuleRowTestTags.VALUE),
         )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.testTag(RuleRowTestTags.VALUE_MENU),
+        ) {
+            options.forEach { (token, text) ->
+                DropdownMenuItem(
+                    text = { Text(text) },
+                    onClick = {
+                        expanded = false
+                        onSelect(token)
+                    },
+                )
+            }
+        }
     }
+}
+
+/** How a fixed [value] of [field] reads in the value menu: a status by its words, a format in capitals, a rating as is. */
+private fun valueLabel(field: ShelfRuleField, value: String, words: RuleWords): String = when (field) {
+    ShelfRuleField.Status -> words.status(value)?.replaceFirstChar { it.uppercase() } ?: value
+    ShelfRuleField.Format -> value.uppercase()
+    else -> value
 }
 
 /** A chip that opens a menu of [items]. Its semantics announce the chip's [description] as a dropdown. */

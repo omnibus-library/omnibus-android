@@ -10,6 +10,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.enum
+import io.kotest.property.exhaustive.of
 
 /** The ops the rule text and the server accept for [field], as the editor lists them. */
 private fun expectedOps(field: ShelfRuleField): List<ShelfRuleOp> = when (field) {
@@ -67,6 +68,45 @@ class EditShelfFormTest : DescribeSpec({
 
         it("#232 TC-30: appends Tag, is, and an empty value") {
             newRule(3) shouldBe EditableRule(id = 3, field = ShelfRuleField.Tag, op = ShelfRuleOp.Is, value = "")
+        }
+    }
+
+    describe("conditions with a fixed set of values") {
+
+        it("#232 TC-30: offers a menu for a status, a rating and a format the shelf has a file in, and not for free text") {
+            fixedValuesOf(ShelfRuleField.Status, ShelfRuleOp.Is) shouldBe listOf("unread", "reading", "finished")
+            fixedValuesOf(ShelfRuleField.Rating, ShelfRuleOp.Gte)?.let { it.first() to it.last() to it.size } shouldBe
+                (("0.5" to "5") to 10)
+            fixedValuesOf(ShelfRuleField.Format, ShelfRuleOp.Includes)?.contains("epub") shouldBe true
+            fixedValuesOf(ShelfRuleField.Format, ShelfRuleOp.Contains) shouldBe null
+            checkAll(Exhaustive.of(ShelfRuleField.Tag, ShelfRuleField.Year, ShelfRuleField.DateAdded)) { field ->
+                fixedValuesOf(field, field.acceptedOps.first()) shouldBe null
+            }
+        }
+
+        it("#232 TC-30: reads a value as the menu spells it, ignoring case and how a rating is written") {
+            canonicalValue(fixedValuesOf(ShelfRuleField.Status, ShelfRuleOp.Is)!!, "Reading") shouldBe "reading"
+            canonicalValue(fixedValuesOf(ShelfRuleField.Rating, ShelfRuleOp.Is)!!, "4.0") shouldBe "4"
+            canonicalValue(fixedValuesOf(ShelfRuleField.Rating, ShelfRuleOp.Is)!!, "3.7") shouldBe null
+        }
+
+        it("#232 TC-30: drops a value the new field's menu does not offer, and keeps one it does") {
+            val status = EditableRule(1, ShelfRuleField.Status, ShelfRuleOp.Is, "reading")
+
+            status.withField(ShelfRuleField.Rating).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Tag, ShelfRuleOp.Is, "reading").withField(ShelfRuleField.Status).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Rating, ShelfRuleOp.Is, "4").withField(ShelfRuleField.Rating).value shouldBe "4"
+        }
+
+        it("#232 TC-30: drops a menu value that means nothing as free text, and keeps free text between free-text fields") {
+            EditableRule(1, ShelfRuleField.Rating, ShelfRuleOp.Is, "4").withField(ShelfRuleField.Year).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Tag, ShelfRuleOp.Is, "mood").withField(ShelfRuleField.Genre).value shouldBe "mood"
+        }
+
+        it("#232 TC-30: drops a format when the op moves to free text, and keeps it when it moves to a menu op") {
+            EditableRule(1, ShelfRuleField.Format, ShelfRuleOp.Includes, "epub").withOp(ShelfRuleOp.Contains).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Format, ShelfRuleOp.Contains, "epu").withOp(ShelfRuleOp.Includes).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Format, ShelfRuleOp.Contains, "epub").withOp(ShelfRuleOp.Includes).value shouldBe "epub"
         }
     }
 })

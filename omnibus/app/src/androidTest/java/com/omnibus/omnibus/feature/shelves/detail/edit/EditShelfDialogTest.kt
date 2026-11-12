@@ -111,6 +111,27 @@ class EditShelfDialogTest {
         rule.onAllNodesWithText(string(R.string.shelf_edit_op_contains)).assertCountEquals(0)
     }
 
+    @Test
+    fun issue232_tc35_aStatusConditionPicksItsValueFromAMenu() {
+        var picked: String? = null
+        setRuleRow(
+            EditableRule(id = 1, field = ShelfRuleField.Status, op = ShelfRuleOp.Is, value = ""),
+            onValue = { picked = it },
+        )
+
+        rule.onNodeWithTag(RuleRowTestTags.VALUE).performClick()
+        rule.onNodeWithText(string(R.string.book_detail_more_rule_status_reading)).performClick()
+
+        assertEquals("reading", picked)
+    }
+
+    @Test
+    fun issue232_tc35_aStatusConditionShowsItsValueAsTheMenuSpellsIt() {
+        setRuleRow(EditableRule(id = 1, field = ShelfRuleField.Status, op = ShelfRuleOp.Is, value = "finished"))
+
+        rule.onNodeWithText(string(R.string.book_detail_more_rule_status_finished)).assertIsDisplayed()
+    }
+
     private fun smartState() = EditShelfUIState(
         name = "Weekend reads",
         visibility = ShelfVisibility.Public,
@@ -156,6 +177,7 @@ class EditShelfDialogTest {
     private fun setRuleRow(
         rule: EditableRule,
         onRemove: () -> Unit = {},
+        onValue: (String) -> Unit = {},
     ) {
         this.rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -165,7 +187,7 @@ class EditShelfDialogTest {
                     centered = false,
                     onField = {},
                     onOp = {},
-                    onValue = {},
+                    onValue = onValue,
                     onRemove = onRemove,
                 )
             }

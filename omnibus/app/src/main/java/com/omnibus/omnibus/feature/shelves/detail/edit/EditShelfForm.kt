@@ -13,9 +13,16 @@ import com.omnibus.omnibus.data.library.ShelfVisibility
  */
 data class EditableRule(val id: Int, val field: ShelfRuleField, val op: ShelfRuleOp, val value: String)
 
-/** The rule with [newField], its op kept when the field accepts it, else reset to the field's first accepted op. */
+/**
+ * The rule with [newField], its op kept when the field accepts it, else reset to the field's first accepted op. The value
+ * is kept only if it still fits (see [fixedValuesOf]).
+ */
 fun EditableRule.withField(newField: ShelfRuleField): EditableRule =
     copy(field = newField, op = if (op in newField.acceptedOps) op else newField.acceptedOps.first())
+        .fittingValueFrom(this)
+
+/** The rule with [newOp], its value kept only if it still fits (see [fixedValuesOf]). */
+fun EditableRule.withOp(newOp: ShelfRuleOp): EditableRule = copy(op = newOp).fittingValueFrom(this)
 
 /** A new condition as "Add condition" makes it: Tag, is, empty. */
 fun newRule(id: Int): EditableRule = EditableRule(id, ShelfRuleField.Tag, ShelfRuleOp.Is, "")
