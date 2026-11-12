@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescriptionExactly
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsMatcher
@@ -49,6 +50,7 @@ import com.omnibus.omnibus.feature.shelves.detail.ShelfViewer
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -300,6 +302,18 @@ class ShelfDetailScreenTest {
             .performClick()
 
         assertEquals(1, cleared)
+    }
+
+    @Test
+    fun issue232_tc27_theFirstCellsKeepClearOfTheFacetRow() {
+        val book = plainBook(0)
+        setScreen(uiState = stateWith(books = listOf(book)))
+        rule.waitForIdle()
+        revealFacetRow()
+
+        val facetBottom = rule.onNodeWithTag(ShelfDetailTestTags.FACET_ROW).getUnclippedBoundsInRoot().bottom
+        val cellTop = rule.onNodeWithTag(LibraryTestTags.cell(book.id)).getUnclippedBoundsInRoot().top
+        assertTrue("a series container reaches up to 13 dp above the cells", cellTop - facetBottom >= HeaderToGridGap)
     }
 
     @Test

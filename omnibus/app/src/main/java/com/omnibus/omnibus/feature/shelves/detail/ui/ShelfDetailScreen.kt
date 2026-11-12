@@ -109,6 +109,9 @@ internal object ShelfDetailTestTags {
 /** The rounded corner of the hero's mosaic. */
 private val MosaicCorner = 6.dp
 
+/** The space between the facet row and the first cells, so a series container above its row stays clear of the chips. */
+internal val HeaderToGridGap = 16.dp
+
 /** The header's first line on screen: the top of the hero, below the bar. */
 private val HeroTop = Spacing.sm
 
@@ -414,6 +417,9 @@ internal fun ShelfDetailContent(
                                             total = shelf.bookCount,
                                             modifier = Modifier.padding(horizontal = Spacing.screen, vertical = 16.dp),
                                         )
+                                    } else if (content == ShelfContentState.Books) {
+                                        // A series container reaches up to 13 dp above its first row, so the cells keep clear of the chips.
+                                        Spacer(Modifier.height(HeaderToGridGap))
                                     }
                                     ShelfDetailHeaderBody(
                                         content = content,
