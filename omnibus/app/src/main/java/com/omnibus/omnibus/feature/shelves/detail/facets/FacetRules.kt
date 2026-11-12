@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.shelves.detail.facets
 
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.data.shelves.FilterField
 import com.omnibus.omnibus.data.shelves.FilterMode
@@ -69,4 +70,36 @@ fun toggleValue(picked: List<String>, value: String): List<String> {
         picked.size < MAX_FILTER_VALUES -> picked + value
         else -> picked
     }
+}
+
+/**
+ * The values of [field] that the shelf's [books] carry, each with how many of those books carry it: tags, genres,
+ * formats, authors (any credited creator, as the server matches) and series. Values that differ only in case are one
+ * option, labelled as first seen, and the options are in alphabetical order. A shelf facet is not read from books, so
+ * it has no options here.
+ */
+fun shelfFacetOptions(field: FilterField, books: List<Book>): List<FacetOption> {
+    val valuesOf: (Book) -> List<String> = when (field) {
+        FilterField.Tag -> { book -> book.subjects }
+        FilterField.Genre -> { book -> book.genres }
+        FilterField.Format -> { book -> book.formats }
+        FilterField.Author -> { book -> book.creators.map { it.name } }
+        FilterField.Series -> { book -> listOfNotNull(book.series) }
+        FilterField.Shelf -> return emptyList()
+    }
+    val counts = LinkedHashMap<String, Pair<String, Long>>()
+    books.forEach { book ->
+        valuesOf(book).map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.forEach { value ->
+            val key = value.lowercase()
+            val (label, count) = counts[key] ?: (value to 0L)
+            counts[key] = label to count + 1
+        }
+    }
+    return counts.map { (key, entry) ->
+        if (field == FilterField.Format) {
+            FacetOption(value = key, label = key.uppercase(), count = entry.second)
+        } else {
+            FacetOption(value = entry.first, label = entry.first, count = entry.second)
+        }
+    }.sortedBy { it.label.lowercase() }
 }

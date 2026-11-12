@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.feature.shelves.detail.facets
 
+import com.omnibus.omnibus.data.library.Creator
+import com.omnibus.omnibus.data.library.randomBook
 import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.data.shelves.FilterField
 import com.omnibus.omnibus.data.shelves.FilterMode
@@ -104,6 +106,66 @@ class FacetRulesTest : DescribeSpec({
             val full = List(MAX_FILTER_VALUES) { randomString() + "-$it" }
 
             toggleValue(full, "one more") shouldHaveSize MAX_FILTER_VALUES
+        }
+    }
+
+    describe("the options a shelf's books carry") {
+
+        fun book(
+            authors: List<String> = emptyList(),
+            series: String? = null,
+            genres: List<String> = emptyList(),
+            tags: List<String> = emptyList(),
+            formats: List<String> = emptyList(),
+        ) = randomBook().copy(
+            creators = authors.map { Creator(name = it, role = null, fileAs = null, id = null) },
+            series = series,
+            genres = genres,
+            subjects = tags,
+            formats = formats,
+        )
+
+        it("#232 TC-26: offers only the authors of the shelf's books, with how many books each has") {
+            val books = listOf(
+                book(authors = listOf("Le Guin")),
+                book(authors = listOf("Le Guin", "Pratchett")),
+            )
+
+            shelfFacetOptions(FilterField.Author, books) shouldBe listOf(
+                FacetOption("Le Guin", "Le Guin", 2),
+                FacetOption("Pratchett", "Pratchett", 1),
+            )
+        }
+
+        it("#232 TC-26: offers nothing for a shelf with no books or a facet its books don't carry") {
+            shelfFacetOptions(FilterField.Genre, emptyList()) shouldBe emptyList()
+            shelfFacetOptions(FilterField.Tag, listOf(book(authors = listOf("Le Guin")))) shouldBe emptyList()
+        }
+
+        it("#232 TC-26: merges values that differ only in case, and counts a book once") {
+            val books = listOf(
+                book(genres = listOf("Fantasy", "fantasy")),
+                book(genres = listOf("FANTASY", "Poetry")),
+            )
+
+            shelfFacetOptions(FilterField.Genre, books) shouldBe listOf(
+                FacetOption("Fantasy", "Fantasy", 2),
+                FacetOption("Poetry", "Poetry", 1),
+            )
+        }
+
+        it("#232 TC-26: offers series by name, and formats lower-cased with an upper-case label") {
+            val books = listOf(book(series = "Earthsea", formats = listOf("EPUB")), book(formats = listOf("epub", "m4b")))
+
+            shelfFacetOptions(FilterField.Series, books) shouldBe listOf(FacetOption("Earthsea", "Earthsea", 1))
+            shelfFacetOptions(FilterField.Format, books) shouldBe listOf(
+                FacetOption("epub", "EPUB", 2),
+                FacetOption("m4b", "M4B", 1),
+            )
+        }
+
+        it("#232 TC-26: leaves the shelf facet to the shelves read") {
+            shelfFacetOptions(FilterField.Shelf, listOf(book(authors = listOf("Le Guin")))) shouldBe emptyList()
         }
     }
 })

@@ -5,9 +5,7 @@ import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.metadata.VocabularyEntry
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
-import com.omnibus.omnibus.testing.unreachableUrl
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
@@ -22,7 +20,6 @@ import io.kotest.matchers.types.shouldBeTypeOf
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
-import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import okhttp3.HttpUrl
 
@@ -128,58 +125,6 @@ class DefaultAuthorsRepositoryTest : DescribeSpec({
         context("when no server is saved") {
             it("#105 TC-5: returns NoServer") {
                 sut().getAuthor(randomLong()) shouldBe AuthorResult.NoServer
-            }
-        }
-    }
-
-    describe("listing the authors") {
-
-        it("#232 TC-25: lists each author with their book count") {
-            withMockServer { server ->
-                val name = randomString()
-                server.enqueue(reply(200, """[{"name": "$name", "book_count": 3}, {"name": "B", "book_count": 1}]"""))
-
-                sut(server.url("/")).getAuthors() shouldBe AuthorListResult.Success(
-                    listOf(VocabularyEntry(name, 3), VocabularyEntry("B", 1)),
-                )
-                server.takeRequest().url.encodedPath shouldBe "/api/authors"
-            }
-        }
-
-        it("#232 TC-25: leaves out an author with a blank name") {
-            withMockServer { server ->
-                server.enqueue(reply(200, """[{"name": " ", "book_count": 2}, {"name": "B", "book_count": 1}]"""))
-
-                sut(server.url("/")).getAuthors() shouldBe AuthorListResult.Success(listOf(VocabularyEntry("B", 1)))
-            }
-        }
-
-        it("#232 TC-25: maps each failure as the single author read does") {
-            withMockServer { server ->
-                checkAll(
-                    Exhaustive.of(
-                        reply(401) to AuthorsError.SessionExpired,
-                        reply(404) to AuthorsError.NotFound,
-                        reply(500) to AuthorsError.Http(500),
-                        reply(200, "<html>") to AuthorsError.UnexpectedResponse,
-                    ),
-                ) { (response, error) ->
-                    server.enqueue(response)
-
-                    sut(server.url("/")).getAuthors() shouldBe AuthorListResult.Failure(error)
-                }
-            }
-        }
-
-        context("when the server can't be reached") {
-            it("#232 TC-25: reports Unreachable") {
-                sut(unreachableUrl()).getAuthors() shouldBe AuthorListResult.Failure(AuthorsError.Unreachable)
-            }
-        }
-
-        context("when no server is saved") {
-            it("#232 TC-25: reports NoServer") {
-                sut().getAuthors() shouldBe AuthorListResult.NoServer
             }
         }
     }

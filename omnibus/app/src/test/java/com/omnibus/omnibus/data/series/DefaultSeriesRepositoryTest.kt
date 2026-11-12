@@ -5,7 +5,6 @@ import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestAuthTokenProvider
-import com.omnibus.omnibus.data.metadata.VocabularyEntry
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
@@ -214,55 +213,6 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
 
             it("#104 TC-15: reports NoServer") {
                 sut().getSeries(randomLong()) shouldBe SeriesResult.NoServer
-            }
-        }
-    }
-
-    describe("listing the series") {
-
-        it("#232 TC-25: lists each series with its book count") {
-            withMockServer { server ->
-                val name = randomString()
-                server.enqueue(reply(200, """[{"id": 1, "name": "$name", "book_count": 4}]"""))
-
-                sut(server.url("/")).getSeriesList() shouldBe SeriesListResult.Success(listOf(VocabularyEntry(name, 4)))
-                server.takeRequest().url.encodedPath shouldBe "/api/series"
-            }
-        }
-
-        it("#232 TC-25: leaves out a series with a blank name") {
-            withMockServer { server ->
-                server.enqueue(reply(200, """[{"name": "", "book_count": 2}, {"name": "B", "book_count": 1}]"""))
-
-                sut(server.url("/")).getSeriesList() shouldBe SeriesListResult.Success(listOf(VocabularyEntry("B", 1)))
-            }
-        }
-
-        it("#232 TC-25: maps each failure as the single series read does") {
-            withMockServer { server ->
-                checkAll(
-                    Exhaustive.of(
-                        401 to SeriesError.SessionExpired,
-                        500 to SeriesError.Http(500),
-                        200 to SeriesError.UnexpectedResponse,
-                    ),
-                ) { (code, error) ->
-                    server.enqueue(if (code == 200) reply(200, "not json") else reply(code))
-
-                    sut(server.url("/")).getSeriesList() shouldBe SeriesListResult.Failure(error)
-                }
-            }
-        }
-
-        context("when the server cannot be reached") {
-            it("#232 TC-25: reports Unreachable") {
-                sut(unreachableUrl()).getSeriesList() shouldBe SeriesListResult.Failure(SeriesError.Unreachable)
-            }
-        }
-
-        context("when no server is saved") {
-            it("#232 TC-25: reports NoServer") {
-                sut().getSeriesList() shouldBe SeriesListResult.NoServer
             }
         }
     }

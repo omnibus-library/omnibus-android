@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.selection.toggleable
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.data.shelves.FilterField
 import com.omnibus.omnibus.data.shelves.FilterMode
@@ -82,19 +83,21 @@ internal object FacetSheetTestTags {
  * A facet's sheet: its options with counts, an Includes or Excludes choice, and Cancel or Apply. The options load when
  * the sheet opens; [onApply] reports the one clause the sheet built.
  *
+ * @param books The shelf's own books, which the tag, genre, format, author and series options are taken from.
  * @param initial The clause the facet already has, which seeds the sheet, or null when it is unset.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FacetSheet(
     field: FilterField,
+    books: List<Book>,
     initial: FilterClause?,
     onApply: (FilterClause) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val viewModel = hiltViewModel<FacetOptionsViewModel, FacetOptionsViewModel.Factory>(
         key = "facet-${field.wire}",
-        creationCallback = { it.create(field) },
+        creationCallback = { it.create(field, books) },
     )
     val state by viewModel.uiState.collectAsState()
     val palette = OmnibusTheme.palette

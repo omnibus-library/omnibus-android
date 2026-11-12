@@ -211,7 +211,13 @@ internal fun ShelfDetailContent(
     onApplyFacet: (FilterClause) -> Unit = {},
     onClearFacets: () -> Unit = {},
     facetSheet: @Composable (FilterField, FilterClause?, (FilterClause) -> Unit, () -> Unit) -> Unit = { field, initial, onApply, onDismiss ->
-        FacetSheet(field = field, initial = initial, onApply = onApply, onDismiss = onDismiss)
+        FacetSheet(
+            field = field,
+            books = uiState.unfilteredBooks.orEmpty(),
+            initial = initial,
+            onApply = onApply,
+            onDismiss = onDismiss,
+        )
     },
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
