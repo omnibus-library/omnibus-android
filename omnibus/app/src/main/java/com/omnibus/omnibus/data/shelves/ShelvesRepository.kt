@@ -1,6 +1,10 @@
 package com.omnibus.omnibus.data.shelves
 
+import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.data.library.Shelf
 import com.omnibus.omnibus.data.library.ShelfKind
+import com.omnibus.omnibus.data.library.ShelfVisibility
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Shelf reads and membership writes for the Add to shelf sheet. Each call is one request, answered
@@ -19,6 +23,97 @@ interface ShelvesRepository {
 
     /** Removes [bookUuid] from the hand-picked shelf [shelfId]. A book not on the shelf still succeeds. */
     suspend fun removeBook(shelfId: Long, bookUuid: String): ShelfWriteResult
+
+    /** The shelf [shelfId], cached first when this session has read it, then from the network. */
+    fun getShelfFlow(shelfId: Long): Flow<ShelfDetailResult>
+
+    /** The shelf [shelfId] read from the network only, for the editor, which must not seed from a cache. */
+    suspend fun getShelf(shelfId: Long): ShelfDetailResult
+
+    /**
+     * The books on the shelf [shelfId] that match [clauses] (all of them when empty), in the server's order.
+     * The unfiltered list is cached first when this session has read it; a filtered read is never cached.
+     */
+    fun getShelfBooksFlow(shelfId: Long, clauses: List<FilterClause>): Flow<ShelfBooksResult>
+
+    /** Sends the fields set in [update] to the shelf [shelfId]. */
+    suspend fun updateShelf(shelfId: Long, update: ShelfUpdate): ShelfWriteResult
+
+    /** Deletes the shelf [shelfId]. Its books stay in the library. */
+    suspend fun deleteShelf(shelfId: Long): ShelfWriteResult
+
+    /** How many books the rules [rules] match under [matchMode], as the editor's preview. */
+    suspend fun previewRules(matchMode: ShelfMatchMode, rules: List<ShelfRule>): RulePreviewResult
+}
+
+/**
+ * A shelf with the fields the detail and editor need beyond the summary.
+ *
+ * @property description The description, or null when blank.
+ * @property rules The match mode and rules; [ShelfRules.rules] is empty for a shelf that is not smart.
+ */
+data class ShelfDetail(
+    val shelf: Shelf,
+    val description: String?,
+    val rules: ShelfRules,
+)
+
+/**
+ * The fields of a shelf to change. A null field is left as it is on the server.
+ *
+ * @property rules Sent only together with [matchMode].
+ */
+data class ShelfUpdate(
+    val name: String? = null,
+    val description: String? = null,
+    val visibility: ShelfVisibility? = null,
+    val matchMode: ShelfMatchMode? = null,
+    val rules: List<ShelfRule>? = null,
+)
+
+/** How many books a set of rules matches, out of all the books in the library. */
+data class RuleMatchCount(val matched: Long, val total: Long)
+
+/** The outcome of [ShelvesRepository.getShelfFlow] and [ShelvesRepository.getShelf]. */
+sealed interface ShelfDetailResult {
+
+    data class Success(val detail: ShelfDetail) : ShelfDetailResult
+
+    /** The server answered 404: the shelf was deleted, or it is not visible to this user any more. */
+    data object Gone : ShelfDetailResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : ShelfDetailResult
+
+    /** [error] is why the read failed. */
+    data class Failure(val error: ShelvesError) : ShelfDetailResult
+}
+
+/** The outcome of [ShelvesRepository.getShelfBooksFlow]. */
+sealed interface ShelfBooksResult {
+
+    data class Success(val books: List<Book>) : ShelfBooksResult
+
+    /** The server answered 404: the shelf was deleted, or it is not visible to this user any more. */
+    data object Gone : ShelfBooksResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : ShelfBooksResult
+
+    /** [error] is why the read failed. */
+    data class Failure(val error: ShelvesError) : ShelfBooksResult
+}
+
+/** The outcome of [ShelvesRepository.previewRules]. */
+sealed interface RulePreviewResult {
+
+    data class Success(val count: RuleMatchCount) : RulePreviewResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : RulePreviewResult
+
+    /** [error] is why the preview failed. */
+    data class Failure(val error: ShelvesError) : RulePreviewResult
 }
 
 /**
@@ -72,6 +167,18 @@ data class ShelfRule(
     val op: ShelfRuleOp?,
     val value: String,
 )
+
+/** The ops a rule on this field accepts, in the order the editor lists them. */
+val ShelfRuleField.acceptedOps: List<ShelfRuleOp>
+    get() = when (this) {
+        ShelfRuleField.Tag, ShelfRuleField.Genre, ShelfRuleField.Author, ShelfRuleField.Series ->
+            listOf(ShelfRuleOp.Is, ShelfRuleOp.IsNot, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
+        ShelfRuleField.Rating, ShelfRuleField.Year -> listOf(ShelfRuleOp.Is, ShelfRuleOp.Gte)
+        ShelfRuleField.Status -> listOf(ShelfRuleOp.Is)
+        ShelfRuleField.Format -> listOf(ShelfRuleOp.Includes, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
+        ShelfRuleField.DateAdded, ShelfRuleField.DateUpdated ->
+            listOf(ShelfRuleOp.InLast, ShelfRuleOp.Between, ShelfRuleOp.Before, ShelfRuleOp.After)
+    }
 
 /** The fields a smart shelf rule can test. [wire] is the token the server uses. */
 enum class ShelfRuleField(val wire: String) {

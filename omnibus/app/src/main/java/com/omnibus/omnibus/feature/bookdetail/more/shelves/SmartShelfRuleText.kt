@@ -9,6 +9,7 @@ import com.omnibus.omnibus.data.shelves.ShelfRule
 import com.omnibus.omnibus.data.shelves.ShelfRuleField
 import com.omnibus.omnibus.data.shelves.ShelfRuleOp
 import com.omnibus.omnibus.data.shelves.ShelfRules
+import com.omnibus.omnibus.data.shelves.acceptedOps
 
 /**
  * The localized words a smart shelf's rule text is built from. [rememberRuleWords] loads them from
@@ -56,7 +57,7 @@ internal fun smartShelfRuleText(rules: ShelfRules, words: RuleWords): String? {
 private fun clauseOf(rule: ShelfRule, words: RuleWords): String? {
     val field = rule.field ?: return null
     val op = rule.op ?: return null
-    if (op !in validOps(field)) return null
+    if (op !in field.acceptedOps) return null
     val value = rule.value.trim()
     if (value.isBlank()) return null
 
@@ -79,17 +80,6 @@ private fun clauseOf(rule: ShelfRule, words: RuleWords): String? {
         else -> words.op(op, value)
     }
     return words.clause(words.field(field), opPhrase)
-}
-
-/** The ops the server accepts for [field], as its `RuleField::accepts` table lists them. */
-private fun validOps(field: ShelfRuleField): Set<ShelfRuleOp> = when (field) {
-    ShelfRuleField.Tag, ShelfRuleField.Genre, ShelfRuleField.Author, ShelfRuleField.Series ->
-        setOf(ShelfRuleOp.Is, ShelfRuleOp.IsNot, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
-    ShelfRuleField.Rating, ShelfRuleField.Year -> setOf(ShelfRuleOp.Is, ShelfRuleOp.Gte)
-    ShelfRuleField.Status -> setOf(ShelfRuleOp.Is)
-    ShelfRuleField.Format -> setOf(ShelfRuleOp.Includes, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
-    ShelfRuleField.DateAdded, ShelfRuleField.DateUpdated ->
-        setOf(ShelfRuleOp.InLast, ShelfRuleOp.Between, ShelfRuleOp.Before, ShelfRuleOp.After)
 }
 
 /** The [RuleWords] for the current locale, remembered for the resources they come from. */
