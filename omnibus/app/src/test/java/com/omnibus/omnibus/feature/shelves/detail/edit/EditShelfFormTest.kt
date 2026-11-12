@@ -94,7 +94,8 @@ class EditShelfFormTest : DescribeSpec({
             val status = EditableRule(1, ShelfRuleField.Status, ShelfRuleOp.Is, "reading")
 
             status.withField(ShelfRuleField.Rating).value shouldBe ""
-            EditableRule(1, ShelfRuleField.Tag, ShelfRuleOp.Is, "reading").withField(ShelfRuleField.Status).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Tag, ShelfRuleOp.Is, "mood").withField(ShelfRuleField.Status).value shouldBe ""
+            EditableRule(1, ShelfRuleField.Tag, ShelfRuleOp.Is, "Reading").withField(ShelfRuleField.Status).value shouldBe "reading"
             EditableRule(1, ShelfRuleField.Rating, ShelfRuleOp.Is, "4").withField(ShelfRuleField.Rating).value shouldBe "4"
         }
 
