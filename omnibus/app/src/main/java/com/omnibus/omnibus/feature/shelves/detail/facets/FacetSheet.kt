@@ -78,9 +78,6 @@ internal object FacetSheetTestTags {
     fun option(value: String) = "facet-sheet-option-$value"
 }
 
-/** The sheet's background, as the Add to shelf sheet draws it. */
-private val SheetContainer = Color(0xFF15120F)
-
 /**
  * A facet's sheet: its options with counts, an Includes or Excludes choice, and Cancel or Apply. The options load when
  * the sheet opens; [onApply] reports the one clause the sheet built.
@@ -109,7 +106,7 @@ internal fun FacetSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        containerColor = SheetContainer,
+        containerColor = palette.bg0,
         contentColor = palette.ink0,
         tonalElevation = 0.dp,
         scrimColor = Color.Black.copy(alpha = 0.55f),
