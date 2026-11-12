@@ -5,9 +5,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -17,8 +24,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.assert
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.Book
@@ -31,6 +36,9 @@ import com.omnibus.omnibus.data.shelves.ShelfMatchMode
 import com.omnibus.omnibus.data.shelves.ShelfRule
 import com.omnibus.omnibus.data.shelves.ShelfRuleField
 import com.omnibus.omnibus.data.shelves.ShelfRuleOp
+import com.omnibus.omnibus.data.shelves.FilterClause
+import com.omnibus.omnibus.data.shelves.FilterField
+import com.omnibus.omnibus.data.shelves.FilterMode
 import com.omnibus.omnibus.data.shelves.ShelfRules
 import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.feature.library.ui.LibraryTestTags
@@ -39,6 +47,7 @@ import com.omnibus.omnibus.feature.shelves.detail.ShelfViewer
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -161,6 +170,7 @@ class ShelfDetailScreenTest {
         onOpenBook: (String) -> Unit = {},
         onUnfoldSeries: (Long) -> Unit = {},
         onAddBooks: () -> Unit = {},
+        onClearFacets: () -> Unit = {},
         reducedMotion: Boolean = false,
     ) {
         rule.setContent {
@@ -177,6 +187,7 @@ class ShelfDetailScreenTest {
                         onFoldUpSeries = {},
                         onTransientErrorShown = {},
                         onAddBooks = onAddBooks,
+                        onClearFacets = onClearFacets,
                         gridState = rememberLazyGridState(),
                         reducedMotion = reducedMotion,
                     )
@@ -241,6 +252,86 @@ class ShelfDetailScreenTest {
                 .assertPresent()
             rule.onNodeWithTag(ShelfDetailTestTags.HERO_NAME).assertPresent()
         }
+    }
+
+    @Test
+    fun issue232_tc27_theFacetRowShowsTheSetFacetFirstWithItsValue() {
+        val genre = FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))).copy(clauses = listOf(genre)))
+        rule.waitForIdle()
+        revealFacetRow()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Genre))
+            .assert(hasContentDescriptionExactly("Genre filter, Fantasy"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Tag))
+            .assert(hasContentDescriptionExactly("Tag filter"))
+        val genreX = rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Genre)).fetchSemanticsNode().positionInRoot.x
+        val tagX = rule.onNodeWithTag(ShelfDetailTestTags.facet(FilterField.Tag)).fetchSemanticsNode().positionInRoot.x
+        assertTrue(genreX < tagX)
+    }
+
+    @Test
+    fun issue232_tc27_theClearChipRemovesEveryFacet() {
+        val genre = FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))
+        var cleared = 0
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))).copy(clauses = listOf(genre)), onClearFacets = { cleared++ })
+        rule.waitForIdle()
+        revealFacetRow()
+
+        rule.onNodeWithTag(ShelfDetailTestTags.CLEAR_FACETS)
+            .assert(hasContentDescriptionExactly("Clear all filters"))
+            .performClick()
+
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun issue232_tc27_theFacetRowHasNoClearChipWithoutAFilter() {
+        setScreen(uiState = stateWith(books = listOf(plainBook(0))))
+        rule.waitForIdle()
+        revealFacetRow()
+
+        rule.onAllNodesWithTag(ShelfDetailTestTags.CLEAR_FACETS).assertCountEquals(0)
+    }
+
+    @Test
+    fun issue232_tc29_aFilterThatMatchesNothingShowsFilteredNoMatchesWithTheCountLine() {
+        val genre = FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))
+        var cleared = 0
+        setScreen(
+            uiState = stateWith(shelf = shelfOf(ShelfKind.Manual, ShelfVisibility.Private, bookCount = 14L), books = emptyList())
+                .copy(clauses = listOf(genre)),
+            onClearFacets = { cleared++ },
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithText("No matches").assertPresent()
+        rule.onNodeWithText("Nothing here matches these filters.").assertPresent()
+        rule.onNodeWithTag(ShelfDetailTestTags.COUNT_LINE).assertTextEquals("0 OF 14 BOOKS")
+        rule.onNodeWithText("Clear filters").performClick()
+
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun issue232_tc29_anUnreachableFilterSaysToClearItToBrowseTheDevice() {
+        val genre = FilterClause(FilterField.Genre, FilterMode.Include, listOf("Fantasy"))
+        setScreen(
+            uiState = stateWith(books = null).copy(clauses = listOf(genre), pageError = ShelvesError.Unreachable),
+        )
+        rule.waitForIdle()
+
+        rule.onNodeWithText("Can't apply these filters").assertPresent()
+        rule.onNodeWithText(
+            "Filters need a connection to the server. Clear them to browse what's on this device.",
+        ).assertPresent()
+        rule.onNodeWithText("Clear filters").assertPresent()
+    }
+
+    /** Scrolls the grid to the facet row, then the row to the first chip or the Clear chip in it. */
+    private fun revealFacetRow() {
+        rule.onNodeWithTag(ShelfDetailTestTags.GRID).performScrollToNode(hasTestTag(ShelfDetailTestTags.FACET_ROW))
     }
 
     private fun stateWith(

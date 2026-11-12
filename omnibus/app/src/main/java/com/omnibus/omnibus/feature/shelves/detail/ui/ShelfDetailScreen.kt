@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,7 +59,10 @@ import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ui.BookGrid
+import com.omnibus.omnibus.data.shelves.FilterClause
 import com.omnibus.omnibus.feature.shelves.detail.ShelfContentState
+import com.omnibus.omnibus.feature.shelves.detail.facets.FacetRow
+import com.omnibus.omnibus.feature.shelves.detail.facets.FacetSheet
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailScreenState
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailUIState
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailViewModel
@@ -164,12 +170,18 @@ internal fun ShelfDetailContent(
     onTransientErrorShown: () -> Unit,
     modifier: Modifier = Modifier,
     onAddBooks: () -> Unit = {},
+    onApplyFacet: (FilterClause) -> Unit = {},
+    onClearFacets: () -> Unit = {},
+    facetSheet: @Composable (FilterField, FilterClause?, (FilterClause) -> Unit, () -> Unit) -> Unit = { field, initial, onApply, onDismiss ->
+        FacetSheet(field = field, initial = initial, onApply = onApply, onDismiss = onDismiss)
+    },
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val palette = OmnibusTheme.palette
     val scope = rememberCoroutineScope()
+    var openFacet by rememberSaveable { mutableStateOf<FilterField?>(null) }
     val screen = uiState.screen
     val identity = uiState.identity
 
@@ -277,11 +289,30 @@ internal fun ShelfDetailContent(
                                         onNamePositioned = { nameCoords = it },
                                         modifier = Modifier.padding(top = HeroTop),
                                     )
+                                    if (uiState.showsFacets) {
+                                        Spacer(Modifier.height(24.dp))
+                                        FacetRow(
+                                            clauses = uiState.clauses,
+                                            shelfNames = uiState.shelfNames,
+                                            onOpenFacet = { openFacet = it },
+                                            onClearFacets = onClearFacets,
+                                        )
+                                    }
+                                    if (uiState.clauses.isNotEmpty() &&
+                                        (content == ShelfContentState.Books || content == ShelfContentState.FilteredEmpty)
+                                    ) {
+                                        CountLine(
+                                            count = uiState.books.orEmpty().size,
+                                            total = shelf.bookCount,
+                                            modifier = Modifier.padding(horizontal = Spacing.screen, vertical = 16.dp),
+                                        )
+                                    }
                                     ShelfDetailHeaderBody(
                                         content = content,
                                         canAddBooks = uiState.actions.canAddBooks,
                                         onRetry = onRetry,
                                         onAddBooks = onAddBooks,
+                                        onClearFacets = onClearFacets,
                                     )
                                 }
                             },
@@ -289,6 +320,18 @@ internal fun ShelfDetailContent(
                     }
                 }
             }
+        }
+
+        openFacet?.let { field ->
+            facetSheet(
+                field,
+                uiState.clauses.firstOrNull { it.field == field },
+                { clause ->
+                    onApplyFacet(clause)
+                    openFacet = null
+                },
+                { openFacet = null },
+            )
         }
 
         SnackbarHost(
@@ -308,6 +351,7 @@ private fun ShelfDetailHeaderBody(
     canAddBooks: Boolean,
     onRetry: () -> Unit,
     onAddBooks: () -> Unit,
+    onClearFacets: () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
     when (content) {
@@ -318,6 +362,14 @@ private fun ShelfDetailHeaderBody(
         )
 
         is ShelfContentState.Unreachable -> ShelfUnreachableMessage(count = content.count)
+
+        ShelfContentState.FilteredEmpty -> ShelfFilteredEmptyMessage(onClearFacets = onClearFacets)
+
+        is ShelfContentState.FilterFailed -> ShelfFilterFailedMessage(
+            unreachable = content.unreachable,
+            error = content.error,
+            onClearFacets = onClearFacets,
+        )
 
         ShelfContentState.Loading -> Box(
             Modifier.fillMaxWidth().padding(top = 26.dp),
@@ -338,7 +390,6 @@ private fun ShelfDetailHeaderBody(
             modifier = Modifier.heightIn(min = 320.dp),
         )
 
-        // The filter states come with the facets.
         else -> Unit
     }
 }

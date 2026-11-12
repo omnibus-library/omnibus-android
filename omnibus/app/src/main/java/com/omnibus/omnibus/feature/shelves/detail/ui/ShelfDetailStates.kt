@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.library.ShelfKind
+import com.omnibus.omnibus.data.shelves.ShelvesError
 import com.omnibus.omnibus.ui.components.StateActionButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -131,6 +132,50 @@ internal fun ShelfUnreachableMessage(count: Long, modifier: Modifier = Modifier)
         title = stringResource(R.string.shelf_detail_unreachable_title),
         message = pluralStringResource(R.plurals.shelf_detail_unreachable_message, n, n),
         modifier = modifier,
+    )
+}
+
+/** A filter that matches no books: the shelf's page is empty under the facets. */
+@Composable
+internal fun ShelfFilteredEmptyMessage(onClearFacets: () -> Unit, modifier: Modifier = Modifier) {
+    ShelfMessage(
+        kicker = stringResource(R.string.shelf_detail_filtered_kicker),
+        title = stringResource(R.string.shelf_detail_filtered_empty_title),
+        message = stringResource(R.string.shelf_detail_filtered_empty_message),
+        modifier = modifier,
+        action = { StateActionButton(label = stringResource(R.string.shelf_detail_clear_filters), onClick = onClearFacets) },
+    )
+}
+
+/** A filter the page could not apply: the connection copy when unreachable, else the failure's own text. */
+@Composable
+internal fun ShelfFilterFailedMessage(
+    unreachable: Boolean,
+    error: ShelvesError?,
+    onClearFacets: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ShelfMessage(
+        kicker = stringResource(R.string.shelf_detail_filtered_kicker),
+        title = stringResource(R.string.shelf_detail_filter_failed_title),
+        message = if (unreachable) {
+            stringResource(R.string.shelf_detail_filter_unreachable_message)
+        } else {
+            shelfErrorText(error)
+        },
+        modifier = modifier,
+        action = { StateActionButton(label = stringResource(R.string.shelf_detail_clear_filters), onClick = onClearFacets) },
+    )
+}
+
+/** The count line over a filtered page: "N of M books", where M is the shelf's book count. */
+@Composable
+internal fun CountLine(count: Int, total: Long, modifier: Modifier = Modifier) {
+    val palette = OmnibusTheme.palette
+    Text(
+        text = stringResource(R.string.shelf_detail_count_line, count, total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).uppercase(),
+        style = monoTextStyle(10.sp, palette.ink3).copy(letterSpacing = 0.8.sp),
+        modifier = modifier.testTag(ShelfDetailTestTags.COUNT_LINE),
     )
 }
 

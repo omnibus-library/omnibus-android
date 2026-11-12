@@ -29,4 +29,39 @@
     <string name="shelf_detail_gone_title">This shelf is gone</string>
     <string name="shelf_detail_gone_message">It was deleted, or its owner stopped sharing it.</string>
     <string name="shelf_detail_gone_back">Back to shelves</string>
+    <!-- The facet row and its sheet: each field's name, its plural noun for an error, and the sheet's own copy. -->
+    <string name="shelf_detail_facet_shelf">Shelf</string>
+    <string name="shelf_detail_facet_tag">Tag</string>
+    <string name="shelf_detail_facet_genre">Genre</string>
+    <string name="shelf_detail_facet_author">Author</string>
+    <string name="shelf_detail_facet_series">Series</string>
+    <string name="shelf_detail_facet_format">Format</string>
+    <string name="shelf_detail_facet_plural_shelf">shelves</string>
+    <string name="shelf_detail_facet_plural_tag">tags</string>
+    <string name="shelf_detail_facet_plural_genre">genres</string>
+    <string name="shelf_detail_facet_plural_author">authors</string>
+    <string name="shelf_detail_facet_plural_series">series</string>
+    <string name="shelf_detail_facet_plural_format">formats</string>
+    <string name="shelf_detail_facet_error">Couldn\'t load %1$s</string>
+    <string name="shelf_detail_facet_error_detail">Check your connection and try again.</string>
+    <string name="shelf_detail_facet_retry">Try again</string>
+    <string name="shelf_detail_facet_includes">Includes any</string>
+    <string name="shelf_detail_facet_excludes">Excludes any</string>
+    <string name="shelf_detail_facet_apply">Apply</string>
+    <string name="shelf_detail_facet_cancel">Cancel</string>
+    <string name="shelf_detail_facet_close">Close</string>
+    <string name="shelf_detail_facet_not">not </string>
+    <string name="shelf_detail_facet_more"> +%1$d</string>
+    <string name="shelf_detail_facet_unavailable">unavailable shelf</string>
+    <string name="shelf_detail_facet_clear">Clear</string>
+    <string name="shelf_detail_facet_clear_all">Clear all filters</string>
+    <string name="shelf_detail_facet_a11y">%1$s filter</string>
+    <string name="shelf_detail_clear_filters">Clear filters</string>
+    <string name="shelf_detail_count_line">%1$d of %2$d books</string>
+    <!-- The two filtered states: a filter that matches nothing, and a filter the page could not apply. -->
+    <string name="shelf_detail_filtered_kicker">Filtered</string>
+    <string name="shelf_detail_filtered_empty_title">No matches</string>
+    <string name="shelf_detail_filtered_empty_message">Nothing here matches these filters.</string>
+    <string name="shelf_detail_filter_failed_title">Can\'t apply these filters</string>
+    <string name="shelf_detail_filter_unreachable_message">Filters need a connection to the server. Clear them to browse what\'s on this device.</string>
 </resources>
