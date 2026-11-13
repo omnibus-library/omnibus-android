@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/omnibus-library/omnibus-android/compare/v0.1.10...v0.1.11) (2026-11-13)
+
+
+### Features
+
+* **shelves:** open a shelf from the rail ([#280](https://github.com/omnibus-library/omnibus-android/issues/280)) ([1a1eb3d](https://github.com/omnibus-library/omnibus-android/commit/1a1eb3de0e705bdd59fbb1ac102b8e49fe0875e8))
+
 ## [0.1.10](https://github.com/omnibus-library/omnibus-android/compare/v0.1.9...v0.1.10) (2026-11-10)
 
 
