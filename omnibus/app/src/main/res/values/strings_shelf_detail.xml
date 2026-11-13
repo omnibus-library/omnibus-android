@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The shelf detail screen's loading label, and the kicker above a smart shelf's rules. -->
+    <string name="shelf_detail_loading">Loading shelf</string>
+    <string name="shelf_detail_matches_all">Matches all of</string>
+    <string name="shelf_detail_matches_any">Matches any of</string>
+    <!-- The top bar's Add books action, and the placeholder it opens until the Add books ticket lands. -->
+    <string name="shelf_detail_add_books">Add books</string>
+    <string name="shelf_detail_add_books_description">Add books to this shelf</string>
+    <!-- The empty states: a hand-picked shelf, a smart shelf whose rules match nothing, and the wishlist. -->
+    <string name="shelf_detail_empty_kicker">Empty shelf</string>
+    <string name="shelf_detail_empty_title">Nothing on this shelf</string>
+    <string name="shelf_detail_empty_message">Pick books out of your library and they gather here, in the order you add them.</string>
+    <string name="shelf_detail_no_matches_kicker">No matches</string>
+    <string name="shelf_detail_no_matches_title">Nothing matches yet</string>
+    <string name="shelf_detail_no_matches_message">This shelf fills itself from its rules. Nothing in the library meets them right now.</string>
+    <string name="shelf_detail_wishlist_kicker">Wishlist</string>
+    <string name="shelf_detail_wishlist_title">Nothing on the wishlist</string>
+    <string name="shelf_detail_wishlist_message">Check in a book you don\'t own yet and it waits here until a copy arrives.</string>
+    <!-- The books are on the server but have not reached this device. The count is the shelf's book count. -->
+    <string name="shelf_detail_unreachable_kicker">Off the network</string>
+    <string name="shelf_detail_unreachable_title">Not here yet</string>
+    <plurals name="shelf_detail_unreachable_message">
+        <item quantity="one">This shelf holds one book, but it hasn\'t reached this device. It\'ll appear the next time you\'re online.</item>
+        <item quantity="other">This shelf holds %d books, but they haven\'t reached this device. They\'ll appear the next time you\'re online.</item>
+    </plurals>
+    <!-- The full-screen state for a shelf that was deleted or whose owner stopped sharing it. -->
+    <string name="shelf_detail_gone_kicker">Shelf</string>
+    <string name="shelf_detail_gone_title">This shelf is gone</string>
+    <string name="shelf_detail_gone_message">It was deleted, or its owner stopped sharing it.</string>
+    <string name="shelf_detail_gone_back">Back to shelves</string>
+    <!-- The facet row and its sheet: each field's name, its plural noun for an error, and the sheet's own copy. -->
+    <string name="shelf_detail_facet_shelf">Shelf</string>
+    <string name="shelf_detail_facet_tag">Tag</string>
+    <string name="shelf_detail_facet_genre">Genre</string>
+    <string name="shelf_detail_facet_author">Author</string>
+    <string name="shelf_detail_facet_series">Series</string>
+    <string name="shelf_detail_facet_format">Format</string>
+    <string name="shelf_detail_facet_plural_shelf">shelves</string>
+    <string name="shelf_detail_facet_plural_tag">tags</string>
+    <string name="shelf_detail_facet_plural_genre">genres</string>
+    <string name="shelf_detail_facet_plural_author">authors</string>
+    <string name="shelf_detail_facet_plural_series">series</string>
+    <string name="shelf_detail_facet_plural_format">formats</string>
+    <string name="shelf_detail_facet_error">Couldn\'t load %1$s</string>
+    <string name="shelf_detail_facet_error_detail">Check your connection and try again.</string>
+    <string name="shelf_detail_facet_retry">Try again</string>
+    <string name="shelf_detail_facet_includes">Includes any</string>
+    <string name="shelf_detail_facet_excludes">Excludes any</string>
+    <string name="shelf_detail_facet_apply">Apply</string>
+    <string name="shelf_detail_facet_cancel">Cancel</string>
+    <string name="shelf_detail_facet_close">Close</string>
+    <string name="shelf_detail_facet_not">not </string>
+    <string name="shelf_detail_facet_more"> +%1$d</string>
+    <string name="shelf_detail_facet_unavailable">unavailable shelf</string>
+    <string name="shelf_detail_facet_clear">Clear</string>
+    <string name="shelf_detail_facet_clear_all">Clear all filters</string>
+    <string name="shelf_detail_facet_a11y">%1$s filter</string>
+    <string name="shelf_detail_clear_filters">Clear filters</string>
+    <string name="shelf_detail_count_line">%1$d of %2$d books</string>
+    <!-- The two filtered states: a filter that matches nothing, and a filter the page could not apply. -->
+    <string name="shelf_detail_filtered_kicker">Filtered</string>
+    <string name="shelf_detail_filtered_empty_title">No matches</string>
+    <string name="shelf_detail_filtered_empty_message">Nothing here matches these filters.</string>
+    <string name="shelf_detail_filter_failed_title">Can\'t apply these filters</string>
+    <string name="shelf_detail_filter_unreachable_message">Filters need a connection to the server. Clear them to browse what\'s on this device.</string>
+    <!-- The edit shelf form: its bar, fields, visibility, conditions, the count, and its errors. -->
+    <string name="shelf_edit_title">Edit shelf</string>
+    <string name="shelf_edit_close">Close</string>
+    <string name="shelf_edit_save">Save</string>
+    <string name="shelf_edit_cancel">Cancel</string>
+    <string name="shelf_edit_name">Name</string>
+    <string name="shelf_edit_description">Description (optional)</string>
+    <string name="shelf_edit_visibility">Visibility</string>
+    <string name="shelf_edit_private">Private</string>
+    <string name="shelf_edit_public">Public</string>
+    <string name="shelf_edit_private_helper">Only you can see this shelf.</string>
+    <string name="shelf_edit_public_helper">Every reader on this server can see it.</string>
+    <string name="shelf_edit_conditions">Conditions</string>
+    <string name="shelf_edit_match_all">Match all</string>
+    <string name="shelf_edit_match_any">Match any</string>
+    <string name="shelf_edit_add_condition">Add condition</string>
+    <string name="shelf_edit_remove_condition">Remove condition</string>
+    <string name="shelf_edit_field_description">Condition field, %1$s</string>
+    <string name="shelf_edit_op_description">Condition operator, %1$s</string>
+    <string name="shelf_edit_value">Value</string>
+    <string name="shelf_edit_match_count">%1$d of %2$d books match</string>
+    <string name="shelf_edit_offline">You\'re offline. Shelves are saved on the server, so this can wait.</string>
+    <string name="shelf_edit_error_name_taken">You already have a shelf with that name.</string>
+    <string name="shelf_edit_error_generic">Couldn\'t save the shelf. Try again.</string>
+    <string name="shelf_edit_op_is">is</string>
+    <string name="shelf_edit_op_is_not">is not</string>
+    <string name="shelf_edit_op_contains">contains</string>
+    <string name="shelf_edit_op_starts_with">starts with</string>
+    <string name="shelf_edit_op_gte">is at least</string>
+    <string name="shelf_edit_op_includes">includes</string>
+    <string name="shelf_edit_op_in_last">in the last</string>
+    <string name="shelf_edit_op_between">between</string>
+    <string name="shelf_edit_op_before">before</string>
+    <string name="shelf_edit_op_after">after</string>
+    <string name="shelf_detail_edit_description">Edit this shelf</string>
+    <!-- Deleting the shelf: the overflow menu, the confirmation's title and body by book count, and its buttons. -->
+    <string name="shelf_detail_more">More options</string>
+    <string name="shelf_detail_delete_menu">Delete shelf</string>
+    <string name="shelf_detail_delete_title">Delete \u201c%1$s\u201d?</string>
+    <string name="shelf_detail_delete_empty">The shelf is empty. This can\'t be undone.</string>
+    <string name="shelf_detail_delete_one">The book on it stays in your library. This can\'t be undone.</string>
+    <plurals name="shelf_detail_delete_many">
+        <item quantity="other">Its %d books stay in your library. This can\'t be undone.</item>
+    </plurals>
+    <string name="shelf_detail_delete_cancel">Cancel</string>
+    <string name="shelf_detail_delete_confirm">Delete</string>
+    <!-- The long-press menu on a book of a hand-picked shelf the viewer may edit. -->
+    <string name="shelf_detail_open_book">Open book</string>
+    <string name="shelf_detail_remove_book">Remove from shelf</string>
+</resources>

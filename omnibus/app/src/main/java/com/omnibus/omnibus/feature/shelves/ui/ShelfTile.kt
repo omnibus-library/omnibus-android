@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -46,6 +47,8 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -97,7 +100,12 @@ private const val LEDGE_CAPACITY = 4
  * @param ownerLabel What the foot calls the owner: "You", or their name.
  */
 @Composable
-internal fun ShelfTile(preview: ShelfPreview, ownerLabel: String, modifier: Modifier = Modifier) {
+internal fun ShelfTile(
+    preview: ShelfPreview,
+    ownerLabel: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
     val shelf = preview.shelf
     val palette = OmnibusTheme.palette
     val tint = remember(shelf.accent, palette.accent) {
@@ -116,9 +124,11 @@ internal fun ShelfTile(preview: ShelfPreview, ownerLabel: String, modifier: Modi
             .clip(TileShape)
             .background(palette.bg1)
             .border(1.dp, palette.line2, TileShape)
+            .clickable(role = Role.Button, onClick = onClick)
             .clearAndSetSemantics {
                 this[SemanticsProperties.TestTag] = ShelfTileTestTags.tile(shelf.id)
                 contentDescription = description
+                role = Role.Button
             },
     ) {
         ShelfLedge(preview, tint)
@@ -386,14 +396,14 @@ private fun bookCountText(count: Long): String {
 }
 
 @StringRes
-private fun kindLabelRes(kind: ShelfKind): Int = when (kind) {
+internal fun kindLabelRes(kind: ShelfKind): Int = when (kind) {
     ShelfKind.Manual -> R.string.shelves_kind_manual
     ShelfKind.Smart -> R.string.shelves_kind_smart
     ShelfKind.Wishlist -> R.string.shelves_kind_wishlist
 }
 
 @StringRes
-private fun visibilityLabelRes(visibility: ShelfVisibility): Int = when (visibility) {
+internal fun visibilityLabelRes(visibility: ShelfVisibility): Int = when (visibility) {
     ShelfVisibility.Private -> R.string.shelves_visibility_private
     ShelfVisibility.Public -> R.string.shelves_visibility_public
 }
@@ -406,7 +416,7 @@ private fun emptyLedgeRes(kind: ShelfKind): Int = when (kind) {
 }
 
 @DrawableRes
-private fun visibilityGlyph(visibility: ShelfVisibility): Int = when (visibility) {
+internal fun visibilityGlyph(visibility: ShelfVisibility): Int = when (visibility) {
     ShelfVisibility.Private -> R.drawable.ic_shelf_private
     ShelfVisibility.Public -> R.drawable.ic_shelf_public
 }

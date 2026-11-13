@@ -9,6 +9,8 @@ import com.omnibus.omnibus.data.shelves.ShelfRule
 import com.omnibus.omnibus.data.shelves.ShelfRuleField
 import com.omnibus.omnibus.data.shelves.ShelfRuleOp
 import com.omnibus.omnibus.data.shelves.ShelfRules
+import com.omnibus.omnibus.data.shelves.acceptedOps
+import java.util.Locale
 
 /**
  * The localized words a smart shelf's rule text is built from. [rememberRuleWords] loads them from
@@ -56,7 +58,7 @@ internal fun smartShelfRuleText(rules: ShelfRules, words: RuleWords): String? {
 private fun clauseOf(rule: ShelfRule, words: RuleWords): String? {
     val field = rule.field ?: return null
     val op = rule.op ?: return null
-    if (op !in validOps(field)) return null
+    if (op !in field.acceptedOps) return null
     val value = rule.value.trim()
     if (value.isBlank()) return null
 
@@ -81,16 +83,13 @@ private fun clauseOf(rule: ShelfRule, words: RuleWords): String? {
     return words.clause(words.field(field), opPhrase)
 }
 
-/** The ops the server accepts for [field], as its `RuleField::accepts` table lists them. */
-private fun validOps(field: ShelfRuleField): Set<ShelfRuleOp> = when (field) {
-    ShelfRuleField.Tag, ShelfRuleField.Genre, ShelfRuleField.Author, ShelfRuleField.Series ->
-        setOf(ShelfRuleOp.Is, ShelfRuleOp.IsNot, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
-    ShelfRuleField.Rating, ShelfRuleField.Year -> setOf(ShelfRuleOp.Is, ShelfRuleOp.Gte)
-    ShelfRuleField.Status -> setOf(ShelfRuleOp.Is)
-    ShelfRuleField.Format -> setOf(ShelfRuleOp.Includes, ShelfRuleOp.Contains, ShelfRuleOp.StartsWith)
-    ShelfRuleField.DateAdded, ShelfRuleField.DateUpdated ->
-        setOf(ShelfRuleOp.InLast, ShelfRuleOp.Between, ShelfRuleOp.Before, ShelfRuleOp.After)
-}
+/**
+ * One rule as a chip on a shelf: its clause with the first letter capitalised, or its raw tokens when the rule
+ * can't be phrased, so a rule the app can't read still shows what it tests.
+ */
+internal fun smartShelfRuleChip(rule: ShelfRule, words: RuleWords, locale: Locale): String =
+    clauseOf(rule, words)?.replaceFirstChar { it.titlecase(locale) }
+        ?: "${rule.field?.wire ?: "?"} ${rule.op?.wire ?: "?"} ${rule.value}"
 
 /** The [RuleWords] for the current locale, remembered for the resources they come from. */
 @Composable

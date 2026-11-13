@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
@@ -53,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Shelf
@@ -72,6 +76,7 @@ import com.omnibus.omnibus.ui.components.coverShadow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
+import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
 
 /** Test tags for [ShelvesRail] and its cards. */
@@ -108,9 +113,10 @@ private val RailFadeWidth = 40.dp
 /**
  * The Library's Shelves section: a heading over a row of [ShelfCard]s, one for each of [shelves], which the caller has
  * already filtered for [viewerId]. The row snaps a card's leading edge to the start padding, and a fade shows at each
- * end the row can still scroll towards. Tapping a card does nothing yet.
+ * end the row can still scroll towards.
  *
  * @param onOpenAll Called when the heading's All link is tapped
+ * @param onOpenShelf Called with the shelf's id when its card is tapped
  */
 @Composable
 internal fun ShelvesRail(
@@ -119,6 +125,7 @@ internal fun ShelvesRail(
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
     onOpenAll: () -> Unit = {},
+    onOpenShelf: (Long) -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Column(modifier.fillMaxWidth()) {
@@ -152,7 +159,7 @@ internal fun ShelvesRail(
                 modifier = Modifier.fillMaxWidth().testTag(ShelvesRailTestTags.ROW),
             ) {
                 items(shelves, key = { it.shelf.id }) { preview ->
-                    ShelfCard(preview, viewerId)
+                    ShelfCard(preview, viewerId, onClick = { onOpenShelf(preview.shelf.id) })
                 }
             }
             RailFade(start = true, state = state)
@@ -166,7 +173,12 @@ internal fun ShelvesRail(
  * TalkBack, described by its name, book count, kind, and whether it is public and whose it is.
  */
 @Composable
-internal fun ShelfCard(preview: ShelfPreview, viewerId: Long?, modifier: Modifier = Modifier) {
+internal fun ShelfCard(
+    preview: ShelfPreview,
+    viewerId: Long?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
     val shelf = preview.shelf
     val palette = OmnibusTheme.palette
     val parts = shelfMetaParts(shelf, viewerId)
@@ -177,9 +189,11 @@ internal fun ShelfCard(preview: ShelfPreview, viewerId: Long?, modifier: Modifie
     Column(
         modifier
             .width(ShelfCardWidth)
+            .clickable(role = Role.Button, onClick = onClick)
             .clearAndSetSemantics {
                 this[SemanticsProperties.TestTag] = ShelvesRailTestTags.card(shelf.id)
                 contentDescription = description.joinToString(", ")
+                role = Role.Button
             },
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).coverShadow(MosaicCorner)) {
@@ -213,11 +227,11 @@ internal fun ShelfCard(preview: ShelfPreview, viewerId: Long?, modifier: Modifie
 
 /** The mosaic of [preview]: its covers arranged by how many there are, or the tinted plate when it has none. */
 @Composable
-private fun ShelfMosaicArt(preview: ShelfPreview, modifier: Modifier) {
+internal fun ShelfMosaicArt(preview: ShelfPreview, modifier: Modifier, plateLabel: String? = null) {
     val mosaic = shelfMosaicOf(preview.coverUuids)
     val covers = mosaic.covers
     when (mosaic.arrangement) {
-        MosaicArrangement.Plate -> ShelfPlate(preview.shelf, modifier)
+        MosaicArrangement.Plate -> ShelfPlate(preview.shelf, modifier, plateLabel)
         MosaicArrangement.Single -> MosaicSlot(covers[0], modifier)
         MosaicArrangement.SideBySide -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(MosaicGap)) {
             MosaicSlot(covers[0], Modifier.weight(1f).fillMaxHeight())
@@ -257,7 +271,7 @@ private fun MosaicSlot(uuid: String, modifier: Modifier) {
 
 /** A shelf with no covers: a gradient in its tone, with its kind's glyph in the middle. */
 @Composable
-private fun ShelfPlate(shelf: Shelf, modifier: Modifier) {
+private fun ShelfPlate(shelf: Shelf, modifier: Modifier, plateLabel: String?) {
     val tone = shelfPlateTone(shelf)
     val top = remember(tone) { tone.copy(l = 0.38, c = tone.c * 0.7).toColor() }
     val bottom = remember(tone) { tone.copy(l = 0.22, c = tone.c * 0.5).toColor() }
@@ -267,12 +281,21 @@ private fun ShelfPlate(shelf: Shelf, modifier: Modifier) {
         },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            painter = painterResource(shelfKindGlyph(shelf.kind)),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.45f),
-            modifier = Modifier.size(26.dp),
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                painter = painterResource(shelfKindGlyph(shelf.kind)),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.45f),
+                modifier = Modifier.size(26.dp),
+            )
+            if (plateLabel != null) {
+                Text(
+                    text = plateLabel.uppercase(),
+                    style = monoTextStyle(9.5.sp, Color.White.copy(alpha = 0.6f)).copy(letterSpacing = 1.6.sp),
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

@@ -36,6 +36,8 @@ import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.feature.requests.RequestsRoute
 import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
+import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailRoute
+import com.omnibus.omnibus.feature.shelves.detail.ui.ShelfDetailScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesScreen
 import com.omnibus.omnibus.feature.shell.LibraryRoot
@@ -111,6 +113,7 @@ private fun SignedInShellContent(
         checkIn = stringResource(R.string.book_detail_placeholder_check_in),
         settings = stringResource(R.string.book_detail_placeholder_settings),
     )
+    val addBooksTitle = stringResource(R.string.shelf_detail_add_books)
     // [asking] is the entry's own key: the tab is resolved when the link is tapped, not when the entry composed.
     val openDestination: (BookDetailDestination, NavKey) -> Unit = { destination, asking ->
         destination.dispatch(
@@ -168,6 +171,7 @@ private fun SignedInShellContent(
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
                                 onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },
                                 onOpenShelves = { navigator.navigateTo(ShelvesRoute, ShellTab.Library) },
+                                onOpenShelf = { navigator.navigateTo(ShelfDetailRoute(it), ShellTab.Library) },
                             )
                         }
                         entry<BookDetailRoute> { key ->
@@ -183,7 +187,27 @@ private fun SignedInShellContent(
                             ShellPaddedEntry { BookDetailPlaceholderScreen(title = key.title) }
                         }
                         entry<ShelvesRoute> {
-                            ShellUnderStatusBarEntry { ShelvesScreen(onBack = { navigator.back() }) }
+                            ShellUnderStatusBarEntry {
+                                ShelvesScreen(
+                                    onBack = { navigator.back() },
+                                    onOpenShelf = { navigator.navigateTo(ShelfDetailRoute(it), navigator.ownerOf(ShelvesRoute)) },
+                                )
+                            }
+                        }
+                        entry<ShelfDetailRoute> { key ->
+                            ShellUnderStatusBarEntry {
+                                ShelfDetailScreen(
+                                    shelfId = key.shelfId,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpenBook = { navigator.navigateTo(BookDetailRoute(it), navigator.ownerOf(key)) },
+                                    onOpenSeries = { _, name ->
+                                        navigator.navigateTo(BookDetailPlaceholderRoute(name), navigator.ownerOf(key))
+                                    },
+                                    onAddBooks = {
+                                        navigator.navigateTo(BookDetailPlaceholderRoute(addBooksTitle), navigator.ownerOf(key))
+                                    },
+                                )
+                            }
                         }
                         entry<BookRequestRoute> { key ->
                             ShellUnderStatusBarEntry {
