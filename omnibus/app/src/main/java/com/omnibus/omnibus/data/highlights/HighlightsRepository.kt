@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 /** A highlight's colour, as the server's lowercase token names it. */
 enum class HighlightColor { Amber, Green, Blue, Rose, Violet }
 
+/** The server's and the page glue's lowercase name for this colour. */
+val HighlightColor.token: String get() = name.lowercase()
+
 /**
  * A passage the reader kept.
  *
