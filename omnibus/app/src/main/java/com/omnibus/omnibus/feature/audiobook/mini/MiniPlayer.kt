@@ -184,6 +184,8 @@ internal object MiniPlayerTestTags {
     const val BODY = "mini_player_body"
     const val PROGRESS_TRACK = "mini_player_progress_track"
     const val PROGRESS_FILL = "mini_player_progress_fill"
+    const val STRIP_EXPANDED = "mini_player_strip_expanded"
+    const val STRIP_COLLAPSED = "mini_player_strip_collapsed"
     const val BACK_15 = "mini_player_back_15"
     const val PLAY_PAUSE = "mini_player_play_pause"
     const val STOP = "mini_player_stop"
