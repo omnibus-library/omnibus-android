@@ -87,7 +87,10 @@ class ReaderHighlightMarksTest {
         val letter = firstLetterCenter(controller)
         call(controller, "OmnibusReader.beginSelectionAt(${letter.number("x")}, ${letter.number("y")})")
         rule.waitUntil(timeoutMillis = 15_000) { selections().isNotEmpty() }
-        val cfi = selections().first().cfiRange ?: error("the page's selection carried no cfiRange")
+        // The range is only reported once the selection settles, so end the press's drag first.
+        rule.runOnUiThread { controller.endEdgeDrag() }
+        rule.waitUntil(timeoutMillis = 15_000) { selections().any { !it.dragging && it.cfiRange != null } }
+        val cfi = selections().first { !it.dragging && it.cfiRange != null }.cfiRange!!
         rule.runOnUiThread { controller.clearSelection() }
 
         rule.runOnUiThread {
