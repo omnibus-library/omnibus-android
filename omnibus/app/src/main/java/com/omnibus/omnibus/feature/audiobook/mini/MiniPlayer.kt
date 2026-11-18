@@ -189,6 +189,10 @@ internal object MiniPlayerTestTags {
     const val BACK_15 = "mini_player_back_15"
     const val PLAY_PAUSE = "mini_player_play_pause"
     const val STOP = "mini_player_stop"
+    const val RAIL_FULL = "mini_player_rail_full"
+    const val RAIL_COMPACT = "mini_player_rail_compact"
+    const val RAIL_COVER = "mini_player_rail_cover"
+    const val RAIL_PERCENT = "mini_player_rail_percent"
 }
 
 /**
