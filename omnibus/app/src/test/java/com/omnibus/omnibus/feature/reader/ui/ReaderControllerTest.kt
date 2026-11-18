@@ -1,9 +1,15 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 import androidx.compose.runtime.saveable.SaverScope
+import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.randomReaderSettings
+import com.omnibus.omnibus.feature.reader.PageHighlight
+import com.omnibus.omnibus.feature.reader.randomPageHighlight
+import com.omnibus.omnibus.testing.randomDouble
+import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomOf
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -13,6 +19,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -43,6 +50,23 @@ class ReaderControllerTest : DescribeSpec({
     /** The controller a rotation brings back: saved, then restored. */
     fun ReaderController.savedAndRestored(): ReaderController =
         ReaderControllerSaver.restore(with(ReaderControllerSaver) { SaverScope { true }.save(this@savedAndRestored) }!!)!!
+
+    /** The page's mark calls: the clear and each add or remove. */
+    fun List<String>.marks(): List<String> = filter {
+        it == ReaderScripts.CLEAR_ANNOTATIONS ||
+            it.startsWith("OmnibusReader.addAnnotation") ||
+            it.startsWith("OmnibusReader.removeAnnotation")
+    }
+
+    fun List<PageHighlight>.adds(): List<String> = map { ReaderScripts.addAnnotation(it.cfiRange, it.color, it.hasNote) }
+
+    /** A ready page showing [rows], with the calls that got it there cleared from [page]. */
+    fun readyShowing(page: MutableList<String>, rows: List<PageHighlight>): ReaderController = sut(page).apply {
+        applyHighlights(rows)
+        hostReady()
+        pageReady()
+        page.clear()
+    }
 
     describe("booting the page") {
         it("TC-248: boots at the start position in the current settings") {
@@ -254,7 +278,8 @@ class ReaderControllerTest : DescribeSpec({
 
                     reader.pageReady()
 
-                    page shouldContainExactly ReaderScripts.settingsChange(settings, changed)
+                    page shouldContainExactly ReaderScripts.settingsChange(settings, changed) +
+                        ReaderScripts.CLEAR_ANNOTATIONS
                 }
             }
         }
@@ -341,7 +366,7 @@ class ReaderControllerTest : DescribeSpec({
                 page.shouldBeEmpty()
 
                 reader.pageReady()
-                page shouldContainExactly listOf(ReaderScripts.seek(0.5, 1))
+                page shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS, ReaderScripts.seek(0.5, 1))
             }
         }
 
@@ -355,7 +380,11 @@ class ReaderControllerTest : DescribeSpec({
                 reader.seek(-1.0)
                 reader.seek(Double.NaN)
 
-                page shouldContainExactly listOf(ReaderScripts.seek(1.0, 1), ReaderScripts.seek(0.0, 2))
+                page shouldContainExactly listOf(
+                    ReaderScripts.CLEAR_ANNOTATIONS,
+                    ReaderScripts.seek(1.0, 1),
+                    ReaderScripts.seek(0.0, 2),
+                )
             }
         }
 
@@ -389,7 +418,7 @@ class ReaderControllerTest : DescribeSpec({
                 restored.attach { restoredPage += it }
                 restored.pageReady()
 
-                restoredPage shouldContainExactly listOf(ReaderScripts.seek(0.7, 1))
+                restoredPage shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS, ReaderScripts.seek(0.7, 1))
             }
         }
 
@@ -410,6 +439,186 @@ class ReaderControllerTest : DescribeSpec({
                     reader.pageReady()
 
                     page shouldNotContain ReaderScripts.seek(0.5, 1)
+                }
+            }
+        }
+    }
+
+    describe("showing the highlights on the page") {
+        context("applied before the page is ready") {
+            it("#54 TC-14: sends nothing until the page is ready") {
+                val page = mutableListOf<String>()
+                val reader = sut(page)
+
+                reader.applyHighlights(List(randomInt(1..4)) { randomPageHighlight() })
+
+                page.shouldBeEmpty()
+            }
+
+            it("#54 TC-14: paints each wanted highlight once at ready, after a clear") {
+                val page = mutableListOf<String>()
+                val reader = sut(page)
+                val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                reader.applyHighlights(rows)
+
+                reader.hostReady()
+                reader.pageReady()
+
+                page.marks() shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS) + rows.adds()
+            }
+        }
+
+        context("when the page loses its highlights") {
+            it("#54 TC-14: paints each wanted highlight once at the next ready, after a clear") {
+                checkAll(
+                    Exhaustive.of<(ReaderController, (String) -> Unit) -> Unit>(
+                        { reader, _ -> reader.hostReady() },
+                        { reader, _ -> reader.onRendererGone() },
+                        { reader, _ -> reader.reset() },
+                        { reader, evaluate ->
+                            reader.detach(evaluate)
+                            reader.attach(evaluate)
+                        },
+                    ),
+                ) { lose ->
+                    val page = mutableListOf<String>()
+                    val evaluate: (String) -> Unit = { page += it }
+                    val reader = ReaderController(randomCfi()).apply {
+                        configure(randomString(), randomReaderSettings())
+                        attach(evaluate)
+                    }
+                    val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                    reader.applyHighlights(rows)
+                    reader.hostReady()
+                    reader.pageReady()
+                    page.clear()
+                    lose(reader, evaluate)
+
+                    reader.pageReady()
+
+                    page.marks() shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS) + rows.adds()
+                }
+            }
+        }
+    }
+
+    describe("changing the highlights on a ready page") {
+        context("when the wanted list is unchanged") {
+            it("#54 TC-15: sends no script") {
+                val page = mutableListOf<String>()
+                val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                val reader = readyShowing(page, rows)
+
+                reader.applyHighlights(rows.toList())
+
+                page.shouldBeEmpty()
+            }
+
+            it("#54 TC-15: does not call onPageMarked") {
+                val page = mutableListOf<String>()
+                val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                val reader = readyShowing(page, rows)
+                var marked = 0
+                reader.onPageMarked = { marked++ }
+
+                reader.applyHighlights(rows.toList())
+
+                marked shouldBe 0
+            }
+        }
+
+        context("when one row is recoloured") {
+            it("#54 TC-15: sends only the change for that row") {
+                val page = mutableListOf<String>()
+                val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                val reader = readyShowing(page, rows)
+                val recoloured = rows.first().let { row ->
+                    row.copy(color = randomOf(HighlightColor.entries.filter { it != row.color }))
+                }
+                val wanted = listOf(recoloured) + rows.drop(1)
+
+                reader.applyHighlights(wanted)
+
+                page shouldContainExactly ReaderScripts.highlightsChange(rows, wanted)
+            }
+
+            it("#54 TC-15: calls onPageMarked once") {
+                val page = mutableListOf<String>()
+                val rows = List(randomInt(1..4)) { randomPageHighlight() }
+                val reader = readyShowing(page, rows)
+                var marked = 0
+                reader.onPageMarked = { marked++ }
+                val recoloured = rows.first().let { row ->
+                    row.copy(color = randomOf(HighlightColor.entries.filter { it != row.color }))
+                }
+
+                reader.applyHighlights(listOf(recoloured) + rows.drop(1))
+
+                marked shouldBe 1
+            }
+        }
+    }
+
+    describe("driving the selection on the page") {
+        context("on a ready page") {
+            it("#54 TC-16: begins a drag on either edge") {
+                checkAll(Exhaustive.enum<SelectionEdge>()) { edge ->
+                    val page = mutableListOf<String>()
+                    val reader = sut(page).apply { hostReady(); pageReady() }
+                    page.clear()
+
+                    reader.beginEdgeDrag(edge)
+
+                    page shouldContainExactly listOf(ReaderScripts.beginEdgeDrag(edge))
+                }
+            }
+
+            it("#54 TC-16: moves the dragged handle to the caret and the finger") {
+                val page = mutableListOf<String>()
+                val reader = sut(page).apply { hostReady(); pageReady() }
+                page.clear()
+                val caretX = randomDouble(-1000.0, 1000.0).toFloat()
+                val caretY = randomDouble(-1000.0, 1000.0).toFloat()
+                val fingerX = randomDouble(-1000.0, 1000.0).toFloat()
+
+                reader.dragEdge(caretX, caretY, fingerX)
+
+                page shouldContainExactly listOf(
+                    ReaderScripts.extendSelectionTo(caretX.toDouble(), caretY.toDouble(), fingerX.toDouble()),
+                )
+            }
+
+            it("#54 TC-16: settles the drag") {
+                val page = mutableListOf<String>()
+                val reader = sut(page).apply { hostReady(); pageReady() }
+                page.clear()
+
+                reader.endEdgeDrag()
+
+                page shouldContainExactly listOf(ReaderScripts.END_SELECTION_DRAG)
+            }
+
+            it("#54 TC-16: clears the selection") {
+                val page = mutableListOf<String>()
+                val reader = sut(page).apply { hostReady(); pageReady() }
+                page.clear()
+
+                reader.clearSelection()
+
+                page shouldContainExactly listOf(ReaderScripts.CLEAR_SELECTION)
+            }
+
+            it("#54 TC-16: runs nothing for a non-finite drag coordinate") {
+                checkAll(Exhaustive.of(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) { bad ->
+                    val page = mutableListOf<String>()
+                    val reader = sut(page).apply { hostReady(); pageReady() }
+                    page.clear()
+
+                    reader.dragEdge(bad, 1f, 2f)
+                    reader.dragEdge(1f, bad, 2f)
+                    reader.dragEdge(1f, 2f, bad)
+
+                    page.shouldBeEmpty()
                 }
             }
         }

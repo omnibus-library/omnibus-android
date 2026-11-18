@@ -25,7 +25,7 @@ class ReaderCommandTest : DescribeSpec({
 
             controller.execute(ReaderCommand.Seek(0.25))
 
-            scripts shouldContainExactly listOf(ReaderScripts.seek(0.25, 1))
+            scripts shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS, ReaderScripts.seek(0.25, 1))
         }
     }
 })

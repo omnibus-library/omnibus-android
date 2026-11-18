@@ -100,6 +100,8 @@ internal class ReaderWebHost(
         scope = curlScope,
         environment = curlEnvironment,
     )
+    /** Re-snapshots the curl when the page's marks change. */
+    private val markedPage: () -> Unit = { curlHost.onRepaint() }
     /** The settings the last look was applied with, minus the page turn, which never repaints. */
     private var lastLook: ReaderSettings? = null
 
@@ -113,6 +115,7 @@ internal class ReaderWebHost(
 
     override fun onRemembered() {
         controller.attach(evaluate)
+        controller.onPageMarked = markedPage
         webView.loadUrl(ReaderAssets.ENTRY_URL)
     }
 
@@ -156,6 +159,7 @@ internal class ReaderWebHost(
         // Straight to this page, not through the controller, which may already belong to a replacement.
         evaluate(ReaderScripts.DESTROY)
         released = true
+        if (controller.onPageMarked === markedPage) controller.onPageMarked = null
         controller.detach(evaluate)
         documentStartScript?.remove()
         documentStartScript = null
