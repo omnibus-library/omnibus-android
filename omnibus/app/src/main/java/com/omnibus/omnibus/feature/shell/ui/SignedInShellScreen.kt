@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -21,7 +24,8 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.R
-import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
+import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerActions
+import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerViewModel
 import com.omnibus.omnibus.feature.audiobook.mini.shellHidesMiniPlayer
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.PlaceholderTitles
@@ -48,8 +52,6 @@ import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.feature.shell.StatsRoot
 import com.omnibus.omnibus.feature.shell.YouRoot
 import com.omnibus.omnibus.feature.you.YouScreen
-import com.omnibus.omnibus.ui.components.OmnibusNavigationRail
-import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlinx.serialization.Serializable
@@ -130,22 +132,29 @@ private fun SignedInShellContent(
     val onSelect: (Int) -> Unit = { navigator.select(ShellTab.entries[it]) }
     // The mini player is hidden on Book Detail (P-MINI-1).
     val showsMiniPlayer = !shellHidesMiniPlayer(navigator.backStack.lastOrNull())
+    // The shell owns the mini player's state above the layout switch, so the bar and the rail share one instance (#286 R17).
+    val miniPlayerViewModel: MiniPlayerViewModel = hiltViewModel()
+    val miniPlayerState by miniPlayerViewModel.uiState.collectAsState()
+    val miniPlayerActions = remember(miniPlayerViewModel, onOpenPlayer) {
+        MiniPlayerActions(
+            onExpand = { uuid -> onOpenPlayer(uuid, null, null) },
+            onSkipBack = miniPlayerViewModel::onSkipBack,
+            onPlayPauseToggled = miniPlayerViewModel::onPlayPauseToggled,
+            onStop = miniPlayerViewModel::onStop,
+        )
+    }
 
     // With no bar over the navigation bar the system's own scrim should stay, so only the bar layout turns it off.
     if (navigationLayout == ShellNavigationLayout.Bar) DisableNavigationBarScrim()
-    ShellLayout(
-        overlay = {
-            ShellBottomOverlay(
-                navigationLayout = navigationLayout,
-                miniPlayer = { placement ->
-                    if (showsMiniPlayer) MiniPlayer(onExpand = { uuid -> onOpenPlayer(uuid, null, null) }, floating = placement)
-                },
-                tabBar = { OmnibusTabBar(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect) },
-            )
-        },
-        modifier = modifier.fillMaxSize(),
+    ShellScaffold(
         navigationLayout = navigationLayout,
-        rail = { OmnibusNavigationRail(items = tabBarItems, selectedIndex = selectedIndex, onSelect = onSelect) },
+        tabs = tabBarItems,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        miniPlayer = miniPlayerState,
+        miniPlayerActions = miniPlayerActions,
+        showsMiniPlayer = showsMiniPlayer,
+        modifier = modifier.fillMaxSize(),
     ) {
         SharedTransitionLayout(Modifier.fillMaxSize()) {
             ProvideBookCoverTransition(this) {

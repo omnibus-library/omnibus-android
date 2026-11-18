@@ -6,13 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -22,11 +17,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerContent
-import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerFloatPlacement
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerFloatingPlacement
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerTestTags
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerUIState
@@ -40,7 +33,6 @@ import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 import com.omnibus.omnibus.ui.components.bottomOverlay
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -195,52 +187,6 @@ class ShellFloatingMiniPlayerTest {
         assertEquals("the overlay inset", tabBar, insets.overlayBottom.toFloat(), 1f)
     }
 
-    // #271 TC-6 (R5)
-    @Test
-    fun issue271_tc6_switchingLayoutKeepsTheMiniPlayerComposition() {
-        val layout = mutableStateOf(ShellNavigationLayout.Bar)
-        val placements = mutableListOf<MiniPlayerFloatPlacement>()
-        val instances = mutableListOf<Any>()
-        var starts = 0
-        rule.setContent {
-            OmnibusTheme(darkTheme = true) {
-                ShellLayout(
-                    overlay = {
-                        ShellBottomOverlay(
-                            navigationLayout = layout.value,
-                            miniPlayer = { placement ->
-                                placements += placement
-                                instances += remember { Any() }
-                                LaunchedEffect(Unit) { starts++ }
-                                Box(Modifier.fillMaxWidth().height(64.dp).testTag(MINI_TAG))
-                            },
-                            tabBar = { Box(Modifier.fillMaxWidth().height(64.dp)) },
-                        )
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    navigationLayout = layout.value,
-                    rail = { OmnibusNavigationRail(items = items(), selectedIndex = 0, onSelect = {}) },
-                ) {
-                    Box(Modifier.fillMaxSize())
-                }
-            }
-        }
-        rule.waitForIdle()
-
-        rule.runOnIdle { layout.value = ShellNavigationLayout.Rail }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(MINI_TAG).assertCountEquals(1)
-        rule.runOnIdle { layout.value = ShellNavigationLayout.Bar }
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(MINI_TAG).assertCountEquals(1)
-
-        assertEquals("the effect starts once", 1, starts)
-        instances.forEach { assertSame(instances.first(), it) }
-        assertEquals(MiniPlayerFloatPlacement.Bar, placements.first())
-        assertTrue("the rail placement was used: $placements", MiniPlayerFloatPlacement.Rail in placements)
-        assertEquals(MiniPlayerFloatPlacement.Bar, placements.last())
-    }
-
     /**
      * Renders [ShellLayout] edge to edge with the floating card in its bottom overlay, over the real tab bar tagged
      * [TAB_BAR_TAG] or the rail tagged [RAIL_TAG]. [insets] receives the measured values from inside the content.
@@ -298,6 +244,5 @@ class ShellFloatingMiniPlayerTest {
         const val RAIL_TAG = "shell-floating-rail"
         const val TAB_BAR_TAG = "shell-floating-tab-bar"
         const val CONTENT_TAG = "shell-floating-content"
-        const val MINI_TAG = "shell-floating-slot"
     }
 }
