@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.feature.reader.ui.randomSelectionData
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
@@ -10,6 +11,23 @@ import io.kotest.property.exhaustive.of
 class ReaderUIStateBackActionTest : DescribeSpec({
 
     describe("what back does") {
+        context("with a selection up") {
+            it("#54 TC-28: dismisses the selection, ahead of the sheet, the dropdown and context mode") {
+                val sheets = Exhaustive.of<ReaderSheet?>(null, ReaderSheet.Contents, ReaderSheet.Settings)
+
+                checkAll(sheets, Exhaustive.boolean(), Exhaustive.boolean()) { sheet, menuOpen, chromeVisible ->
+                    val state = ReaderUIState(
+                        selection = randomSelectionData(),
+                        sheet = sheet,
+                        menuOpen = menuOpen,
+                        chromeVisible = chromeVisible,
+                    )
+
+                    state.backAction() shouldBe ReaderBackAction.DismissSelection
+                }
+            }
+        }
+
         context("with a sheet open") {
             it("TC-4: dismisses the sheet, whether or not the dropdown is open and context mode is on") {
                 val sheets = Exhaustive.of(ReaderSheet.Contents, ReaderSheet.Settings)
