@@ -48,6 +48,7 @@ private val playing = MiniPlayerUIState(
     title = "Mini Title",
     subtitle = "Chapter 7: The Question of Sex",
     progress = 0.35f,
+    percentListened = 35,
     isPlaying = true,
 )
 
