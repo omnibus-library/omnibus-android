@@ -1,7 +1,6 @@
 package com.omnibus.omnibus.feature.bookdetail.highlights
 
 import android.graphics.Paint
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.layout.size
@@ -22,9 +21,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.highlights.HighlightColor
-import com.omnibus.omnibus.ui.theme.Oklch
+import com.omnibus.omnibus.ui.theme.labelRes
+import com.omnibus.omnibus.ui.theme.tint
 
 /** The design's ribbon (`M0 0H22V46L11 38L0 46Z`) scaled into its box: a notch at the bottom. */
 internal val HighlightRibbonShape: Shape = GenericShape { size, _ ->
@@ -35,27 +34,6 @@ internal val HighlightRibbonShape: Shape = GenericShape { size, _ ->
     lineTo(0f, size.height)
     close()
 }
-
-private val TINTS: Map<HighlightColor, Color> = mapOf(
-    HighlightColor.Amber to Oklch(0.78, 0.14, 75.0).toColor(),
-    HighlightColor.Green to Oklch(0.78, 0.14, 150.0).toColor(),
-    HighlightColor.Blue to Oklch(0.74, 0.12, 245.0).toColor(),
-    HighlightColor.Rose to Oklch(0.74, 0.14, 10.0).toColor(),
-    HighlightColor.Violet to Oklch(0.74, 0.12, 300.0).toColor(),
-)
-
-/** The ribbon fill for this colour. It is the same in light and dark themes. */
-internal fun HighlightColor.tint(): Color = TINTS.getValue(this)
-
-/** The spoken name of this colour, such as "Amber highlight". */
-internal val HighlightColor.labelRes: Int
-    @StringRes get() = when (this) {
-        HighlightColor.Amber -> R.string.book_detail_highlights_color_amber
-        HighlightColor.Green -> R.string.book_detail_highlights_color_green
-        HighlightColor.Blue -> R.string.book_detail_highlights_color_blue
-        HighlightColor.Rose -> R.string.book_detail_highlights_color_rose
-        HighlightColor.Violet -> R.string.book_detail_highlights_color_violet
-    }
 
 /**
  * The 13 × 32 dp notched ribbon in [color]'s tint, with a soft drop shadow. Its colour name is its spoken description.
