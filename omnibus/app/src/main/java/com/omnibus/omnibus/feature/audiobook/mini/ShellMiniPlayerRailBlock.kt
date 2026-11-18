@@ -108,7 +108,8 @@ internal fun ShellMiniPlayerRailBlock(
                         )
                     }
                     Spacer(Modifier.height(CoverGap))
-                    if (uiState.percentListened != null) {
+                    val percent = uiState.percentListened
+                    if (percent != null) {
                         Box(
                             Modifier
                                 .width(CoverWidth)
@@ -120,7 +121,7 @@ internal fun ShellMiniPlayerRailBlock(
                             Box(
                                 Modifier
                                     .fillMaxHeight()
-                                    .fillMaxWidth(uiState.progress)
+                                    .fillMaxWidth(percent / 100f)
                                     .background(palette.accent)
                                     .testTag(MiniPlayerTestTags.PROGRESS_FILL),
                             )
