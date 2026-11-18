@@ -1,10 +1,16 @@
 package com.omnibus.omnibus.data.highlights
 
+import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
+import com.omnibus.omnibus.di.ClientIdSource
+import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.nextRequest
 import com.omnibus.omnibus.testing.pausedDispatcher
+import com.omnibus.omnibus.testing.randomEnum
+import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.testOmnibusHttpClient
@@ -15,7 +21,10 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.collection
 import io.kotest.property.exhaustive.of
+import java.util.concurrent.CountDownLatch
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -26,7 +35,13 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 
 /** A bare row as the server writes it. Its mapping is proved by [HighlightDtoTest]. */
 private fun row(id: Long): String = """{"id":$id}"""
@@ -34,16 +49,54 @@ private fun row(id: Long): String = """{"id":$id}"""
 private fun loaded(vararg ids: Long) =
     HighlightsState.Loaded(ids.map { Highlight(it, null, null, HighlightColor.Amber, null, null, null, null) })
 
+private val AWAIT_TIMEOUT = 5.seconds
+
+/** The row a create answers with, as the server writes it: its id, colour and location. */
+private fun createdRow(id: Long, draft: HighlightDraft): String =
+    """{"id":$id,"color":"${draft.color.token}","epub_cfi_range":"${draft.cfiRange}"}"""
+
+/** The highlight [createdRow] maps to: the draft's colour and location, with no text or note. */
+private fun createdHighlight(id: Long, draft: HighlightDraft) =
+    Highlight(id, null, null, draft.color, draft.cfiRange, "epub", null, null)
+
+/** A draft with [text] (null for none) in a random book, at a random `epubcfi(` location. */
+private fun draftWithText(text: String?): HighlightDraft = HighlightDraft.create(
+    bookUuid = randomString(),
+    cfiRange = "epubcfi(/6/${randomString(8..16)})",
+    color = randomEnum(),
+    text = text,
+)!!
+
+private fun RecordedRequest.json(): JsonObject = Json.parseToJsonElement(body!!.utf8()).jsonObject
+
+/** Consumes states until [expected], which a real-thread fetch may reach after other states or none. */
+private suspend fun ReceiveTurbine<HighlightsState>.awaitState(expected: HighlightsState) {
+    while (awaitItem() != expected) Unit
+}
+
 class DefaultHighlightsRepositoryTest : DescribeSpec({
 
     fun sut(
         server: MockWebServer? = null,
         ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+        applicationScope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined),
+        timeSource: TimeSource = TestTimeSource(randomLong()),
+        clientIdSource: ClientIdSource = ClientIdSource { randomString(8..16) },
     ) = DefaultHighlightsRepository(
         ioDispatcher = ioDispatcher,
         omnibusHttpClient = testOmnibusHttpClient(server?.url("/")),
-        applicationScope = CoroutineScope(Dispatchers.Unconfined),
+        applicationScope = applicationScope,
+        timeSource = timeSource,
+        clientIdSource = clientIdSource,
     )
+
+    /** A repository whose HTTP runs on real threads, so a test can hold a request open. */
+    fun threadedSut(
+        server: MockWebServer,
+        scope: CoroutineScope,
+        nowMillis: Long = randomLong(),
+        clientId: String = randomString(8..16),
+    ) = sut(server, Dispatchers.IO, scope, TestTimeSource(nowMillis), ClientIdSource { clientId })
 
     beforeSpec { mockAndroidLog() }
 
@@ -296,6 +349,224 @@ class DefaultHighlightsRepositoryTest : DescribeSpec({
                     io.scheduler.runCurrent()
 
                     repository.getHighlightsFlow(uuid).first() shouldBe loaded(1)
+                }
+            }
+        }
+    }
+
+    describe("adding a highlight") {
+
+        context("when the draft has text") {
+            it("#54 TC-9: sends one flat body with the draft's range, colour and text, and the minted id and clock") {
+                withScriptedServer {
+                    val nowMillis = randomLong()
+                    val clientId = randomString()
+                    val draft = draftWithText(randomString())
+                    script.answer("POST", reply(200, createdRow(randomLong(), draft)))
+
+                    sut(server, timeSource = TestTimeSource(nowMillis), clientIdSource = ClientIdSource { clientId })
+                        .addHighlight(draft)
+
+                    val request = server.nextRequest()
+                    request.method shouldBe "POST"
+                    request.url.encodedPath shouldBe "/api/highlights"
+                    val body = request.json()
+                    body.keys shouldBe setOf("book_uuid", "epub_cfi_range", "color", "text", "client_id", "client_created_at")
+                    body["book_uuid"]!!.jsonPrimitive.content shouldBe draft.bookUuid
+                    body["epub_cfi_range"]!!.jsonPrimitive.content shouldBe draft.cfiRange
+                    body["color"]!!.jsonPrimitive.content shouldBe draft.color.token
+                    body["text"]!!.jsonPrimitive.content shouldBe draft.text
+                    body["client_id"]!!.jsonPrimitive.content shouldBe clientId
+                    body["client_created_at"]!!.jsonPrimitive.long shouldBe nowMillis / 1000
+                }
+            }
+        }
+
+        context("when the draft has no text") {
+            it("#54 TC-9: leaves the text out of the body") {
+                withScriptedServer {
+                    val draft = draftWithText(null)
+                    script.answer("POST", reply(200, createdRow(randomLong(), draft)))
+
+                    sut(server).addHighlight(draft)
+
+                    server.nextRequest().json().keys shouldBe
+                        setOf("book_uuid", "epub_cfi_range", "color", "client_id", "client_created_at")
+                }
+            }
+        }
+
+        context("when the server accepts the highlight") {
+            it("#54 TC-10: returns the saved row") {
+                withMockServer { server ->
+                    val draft = randomHighlightDraft()
+                    server.enqueue(reply(200, createdRow(2, draft)))
+
+                    sut(server).addHighlight(draft) shouldBe HighlightWriteResult.Saved(createdHighlight(2, draft))
+                }
+            }
+        }
+
+        context("when a list has loaded") {
+            it("#54 TC-10: appends the saved row to the end of the list") {
+                withMockServer { server ->
+                    val draft = randomHighlightDraft()
+                    server.enqueue(reply(200, "[${row(1)}]"))
+                    server.enqueue(reply(200, createdRow(2, draft)))
+                    val repository = sut(server)
+
+                    repository.getHighlightsFlow(draft.bookUuid).test {
+                        awaitItem() shouldBe loaded(1)
+
+                        repository.addHighlight(draft)
+
+                        awaitItem() shouldBe HighlightsState.Loaded(loaded(1).highlights + createdHighlight(2, draft))
+                    }
+                }
+            }
+
+            context("when the saved row is already listed") {
+                it("#54 TC-10: does not list the row twice") {
+                    withMockServer { server ->
+                        val draft = randomHighlightDraft()
+                        server.enqueue(reply(200, "[${row(1)}]"))
+                        server.enqueue(reply(200, createdRow(1, draft)))
+                        val repository = sut(server)
+
+                        repository.getHighlightsFlow(draft.bookUuid).test {
+                            awaitItem() shouldBe loaded(1)
+
+                            repository.addHighlight(draft)
+
+                            expectNoEvents()
+                        }
+                    }
+                }
+            }
+        }
+
+        context("when the list has failed") {
+            it("#54 TC-10: leaves the list Failed") {
+                withMockServer { server ->
+                    val draft = randomHighlightDraft()
+                    server.enqueue(reply(500))
+                    server.enqueue(reply(200, createdRow(2, draft)))
+                    // Reading again shows the state: a Failed list is re-read, so a 500 keeps it Failed.
+                    server.enqueue(reply(500))
+                    val repository = sut(server)
+                    repository.getHighlightsFlow(draft.bookUuid).first() shouldBe HighlightsState.Failed
+
+                    repository.addHighlight(draft)
+
+                    repository.getHighlightsFlow(draft.bookUuid).first() shouldBe HighlightsState.Failed
+                }
+            }
+        }
+
+        context("when nothing has loaded") {
+            it("#54 TC-10: leaves the list unloaded") {
+                withMockServer { server ->
+                    val draft = randomHighlightDraft()
+                    server.enqueue(reply(200, createdRow(2, draft)))
+                    // Reading after the create shows the state: with nothing loaded, a 500 reads as Failed.
+                    server.enqueue(reply(500))
+                    val repository = sut(server)
+
+                    repository.addHighlight(draft)
+
+                    repository.getHighlightsFlow(draft.bookUuid).first() shouldBe HighlightsState.Failed
+                }
+            }
+        }
+
+        context("when the add fails") {
+            it("#54 TC-11: returns the typed error for each answer") {
+                withScriptedServer {
+                    val failures = listOf(
+                        dropped() to HighlightError.Unreachable,
+                        reply(400) to HighlightError.Rejected,
+                        reply(401) to HighlightError.SessionExpired,
+                        reply(404) to HighlightError.BookNotFound,
+                        reply(500) to HighlightError.Http(500),
+                        reply(200, "{not json") to HighlightError.UnexpectedResponse,
+                    )
+                    checkAll(Exhaustive.collection(failures)) { (answer, error) ->
+                        script.answer("POST", answer)
+
+                        sut(server).addHighlight(randomHighlightDraft()) shouldBe HighlightWriteResult.Failed(error)
+                    }
+                }
+            }
+
+            context("when a list has loaded") {
+                it("#54 TC-11: keeps the loaded list") {
+                    withMockServer { server ->
+                        val draft = randomHighlightDraft()
+                        server.enqueue(reply(200, "[${row(1)}]"))
+                        server.enqueue(reply(500))
+                        val repository = sut(server)
+
+                        repository.getHighlightsFlow(draft.bookUuid).test {
+                            awaitItem() shouldBe loaded(1)
+
+                            repository.addHighlight(draft)
+
+                            expectNoEvents()
+                        }
+                    }
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#54 TC-11: returns NoServer") {
+                sut().addHighlight(randomHighlightDraft()) shouldBe HighlightWriteResult.Failed(HighlightError.NoServer)
+            }
+        }
+
+        context("when the first fetch is still in flight") {
+            it("#54 TC-12: keeps the row across the late list") {
+                withScriptedServer {
+                    val draft = randomHighlightDraft()
+                    val repository = threadedSut(server, scope)
+                    val getGate = CountDownLatch(1)
+                    script.answer("GET", reply(200, "[]"), getGate)
+                    script.answer("POST", reply(200, createdRow(2, draft)))
+
+                    repository.getHighlightsFlow(draft.bookUuid).test(timeout = AWAIT_TIMEOUT) {
+                        awaitItem() shouldBe HighlightsState.Loading
+
+                        repository.addHighlight(draft)
+                        getGate.countDown()
+
+                        awaitItem() shouldBe HighlightsState.Loaded(listOf(createdHighlight(2, draft)))
+                    }
+                }
+            }
+        }
+
+        context("when the caller is cancelled mid-request") {
+            it("#54 TC-13: still saves the row") {
+                withScriptedServer {
+                    val draft = randomHighlightDraft()
+                    val repository = threadedSut(server, scope)
+                    val gate = CountDownLatch(1)
+                    script.answer("GET", reply(200, "[]"))
+                    script.answer("POST", reply(200, createdRow(2, draft)), gate)
+
+                    repository.getHighlightsFlow(draft.bookUuid).test(timeout = AWAIT_TIMEOUT) {
+                        awaitState(loaded())
+                        server.nextRequest()
+
+                        val caller = scope.async { repository.addHighlight(draft) }
+                        // The create is on the server and held on its gate when the caller is cancelled.
+                        server.nextRequest()
+                        caller.cancelAndJoin()
+
+                        gate.countDown()
+
+                        awaitItem() shouldBe HighlightsState.Loaded(listOf(createdHighlight(2, draft)))
+                    }
                 }
             }
         }

@@ -54,4 +54,43 @@ interface HighlightsRepository {
 
     /** Fetches [bookUuid]'s highlights again, joining a fetch already in flight, and returns when that fetch ends. */
     suspend fun refresh(bookUuid: String)
+
+    /**
+     * Saves [draft] on the server in the application scope, so leaving the reader cannot cancel it, and adds the saved row
+     * to a loaded list. Writes reach the server in call order.
+     */
+    suspend fun addHighlight(draft: HighlightDraft): HighlightWriteResult
+}
+
+/** The outcome of a highlight create. A failed create leaves the loaded list as it was. */
+sealed interface HighlightWriteResult {
+    /** The server accepted the create. [highlight] is the server's row. */
+    data class Saved(val highlight: Highlight) : HighlightWriteResult
+
+    /** The create did not reach the server. [error] says why. */
+    data class Failed(val error: HighlightError) : HighlightWriteResult
+}
+
+/** Why a highlight create failed. */
+sealed interface HighlightError {
+    /** No server is configured, so no request was made. */
+    data object NoServer : HighlightError
+
+    /** The server could not be reached (an IOException). */
+    data object Unreachable : HighlightError
+
+    /** The server answered 401, so the session has expired. */
+    data object SessionExpired : HighlightError
+
+    /** The server answered 404 to a create, or the book uuid was blank and no request was made. */
+    data object BookNotFound : HighlightError
+
+    /** The server answered 400, so it rejected the highlight's fields. */
+    data object Rejected : HighlightError
+
+    /** The server answered another non-2xx code. */
+    data class Http(val code: Int) : HighlightError
+
+    /** A 2xx body that does not decode, or any other unexpected failure. */
+    data object UnexpectedResponse : HighlightError
 }
