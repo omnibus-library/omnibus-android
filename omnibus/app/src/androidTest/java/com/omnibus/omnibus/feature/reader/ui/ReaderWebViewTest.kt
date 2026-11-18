@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.Window
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -33,6 +34,9 @@ import com.omnibus.omnibus.data.reader.ReaderTypeface
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -338,6 +342,52 @@ class ReaderWebViewTest {
     }
 
     /** Awaits [expr] on the page. [ReaderController.call] must run on the main thread, where its replies arrive. */
+    // TC-37
+    @Test
+    fun issue54_tc37_aLongPressSelectsWithoutAnActionMode() {
+        val controller = ReaderController()
+        showReader(controller)
+        awaitReady(controller)
+        awaitMovementCount(1)
+
+        val actionModes = AtomicInteger()
+        val window = rule.activity.window
+        val original: Window.Callback = rule.runOnUiThread { window.callback }
+        val recording = Proxy.newProxyInstance(
+            Window.Callback::class.java.classLoader,
+            arrayOf(Window.Callback::class.java),
+        ) { _, method, args ->
+            if (method.name == "onActionModeStarted") actionModes.incrementAndGet()
+            try {
+                method.invoke(original, *(args ?: emptyArray()))
+            } catch (e: InvocationTargetException) {
+                throw e.targetException
+            }
+        } as Window.Callback
+        rule.runOnUiThread { window.callback = recording }
+        try {
+            repeatGesture({ longPress(0.3f, 0.4f) }) { selections().any { it.text.isNotBlank() } }
+        } finally {
+            rule.runOnUiThread { window.callback = original }
+        }
+
+        assertTrue("the press should select text", selections().any { it.text.isNotBlank() })
+        assertEquals("a long press should not start an action mode", 0, actionModes.get())
+    }
+
+    /** Holds a finger on [xFraction], [yFraction] of the WebView for 700 ms, as a long press on a word does. */
+    private fun longPress(xFraction: Float, yFraction: Float) {
+        val (x, y) = pointInWindow(xFraction, yFraction)
+        val downTime = SystemClock.uptimeMillis()
+        inject(MotionEvent.ACTION_DOWN, downTime, downTime, x, y)
+        SystemClock.sleep(700)
+        inject(MotionEvent.ACTION_UP, downTime, SystemClock.uptimeMillis(), x, y)
+    }
+
+    private fun selections(): List<SelectionData> = synchronized(messages) {
+        messages.filterIsInstance<ReaderEvent.Selection>().map { it.data }
+    }
+
     private fun call(controller: ReaderController, expr: String): JsonElement? =
         runBlocking(Dispatchers.Main) { controller.call(expr) }
 
