@@ -6,6 +6,9 @@ import com.omnibus.omnibus.data.bookmarks.Bookmark
 import com.omnibus.omnibus.data.bookmarks.BookmarkDraft
 import com.omnibus.omnibus.data.bookmarks.BookmarksRepository
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
+import com.omnibus.omnibus.data.highlights.Highlight
+import com.omnibus.omnibus.data.highlights.HighlightsRepository
+import com.omnibus.omnibus.data.highlights.HighlightsState
 import com.omnibus.omnibus.data.library.BookResult
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.progress.PositionPushThrottle
@@ -75,6 +78,7 @@ class ReaderViewModel @AssistedInject constructor(
     private val progressRepository: ProgressRepository,
     private val settingsStore: ReaderSettingsStore,
     private val bookmarksRepository: BookmarksRepository,
+    private val highlightsRepository: HighlightsRepository,
     private val timeSource: TimeSource,
     @param:ApplicationScope private val persistScope: CoroutineScope,
     @Assisted("startCfi") private val startCfi: String? = null,
@@ -101,6 +105,9 @@ class ReaderViewModel @AssistedInject constructor(
 
     /** Spaces unforced pushes of this open's positions. */
     private val throttle = PositionPushThrottle()
+
+    /** The book's saved highlights, as last loaded. A failed or loading read keeps them. */
+    private var savedHighlights: List<Highlight> = emptyList()
 
     /** Whether the open's landing (its first relocate) has been seen. */
     private var sawFirstRelocate = false
@@ -134,6 +141,7 @@ class ReaderViewModel @AssistedInject constructor(
         loadBook()
         resolveOpening()
         loadBookmarks()
+        loadHighlights()
     }
 
     /** Creates a [ReaderViewModel] for the book with [bookUuid]. */
@@ -424,6 +432,27 @@ class ReaderViewModel @AssistedInject constructor(
         }
     }
 
+    /**
+     * Collects the book's highlights and re-reads the server once, so every open shows other devices' highlights. A
+     * failed or loading state keeps what was drawn.
+     */
+    private fun loadHighlights() {
+        viewModelScope.launch {
+            highlightsRepository.getHighlightsFlow(bookUuid).collect { state ->
+                if (state is HighlightsState.Loaded) {
+                    savedHighlights = state.highlights
+                    publishHighlights()
+                }
+            }
+        }
+        viewModelScope.launch { highlightsRepository.refresh(bookUuid) }
+    }
+
+    /** Recomputes what the page draws from the highlights read so far. */
+    private fun publishHighlights() {
+        _uiState.update { it.copy(pageHighlights = pageHighlightsOf(savedHighlights, emptyList())) }
+    }
+
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
     private fun loadBook() {
         bookJob?.cancel()
@@ -488,6 +517,8 @@ data class ReaderUIState(
      * to another page.
      */
     val bookmarkTapPage: String? = null,
+    /** What the page draws: this session's highlights, then the saved ones located by an EPUB CFI. */
+    val pageHighlights: List<PageHighlight> = emptyList(),
 ) {
 
     /** The number of bookmarks in the state, so an optimistic add counts at once and a failed one drops off. */

@@ -2,6 +2,8 @@ package com.omnibus.omnibus.feature.reader
 
 import com.omnibus.omnibus.data.bookmarks.BookmarksRepository
 import com.omnibus.omnibus.data.bookmarks.TestBookmarksRepository
+import com.omnibus.omnibus.data.highlights.HighlightsRepository
+import com.omnibus.omnibus.data.highlights.TestHighlightsRepository
 import com.omnibus.omnibus.data.library.LibraryRepository
 import com.omnibus.omnibus.data.library.TestLibraryRepository
 import com.omnibus.omnibus.data.progress.ProgressRepository
@@ -26,6 +28,7 @@ internal fun sut(
     progressRepository: ProgressRepository = TestProgressRepository(),
     settingsStore: ReaderSettingsStore = TestReaderSettingsStore(),
     bookmarksRepository: BookmarksRepository = TestBookmarksRepository(),
+    highlightsRepository: HighlightsRepository = TestHighlightsRepository(),
     timeSource: TimeSource = randomLong().let { now -> TimeSource { now } },
     startCfi: String? = null,
 ) = ReaderViewModel(
@@ -39,6 +42,7 @@ internal fun sut(
     progressRepository = progressRepository,
     settingsStore = settingsStore,
     bookmarksRepository = bookmarksRepository,
+    highlightsRepository = highlightsRepository,
     timeSource = timeSource,
     persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     startCfi = startCfi,
