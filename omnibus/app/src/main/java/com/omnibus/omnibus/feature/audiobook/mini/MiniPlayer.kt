@@ -42,6 +42,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.PreviewLightDark
@@ -85,7 +86,56 @@ internal fun MiniPlayer(
     viewModel: MiniPlayerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val reduceMotion = rememberReducedMotion()
+    val actions = MiniPlayerActions(
+        onExpand = onExpand,
+        onSkipBack = viewModel::onSkipBack,
+        onPlayPauseToggled = viewModel::onPlayPauseToggled,
+        onStop = viewModel::onStop,
+    )
+    MiniPlayerHost(uiState = uiState, modifier = modifier) { shown ->
+        if (floating != null) {
+            MiniPlayerFloatingPlacement(floating) {
+                MiniPlayerContent(
+                    uiState = shown,
+                    onExpand = actions.onExpand,
+                    onSkipBack = actions.onSkipBack,
+                    onPlayPauseToggled = actions.onPlayPauseToggled,
+                    onStop = actions.onStop,
+                    floating = true,
+                )
+            }
+        } else {
+            MiniPlayerContent(
+                uiState = shown,
+                onExpand = actions.onExpand,
+                onSkipBack = actions.onSkipBack,
+                onPlayPauseToggled = actions.onPlayPauseToggled,
+                onStop = actions.onStop,
+                contentWindowInsets = contentWindowInsets,
+            )
+        }
+    }
+}
+
+/** What the mini player's controls do, owned by whoever holds its [MiniPlayerViewModel]. */
+internal class MiniPlayerActions(
+    val onExpand: (bookUuid: String) -> Unit,
+    val onSkipBack: () -> Unit,
+    val onPlayPauseToggled: () -> Unit,
+    val onStop: () -> Unit,
+)
+
+/**
+ * Fades the mini player's [uiState] in and out, and draws [content] for the last visible state, so the fade-out keeps
+ * the bar it removes. Created with `visible = true` it shows at once, so a layout switch does not re-fade (#286 R17).
+ */
+@Composable
+internal fun MiniPlayerHost(
+    uiState: MiniPlayerUIState,
+    modifier: Modifier = Modifier,
+    reduceMotion: Boolean = rememberReducedMotion(),
+    content: @Composable (shown: MiniPlayerUIState) -> Unit,
+) {
     // Keeps the last shown state, so the fade-out draws the bar it is removing instead of a blank one.
     val shown = remember { LastShown(uiState) }
     if (uiState.visible) shown.state = uiState
@@ -97,27 +147,7 @@ internal fun MiniPlayer(
         enter = if (reduceMotion) EnterTransition.None else fadeIn(Motion.settle()),
         exit = if (reduceMotion) ExitTransition.None else fadeOut(Motion.settle()),
     ) {
-        if (floating != null) {
-            MiniPlayerFloatingPlacement(floating) {
-                MiniPlayerContent(
-                    uiState = shown.state,
-                    onExpand = onExpand,
-                    onSkipBack = viewModel::onSkipBack,
-                    onPlayPauseToggled = viewModel::onPlayPauseToggled,
-                    onStop = viewModel::onStop,
-                    floating = true,
-                )
-            }
-        } else {
-            MiniPlayerContent(
-                uiState = shown.state,
-                onExpand = onExpand,
-                onSkipBack = viewModel::onSkipBack,
-                onPlayPauseToggled = viewModel::onPlayPauseToggled,
-                onStop = viewModel::onStop,
-                contentWindowInsets = contentWindowInsets,
-            )
-        }
+        content(shown.state)
     }
 }
 
@@ -256,9 +286,12 @@ internal fun MiniPlayerContent(
     }
 }
 
-/** The row both variants share: the body that opens the player, then the three buttons. [modifier] sets its padding. */
+/**
+ * The row both variants share: the body that opens the player, then the three buttons. [modifier] sets its padding.
+ * [progressDescription], when set, is the body's state description (the whole-book percentage, read after the title).
+ */
 @Composable
-private fun MiniPlayerRow(
+internal fun MiniPlayerRow(
     uiState: MiniPlayerUIState,
     onExpand: (bookUuid: String) -> Unit,
     onSkipBack: () -> Unit,
@@ -268,6 +301,7 @@ private fun MiniPlayerRow(
     coverRadius: Dp,
     coverGap: Dp,
     modifier: Modifier,
+    progressDescription: String? = null,
 ) {
     val palette = OmnibusTheme.palette
     val openLabel = stringResource(R.string.audiobook_mini_open_player)
@@ -277,7 +311,7 @@ private fun MiniPlayerRow(
                 .weight(1f)
                 .testTag(MiniPlayerTestTags.BODY)
                 .clickable(onClickLabel = openLabel, role = Role.Button) { onExpand(uiState.bookUuid) }
-                .semantics(mergeDescendants = true) {},
+                .semantics(mergeDescendants = true) { if (progressDescription != null) stateDescription = progressDescription },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BookCover(
@@ -327,7 +361,7 @@ private fun MiniPlayerRow(
 
 /** One of the bar's buttons: a 48 dp touch target around a 20 dp icon. */
 @Composable
-private fun MiniButton(iconRes: Int, label: String, tag: String, onClick: () -> Unit) {
+internal fun MiniButton(iconRes: Int, label: String, tag: String, onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.size(48.dp).testTag(tag)) {
         Icon(
             painter = painterResource(iconRes),
