@@ -40,6 +40,12 @@ fun randomPageRect(): PageRect = PageRect(
     height = randomDouble(),
 )
 
+/** A highlight under an `annotationTap`: a random range with one to three line rects. */
+fun randomAnnotationHit(): AnnotationHit = AnnotationHit(
+    cfiRange = randomCfi(),
+    rects = List(randomInt(1..3)) { randomPageRect() },
+)
+
 fun randomSelectionHandle(): SelectionHandle = SelectionHandle(
     x = randomDouble(),
     y = randomDouble(),
