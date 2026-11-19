@@ -219,6 +219,7 @@ internal fun ReaderScreenContent(
     LaunchedEffect(controller, commands) {
         commands.collect { controller.execute(it) }
     }
+    LaunchedEffect(controller, uiState.pageHighlights) { controller.applyHighlights(uiState.pageHighlights) }
 
     val currentOnStopped by rememberUpdatedState(onReaderStopped)
     val currentOnClosed by rememberUpdatedState(onReaderClosed)
