@@ -145,6 +145,9 @@ fun ReaderScreen(
         onSelectionCopied = viewModel::onSelectionCopied,
         onSelectionHandleGrabbed = viewModel::onSelectionHandleGrabbed,
         onSelectionHandleReleased = viewModel::onSelectionHandleReleased,
+        onHighlightMenuStepped = viewModel::onHighlightMenuStepped,
+        onHighlightMenuDismissed = viewModel::onHighlightMenuDismissed,
+        onHighlightCopied = viewModel::onHighlightCopied,
         onNoticeShown = viewModel::onNoticeShown,
         onClose = onClose,
         modifier = modifier,
@@ -193,6 +196,9 @@ fun ReaderScreen(
  * @param onSelectionCopied Copy was chosen from the selection menu, after the clipboard was written.
  * @param onSelectionHandleGrabbed a selection handle was grabbed.
  * @param onSelectionHandleReleased a selection handle was let go.
+ * @param onHighlightMenuStepped the highlight menu's switcher moved to another highlight, by the given step.
+ * @param onHighlightMenuDismissed a touch outside the highlight menu, or back, closed it.
+ * @param onHighlightCopied Copy was chosen from the highlight menu, after the clipboard was written.
  * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
@@ -225,6 +231,9 @@ internal fun ReaderScreenContent(
     onSelectionCopied: () -> Unit = {},
     onSelectionHandleGrabbed: () -> Unit = {},
     onSelectionHandleReleased: () -> Unit = {},
+    onHighlightMenuStepped: (Int) -> Unit = {},
+    onHighlightMenuDismissed: () -> Unit = {},
+    onHighlightCopied: () -> Unit = {},
     onNoticeShown: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
@@ -236,6 +245,7 @@ internal fun ReaderScreenContent(
     // Always enabled, so back takes this path in every state, and it outranks the root NavDisplay's handler.
     BackHandler {
         when (uiState.backAction()) {
+            ReaderBackAction.DismissHighlightMenu -> onHighlightMenuDismissed()
             ReaderBackAction.DismissSelection -> onSelectionDismissed()
             ReaderBackAction.DismissSheet -> onSheetDismissed()
             ReaderBackAction.DismissMenu -> onMenuDismissed()
@@ -392,6 +402,21 @@ internal fun ReaderScreenContent(
                                             clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, selection.text))) }
                                             onSelectionCopied()
                                         },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                val highlightMenu = uiState.highlightMenu
+                                if (uiState.loadStatus == ReaderLoadStatus.Ready && !uiState.chromeVisible && highlightMenu != null) {
+                                    // Over the WebView's box too, so its CSS px are this layer's dp, as for the selection.
+                                    ReaderHighlightMenuOverlay(
+                                        menu = highlightMenu,
+                                        theme = theme,
+                                        onStep = onHighlightMenuStepped,
+                                        onCopy = { text ->
+                                            clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, text))) }
+                                            onHighlightCopied()
+                                        },
+                                        onDismiss = onHighlightMenuDismissed,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }

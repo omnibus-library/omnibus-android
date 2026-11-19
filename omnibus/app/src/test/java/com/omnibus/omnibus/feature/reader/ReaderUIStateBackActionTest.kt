@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.feature.reader.ui.SelectionData
 import com.omnibus.omnibus.feature.reader.ui.randomSelectionData
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -11,6 +12,25 @@ import io.kotest.property.exhaustive.of
 class ReaderUIStateBackActionTest : DescribeSpec({
 
     describe("what back does") {
+        context("with a highlight menu open") {
+            it("#299 TC-21: closes the highlight menu, ahead of the selection, the sheet, the dropdown and context mode") {
+                val selections = Exhaustive.of<SelectionData?>(null, randomSelectionData())
+                val sheets = Exhaustive.of<ReaderSheet?>(null, ReaderSheet.Contents, ReaderSheet.Settings)
+
+                checkAll(selections, sheets, Exhaustive.boolean(), Exhaustive.boolean()) { selection, sheet, menuOpen, chromeVisible ->
+                    val state = ReaderUIState(
+                        highlightMenu = HighlightMenu(listOf(randomHighlightMenuEntry())),
+                        selection = selection,
+                        sheet = sheet,
+                        menuOpen = menuOpen,
+                        chromeVisible = chromeVisible,
+                    )
+
+                    state.backAction() shouldBe ReaderBackAction.DismissHighlightMenu
+                }
+            }
+        }
+
         context("with a selection up") {
             it("#54 TC-28: dismisses the selection, ahead of the sheet, the dropdown and context mode") {
                 val sheets = Exhaustive.of<ReaderSheet?>(null, ReaderSheet.Contents, ReaderSheet.Settings)

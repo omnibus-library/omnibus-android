@@ -751,11 +751,20 @@ enum class ReaderMenuRow { Contents, Bookmarks, Settings }
 enum class ReaderNotice { HighlightSaveFailed }
 
 /**
- * What system back does next, in order: the selection, the sheet, the dropdown, context mode, then the reader itself.
+ * What system back does next, in order: the highlight menu, the selection, the sheet, the dropdown, context mode, then
+ * the reader itself.
  */
-enum class ReaderBackAction { DismissSelection, DismissSheet, DismissMenu, LeaveContext, LeaveReader }
+enum class ReaderBackAction {
+    DismissHighlightMenu,
+    DismissSelection,
+    DismissSheet,
+    DismissMenu,
+    LeaveContext,
+    LeaveReader,
+}
 
 internal fun ReaderUIState.backAction(): ReaderBackAction = when {
+    highlightMenu != null -> ReaderBackAction.DismissHighlightMenu
     selection != null -> ReaderBackAction.DismissSelection
     sheet != null -> ReaderBackAction.DismissSheet
     menuOpen -> ReaderBackAction.DismissMenu
