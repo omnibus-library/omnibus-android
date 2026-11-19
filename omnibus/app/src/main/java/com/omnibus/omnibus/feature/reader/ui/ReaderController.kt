@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.feature.reader.PageHighlight
 import kotlinx.serialization.json.JsonElement
 
 /** Where a [ReaderController]'s book is in loading. */
@@ -89,6 +90,15 @@ class ReaderController(startCfi: String? = null) {
     private var isReady = false
     private var consecutiveRendererLosses = 0
 
+    /** The highlights the page should show. Not saved across rotation: the screen re-applies them. */
+    private var wantedHighlights: List<PageHighlight> = emptyList()
+
+    /** The highlights the page is showing, so a change sends only what differs. */
+    private var drawnHighlights: List<PageHighlight> = emptyList()
+
+    /** Called after highlights change on a ready page, so the curl re-snapshots it. Set by the host. */
+    internal var onPageMarked: (() -> Unit)? = null
+
     fun next() {
         pendingSeek = null
         run(ReaderScripts.NEXT)
@@ -157,6 +167,7 @@ class ReaderController(startCfi: String? = null) {
         if (evaluator !== evaluate) return
         evaluator = null
         appliedSettings = null
+        drawnHighlights = emptyList()
         isReady = false
         pageCalls.failAll()
     }
@@ -171,10 +182,50 @@ class ReaderController(startCfi: String? = null) {
         syncSettings()
     }
 
+    /**
+     * Shows [wanted] on the page: diffed against what is drawn when ready, painted in full at the next ready otherwise.
+     * Not saved across rotation; the screen re-applies it.
+     */
+    internal fun applyHighlights(wanted: List<PageHighlight>) {
+        wantedHighlights = wanted
+        if (!isReady) return
+        val scripts = ReaderScripts.highlightsChange(drawnHighlights, wanted)
+        drawnHighlights = wanted
+        if (scripts.isEmpty()) return
+        scripts.forEach(::run)
+        onPageMarked?.invoke()
+    }
+
+    /** Starts text selection at a long press's word. Needs a ready page. */
+    internal fun beginEdgeDrag(edge: SelectionEdge) {
+        if (!isReady) return
+        run(ReaderScripts.beginEdgeDrag(edge))
+    }
+
+    /** Moves the dragged handle to the caret and the finger. A non-finite coordinate is dropped. */
+    internal fun dragEdge(caretX: Float, caretY: Float, fingerX: Float) {
+        if (!isReady) return
+        if (!caretX.isFinite() || !caretY.isFinite() || !fingerX.isFinite()) return
+        run(ReaderScripts.extendSelectionTo(caretX.toDouble(), caretY.toDouble(), fingerX.toDouble()))
+    }
+
+    /** Settles the handle drag, which re-emits the selection as not dragging. */
+    internal fun endEdgeDrag() {
+        if (!isReady) return
+        run(ReaderScripts.END_SELECTION_DRAG)
+    }
+
+    /** Clears the page's selection. */
+    internal fun clearSelection() {
+        if (!isReady) return
+        run(ReaderScripts.CLEAR_SELECTION)
+    }
+
     /** Starts a fresh load after a failure or a replaced page. */
     internal fun reset() {
         isReady = false
         appliedSettings = null
+        drawnHighlights = emptyList()
         status = ReaderLoadStatus.Loading
     }
 
@@ -222,6 +273,7 @@ class ReaderController(startCfi: String? = null) {
     internal fun onRendererGone(): Boolean {
         isReady = false
         appliedSettings = null
+        drawnHighlights = emptyList()
         pageCalls.failAll()
         if (++consecutiveRendererLosses > MAX_RENDERER_LOSSES) {
             status = ReaderLoadStatus.Failed(ReaderLoadFailure.RendererCrashed)
@@ -237,6 +289,7 @@ class ReaderController(startCfi: String? = null) {
      */
     private fun onHostReady() {
         isReady = false
+        drawnHighlights = emptyList()
         // A second hostReady means the page was replaced, so calls into the old one will never be answered.
         pageCalls.failAll()
         if (status is ReaderLoadStatus.Ready) status = ReaderLoadStatus.Loading
@@ -254,6 +307,10 @@ class ReaderController(startCfi: String? = null) {
         // A setting changed between the boot snapshot and first paint reaches the page here, or
         // not until the next reboot.
         syncSettings()
+        // Clear first, so a page that already holds marks can never double them up.
+        run(ReaderScripts.CLEAR_ANNOTATIONS)
+        wantedHighlights.forEach { run(ReaderScripts.addAnnotation(it.cfiRange, it.color, it.hasNote)) }
+        drawnHighlights = wantedHighlights
         // A seek that hadn't settled before the page was replaced goes to the new page too.
         pendingSeek?.let { run(ReaderScripts.seek(it, seekId)) }
     }

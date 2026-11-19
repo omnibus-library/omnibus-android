@@ -8,7 +8,11 @@ import java.util.zip.ZipOutputStream
 /** Builds a small valid EPUB 3 in memory, long enough to run to many pages. */
 object TestEpub {
 
-    fun build(chapters: Int = 3, paragraphsPerChapter: Int = 60): ByteArray {
+    /**
+     * Builds the book. With [hiddenMarkup], chapter 1 opens with markup that must never reach a selection's
+     * text: a `display:none` page-break span welded into a word, a `[hidden]` block and an in-body style.
+     */
+    fun build(chapters: Int = 3, paragraphsPerChapter: Int = 60, hiddenMarkup: Boolean = false): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             // The mimetype entry must come first and be stored uncompressed.
@@ -62,17 +66,20 @@ object TestEpub {
                 </html>""".trimIndent(),
             )
             for (chapter in 1..chapters) {
+                val marked = hiddenMarkup && chapter == 1
                 val body = (1..paragraphsPerChapter).joinToString("\n") { paragraph ->
                     "<p>Chapter $chapter paragraph $paragraph. " +
                         "The quick brown fox jumps over the lazy dog while the reader turns another page.</p>"
                 }
+                val html = if (marked) """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">""" else """<html xmlns="http://www.w3.org/1999/xhtml">"""
+                val hidden = if (marked) HIDDEN_MARKUP else ""
                 zip.add(
                     "OEBPS/chapter$chapter.xhtml",
                     """<?xml version="1.0" encoding="utf-8"?>
-                    <html xmlns="http://www.w3.org/1999/xhtml">
+                    $html
                       <head><title>Chapter $chapter</title></head>
                       <body><h1>Chapter $chapter</h1>
-                      $body</body>
+                      $hidden$body</body>
                     </html>""".trimIndent(),
                 )
             }
@@ -85,4 +92,10 @@ object TestEpub {
         write(content.toByteArray())
         closeEntry()
     }
+
+    /** Opens chapter 1 with `omn-start` ("wor" + hidden "PAGEMARK" + "ld") and `omn-end` ("finish") for the tests to aim at. */
+    private const val HIDDEN_MARKUP =
+        "<p>Alpha <span id=\"omn-start\">wor</span><span epub:type=\"pagebreak\" style=\"display:none\">PAGEMARK</span>" +
+            "ld beta.</p><style>.omn-css{color:red}</style><div hidden=\"hidden\">HIDDENBLOCK</div>" +
+            "<p>Omega <span id=\"omn-end\">finish</span> line.</p>\n"
 }
