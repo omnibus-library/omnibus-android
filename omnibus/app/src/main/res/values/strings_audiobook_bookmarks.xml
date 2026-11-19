@@ -1,8 +1,12 @@
 <resources>
     <!-- Label of the tool-row button that marks this second of the audio as matching the reader's place (P-BMK-4). -->
     <string name="audiobook_bookmarks_sync_here">Sync here</string>
-    <!-- The same button's label after a successful sync, kept until the player closes. -->
+    <!-- The same button's label after a successful sync, kept until the player closes or the next tap. -->
     <string name="audiobook_bookmarks_synced">Synced ✓</string>
+    <!-- The Sync here button's label while its request is out; the button is disabled until the server answers. -->
+    <string name="audiobook_bookmarks_syncing">Syncing…</string>
+    <!-- The Sync here button's label when the server did not accept the sync, kept until the player closes or the next tap. Announced once by screen readers. -->
+    <string name="audiobook_bookmarks_sync_failed">Sync failed</string>
     <!-- Spoken after the Sync here label while the device is offline and the button is disabled (P-A11Y-5). -->
     <string name="audiobook_bookmarks_needs_connection">Needs a connection</string>
     <!-- Footer under the player's bookmark list. -->

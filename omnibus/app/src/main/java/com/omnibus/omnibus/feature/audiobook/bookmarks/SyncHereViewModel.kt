@@ -19,20 +19,34 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** Where the latest Sync here tap stands (P-BMK-4). */
+enum class SyncHereStatus {
+    /** No tap yet in this player entry. */
+    Idle,
+    /** A request is out; taps are ignored until it answers. */
+    Syncing,
+    /** The server accepted the latest tap. */
+    Synced,
+    /** The server did not accept the latest tap, for any reason. */
+    Failed,
+}
+
 /**
- * The Sync here cell's state. [visible] needs this book loaded with an ebook (P-BMK-4). [synced] lasts for the
- * ViewModel's life, which is the player's entry.
+ * The Sync here cell's state. [visible] needs this book loaded with an ebook (P-BMK-4). [status] lasts for the
+ * ViewModel's life, which is the player's entry. [announceFailure] is true from a failure until the UI calls
+ * [SyncHereViewModel.onFailureAnnounced].
  */
 data class SyncHereUIState(
     val visible: Boolean = false,
     val online: Boolean = true,
-    val synced: Boolean = false,
+    val status: SyncHereStatus = SyncHereStatus.Idle,
+    val announceFailure: Boolean = false,
 )
 
 /**
- * Owns the Sync here cell for one book (P-BMK-4, I-BMK-3). A successful declaration turns the label to "Synced ✓" until
- * the player's entry is popped. A failure changes nothing. The VM is scoped to the player's route, so the label survives
- * rotation and the sheet opening.
+ * Owns the Sync here cell for one book (P-BMK-4, I-BMK-3). A tap reads Syncing until the server answers, then Synced or
+ * Failed; the latest tap's answer is shown. A failure asks the UI for one screen-reader announcement. The VM is scoped to
+ * the player's route, so the label survives rotation and the sheet opening.
  *
  * @property bookUuid The book the player is showing.
  */
@@ -44,41 +58,53 @@ class SyncHereViewModel @AssistedInject constructor(
     private val syncPointRepository: SyncPointRepository,
 ) : ViewModel() {
 
-    private val synced = MutableStateFlow(false)
+    private val status = MutableStateFlow(SyncHereStatus.Idle)
+    private val announceFailure = MutableStateFlow(false)
     private var inFlight: Job? = null
 
     /** The cell's state. It is collected only while the player composes the cell. */
-    val uiState: StateFlow<SyncHereUIState> = combine(controller.state, connectivity.isOnline, synced) { state, online, done ->
-        uiStateOf(state, online, done)
+    val uiState: StateFlow<SyncHereUIState> = combine(controller.state, connectivity.isOnline, status, announceFailure) { state, online, current, announce ->
+        uiStateOf(state, online, current, announce)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        uiStateOf(controller.state.value, connectivity.isOnline.value, synced.value),
+        uiStateOf(controller.state.value, connectivity.isOnline.value, status.value, announceFailure.value),
     )
 
     /**
      * Declares that the second the player is at matches the reader's place. It is ignored while offline, while a request is
-     * in flight, while this book is not loaded or has no ebook, and while its file is still loading. Each request is sent
-     * once, with no retry.
+     * in flight (Syncing), while this book is not loaded or has no ebook, and while its file is still loading. It is accepted
+     * from Idle, Synced and Failed alike. Each request is sent once, with no retry.
      */
     fun onSyncHere() {
-        if (inFlight?.isActive == true || !connectivity.isOnline.value) return
+        if (status.value == SyncHereStatus.Syncing || inFlight?.isActive == true || !connectivity.isOnline.value) return
         val state = controller.state.value
         val book = state.book ?: return
         if (book.bookUuid != bookUuid || !book.hasEbook || state.isLoading) return
         val fileId = book.bookFileId
         val seconds = state.positionSeconds
+        status.value = SyncHereStatus.Syncing
         inFlight = viewModelScope.launch {
-            if (syncPointRepository.declareAudioSyncPoint(bookUuid, fileId, seconds) is SyncPointResult.Declared) {
-                synced.value = true
+            when (syncPointRepository.declareAudioSyncPoint(bookUuid, fileId, seconds)) {
+                SyncPointResult.Declared -> status.value = SyncHereStatus.Synced
+                is SyncPointResult.Failed -> {
+                    status.value = SyncHereStatus.Failed
+                    announceFailure.value = true
+                }
             }
         }
     }
 
-    private fun uiStateOf(state: PlaybackState, online: Boolean, done: Boolean) = SyncHereUIState(
+    /** Called once the UI has announced "Sync failed", so it is not announced again. */
+    fun onFailureAnnounced() {
+        announceFailure.value = false
+    }
+
+    private fun uiStateOf(state: PlaybackState, online: Boolean, current: SyncHereStatus, announce: Boolean) = SyncHereUIState(
         visible = state.book?.let { it.bookUuid == bookUuid && it.hasEbook } == true,
         online = online,
-        synced = done,
+        status = current,
+        announceFailure = announce,
     )
 
     /** Creates a [SyncHereViewModel] for the book with [bookUuid]. */

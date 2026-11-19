@@ -37,3 +37,66 @@ fun PlayerToolRowCells() {
         }
     }
 }
+
+/**
+ * The full row with Sync here syncing (dimmed), synced, failed, and failed while offline (dimmed).
+ */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun PlayerToolRowSyncStates() {
+    Shot {
+        Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            PlayerToolRow(
+                rate = 1.25,
+                hasEbook = true,
+                actions = PlayerActions(
+                    onOpenSpeed = {},
+                    onOpenCarMode = {},
+                    onOpenSleep = {},
+                    onAddBookmark = {},
+                    syncHere = PlayerToolButton(label = "Syncing…", enabled = false, onClick = {}),
+                ),
+            )
+            PlayerToolRow(
+                rate = 1.25,
+                hasEbook = true,
+                actions = PlayerActions(
+                    onOpenSpeed = {},
+                    onOpenCarMode = {},
+                    onOpenSleep = {},
+                    onAddBookmark = {},
+                    syncHere = PlayerToolButton(label = "Synced ✓", enabled = true, onClick = {}),
+                ),
+            )
+            PlayerToolRow(
+                rate = 1.25,
+                hasEbook = true,
+                actions = PlayerActions(
+                    onOpenSpeed = {},
+                    onOpenCarMode = {},
+                    onOpenSleep = {},
+                    onAddBookmark = {},
+                    syncHere = PlayerToolButton(label = "Sync failed", enabled = true, onClick = {}, isError = true),
+                ),
+            )
+            PlayerToolRow(
+                rate = 1.25,
+                hasEbook = true,
+                actions = PlayerActions(
+                    onOpenSpeed = {},
+                    onOpenCarMode = {},
+                    onOpenSleep = {},
+                    onAddBookmark = {},
+                    syncHere = PlayerToolButton(
+                        label = "Sync failed",
+                        enabled = false,
+                        onClick = {},
+                        disabledDescription = "Needs a connection",
+                        isError = true,
+                    ),
+                ),
+            )
+        }
+    }
+}

@@ -57,21 +57,30 @@ internal fun playerBookmarkTap(row: BookmarkRowModel): PlayerBookmarkTap =
         ?: PlayerBookmarkTap.OpenReader((row.destination as? BookDetailDestination.Reader)?.startCfi)
 
 /**
- * The Sync here cell, or null when it is hidden (no ebook, or another book is loaded). It is disabled with [needsConnection]
- * while offline (P-A11Y-5), and reads [syncedLabel] once synced (P-BMK-4).
+ * The Sync here cell, or null when it is hidden (no ebook, or another book is loaded). Its label follows the status
+ * (P-BMK-4). It is disabled while Syncing or offline, and speaks [needsConnection] only while offline (P-A11Y-5). It is an
+ * error while Failed.
  */
 internal fun syncHereButton(
     state: SyncHereUIState,
     syncHereLabel: String,
+    syncingLabel: String,
     syncedLabel: String,
+    syncFailedLabel: String,
     needsConnection: String,
     onClick: () -> Unit,
 ): PlayerToolButton? {
     if (!state.visible) return null
     return PlayerToolButton(
-        label = if (state.synced) syncedLabel else syncHereLabel,
-        enabled = state.online,
+        label = when (state.status) {
+            SyncHereStatus.Idle -> syncHereLabel
+            SyncHereStatus.Syncing -> syncingLabel
+            SyncHereStatus.Synced -> syncedLabel
+            SyncHereStatus.Failed -> syncFailedLabel
+        },
+        enabled = state.online && state.status != SyncHereStatus.Syncing,
         onClick = onClick,
         disabledDescription = needsConnection.takeIf { !state.online },
+        isError = state.status == SyncHereStatus.Failed,
     )
 }
