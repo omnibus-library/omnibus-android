@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.reader.ui
 
 import android.view.View
 import android.view.ViewGroup
+import android.content.ClipboardManager
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
@@ -31,6 +32,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -47,6 +51,7 @@ import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
+import com.omnibus.omnibus.feature.reader.ReaderNotice
 import com.omnibus.omnibus.feature.reader.ReaderOpening
 import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderStart
@@ -58,6 +63,7 @@ import com.omnibus.omnibus.feature.reader.withMenuOpened
 import com.omnibus.omnibus.feature.reader.withMenuRowChosen
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -120,6 +126,8 @@ class ReaderScreenTest {
         onBookmarkChosen: (Bookmark) -> Unit = {},
         onBookmarksRetryRequested: () -> Unit = {},
         onContextLeft: () -> Unit = {},
+        onNoticeShown: () -> Unit = {},
+        onSelectionCopied: () -> Unit = {},
         /** The dock below the page; empty, as in the app without a book in the player. */
         bottomDock: @Composable () -> Unit = {},
     ) {
@@ -148,6 +156,8 @@ class ReaderScreenTest {
                         onBookmarkChosen = onBookmarkChosen,
                         onBookmarksRetryRequested = onBookmarksRetryRequested,
                         onContextLeft = onContextLeft,
+                        onNoticeShown = onNoticeShown,
+                        onSelectionCopied = onSelectionCopied,
                         bottomDock = bottomDock,
                     )
                 }
@@ -633,6 +643,70 @@ class ReaderScreenTest {
         listOf(ReaderChromeTags.LABEL_TOP, ReaderChromeTags.LABEL_BOTTOM).map { tag ->
             rule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].single().text
         }
+
+    // TC-38
+    @Test
+    fun issue54_tc38_aFailedSaveShowsTheSnackbarAndTakesTheNoticeOnce() {
+        val notices = AtomicInteger()
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Test Book"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    notice = ReaderNotice.HighlightSaveFailed,
+                )
+            },
+            inspection = true,
+            onNoticeShown = { notices.incrementAndGet() },
+        )
+
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("Couldn't save highlight").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Couldn't save highlight").assertIsDisplayed()
+        assertEquals(1, notices.get())
+    }
+
+    // TC-38
+    @Test
+    fun issue54_tc38_copyWritesTheSelectedTextToTheClipboard() {
+        val text = "Somewhere behind the wall"
+        val state = mutableStateOf(
+            ReaderUIState(book = ReaderBookState.Ready(title = "Test Book"), loadStatus = ReaderLoadStatus.Ready),
+        )
+        val copies = AtomicInteger()
+        show(uiState = { state.value }, inspection = true, onSelectionCopied = { copies.incrementAndGet() })
+        rule.waitForIdle()
+        val root = rule.onRoot().getUnclippedBoundsInRoot()
+        val width = (root.right - root.left).value
+        val height = (root.bottom - root.top).value
+        rule.runOnIdle { state.value = state.value.copy(selection = settledSelection(width, height, text)) }
+        rule.waitForIdle()
+
+        rule.onNodeWithText("Copy").performClick()
+
+        rule.waitUntil(timeoutMillis = 5_000) { clipboardText() == text }
+        assertEquals(1, copies.get())
+    }
+
+    /** A settled one-line selection at the window's middle, from the window's size, so its menu has room above. */
+    private fun settledSelection(width: Float, height: Float, text: String): SelectionData {
+        val line = (height * 0.05f).toDouble()
+        val top = (height * 0.5f).toDouble()
+        val left = (width * 0.2f).toDouble()
+        val right = (width * 0.8f).toDouble()
+        return SelectionData(
+            cfiRange = "epubcfi(/6/2!/4/2/1:0,/4/2/1:9)",
+            text = text,
+            rects = listOf(PageRect(x = left, y = top, width = right - left, height = line)),
+            start = SelectionHandle(x = left, y = top, height = line),
+            end = SelectionHandle(x = right, y = top, height = line),
+        )
+    }
+
+    private fun clipboardText(): String? = rule.runOnUiThread {
+        context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.text?.toString()
+    }
 
     // TC-43
     @Test

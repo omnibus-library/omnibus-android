@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import android.content.ClipData
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -25,12 +28,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -47,6 +53,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.bookmarks.Bookmark
+import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
@@ -60,6 +67,7 @@ import com.omnibus.omnibus.feature.reader.ReaderBackAction
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
+import com.omnibus.omnibus.feature.reader.ReaderNotice
 import com.omnibus.omnibus.feature.reader.ReaderOpening
 import com.omnibus.omnibus.feature.reader.ReaderSheet
 import com.omnibus.omnibus.feature.reader.ReaderUIState
@@ -77,6 +85,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 /**
@@ -132,6 +141,11 @@ fun ReaderScreen(
         onBookmarksRetryRequested = viewModel::onBookmarksRetryRequested,
         onContextLeft = viewModel::onContextLeft,
     onSelectionDismissed = viewModel::onSelectionDismissed,
+        onHighlightColorChosen = viewModel::onHighlightColorChosen,
+        onSelectionCopied = viewModel::onSelectionCopied,
+        onSelectionHandleGrabbed = viewModel::onSelectionHandleGrabbed,
+        onSelectionHandleReleased = viewModel::onSelectionHandleReleased,
+        onNoticeShown = viewModel::onNoticeShown,
         onClose = onClose,
         modifier = modifier,
         bottomDock = {
@@ -175,6 +189,11 @@ fun ReaderScreen(
  * @param onBookmarksRetryRequested the Bookmarks segment's Try again was tapped.
  * @param onContextLeft back or a tap on the zoomed-out page left context mode.
  * @param onSelectionDismissed back dismissed the page's selection, and its menu with it.
+ * @param onHighlightColorChosen a colour was chosen from the selection menu.
+ * @param onSelectionCopied Copy was chosen from the selection menu, after the clipboard was written.
+ * @param onSelectionHandleGrabbed a selection handle was grabbed.
+ * @param onSelectionHandleReleased a selection handle was let go.
+ * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
 @Composable
@@ -202,6 +221,11 @@ internal fun ReaderScreenContent(
     onBookmarksRetryRequested: () -> Unit = {},
     onContextLeft: () -> Unit = {},
     onSelectionDismissed: () -> Unit = {},
+    onHighlightColorChosen: (HighlightColor) -> Unit = {},
+    onSelectionCopied: () -> Unit = {},
+    onSelectionHandleGrabbed: () -> Unit = {},
+    onSelectionHandleReleased: () -> Unit = {},
+    onNoticeShown: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
 ) {
@@ -224,6 +248,16 @@ internal fun ReaderScreenContent(
         commands.collect { controller.execute(it) }
     }
     LaunchedEffect(controller, uiState.pageHighlights) { controller.applyHighlights(uiState.pageHighlights) }
+    val clipboard = LocalClipboard.current
+    val clipScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val noticeScope = rememberCoroutineScope()
+    val saveFailedText = stringResource(R.string.reader_highlight_save_failed)
+    LaunchedEffect(uiState.notice) {
+        if (uiState.notice != ReaderNotice.HighlightSaveFailed) return@LaunchedEffect
+        onNoticeShown() // clears the notice, which cancels this effect, so the snackbar runs in noticeScope
+        noticeScope.launch { snackbarHostState.showSnackbar(saveFailedText) }
+    }
 
     val currentOnStopped by rememberUpdatedState(onReaderStopped)
     val currentOnClosed by rememberUpdatedState(onReaderClosed)
@@ -337,6 +371,30 @@ internal fun ReaderScreenContent(
                                         insets = pageInsets,
                                     )
                                 }
+                                val selection = uiState.selection
+                                if (uiState.loadStatus == ReaderLoadStatus.Ready && !uiState.chromeVisible && selection != null) {
+                                    // Over the WebView's box, so the glue's CSS px are this layer's dp.
+                                    ReaderSelectionOverlay(
+                                        selection = selection,
+                                        menuShown = uiState.selectionMenuShown,
+                                        theme = theme,
+                                        onGrab = { edge ->
+                                            controller.beginEdgeDrag(edge)
+                                            onSelectionHandleGrabbed()
+                                        },
+                                        onDrag = controller::dragEdge,
+                                        onRelease = {
+                                            controller.endEdgeDrag()
+                                            onSelectionHandleReleased()
+                                        },
+                                        onColorChosen = onHighlightColorChosen,
+                                        onCopy = {
+                                            clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, selection.text))) }
+                                            onSelectionCopied()
+                                        },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
                             }
                             if (uiState.loadStatus == ReaderLoadStatus.Loading) {
                                 LoadingStateView(
@@ -405,6 +463,13 @@ internal fun ReaderScreenContent(
                                     onMenuRowChosen = onMenuRowChosen,
                                     onBookmarkToggled = onBookmarkToggled,
                                     bookmarkTint = readerPageAccent(book, theme),
+                                )
+                                SnackbarHost(
+                                    hostState = snackbarHostState,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .windowInsetsPadding(pageInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                                        .padding(start = Spacing.md, end = Spacing.md, bottom = ReaderBands.Bottom + Spacing.md),
                                 )
                             }
                             if (uiState.sheet == ReaderSheet.Contents) {

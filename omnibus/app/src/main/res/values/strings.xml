@@ -236,4 +236,6 @@
     <string name="reader_bookmarks_error_title">Couldn\'t load bookmarks.</string>
     <string name="reader_bookmarks_error_message">Check your connection and try again.</string>
     <string name="reader_bookmark_untitled">Saved position</string>
+    <string name="reader_highlight_save_failed">Couldn\'t save highlight</string>
+    <string name="reader_selection_copy">Copy</string>
 </resources>
