@@ -5,12 +5,16 @@ import com.omnibus.omnibus.data.audiobook.playback.chapters
 import com.omnibus.omnibus.data.audiobook.playback.playbackState
 import com.omnibus.omnibus.data.audiobook.playback.randomPlaybackState
 import com.omnibus.omnibus.data.audiobook.playback.randomPlayingBook
+import com.omnibus.omnibus.testing.TEST_SEED
 import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
+import io.kotest.property.PropTestConfig
+import io.kotest.property.arbitrary.double
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
 
@@ -125,6 +129,68 @@ class MiniPlayerUIStateMapperTest : DescribeSpec({
             result.title shouldBe book.title
             result.cover shouldBe CoverIdentity(uuid = book.bookUuid, title = book.title, creator = book.author, hasCover = true)
             result.isPlaying shouldBe state.isPlaying
+        }
+    }
+
+    describe("the percent listened") {
+        // #286 TC-5 (R12)
+        it("#286 TC-5: rounds the whole-book fraction down, so 99.99% shows 99") {
+            checkAll(PropTestConfig(seed = TEST_SEED), Arb.double(60.0, 100_000.0, includeNaNs = false)) { duration ->
+                val state = loadedState().copy(positionSeconds = duration * 0.9999, durationSeconds = duration)
+
+                miniPlayerUIState(state, stopping = null).percentListened shouldBe 99
+            }
+        }
+
+        // #286 TC-5 (R12)
+        it("#286 TC-5: is 0 at the start of the book") {
+            checkAll(PropTestConfig(seed = TEST_SEED), Arb.double(60.0, 100_000.0, includeNaNs = false)) { duration ->
+                val state = loadedState().copy(positionSeconds = 0.0, durationSeconds = duration)
+
+                miniPlayerUIState(state, stopping = null).percentListened shouldBe 0
+            }
+        }
+
+        // #286 TC-5 (R12)
+        it("#286 TC-5: is 100 at the end of the book, exactly or past it") {
+            checkAll(
+                PropTestConfig(seed = TEST_SEED),
+                Arb.double(60.0, 100_000.0, includeNaNs = false),
+                Arb.double(1.0, 2.0, includeNaNs = false),
+            ) { duration, factor ->
+                val state = loadedState().copy(positionSeconds = duration * factor, durationSeconds = duration)
+
+                miniPlayerUIState(state, stopping = null).percentListened shouldBe 100
+            }
+        }
+
+        // #286 TC-5 (R12)
+        it("#286 TC-5: is 0 for a negative position") {
+            checkAll(PropTestConfig(seed = TEST_SEED), Arb.double(60.0, 100_000.0, includeNaNs = false)) { duration ->
+                val state = loadedState().copy(positionSeconds = -duration, durationSeconds = duration)
+
+                miniPlayerUIState(state, stopping = null).percentListened shouldBe 0
+            }
+        }
+
+        // #286 TC-6 (R12)
+        it("#286 TC-6: is null while the progress is unknown, for a bad duration or position") {
+            checkAll(
+                Exhaustive.of(
+                    Pair(100.0, 0.0),
+                    Pair(100.0, -1.0),
+                    Pair(100.0, Double.NaN),
+                    Pair(100.0, Double.POSITIVE_INFINITY),
+                    Pair(100.0, Double.NEGATIVE_INFINITY),
+                    Pair(Double.NaN, 3600.0),
+                    Pair(Double.POSITIVE_INFINITY, 3600.0),
+                    Pair(Double.NEGATIVE_INFINITY, 3600.0),
+                ),
+            ) { (position, duration) ->
+                val state = loadedState().copy(positionSeconds = position, durationSeconds = duration)
+
+                miniPlayerUIState(state, stopping = null).percentListened.shouldBeNull()
+            }
         }
     }
 })

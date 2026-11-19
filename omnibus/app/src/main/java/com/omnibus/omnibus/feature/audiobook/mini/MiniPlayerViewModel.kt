@@ -9,6 +9,7 @@ import com.omnibus.omnibus.data.audiobook.playback.currentChapter
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlin.math.floor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,8 @@ import kotlinx.coroutines.launch
  * @property subtitle The current chapter's title, else the author, else null.
  * @property progress The whole book's position as a fraction in [0, 1]. Zero while the duration is unknown.
  * @property isPlaying Whether the play/pause button shows pause.
+ * @property percentListened Whole-book percentage listened, rounded down, 0..100; null while the duration is unknown,
+ *   zero or not finite (#286 R12).
  */
 data class MiniPlayerUIState(
     val visible: Boolean = false,
@@ -33,6 +36,7 @@ data class MiniPlayerUIState(
     val subtitle: String? = null,
     val progress: Float = 0f,
     val isPlaying: Boolean = false,
+    val percentListened: Int? = null,
 )
 
 /**
@@ -49,6 +53,11 @@ internal fun miniPlayerUIState(playback: PlaybackState, stopping: PlayingBook?):
     } else {
         0f
     }
+    val percent = if (duration.isFinite() && duration > 0 && position.isFinite()) {
+        floor(position / duration * 100.0).toInt().coerceIn(0, 100)
+    } else {
+        null
+    }
     return MiniPlayerUIState(
         visible = true,
         bookUuid = book.bookUuid,
@@ -58,6 +67,7 @@ internal fun miniPlayerUIState(playback: PlaybackState, stopping: PlayingBook?):
             ?: book.author?.takeIf { it.isNotBlank() },
         progress = progress,
         isPlaying = playback.isPlaying,
+        percentListened = percent,
     )
 }
 
