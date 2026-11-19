@@ -296,7 +296,11 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
                         gate.countDown()
                         awaitItem() shouldBe ReadStatusState.Failed
 
+                        // The failed read publishes Failed just before it completes, so a refresh now can join it and
+                        // send nothing. A second refresh then starts a read. Script both, since the first may send one.
                         script.answer("GET", reply(record))
+                        script.answer("GET", reply(record))
+                        repository.refresh(uuid)
                         repository.refresh(uuid)
                         awaitItem() shouldBe ReadStatusState.Known(record)
                     }

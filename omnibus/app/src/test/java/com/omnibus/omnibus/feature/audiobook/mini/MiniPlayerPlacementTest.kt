@@ -15,6 +15,7 @@ import io.kotest.property.PropTestConfig
 import io.kotest.property.arbitrary.float
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.list
+import io.kotest.property.arbitrary.map
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
 
@@ -160,8 +161,9 @@ class MiniPlayerPlacementTest : DescribeSpec({
         it("#286 TC-4: is full exactly when the full block fits the space, for any pair of heights") {
             checkAll(
                 PropTestConfig(seed = TEST_SEED),
-                Arb.float(0f, 2000f, includeNaNs = false),
-                Arb.float(0f, 2000f, includeNaNs = false),
+                // `+ 0f` turns a generated -0.0f into 0.0f. A height is never negative zero, and Dp orders -0.0 below 0.0.
+                Arb.float(0f, 2000f, includeNaNs = false).map { it + 0f },
+                Arb.float(0f, 2000f, includeNaNs = false).map { it + 0f },
             ) { space, full ->
                 (railMiniPlayerVariant(space.dp, full.dp) == RailMiniPlayerVariant.Full) shouldBe (full <= space)
             }
