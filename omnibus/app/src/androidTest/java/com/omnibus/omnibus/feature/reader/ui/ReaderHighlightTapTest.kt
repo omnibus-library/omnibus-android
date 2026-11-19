@@ -7,18 +7,22 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.test.platform.app.InstrumentationRegistry
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.reader.KnownHighlight
 import com.omnibus.omnibus.feature.reader.PageHighlight
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderUIState
+import com.omnibus.omnibus.feature.reader.highlightMenuOf
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
@@ -55,31 +59,7 @@ class ReaderHighlightTapTest {
 
     @Test
     fun issue299_tc3_aTapOnOverlappingHighlightsReportsEveryHitInBookOrder() {
-        val controller = ReaderController()
-        var state by mutableStateOf(ReaderUIState(book = ReaderBookState.Ready(title = "Test Book")))
-        rule.setContent {
-            OmnibusTheme {
-                ReaderScreenContent(
-                    uiState = state,
-                    bookUuid = "highlight-tap",
-                    controller = controller,
-                    assetLoaderFactory = assetLoaderFactory,
-                    commands = emptyFlow(),
-                    onPageEvent = { event -> synchronized(messages) { messages += event } },
-                    onSheetDismissed = {},
-                    onTocEntryChosen = {},
-                    onMenuOpened = {},
-                    onMenuDismissed = {},
-                    onMenuRowChosen = {},
-                    onRetryBookRequested = {},
-                    onReaderClosed = {},
-                    onReaderStopped = {},
-                    onSyncOfferAccepted = {},
-                    onSyncOfferDismissed = {},
-                    onClose = {},
-                )
-            }
-        }
+        val (controller, ui) = mount(menuOnTap = false)
         rule.waitUntil(timeoutMillis = 30_000) { controller.status == ReaderLoadStatus.Ready }
 
         // The ranges are selected before any highlight is drawn, so no mark sits over the text being selected.
@@ -90,7 +70,7 @@ class ReaderHighlightTapTest {
 
         // The highlights are given to the page in the reverse of book order.
         rule.runOnUiThread {
-            state = state.copy(
+            ui.value = ui.value.copy(
                 pageHighlights = listOf(later, earlier, lone).map {
                     PageHighlight(it.cfiRange!!, HighlightColor.Amber, hasNote = false)
                 },
@@ -112,6 +92,124 @@ class ReaderHighlightTapTest {
         assertEquals("the top-level range should be the first hit", tap.hits.first().cfiRange, tap.cfiRange)
         assertTrue("every hit should carry its rects", tap.hits.all { it.rects.isNotEmpty() })
     }
+
+    // TC-23
+    @Test
+    fun issue299_tc23_tappingAHighlightOpensTheMenuBesideIt() {
+        val (controller, ui) = mount(menuOnTap = true)
+        rule.waitUntil(timeoutMillis = 30_000) { ui.value.loadStatus == ReaderLoadStatus.Ready }
+
+        val highlight = select(controller, paragraph = 0, from = 1, to = 15)
+        rule.runOnUiThread {
+            ui.value = ui.value.copy(pageHighlights = listOf(PageHighlight(highlight.cfiRange!!, HighlightColor.Amber, hasNote = false)))
+        }
+        rule.waitUntil(timeoutMillis = 15_000) { markCount(controller) == 1 }
+        call(controller, ReaderScripts.WHEN_SETTLED)
+
+        val point = charPoint(controller, paragraph = 0, index = 8)
+        repeatGesture({ tapAt(point.number("x"), point.number("y")) }) { ui.value.highlightMenu != null }
+        rule.waitUntil(timeoutMillis = 5_000) { menuNodes().isNotEmpty() }
+
+        val tap = taps().first()
+        val density = rule.activity.resources.displayMetrics.density
+        val webView = rule.runOnUiThread { findWebView() }!!
+        val origin = IntArray(2)
+        rule.runOnUiThread { webView.getLocationInWindow(origin) }
+        val highlightLeft = origin[0] + tap.rects.minOf { it.x } * density
+        val highlightRight = origin[0] + tap.rects.maxOf { it.x + it.width } * density
+        val highlightTop = origin[1] + tap.rects.minOf { it.y } * density
+        val highlightBottom = origin[1] + tap.rects.maxOf { it.y + it.height } * density
+        val menu = rule.onNodeWithTag(ReaderHighlightMenuTags.MENU, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
+        val root = rule.onRoot().fetchSemanticsNode().boundsInWindow
+
+        assertTrue("the menu should overlap the highlight's horizontal span", menu.left < highlightRight && menu.right > highlightLeft)
+        assertTrue(
+            "the menu should sit wholly below or above the highlight",
+            menu.top >= highlightBottom || menu.bottom <= highlightTop,
+        )
+        assertTrue(
+            "the menu should lie inside the window",
+            menu.left >= root.left && menu.right <= root.right && menu.top >= root.top && menu.bottom <= root.bottom,
+        )
+    }
+
+    // TC-24
+    @Test
+    fun issue299_tc24_aTapOnAHighlightNearTheEdgeTurnsNoPageAndTogglesNoChrome() {
+        val (controller, ui) = mount(menuOnTap = false)
+        rule.waitUntil(timeoutMillis = 30_000) { controller.status == ReaderLoadStatus.Ready }
+
+        // The menu is not mounted here, so no scrim can be what stops the page turning.
+        val word = select(controller, paragraph = 0, from = 1, to = null)
+        rule.runOnUiThread {
+            ui.value = ui.value.copy(pageHighlights = listOf(PageHighlight(word.cfiRange!!, HighlightColor.Amber, hasNote = false)))
+        }
+        rule.waitUntil(timeoutMillis = 15_000) { markCount(controller) == 1 }
+        call(controller, ReaderScripts.WHEN_SETTLED)
+
+        val mark = synchronized(messages) { messages.size }
+        val edge = word.rects.first()
+        repeatGesture({ tapAt(edge.x + 2, edge.y + edge.height / 2) }) { taps().isNotEmpty() }
+        call(controller, ReaderScripts.WHEN_SETTLED)
+
+        val events = synchronized(messages) { messages.drop(mark) }
+        val tapIndex = events.indexOfFirst { it is ReaderEvent.AnnotationTap }
+        assertTrue("the tap should reach the highlight", tapIndex >= 0)
+        val afterTap = events.drop(tapIndex + 1)
+        assertTrue("the tap should not toggle the chrome", afterTap.none { it is ReaderEvent.ToggleChrome })
+        assertTrue("the tap should not turn the page", afterTap.none { it is ReaderEvent.TurnRequest })
+        assertTrue("the tap should not move the page", afterTap.none { it is ReaderEvent.Relocate && !it.data.echo })
+    }
+
+    /**
+     * Mounts the whole reader on the test book, not yet tapped. With [menuOnTap], the state follows the two events the
+     * highlight menu needs, as the ViewModel does: the load status, and a menu over the tapped highlight.
+     */
+    private fun mount(menuOnTap: Boolean): Pair<ReaderController, MutableState<ReaderUIState>> {
+        val controller = ReaderController()
+        val ui = mutableStateOf(ReaderUIState(book = ReaderBookState.Ready(title = "Test Book")))
+        rule.setContent {
+            OmnibusTheme {
+                ReaderScreenContent(
+                    uiState = ui.value,
+                    bookUuid = "highlight-tap",
+                    controller = controller,
+                    assetLoaderFactory = assetLoaderFactory,
+                    commands = emptyFlow(),
+                    onPageEvent = { event ->
+                        synchronized(messages) { messages += event }
+                        if (menuOnTap) reduce(ui, event)
+                    },
+                    onSheetDismissed = {},
+                    onTocEntryChosen = {},
+                    onMenuOpened = {},
+                    onMenuDismissed = {},
+                    onMenuRowChosen = {},
+                    onRetryBookRequested = {},
+                    onReaderClosed = {},
+                    onReaderStopped = {},
+                    onSyncOfferAccepted = {},
+                    onSyncOfferDismissed = {},
+                    onClose = {},
+                )
+            }
+        }
+        return controller to ui
+    }
+
+    /** The part of the ViewModel these tests need: the load status, and the menu a tap opens over the drawn highlights. */
+    private fun reduce(ui: MutableState<ReaderUIState>, event: ReaderEvent) {
+        when (event) {
+            is ReaderEvent.LoadStatusChanged -> ui.value = ui.value.copy(loadStatus = event.status)
+            is ReaderEvent.AnnotationTap -> {
+                val known = ui.value.pageHighlights.associate { it.cfiRange.trim() to KnownHighlight(it.color, "text") }
+                ui.value = ui.value.copy(highlightMenu = highlightMenuOf(event.data, known))
+            }
+            else -> Unit
+        }
+    }
+
+    private fun menuNodes() = rule.onAllNodesWithTag(ReaderHighlightMenuTags.MENU, useUnmergedTree = true).fetchSemanticsNodes()
 
     /**
      * Selects the text from the character at [from] to the one at [to] in paragraph [paragraph], or the word at [from]

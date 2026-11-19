@@ -52,11 +52,13 @@ import com.omnibus.omnibus.ui.theme.tint
 
 /**
  * The selection menu's body and tail as one outline, so its 1 dp border has no seam. The tail points up when [tailUp]
- * (the menu is below the selection) and down otherwise, with its centre at [tailCenterX] from the menu's left edge.
+ * (the menu is below the selection) and down otherwise, with its centre at [tailCenterX] from the menu's left edge. The
+ * body's corners are [corner] across.
  */
 internal class SelectionMenuShape(
     private val tailUp: Boolean,
     private val tailCenterX: Dp,
+    private val corner: Dp = SelectionMenuMetrics.CORNER.dp,
 ) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline = with(density) {
         val tail = SelectionMenuMetrics.TAIL_HEIGHT.dp.toPx()
@@ -64,7 +66,7 @@ internal class SelectionMenuShape(
         val top = if (tailUp) tail else 0f
         val bottom = if (tailUp) size.height else size.height - tail
         val body = Path().apply {
-            addRoundRect(RoundRect(0f, top, size.width, bottom, CornerRadius(SelectionMenuMetrics.CORNER.dp.toPx())))
+            addRoundRect(RoundRect(0f, top, size.width, bottom, CornerRadius(corner.toPx())))
         }
         val cx = tailCenterX.toPx()
         val tip = Path().apply {
