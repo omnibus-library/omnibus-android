@@ -123,7 +123,9 @@ class ReaderHighlightTapTest {
         call(controller, "OmnibusReader.beginSelectionAt(${start.number("x")}, ${start.number("y")})")
         if (to != null) {
             val end = charPoint(controller, paragraph, to)
-            call(controller, ReaderScripts.extendSelectionTo(end.number("x"), end.number("y"), end.number("x")))
+            // The glue's extendSelectionTo returns nothing, which the page reports as no answer, so the call returns true.
+            val extend = ReaderScripts.extendSelectionTo(end.number("x"), end.number("y"), end.number("x"))
+            call(controller, "(function(){$extend;return true;})()")
         }
         // The range is only reported once the selection settles, so end the press's drag first.
         rule.runOnUiThread { controller.endEdgeDrag() }
