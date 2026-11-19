@@ -17,3 +17,10 @@ fun randomHighlight(): Highlight = Highlight(
     createdAtMillis = if (randomBoolean()) randomLong(0L..2_000_000_000L) * 1_000L else null,
     fraction = if (randomBoolean()) randomDouble().toFloat() else null,
 )
+
+fun randomHighlightDraft(): HighlightDraft = HighlightDraft.create(
+    bookUuid = randomString(),
+    cfiRange = "epubcfi(/6/${randomString(8..16)})",
+    color = randomEnum(),
+    text = randomString().takeIf { randomBoolean() },
+)!!

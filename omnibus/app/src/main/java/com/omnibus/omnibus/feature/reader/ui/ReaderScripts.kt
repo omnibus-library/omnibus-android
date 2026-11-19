@@ -1,7 +1,10 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import com.omnibus.omnibus.data.highlights.HighlightColor
+import com.omnibus.omnibus.data.highlights.token
 import com.omnibus.omnibus.data.reader.ReaderAssets
 import com.omnibus.omnibus.data.reader.ReaderSettings
+import com.omnibus.omnibus.feature.reader.PageHighlight
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -117,9 +120,38 @@ internal object ReaderScripts {
 
     fun setCurlReady(on: Boolean, next: Boolean, prev: Boolean) = "OmnibusReader.setCurlReady($on, $next, $prev)"
 
+    fun addAnnotation(cfiRange: String, color: HighlightColor, hasNote: Boolean) =
+        "OmnibusReader.addAnnotation(${quote(cfiRange)}, ${quote(color.token)}, $hasNote)"
+
+    fun removeAnnotation(cfiRange: String) = "OmnibusReader.removeAnnotation(${quote(cfiRange)})"
+
+    const val CLEAR_ANNOTATIONS = "OmnibusReader.clearAnnotations()"
+
+    fun beginEdgeDrag(edge: SelectionEdge) = "OmnibusReader.beginEdgeDrag(${quote(edge.token)})"
+
+    fun extendSelectionTo(x: Double, y: Double, fingerX: Double) =
+        "OmnibusReader.extendSelectionTo(${JsonPrimitive(x)}, ${JsonPrimitive(y)}, ${JsonPrimitive(fingerX)})"
+
+    const val END_SELECTION_DRAG = "OmnibusReader.endSelectionDrag()"
+    const val CLEAR_SELECTION = "OmnibusReader.clearSelection()"
+
+    /**
+     * The calls that bring a page showing [drawn] up to [wanted]: a range that is gone or changed is removed, and a
+     * range that is new or changed is added, so a recoloured range is removed and then drawn again.
+     */
+    fun highlightsChange(drawn: List<PageHighlight>, wanted: List<PageHighlight>): List<String> = buildList {
+        val shown = drawn.associateBy { it.cfiRange }
+        val target = wanted.associateBy { it.cfiRange }
+        for ((cfi, old) in shown) if (target[cfi] != old) add(removeAnnotation(cfi))
+        for ((cfi, new) in target) if (shown[cfi] != new) add(addAnnotation(cfi, new.color, new.hasNote))
+    }
+
     private fun quote(value: String) = JsonPrimitive(value).toString()
 
 }
+
+/** Which end of a selection a handle moves. */
+internal enum class SelectionEdge(val token: String) { Start("start"), End("end") }
 
 /** System-bar insets in CSS px. */
 internal data class PageInsets(val top: Int, val bottom: Int, val left: Int, val right: Int) {

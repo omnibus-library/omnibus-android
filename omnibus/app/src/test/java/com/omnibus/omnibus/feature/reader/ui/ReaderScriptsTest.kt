@@ -1,11 +1,14 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.ReaderMargins
 import com.omnibus.omnibus.data.reader.ReaderPageTurn
 import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.ReaderTypeface
 import com.omnibus.omnibus.data.reader.randomReaderSettings
+import com.omnibus.omnibus.feature.reader.PageHighlight
+import com.omnibus.omnibus.feature.reader.randomPageHighlight
 import com.omnibus.omnibus.testing.randomInt
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
@@ -14,7 +17,9 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.property.Arb
 import io.kotest.property.Exhaustive
+import io.kotest.property.arbitrary.int
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
@@ -26,6 +31,9 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+/** A CFI that holds a quote, a backslash and a newline, which a script could misread. */
+private const val SPECIAL_CFI = "epubcfi(/6/4[id\"x'\\y]\n!/4)"
 
 class ReaderScriptsTest : DescribeSpec({
 
@@ -180,6 +188,123 @@ class ReaderScriptsTest : DescribeSpec({
                 } finally {
                     Locale.setDefault(previous)
                 }
+            }
+        }
+    }
+
+    describe("reconciling the highlights drawn on the page") {
+        context("when a range is wanted but not drawn") {
+            it("#54 TC-4: adds it") {
+                val added = randomPageHighlight()
+
+                ReaderScripts.highlightsChange(emptyList(), listOf(added)).shouldContainExactly(
+                    ReaderScripts.addAnnotation(added.cfiRange, added.color, added.hasNote),
+                )
+            }
+        }
+
+        context("when a range is drawn but no longer wanted") {
+            it("#54 TC-4: removes it") {
+                val gone = randomPageHighlight()
+
+                ReaderScripts.highlightsChange(listOf(gone), emptyList())
+                    .shouldContainExactly(ReaderScripts.removeAnnotation(gone.cfiRange))
+            }
+        }
+
+        context("when a drawn range changes colour") {
+            it("#54 TC-4: removes it, then adds it in the new colour") {
+                val drawn = PageHighlight(randomCfi(), HighlightColor.Amber, hasNote = false)
+                val wanted = drawn.copy(color = HighlightColor.Blue)
+
+                ReaderScripts.highlightsChange(listOf(drawn), listOf(wanted)).shouldContainExactly(
+                    ReaderScripts.removeAnnotation(drawn.cfiRange),
+                    ReaderScripts.addAnnotation(drawn.cfiRange, HighlightColor.Blue, hasNote = false),
+                )
+            }
+        }
+
+        context("when a drawn range gains a note") {
+            it("#54 TC-4: removes it, then adds it with the note") {
+                val drawn = PageHighlight(randomCfi(), HighlightColor.Amber, hasNote = false)
+                val wanted = drawn.copy(hasNote = true)
+
+                ReaderScripts.highlightsChange(listOf(drawn), listOf(wanted)).shouldContainExactly(
+                    ReaderScripts.removeAnnotation(drawn.cfiRange),
+                    ReaderScripts.addAnnotation(drawn.cfiRange, HighlightColor.Amber, hasNote = true),
+                )
+            }
+        }
+
+        context("when a new range is wanted beside a range that is drawn unchanged") {
+            it("#54 TC-4: sends only the new range") {
+                val kept = randomPageHighlight()
+                val added = randomPageHighlight()
+
+                ReaderScripts.highlightsChange(listOf(kept), listOf(kept, added)).shouldContainExactly(
+                    ReaderScripts.addAnnotation(added.cfiRange, added.color, added.hasNote),
+                )
+            }
+        }
+
+        context("when the drawn and wanted rows are equal") {
+            it("#54 TC-4: sends nothing, for any number of rows") {
+                checkAll(Arb.int(0..6)) { size ->
+                    val rows = List(size) { randomPageHighlight() }
+
+                    ReaderScripts.highlightsChange(rows, rows).shouldBeEmpty()
+                }
+            }
+        }
+    }
+
+    describe("the page calls that draw and remove highlights") {
+        /** The string a call's first argument quotes, read back from the script. */
+        fun firstArgument(call: String): String =
+            Json.parseToJsonElement(call.substringAfter("(").removeSuffix(")").substringBefore(", ")).jsonPrimitive.content
+
+        context("when the cfi holds quotes, a backslash and a newline") {
+            it("#54 TC-5: passes it to addAnnotation as one string") {
+                val call = ReaderScripts.addAnnotation(SPECIAL_CFI, HighlightColor.Amber, hasNote = true)
+
+                firstArgument(call) shouldBe SPECIAL_CFI
+            }
+
+            it("#54 TC-5: passes it to removeAnnotation as one string") {
+                firstArgument(ReaderScripts.removeAnnotation(SPECIAL_CFI)) shouldBe SPECIAL_CFI
+            }
+        }
+
+        context("for each highlight colour") {
+            it("#54 TC-5: sends the colour as the glue's lowercase key") {
+                val glueKeys = mapOf(
+                    HighlightColor.Amber to "amber",
+                    HighlightColor.Green to "green",
+                    HighlightColor.Blue to "blue",
+                    HighlightColor.Rose to "rose",
+                    HighlightColor.Violet to "violet",
+                )
+                val cfi = randomCfi()
+
+                checkAll(Exhaustive.enum<HighlightColor>()) { color ->
+                    ReaderScripts.addAnnotation(cfi, color, hasNote = false) shouldBe
+                        "OmnibusReader.addAnnotation(\"$cfi\", \"${glueKeys.getValue(color)}\", false)"
+                }
+            }
+        }
+
+        context("when a handle is dragged from either edge") {
+            it("#54 TC-5: sends the edge's name") {
+                checkAll(Exhaustive.of(SelectionEdge.Start to "start", SelectionEdge.End to "end")) { (edge, name) ->
+                    ReaderScripts.beginEdgeDrag(edge) shouldBe "OmnibusReader.beginEdgeDrag(\"$name\")"
+                }
+            }
+        }
+
+        context("when the selection is extended to a finger position") {
+            it("#54 TC-5: sends the finger's x as the third argument") {
+                ReaderScripts.extendSelectionTo(12.5, 340.25, 7.75) shouldBe
+                    "OmnibusReader.extendSelectionTo(12.5, 340.25, 7.75)"
             }
         }
     }

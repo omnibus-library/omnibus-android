@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.reader.ui
 
 import androidx.compose.ui.graphics.Color
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.ui.theme.Oklch
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 
 /** The colours of the reader's chrome: its ink, the labels' ink, and the plate and border behind controls. */
@@ -41,3 +42,10 @@ fun readerSwatchInk(theme: ReaderTheme): Color =
  */
 fun readerSyncOfferActionColor(theme: ReaderTheme): Color =
     if (theme.isLight) readerChromeColors(theme).ink else OmnibusPalette.Atrium.accent
+
+/** The colour of the selection's tint and handles on [theme]'s page: a cool blue outside the highlight palette. */
+fun readerSelectionTint(theme: ReaderTheme): Color =
+    (if (theme.isLight) Oklch(0.52, 0.06, 255.0) else Oklch(0.74, 0.06, 255.0)).toColor()
+
+/** The opacity the selection's tint is washed over the text at, which is stronger on the dark pages. */
+fun readerSelectionWashAlpha(theme: ReaderTheme): Float = if (theme.isLight) 0.24f else 0.30f
