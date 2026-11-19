@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.12](https://github.com/omnibus-library/omnibus-android/compare/v0.1.11...v0.1.12) (2026-11-19)
+
+
+### Features
+
+* **audiobook:** add the docked mini player rules ([#290](https://github.com/omnibus-library/omnibus-android/issues/290)) ([b5dfad0](https://github.com/omnibus-library/omnibus-android/commit/b5dfad0230921eeeadb2d0de9c4629d9ad7aa850))
+* **highlights:** create a highlight on the server ([#283](https://github.com/omnibus-library/omnibus-android/issues/283)) ([20eb6bd](https://github.com/omnibus-library/omnibus-android/commit/20eb6bd0533b03cf3a41e41281b3a6b6e8b2c3dd))
+* **reader:** add the highlight selection rules ([#282](https://github.com/omnibus-library/omnibus-android/issues/282)) ([cbf6863](https://github.com/omnibus-library/omnibus-android/commit/cbf68634741c5a2979bf581e31f498798ef34929))
+* **reader:** draw saved highlights when a book opens ([#287](https://github.com/omnibus-library/omnibus-android/issues/287)) ([8d064db](https://github.com/omnibus-library/omnibus-android/commit/8d064dbbaf80780c6ecc3d70c54dc2f817e57826))
+* **reader:** save a selection as a highlight ([#288](https://github.com/omnibus-library/omnibus-android/issues/288)) ([dbd67f7](https://github.com/omnibus-library/omnibus-android/commit/dbd67f79ba9a5b0f87dd9d378eb2c68546484285))
+* **reader:** select text and highlight it from a menu ([#289](https://github.com/omnibus-library/omnibus-android/issues/289)) ([c698b71](https://github.com/omnibus-library/omnibus-android/commit/c698b719d80de9ac0aed83f117a2c63c57d55334))
+* **reader:** send highlights and selection calls to the page ([#285](https://github.com/omnibus-library/omnibus-android/issues/285)) ([71ec08f](https://github.com/omnibus-library/omnibus-android/commit/71ec08fa5accb1ef73dda16f45247bd2f46d973a))
+* **shell:** dock the mini player on the tab bar and collapse it on scroll ([#294](https://github.com/omnibus-library/omnibus-android/issues/294)) ([1b639f9](https://github.com/omnibus-library/omnibus-android/commit/1b639f928988ccacf8bd1308be317ac0c2f46701))
+* **shell:** show the mini player in the navigation rail ([#295](https://github.com/omnibus-library/omnibus-android/issues/295)) ([878517c](https://github.com/omnibus-library/omnibus-android/commit/878517cabfb1fe52ee5a36a2cfba733f779a4112))
+
 ## [0.1.11](https://github.com/omnibus-library/omnibus-android/compare/v0.1.10...v0.1.11) (2026-11-13)
 
 
