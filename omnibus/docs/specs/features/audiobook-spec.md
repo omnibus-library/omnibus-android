@@ -306,13 +306,13 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
   - Tapping an audio bookmark plays from it and closes the sheet.
   - Swiping a row removes it, as the footer "Swipe one to remove it." says. Screen readers get a "Remove bookmark" action on each row instead.
 - P-BMK-3. The empty sheet says "No bookmarks yet. The ones you place while reading or listening gather here."
-- P-BMK-4. **Sync here** shows only for a book that also has an ebook. It marks this second of the audio as matching the reader's place. On success it reads "Synced ✓" until the player closes. Tapping it again sends again, and the label stays "Synced ✓".
+- P-BMK-4. **Sync here** shows only for a book that also has an ebook. It marks this second of the audio as matching the reader's place. After a tap it reads "Syncing…" and ignores taps until the server answers. On success it reads "Synced ✓"; on any failure it reads "Sync failed", with a circled "!" in the error colour. Either lasts until the player closes or the next tap, and the label always shows the latest tap's result: tapping again from "Synced ✓" or "Sync failed" sends again through "Syncing…".
 
 **Edge cases**
 
 - A bookmark that fails to save disappears again.
-- A failed Sync here stays "Sync here", with nothing else shown.
-- Offline, Sync here is dimmed and disabled.
+- A failed Sync here reads "Sync failed"; the reason is not shown.
+- Offline, Sync here is dimmed and disabled, and keeps its label ("Sync here", "Synced ✓" or "Sync failed", still in the error colour).
 - A text bookmark in the sheet opens the reader at that place.
 - Bookmark does nothing while the audio is still loading.
 
@@ -320,7 +320,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 - P-BMK-AC1: Bookmark adds an audio bookmark that appears in the sheet and on Book Detail.
 - P-BMK-AC2: Tapping an audio bookmark plays from it; swiping removes it.
-- P-BMK-AC3: Sync here shows only with an ebook, and reads "Synced ✓" after a sync.
+- P-BMK-AC3: Sync here shows only with an ebook, reads "Syncing…" while its request is out, then "Synced ✓" after a sync or "Sync failed" after a failure.
 
 ## 10. Mini player and reader dock (#172)
 
@@ -359,6 +359,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 - P-A11Y-4. The sleep countdown is readable on request. The banners and their actions are reachable.
 - P-A11Y-5. A disabled Sync here says why: it needs a connection.
 - P-A11Y-6. Motion is reduced when the system asks for it: the cover scale and the dismiss spring are skipped.
+- P-A11Y-7. A screen reader announces "Sync failed" once when it appears, not again on rotation, a sheet, or a connection change. A later failure is announced again. "Syncing…" and "Synced ✓" are not announced.
 
 ---
 
@@ -709,3 +710,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #168: I-SPD-3 also retries on reconnect and at the next load; I-SPD-4 sets the rate read order at load. |
 | 2026-11-10 | #271: P-MINI-1 floats the shell's mini player as a card above the content; the reader keeps the docked strip. |
 | 2026-11-18 | #286: P-MINI-1 docks the shell's mini player on the tab bar (collapsing on scroll) and moves it into the rail from 600dp, replacing the floating card. |
+| 2026-11-19 | #311: P-BMK-4 adds "Syncing…" and "Sync failed", with the latest tap's result shown; §9 edge cases cover the failure and offline; P-BMK-AC3 names the new labels; P-A11Y-7 announces "Sync failed" once. |
