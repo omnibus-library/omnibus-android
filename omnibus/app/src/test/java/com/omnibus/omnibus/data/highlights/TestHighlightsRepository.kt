@@ -8,10 +8,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * In-memory [HighlightsRepository] for consumers' tests. It follows [DefaultHighlightsRepository]'s rules: a loaded list
  * never regresses, and a refresh from Failed shows Loading while it runs. A saved create is appended to a loaded list, as
- * production does. There is no HTTP.
+ * production does. A deleted row leaves a loaded list, as production does. There is no HTTP.
  *
  * Unlike production, collecting [getHighlightsFlow] does not fetch. Call [seed] or [refresh] first. A create is answered by
- * [onAdd], which a test replaces to script its result.
+ * [onAdd], which a test replaces to script its result. A delete is answered by [onDelete].
  */
 class TestHighlightsRepository : HighlightsRepository {
 
@@ -34,6 +34,12 @@ class TestHighlightsRepository : HighlightsRepository {
 
     /** Answers a create. */
     var onAdd: suspend (HighlightDraft) -> HighlightWriteResult = { unscripted("addHighlight") }
+
+    /** The id of every delete, in call order. */
+    val deletes = mutableListOf<Long>()
+
+    /** Answers a delete. */
+    var onDelete: suspend (bookUuid: String, id: Long) -> HighlightDeleteResult = { _, _ -> unscripted("deleteHighlight") }
 
     /** Sets [bookUuid]'s state as if the server had answered it. */
     fun seed(bookUuid: String, state: HighlightsState) {
@@ -66,6 +72,18 @@ class TestHighlightsRepository : HighlightsRepository {
             val loaded = state.value as? HighlightsState.Loaded
             if (loaded != null && loaded.highlights.none { it.id == result.highlight.id }) {
                 state.value = HighlightsState.Loaded(loaded.highlights + result.highlight)
+            }
+        }
+        return result
+    }
+
+    override suspend fun deleteHighlight(bookUuid: String, id: Long): HighlightDeleteResult {
+        deletes += id
+        val result = onDelete(bookUuid, id)
+        if (result is HighlightDeleteResult.Deleted) {
+            val state = stateFor(bookUuid)
+            (state.value as? HighlightsState.Loaded)?.let { loaded ->
+                state.value = HighlightsState.Loaded(loaded.highlights.filterNot { it.id == id })
             }
         }
         return result

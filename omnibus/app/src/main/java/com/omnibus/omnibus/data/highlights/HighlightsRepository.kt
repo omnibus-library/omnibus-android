@@ -60,6 +60,12 @@ interface HighlightsRepository {
      * to a loaded list. Writes reach the server in call order.
      */
     suspend fun addHighlight(draft: HighlightDraft): HighlightWriteResult
+
+    /**
+     * Deletes the highlight with server [id] in [bookUuid] in the application scope, so leaving the reader cannot cancel
+     * it, and drops it from a loaded list. Ordered after any create for the book. A 404 counts as deleted.
+     */
+    suspend fun deleteHighlight(bookUuid: String, id: Long): HighlightDeleteResult
 }
 
 /** The outcome of a highlight create. A failed create leaves the loaded list as it was. */
@@ -71,7 +77,16 @@ sealed interface HighlightWriteResult {
     data class Failed(val error: HighlightError) : HighlightWriteResult
 }
 
-/** Why a highlight create failed. */
+/** The outcome of a highlight delete. A failed delete leaves the loaded list as it was. */
+sealed interface HighlightDeleteResult {
+    /** The server deleted the row, or had no such row (404). */
+    data object Deleted : HighlightDeleteResult
+
+    /** The delete did not take. [error] says why. */
+    data class Failed(val error: HighlightError) : HighlightDeleteResult
+}
+
+/** Why a highlight write (a create or a delete) failed. */
 sealed interface HighlightError {
     /** No server is configured, so no request was made. */
     data object NoServer : HighlightError
@@ -82,7 +97,9 @@ sealed interface HighlightError {
     /** The server answered 401, so the session has expired. */
     data object SessionExpired : HighlightError
 
-    /** The server answered 404 to a create, or the book uuid was blank and no request was made. */
+    /**
+     * The server answered 404 to a create, or the book uuid was blank and no request was made. A delete never returns it.
+     */
     data object BookNotFound : HighlightError
 
     /** The server answered 400, so it rejected the highlight's fields. */

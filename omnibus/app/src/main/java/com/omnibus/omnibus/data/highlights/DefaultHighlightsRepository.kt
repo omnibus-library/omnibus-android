@@ -27,10 +27,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches and creates run in the application scope, so
- * leaving the page cannot cancel them. Creates for one book go to the server one at a time in call order. A failed fetch
- * never replaces a loaded list. Every failure becomes a state or a typed result, so no exception leaves this class except
- * cancellation.
+ * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches, creates and deletes run in the application
+ * scope, so leaving the page cannot cancel them. Writes for one book go to the server one at a time in call order. A failed
+ * fetch never replaces a loaded list. Every failure becomes a state or a typed result, so no exception leaves this class
+ * except cancellation.
  */
 @Singleton
 class DefaultHighlightsRepository @Inject constructor(
@@ -47,11 +47,14 @@ class DefaultHighlightsRepository @Inject constructor(
         val state = MutableStateFlow<HighlightsState>(HighlightsState.Loading)
         var inFlightFetch: Deferred<HighlightsState>? = null
 
-        /** Serialises the creates for this book, so they reach the server in call order. */
+        /** Serialises the writes (creates and deletes) for this book, so they reach the server in call order. */
         val writeMutex = Mutex()
 
         /** Rows saved while a fetch is in flight, so the fetch's answer can be corrected for them. */
         val journal = mutableListOf<Highlight>()
+
+        /** Ids deleted while a fetch is in flight, so the fetch's answer can drop them. */
+        val deletedIds = mutableSetOf<Long>()
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -84,6 +87,25 @@ class DefaultHighlightsRepository @Inject constructor(
                         entry.state.value = HighlightsState.Loaded(loaded.highlights + row)
                     }
                     if (entry.inFlightFetch != null) entry.journal += row
+                }
+            }
+            result
+        }.await()
+    }
+
+    override suspend fun deleteHighlight(bookUuid: String, id: Long): HighlightDeleteResult {
+        val entry = entry(bookUuid)
+        // UNDISPATCHED reaches the FIFO mutex before returning, so writes reach the server in call order.
+        return applicationScope.async(start = CoroutineStart.UNDISPATCHED) {
+            val result = entry.writeMutex.withLock { sendDelete(id) }
+            if (result is HighlightDeleteResult.Deleted) {
+                synchronized(entry.lock) {
+                    val loaded = entry.state.value as? HighlightsState.Loaded
+                    if (loaded != null && loaded.highlights.any { it.id == id }) {
+                        entry.state.value = HighlightsState.Loaded(loaded.highlights.filterNot { it.id == id })
+                    }
+                    entry.journal.removeAll { it.id == id }
+                    if (entry.inFlightFetch != null) entry.deletedIds += id
                 }
             }
             result
@@ -132,6 +154,34 @@ class DefaultHighlightsRepository @Inject constructor(
             }
         }
 
+    /** One DELETE of the highlight with server [id]. A 2xx or 404 is deleted; a 401 or other code is a typed failure. */
+    private suspend fun sendDelete(id: Long): HighlightDeleteResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(HIGHLIGHTS_CREATE_PATH)
+            ?: return@withContext HighlightDeleteResult.Failed(HighlightError.NoServer)
+        val url = builder.build().url.newBuilder()
+            .addPathSegment(id.toString())
+            .build()
+        val request = builder.url(url).delete().build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                when {
+                    response.isSuccessful || response.code == HTTP_NOT_FOUND -> HighlightDeleteResult.Deleted
+                    response.code == HTTP_UNAUTHORIZED -> HighlightDeleteResult.Failed(HighlightError.SessionExpired)
+                    else -> HighlightDeleteResult.Failed(HighlightError.Http(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server to delete a highlight", ex)
+            HighlightDeleteResult.Failed(HighlightError.Unreachable)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure deleting a highlight", ex)
+            HighlightDeleteResult.Failed(HighlightError.UnexpectedResponse)
+        }
+    }
+
     /**
      * Starts a GET, or returns the one already in flight. It runs in the application scope, not the caller's. The in-flight
      * slot is cleared in the same lock as the state write, so a caller that sees Failed always starts a new fetch.
@@ -140,6 +190,7 @@ class DefaultHighlightsRepository @Inject constructor(
         val deferred = synchronized(entry.lock) {
             entry.inFlightFetch?.takeIf { !it.isCompleted }?.let { return it }
             entry.journal.clear()
+            entry.deletedIds.clear()
             applicationScope.async(start = CoroutineStart.LAZY) {
                 // A retry after a failure shows progress; a loaded list stays on screen while it refreshes.
                 synchronized(entry.lock) {
@@ -148,9 +199,13 @@ class DefaultHighlightsRepository @Inject constructor(
                 val fetched = get(uuid)
                 synchronized(entry.lock) {
                     val outcome = if (fetched is HighlightsState.Loaded) {
-                        // A row saved while this GET ran may be missing from its answer, so it is merged back in.
+                        // A row saved while this GET ran may be missing from its answer, and a row deleted while it ran
+                        // may still be in it, so both are corrected.
                         val ids = fetched.highlights.mapTo(HashSet()) { it.id }
-                        HighlightsState.Loaded(fetched.highlights + entry.journal.filter { it.id !in ids })
+                        HighlightsState.Loaded(
+                            (fetched.highlights + entry.journal.filter { it.id !in ids })
+                                .filterNot { it.id in entry.deletedIds },
+                        )
                     } else {
                         fetched
                     }
@@ -160,6 +215,7 @@ class DefaultHighlightsRepository @Inject constructor(
                         entry.state.value = HighlightsState.Failed
                     }
                     entry.journal.clear()
+                    entry.deletedIds.clear()
                     entry.inFlightFetch = null
                     outcome
                 }
@@ -208,7 +264,7 @@ class DefaultHighlightsRepository @Inject constructor(
         /** Relative, so it resolves beneath the server's base URL. */
         const val HIGHLIGHTS_PATH = "api/highlights/book"
 
-        /** Relative, so it resolves beneath the server's base URL. */
+        /** Relative, so it resolves beneath the server's base URL. A create POSTs here; a delete appends the id. */
         const val HIGHLIGHTS_CREATE_PATH = "api/highlights"
 
         const val HTTP_BAD_REQUEST = 400
