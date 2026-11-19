@@ -45,6 +45,7 @@ private fun sampleEntry(color: HighlightColor, rects: List<PageRect>): Highlight
     rects = rects,
     color = color,
     text = "Every room held its breath",
+    hasNote = false,
 )
 
 /**

@@ -82,6 +82,7 @@ class ReaderHighlightMenuLayerTest {
         ),
         color = color,
         text = text,
+        hasNote = false,
     )
 
     /** Sets the overlay over the page's [under], with [menu] held by the test and stepped by [onStep] as default. */

@@ -8,6 +8,7 @@ import com.omnibus.omnibus.data.bookmarks.BookmarksRepository
 import com.omnibus.omnibus.data.bookmarks.BookmarksState
 import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
+import com.omnibus.omnibus.data.highlights.HighlightDeleteResult
 import com.omnibus.omnibus.data.highlights.HighlightDraft
 import com.omnibus.omnibus.data.highlights.HighlightWriteResult
 import com.omnibus.omnibus.data.highlights.HighlightsRepository
@@ -40,6 +41,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -116,11 +118,17 @@ class ReaderViewModel @AssistedInject constructor(
 
     /**
      * A highlight made this session, drawn at once. [id] is local, so a failed save can find its row. [text] is the
-     * draft's trimmed text, which the highlight menu's Copy takes.
+     * draft's trimmed text, which the highlight menu's Copy takes. [saved] completes with the saved row's id, or null when
+     * the save failed, so a delete of the row can wait for it.
      */
-    private data class SessionHighlight(val id: Long, val highlight: PageHighlight, val text: String?)
+    private data class SessionHighlight(
+        val id: Long,
+        val highlight: PageHighlight,
+        val text: String?,
+        val saved: CompletableDeferred<Long?> = CompletableDeferred(),
+    )
 
-    /** This session's highlights, newest first. They stay until the save fails. */
+    /** This session's highlights, newest first. They stay until the save fails or the highlight is deleted. */
     private var session: List<SessionHighlight> = emptyList()
 
     /** The id of the next [SessionHighlight]. */
@@ -289,6 +297,32 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader copied the highlight. The screen has already written the clipboard. */
     fun onHighlightCopied() = dismissHighlightMenu()
 
+    /**
+     * The reader chose Delete in the highlight menu. The menu closes. A highlight with a note asks first, through
+     * [ReaderUIState.highlightDeleteConfirmation]; one without is deleted at once.
+     */
+    fun onHighlightDeleteRequested() {
+        val entry = _uiState.value.highlightMenu?.activeEntry ?: return
+        dismissHighlightMenu()
+        if (entry.hasNote) {
+            _uiState.update { it.copy(highlightDeleteConfirmation = HighlightDeleteConfirmation(entry.cfiRange)) }
+        } else {
+            deleteHighlightAt(entry.cfiRange)
+        }
+    }
+
+    /** The reader confirmed the delete in the note dialog. */
+    fun onHighlightDeleteConfirmed() {
+        val confirmation = _uiState.value.highlightDeleteConfirmation ?: return
+        _uiState.update { it.copy(highlightDeleteConfirmation = null) }
+        deleteHighlightAt(confirmation.cfiRange)
+    }
+
+    /** The reader cancelled the note dialog, by Cancel, back or a tap outside it. The highlight stays. */
+    fun onHighlightDeleteCancelled() {
+        _uiState.update { it.copy(highlightDeleteConfirmation = null) }
+    }
+
     /** A selection handle was grabbed, so the highlight menu waits for the drag to settle. */
     fun onSelectionHandleGrabbed() {
         _uiState.update { it.copy(adjustingSelection = true) }
@@ -317,10 +351,14 @@ class ReaderViewModel @AssistedInject constructor(
         session = listOf(row) + session
         publishHighlights()
         viewModelScope.launch {
-            if (highlightsRepository.addHighlight(draft) is HighlightWriteResult.Failed) {
-                session = session.filterNot { it.id == row.id }
-                publishHighlights()
-                _uiState.update { it.copy(notice = ReaderNotice.HighlightSaveFailed) }
+            when (val result = highlightsRepository.addHighlight(draft)) {
+                is HighlightWriteResult.Saved -> row.saved.complete(result.highlight.id)
+                is HighlightWriteResult.Failed -> {
+                    row.saved.complete(null)
+                    session = session.filterNot { it.id == row.id }
+                    publishHighlights()
+                    _uiState.update { it.copy(notice = ReaderNotice.HighlightSaveFailed) }
+                }
             }
         }
     }
@@ -573,8 +611,35 @@ class ReaderViewModel @AssistedInject constructor(
         savedHighlights.forEach { row -> row.location?.trim()?.let { remember(it, row.text) } }
         return _uiState.value.pageHighlights.associate { highlight ->
             val cfi = highlight.cfiRange.trim()
-            cfi to KnownHighlight(highlight.color, texts[cfi])
+            cfi to KnownHighlight(highlight.color, texts[cfi], highlight.hasNote)
         }
+    }
+
+    /**
+     * Deletes the drawn highlight at [cfiRange], a trimmed range. The page drops it once the server confirms; a failure
+     * keeps it and raises [ReaderNotice.HighlightDeleteFailed]. A session highlight whose save failed has nothing to
+     * delete, and its own notice already showed.
+     */
+    private fun deleteHighlightAt(cfiRange: String) {
+        viewModelScope.launch {
+            val id = savedIdOf(cfiRange) ?: return@launch
+            when (highlightsRepository.deleteHighlight(bookUuid, id)) {
+                HighlightDeleteResult.Deleted -> {
+                    session = session.filterNot { it.highlight.cfiRange.trim() == cfiRange }
+                    publishHighlights()
+                }
+                is HighlightDeleteResult.Failed -> _uiState.update { it.copy(notice = ReaderNotice.HighlightDeleteFailed) }
+            }
+        }
+    }
+
+    /**
+     * The server id of the highlight the page draws at [cfiRange], picked as [pageHighlightsOf] picks it: the newest
+     * session row first, waiting for its save, then the first saved row. Null when its save failed or none is left.
+     */
+    private suspend fun savedIdOf(cfiRange: String): Long? {
+        session.firstOrNull { it.highlight.cfiRange.trim() == cfiRange }?.let { return it.saved.await() }
+        return savedHighlights.firstOrNull { it.location?.trim() == cfiRange }?.id
     }
 
     /**
@@ -667,6 +732,8 @@ data class ReaderUIState(
     val highlightMenu: HighlightMenu? = null,
     /** A one-off message for the reader, cleared once shown. */
     val notice: ReaderNotice? = null,
+    /** The open "Delete this highlight?" dialog, or null. It outlives the menu, which closes when it opens. */
+    val highlightDeleteConfirmation: HighlightDeleteConfirmation? = null,
 ) {
 
     /** The number of bookmarks in the state, so an optimistic add counts at once and a failed one drops off. */
@@ -748,7 +815,10 @@ enum class ReaderBookmarksStatus { Loading, Failed, Loaded }
 enum class ReaderMenuRow { Contents, Bookmarks, Settings }
 
 /** A one-off message for the reader. */
-enum class ReaderNotice { HighlightSaveFailed }
+enum class ReaderNotice { HighlightSaveFailed, HighlightDeleteFailed }
+
+/** The note confirmation for deleting the drawn highlight at [cfiRange], a trimmed range. */
+data class HighlightDeleteConfirmation(val cfiRange: String)
 
 /**
  * What system back does next, in order: the highlight menu, the selection, the sheet, the dropdown, context mode, then
