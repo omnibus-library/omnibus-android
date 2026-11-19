@@ -128,7 +128,10 @@ class AudiobookPlaybackServiceTest {
         awaitUntil("the platform session to show the chapter title") {
             platform.metadata?.getString(PlatformMetadata.METADATA_KEY_TITLE) == "Two"
         }
-        assertEquals(50_000L, platform.metadata!!.getLong(PlatformMetadata.METADATA_KEY_DURATION))
+        // The platform session can show the new title while the duration is still the previous one's.
+        awaitUntil("the platform session to show the span's duration") {
+            platform.metadata?.getLong(PlatformMetadata.METADATA_KEY_DURATION) == 50_000L
+        }
     }
 
     /** The platform controller for the service's session, which is what the system surfaces read. */
