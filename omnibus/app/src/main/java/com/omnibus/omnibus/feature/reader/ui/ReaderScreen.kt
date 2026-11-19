@@ -148,6 +148,9 @@ fun ReaderScreen(
         onHighlightMenuStepped = viewModel::onHighlightMenuStepped,
         onHighlightMenuDismissed = viewModel::onHighlightMenuDismissed,
         onHighlightCopied = viewModel::onHighlightCopied,
+        onHighlightDeleteRequested = viewModel::onHighlightDeleteRequested,
+        onHighlightDeleteConfirmed = viewModel::onHighlightDeleteConfirmed,
+        onHighlightDeleteCancelled = viewModel::onHighlightDeleteCancelled,
         onNoticeShown = viewModel::onNoticeShown,
         onClose = onClose,
         modifier = modifier,
@@ -199,6 +202,9 @@ fun ReaderScreen(
  * @param onHighlightMenuStepped the highlight menu's switcher moved to another highlight, by the given step.
  * @param onHighlightMenuDismissed a touch outside the highlight menu, or back, closed it.
  * @param onHighlightCopied Copy was chosen from the highlight menu, after the clipboard was written.
+ * @param onHighlightDeleteRequested Delete was chosen from the highlight menu.
+ * @param onHighlightDeleteConfirmed Delete was chosen in the note dialog.
+ * @param onHighlightDeleteCancelled the note dialog was cancelled, by Cancel, back or a tap outside it.
  * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
@@ -234,6 +240,9 @@ internal fun ReaderScreenContent(
     onHighlightMenuStepped: (Int) -> Unit = {},
     onHighlightMenuDismissed: () -> Unit = {},
     onHighlightCopied: () -> Unit = {},
+    onHighlightDeleteRequested: () -> Unit = {},
+    onHighlightDeleteConfirmed: () -> Unit = {},
+    onHighlightDeleteCancelled: () -> Unit = {},
     onNoticeShown: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
@@ -263,10 +272,15 @@ internal fun ReaderScreenContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val noticeScope = rememberCoroutineScope()
     val saveFailedText = stringResource(R.string.reader_highlight_save_failed)
+    val deleteFailedText = stringResource(R.string.reader_highlight_delete_failed)
     LaunchedEffect(uiState.notice) {
-        if (uiState.notice != ReaderNotice.HighlightSaveFailed) return@LaunchedEffect
+        val text = when (uiState.notice) {
+            ReaderNotice.HighlightSaveFailed -> saveFailedText
+            ReaderNotice.HighlightDeleteFailed -> deleteFailedText
+            null -> return@LaunchedEffect
+        }
         onNoticeShown() // clears the notice, which cancels this effect, so the snackbar runs in noticeScope
-        noticeScope.launch { snackbarHostState.showSnackbar(saveFailedText) }
+        noticeScope.launch { snackbarHostState.showSnackbar(text) }
     }
 
     val currentOnStopped by rememberUpdatedState(onReaderStopped)
@@ -416,6 +430,7 @@ internal fun ReaderScreenContent(
                                             clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, text))) }
                                             onHighlightCopied()
                                         },
+                                        onDelete = onHighlightDeleteRequested,
                                         onDismiss = onHighlightMenuDismissed,
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -513,6 +528,16 @@ internal fun ReaderScreenContent(
                                         bookmarksStatus = uiState.bookmarksStatus,
                                         onBookmarkChosen = onBookmarkChosen,
                                         onBookmarksRetry = onBookmarksRetryRequested,
+                                    )
+                                }
+                            }
+                            if (uiState.highlightDeleteConfirmation != null) {
+                                // The app theme, as the sheets: a dialog belongs to the app, not to the page.
+                                OmnibusTheme(darkTheme = appDark) {
+                                    ReaderHighlightDeleteDialog(
+                                        accent = readerSheetAccent(book, OmnibusTheme.palette).tint,
+                                        onConfirm = onHighlightDeleteConfirmed,
+                                        onCancel = onHighlightDeleteCancelled,
                                     )
                                 }
                             }

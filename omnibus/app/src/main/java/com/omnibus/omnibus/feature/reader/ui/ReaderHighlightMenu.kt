@@ -65,6 +65,7 @@ internal object ReaderHighlightMenuTags {
     const val SCRIM = "reader_highlight_scrim"
     const val OUTLINE = "reader_highlight_outline"
     const val POSITION = "reader_highlight_position"
+    const val DELETE = "reader_highlight_delete"
 }
 
 /**
@@ -76,6 +77,7 @@ internal object ReaderHighlightMenuTags {
  * @param theme The reading theme, which sets the menu's colours.
  * @param onStep Moves the active highlight by one place: -1 for previous, 1 for next.
  * @param onCopy Copy was chosen, with the active highlight's text.
+ * @param onDelete Delete was chosen for the active highlight.
  * @param onDismiss A touch outside the menu was lifted.
  */
 @Composable
@@ -84,6 +86,7 @@ internal fun ReaderHighlightMenuOverlay(
     theme: ReaderTheme,
     onStep: (delta: Int) -> Unit,
     onCopy: (text: String) -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -124,14 +127,14 @@ internal fun ReaderHighlightMenuOverlay(
             boundsWidth = maxWidth.value,
             boundsHeight = maxHeight.value,
         )?.let { placement ->
-            ReaderHighlightMenu(menu, placement, colors, onStep, onCopy)
+            ReaderHighlightMenu(menu, placement, colors, onStep, onCopy, onDelete)
         }
     }
 }
 
 /**
  * The menu's body and tail, with the "N of M" row above the toolbar when [menu] has a switcher. The toolbar holds the
- * five colours, with a check on the active one, and Copy when the active highlight has text.
+ * five colours, with a check on the active one, Copy when the active highlight has text, and Delete.
  */
 @Composable
 private fun ReaderHighlightMenu(
@@ -140,6 +143,7 @@ private fun ReaderHighlightMenu(
     colors: ReaderChromeColors,
     onStep: (delta: Int) -> Unit,
     onCopy: (text: String) -> Unit,
+    onDelete: () -> Unit,
 ) {
     val m = HighlightMenuMetrics
     val entry = menu.activeEntry
@@ -219,10 +223,10 @@ private fun ReaderHighlightMenu(
                             }
                         }
                     }
+                    Box(Modifier.padding(horizontal = 6.dp)) {
+                        Box(Modifier.size(width = 1.dp, height = 24.dp).background(colors.border))
+                    }
                     entry.text?.takeIf { entry.canCopy }?.let { text ->
-                        Box(Modifier.padding(horizontal = 6.dp)) {
-                            Box(Modifier.size(width = 1.dp, height = 24.dp).background(colors.border))
-                        }
                         val copyLabel = stringResource(R.string.reader_selection_copy)
                         MenuTooltip(copyLabel) {
                             Box(
@@ -239,6 +243,24 @@ private fun ReaderHighlightMenu(
                                     tint = colors.ink,
                                 )
                             }
+                        }
+                    }
+                    val deleteLabel = stringResource(R.string.reader_highlight_delete)
+                    MenuTooltip(deleteLabel) {
+                        Box(
+                            Modifier
+                                .size(m.SLOT.dp)
+                                .testTag(ReaderHighlightMenuTags.DELETE)
+                                .clickable(role = Role.Button, onClick = onDelete)
+                                .semantics { contentDescription = deleteLabel },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_reader_delete),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = colors.danger,
+                            )
                         }
                     }
                 }

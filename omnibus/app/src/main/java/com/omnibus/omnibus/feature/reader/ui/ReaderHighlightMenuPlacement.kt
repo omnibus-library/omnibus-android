@@ -2,10 +2,10 @@ package com.omnibus.omnibus.feature.reader.ui
 
 /**
  * The highlight menu's metrics, in dp, which equal the page's CSS px. Its size comes from its content, not a measure
- * pass: swatches and Copy each take a [SLOT] touch target, and the switcher row adds a fixed height.
+ * pass: swatches, Copy and Delete each take a [SLOT] touch target, and the switcher row adds a fixed height.
  */
 internal object HighlightMenuMetrics {
-    /** A swatch's or Copy's touch slot. */
+    /** A swatch's, Copy's or Delete's touch slot. */
     const val SLOT = 44f
 
     /** The toolbar row. */
@@ -20,7 +20,7 @@ internal object HighlightMenuMetrics {
     /** The toolbar row's side padding. */
     const val PADDING = 10f
 
-    /** The divider before Copy, with 6 dp either side of it. */
+    /** The divider before Copy and Delete, with 6 dp either side of it. */
     const val DIVIDER_SPACE = 13f
 
     /** The body's corner radius, which the tail must clear. */
@@ -36,10 +36,13 @@ internal data class HighlightMenuSize(val width: Float, val bodyHeight: Float) {
     val height: Float get() = bodyHeight + HighlightMenuMetrics.TAIL_HEIGHT
 }
 
-/** The size of the menu for the controls it shows: Copy when [hasCopy], the "N of M" row when [hasSwitcher]. */
+/**
+ * The size of the menu for the controls it shows: Delete always, Copy when [hasCopy], and the "N of M" row when
+ * [hasSwitcher].
+ */
 internal fun highlightMenuSize(hasCopy: Boolean, hasSwitcher: Boolean): HighlightMenuSize {
     val m = HighlightMenuMetrics
-    val width = 2 * m.PADDING + 5 * m.SLOT + (if (hasCopy) m.DIVIDER_SPACE + m.SLOT else 0f)
+    val width = 2 * m.PADDING + 5 * m.SLOT + m.DIVIDER_SPACE + m.SLOT + (if (hasCopy) m.SLOT else 0f)
     val bodyHeight = m.ROW_HEIGHT + (if (hasSwitcher) m.SWITCHER_HEIGHT + m.RULE else 0f)
     return HighlightMenuSize(width, bodyHeight)
 }

@@ -5,12 +5,16 @@ import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.ui.theme.Oklch
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
 
-/** The colours of the reader's chrome: its ink, the labels' ink, and the plate and border behind controls. */
+/**
+ * The colours of the reader's chrome: its ink, the labels' ink, the plate and border behind controls, and the danger
+ * colour of destructive actions such as Delete.
+ */
 data class ReaderChromeColors(
     val ink: Color,
     val labelInk: Color,
     val plate: Color,
     val border: Color,
+    val danger: Color,
 )
 
 /**
@@ -26,7 +30,10 @@ fun readerChromeColors(theme: ReaderTheme): ReaderChromeColors {
         ReaderTheme.Dark -> Color(0xFF2E2B27)
         ReaderTheme.Black -> Color(0xFF1A1816)
     }
-    return ReaderChromeColors(ink, ink.copy(alpha = 0.5f), plate, ink.copy(alpha = 0.12f))
+    // The palette's bad is about 2.4:1 on the light plates, so they take a darker red of the same hue (5.4:1 and 5.3:1);
+    // the dark plates keep it (5.3:1 and 6.7:1).
+    val danger = if (theme.isLight) Oklch(0.52, 0.16, 25.0).toColor() else OmnibusPalette.Atrium.bad
+    return ReaderChromeColors(ink, ink.copy(alpha = 0.5f), plate, ink.copy(alpha = 0.12f), danger)
 }
 
 /**

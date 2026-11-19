@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.reader.ui
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.ui.theme.contrastRatio
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
@@ -24,6 +25,16 @@ class ReaderChromeColorsTest : DescribeSpec({
                 val plate = readerChromeColors(theme).plate.luminance()
 
                 ((maxOf(action, plate) + 0.05) / (minOf(action, plate) + 0.05)).toDouble() shouldBeGreaterThanOrEqual 4.5
+            }
+        }
+    }
+
+    describe("the highlight menu's Delete colour") {
+        it("#300 TC-13: reaches WCAG AA on the plate of every reading theme") {
+            checkAll(Exhaustive.enum<ReaderTheme>()) { theme ->
+                val colors = readerChromeColors(theme)
+
+                contrastRatio(colors.danger, colors.plate) shouldBeGreaterThanOrEqual 4.5
             }
         }
     }
