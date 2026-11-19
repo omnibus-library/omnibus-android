@@ -329,7 +329,8 @@ class ReaderViewModel @AssistedInject constructor(
     fun onSettingsChanged(settings: ReaderSettings) {
         val next = settings.normalized()
         if (next == _uiState.value.settings) return
-        _uiState.update { it.copy(settings = next) }
+        // A reflow or a new theme leaves the menu's rects and colours stale, so it closes.
+        _uiState.update { it.copy(settings = next, highlightMenu = null) }
         // Application scope so the save outlives the reader; UNDISPATCHED so rapid taps reach DataStore in order.
         persistScope.launch(start = CoroutineStart.UNDISPATCHED) { settingsStore.save(next) }
     }
