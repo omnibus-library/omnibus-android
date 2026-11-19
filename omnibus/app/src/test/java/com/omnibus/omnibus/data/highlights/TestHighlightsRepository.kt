@@ -1,14 +1,17 @@
 package com.omnibus.omnibus.data.highlights
 
+import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * In-memory [HighlightsRepository] for consumers' tests. It follows [DefaultHighlightsRepository]'s rules: a loaded list
- * never regresses, and a refresh from Failed shows Loading while it runs. There is no HTTP.
+ * never regresses, and a refresh from Failed shows Loading while it runs. A saved create is appended to a loaded list, as
+ * production does. There is no HTTP.
  *
- * Unlike production, collecting [getHighlightsFlow] does not fetch. Call [seed] or [refresh] first.
+ * Unlike production, collecting [getHighlightsFlow] does not fetch. Call [seed] or [refresh] first. A create is answered by
+ * [onAdd], which a test replaces to script its result.
  */
 class TestHighlightsRepository : HighlightsRepository {
 
@@ -25,6 +28,12 @@ class TestHighlightsRepository : HighlightsRepository {
 
     /** The uuid of every refresh, in call order. */
     val refreshCalls = mutableListOf<String>()
+
+    /** Every draft passed to [addHighlight], in call order. */
+    val drafts = mutableListOf<HighlightDraft>()
+
+    /** Answers a create. */
+    var onAdd: suspend (HighlightDraft) -> HighlightWriteResult = { unscripted("addHighlight") }
 
     /** Sets [bookUuid]'s state as if the server had answered it. */
     fun seed(bookUuid: String, state: HighlightsState) {
@@ -47,5 +56,18 @@ class TestHighlightsRepository : HighlightsRepository {
             outcome is HighlightsState.Failed -> HighlightsState.Failed
             else -> before
         }
+    }
+
+    override suspend fun addHighlight(draft: HighlightDraft): HighlightWriteResult {
+        drafts += draft
+        val result = onAdd(draft)
+        if (result is HighlightWriteResult.Saved) {
+            val state = stateFor(draft.bookUuid)
+            val loaded = state.value as? HighlightsState.Loaded
+            if (loaded != null && loaded.highlights.none { it.id == result.highlight.id }) {
+                state.value = HighlightsState.Loaded(loaded.highlights + result.highlight)
+            }
+        }
+        return result
     }
 }
