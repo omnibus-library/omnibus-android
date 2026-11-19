@@ -92,9 +92,9 @@ private val RailStartInsets: WindowInsets
     @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Start)
 
 /**
- * The shell's bottom overlay: the floating mini player above the tab bar ([ShellNavigationLayout.Bar]) or above a spacer
- * as tall as the navigation bar ([ShellNavigationLayout.Rail]), so the overlay is never shorter than the navigation bar.
- * [miniPlayer] is always the first call, so it keeps its composition when the layout changes.
+ * The shell's bottom overlay: the docked mini player strip above the tab bar ([ShellNavigationLayout.Bar]) or above a
+ * spacer as tall as the navigation bar ([ShellNavigationLayout.Rail]), so the overlay is never shorter than the
+ * navigation bar. [miniPlayer] is always the first call, so it keeps its composition when the layout changes.
  */
 @Composable
 internal fun ShellBottomOverlay(

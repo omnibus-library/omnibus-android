@@ -5,11 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.screenshot.Shot
 import com.omnibus.omnibus.ui.components.CoverIdentity
+import com.omnibus.omnibus.ui.components.OmnibusTabBar
+import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 
 private val playing = MiniPlayerUIState(
     visible = true,
@@ -52,6 +56,29 @@ fun FloatingMiniPlayer() {
                     subtitle = "A Chapter Title That Is Also Rather Long For The Bar",
                 ),
             )
+        }
+    }
+}
+
+/** The shell's docked strip over the tab bar (#286): expanded, then collapsed. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun DockedMiniPlayer() {
+    Shot {
+        val tabs = ShellTab.entries.map { OmnibusTabBarItem(stringResource(it.label), it.icon, it.selectedIcon) }
+        Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            listOf(false, true).forEach { collapsed ->
+                Column {
+                    ShellMiniPlayerStrip(
+                        uiState = playing.copy(percentListened = 35),
+                        collapsed = collapsed,
+                        reduceMotion = true,
+                        actions = MiniPlayerActions({}, {}, {}, {}),
+                    )
+                    OmnibusTabBar(items = tabs, selectedIndex = 0, onSelect = {})
+                }
+            }
         }
     }
 }

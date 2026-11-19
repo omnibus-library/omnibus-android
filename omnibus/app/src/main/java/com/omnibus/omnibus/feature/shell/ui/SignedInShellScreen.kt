@@ -61,7 +61,7 @@ data object SignedInShellRoute : NavKey
 
 /**
  * The signed-in shell: a navigation stack for the selected tab. Below 600dp it is laid out under a bottom overlay of the
- * floating mini player card and the tab bar; from 600dp wide it sits beside a navigation rail instead.
+ * docked mini player strip and the tab bar; from 600dp wide it sits beside a navigation rail instead.
  *
  * The shell doesn't inset itself for the keyboard, so the keyboard covers the tab bar rather than
  * lifting it. Screens that hold a text field handle the keyboard themselves.
@@ -154,6 +154,8 @@ private fun SignedInShellContent(
         miniPlayer = miniPlayerState,
         miniPlayerActions = miniPlayerActions,
         showsMiniPlayer = showsMiniPlayer,
+        // A new tab or a new top entry expands the strip again (#286 R7).
+        collapseResetKey = navigator.selected to navigator.backStack.lastOrNull(),
         modifier = modifier.fillMaxSize(),
     ) {
         SharedTransitionLayout(Modifier.fillMaxSize()) {

@@ -12,9 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
@@ -56,9 +54,10 @@ private class ShellInsets {
 }
 
 /**
- * The floating mini player in the shell's bottom overlay, in both layouts (#271). The card comes from
- * [MiniPlayerFloatingPlacement] over the real [OmnibusTabBar] or [OmnibusNavigationRail], so the tests measure what the
- * shell draws. Geometry is asserted relative to the window, the rail and the tab bar, never to a fixed window size.
+ * The floating mini player card in the shell's rail layout (#271). The card comes from [MiniPlayerFloatingPlacement] over
+ * the real [OmnibusTabBar] or [OmnibusNavigationRail], so the tests measure what the shell draws. The bar layout's docked
+ * strip is tested in [ShellMiniPlayerTest] (#286). Geometry is asserted relative to the window, the rail and the tab bar,
+ * never to a fixed window size.
  */
 class ShellFloatingMiniPlayerTest {
 
@@ -69,30 +68,6 @@ class ShellFloatingMiniPlayerTest {
 
     private fun items() = ShellTab.entries.map {
         OmnibusTabBarItem(context.getString(it.label), it.icon, it.selectedIcon)
-    }
-
-    // #271 TC-2 (R1, R7)
-    @Test
-    fun issue271_tc2_barCardIsInsetFromBothSides() {
-        val insets = ShellInsets()
-        setShell(ShellNavigationLayout.Bar, insets)
-
-        val root = rule.onRoot().bounds()
-        val card = rule.onNodeWithTag(MiniPlayerTestTags.BAR).bounds()
-        val twelve = with(rule.density) { 12.dp.toPx() }
-        assertEquals("the card's left inset", root.left + insets.horizontalLeft + twelve, card.left, 1f)
-        assertEquals("the card's right inset", root.right - insets.horizontalRight - twelve, card.right, 1f)
-    }
-
-    // #271 TC-2 (R1)
-    @Test
-    fun issue271_tc2_barCardSitsEightDpAboveTheTabBar() {
-        setShell(ShellNavigationLayout.Bar, ShellInsets())
-
-        val card = rule.onNodeWithTag(MiniPlayerTestTags.BAR).bounds()
-        val tabBar = rule.onNodeWithTag(TAB_BAR_TAG).bounds()
-        val eight = with(rule.density) { 8.dp.toPx() }
-        assertEquals("the gap between the card and the tab bar", tabBar.top, card.bottom + eight, 1f)
     }
 
     // #271 TC-3 (R2)
@@ -150,18 +125,6 @@ class ShellFloatingMiniPlayerTest {
 
     // #271 TC-4 (R6)
     @Test
-    fun issue271_tc4a_barOverlayHeightIsCardGapPlusTabBar() {
-        val insets = ShellInsets()
-        setShell(ShellNavigationLayout.Bar, insets)
-
-        val card = rule.onNodeWithTag(MiniPlayerTestTags.BAR).bounds().height
-        val tabBar = rule.onNodeWithTag(TAB_BAR_TAG).bounds().height
-        val eight = with(rule.density) { 8.dp.toPx() }
-        assertEquals("the overlay inset", card + eight + tabBar, insets.overlayBottom.toFloat(), 1f)
-    }
-
-    // #271 TC-4 (R6)
-    @Test
     fun issue271_tc4b_railOverlayHeightIsCardGapPlusNavigationBar() {
         val insets = ShellInsets()
         setShell(ShellNavigationLayout.Rail, insets)
@@ -174,17 +137,6 @@ class ShellFloatingMiniPlayerTest {
             insets.overlayBottom.toFloat(),
             1f,
         )
-    }
-
-    // #271 TC-5 (R6, R8)
-    @Test
-    fun issue271_tc5_hiddenBarOverlayIsTabBar() {
-        val insets = ShellInsets()
-        setShell(ShellNavigationLayout.Bar, insets, shown = false)
-
-        rule.onAllNodesWithTag(MiniPlayerTestTags.BAR).assertCountEquals(0)
-        val tabBar = rule.onNodeWithTag(TAB_BAR_TAG).bounds().height
-        assertEquals("the overlay inset", tabBar, insets.overlayBottom.toFloat(), 1f)
     }
 
     /**
