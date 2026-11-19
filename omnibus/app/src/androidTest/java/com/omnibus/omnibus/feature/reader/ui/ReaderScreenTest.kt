@@ -48,6 +48,7 @@ import com.omnibus.omnibus.data.reader.ReaderSettings
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
+import com.omnibus.omnibus.feature.reader.HighlightDeleteConfirmation
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
@@ -128,6 +129,8 @@ class ReaderScreenTest {
         onContextLeft: () -> Unit = {},
         onNoticeShown: () -> Unit = {},
         onSelectionCopied: () -> Unit = {},
+        onHighlightDeleteConfirmed: () -> Unit = {},
+        onHighlightDeleteCancelled: () -> Unit = {},
         /** The dock below the page; empty, as in the app without a book in the player. */
         bottomDock: @Composable () -> Unit = {},
     ) {
@@ -158,6 +161,8 @@ class ReaderScreenTest {
                         onContextLeft = onContextLeft,
                         onNoticeShown = onNoticeShown,
                         onSelectionCopied = onSelectionCopied,
+                        onHighlightDeleteConfirmed = onHighlightDeleteConfirmed,
+                        onHighlightDeleteCancelled = onHighlightDeleteCancelled,
                         bottomDock = bottomDock,
                     )
                 }
@@ -638,6 +643,20 @@ class ReaderScreenTest {
         assertEquals(listOf("Nineteen Eighty-Four", "361"), pageLabelTexts())
     }
 
+    /** A ready reader with the note confirmation up, for the note dialog's cases. */
+    private fun deleteConfirmationState() = ReaderUIState(
+        book = ReaderBookState.Ready(title = "Test Book"),
+        loadStatus = ReaderLoadStatus.Ready,
+        highlightDeleteConfirmation = HighlightDeleteConfirmation("epubcfi(/6/2!/4/2/1:0,/4/2/1:9)"),
+    )
+
+    /** Waits for the note dialog, which opens in its own window, before a case reads or taps it. */
+    private fun awaitDeleteDialog() {
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("Delete this highlight?").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     /** The text of the top and bottom page labels, read from their merged nodes. */
     private fun pageLabelTexts(): List<String> =
         listOf(ReaderChromeTags.LABEL_TOP, ReaderChromeTags.LABEL_BOTTOM).map { tag ->
@@ -664,6 +683,79 @@ class ReaderScreenTest {
             rule.onAllNodesWithText("Couldn't save highlight").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("Couldn't save highlight").assertIsDisplayed()
+        assertEquals(1, notices.get())
+    }
+
+    // TC-16 (#300)
+    @Test
+    fun issue300_tc16_aConfirmationShowsTheNoteDialog() {
+        show(uiState = { deleteConfirmationState() }, inspection = true)
+
+        awaitDeleteDialog()
+        rule.onNodeWithText("Delete this highlight?").assertIsDisplayed()
+        rule.onNodeWithText("You wrote a note on this passage", substring = true).assertIsDisplayed()
+    }
+
+    // TC-16 (#300)
+    @Test
+    fun issue300_tc16_deleteConfirms() {
+        val confirms = AtomicInteger()
+        val cancels = AtomicInteger()
+        show(
+            uiState = { deleteConfirmationState() },
+            inspection = true,
+            onHighlightDeleteConfirmed = { confirms.incrementAndGet() },
+            onHighlightDeleteCancelled = { cancels.incrementAndGet() },
+        )
+
+        awaitDeleteDialog()
+        rule.onNodeWithTag(ReaderHighlightDeleteDialogTags.CONFIRM).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, confirms.get())
+        assertEquals(0, cancels.get())
+    }
+
+    // TC-16 (#300)
+    @Test
+    fun issue300_tc16_cancelCancels() {
+        val confirms = AtomicInteger()
+        val cancels = AtomicInteger()
+        show(
+            uiState = { deleteConfirmationState() },
+            inspection = true,
+            onHighlightDeleteConfirmed = { confirms.incrementAndGet() },
+            onHighlightDeleteCancelled = { cancels.incrementAndGet() },
+        )
+
+        awaitDeleteDialog()
+        rule.onNodeWithTag(ReaderHighlightDeleteDialogTags.CANCEL).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, cancels.get())
+        assertEquals(0, confirms.get())
+    }
+
+    // TC-17 (#300)
+    @Test
+    fun issue300_tc17_aFailedDeleteShowsTheSnackbar() {
+        val notices = AtomicInteger()
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Test Book"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    notice = ReaderNotice.HighlightDeleteFailed,
+                )
+            },
+            inspection = true,
+            onNoticeShown = { notices.incrementAndGet() },
+        )
+
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("Couldn't delete highlight").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Couldn't delete highlight").assertIsDisplayed()
         assertEquals(1, notices.get())
     }
 

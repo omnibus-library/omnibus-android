@@ -571,4 +571,118 @@ class DefaultHighlightsRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("deleting a highlight") {
+
+        it("#300 TC-1: sends DELETE for the id") {
+            withScriptedServer {
+                val id = randomLong()
+                script.answer("DELETE", reply(204))
+
+                sut(server).deleteHighlight(randomString(), id)
+
+                val request = server.nextRequest()
+                request.method shouldBe "DELETE"
+                request.url.encodedPath shouldBe "/api/highlights/$id"
+            }
+        }
+
+        it("#300 TC-2: returns Deleted for 204 and 404") {
+            withScriptedServer {
+                checkAll(Exhaustive.of(204, 404)) { code ->
+                    script.answer("DELETE", reply(code))
+
+                    sut(server).deleteHighlight(randomString(), randomLong()) shouldBe HighlightDeleteResult.Deleted
+                }
+            }
+        }
+
+        context("when a list has loaded") {
+            it("#300 TC-3: drops the row from a loaded list, keeping the rest in order") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "[${row(1)},${row(2)},${row(3)}]"))
+                    server.enqueue(reply(204))
+                    val repository = sut(server)
+                    val uuid = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        awaitItem() shouldBe loaded(1, 2, 3)
+
+                        repository.deleteHighlight(uuid, 2)
+
+                        awaitItem() shouldBe loaded(1, 3)
+                    }
+                }
+            }
+
+            it("#300 TC-4: leaves a loaded list as it was") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "[${row(1)}]"))
+                    server.enqueue(reply(500))
+                    val repository = sut(server)
+                    val uuid = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        awaitItem() shouldBe loaded(1)
+
+                        repository.deleteHighlight(uuid, 1)
+
+                        expectNoEvents()
+                    }
+                }
+            }
+
+            context("when a fetch is in flight") {
+                it("#300 TC-5: a fetch in flight cannot bring the row back") {
+                    withScriptedServer {
+                        val repository = threadedSut(server, scope)
+                        val uuid = randomString()
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"))
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"), gate)
+                        script.answer("DELETE", reply(204))
+
+                        repository.getHighlightsFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(loaded(1, 2))
+                            server.nextRequest()
+
+                            val refresh = scope.async { repository.refresh(uuid) }
+                            // The refresh's GET is on the server and held on its gate while the delete succeeds.
+                            server.nextRequest()
+                            repository.deleteHighlight(uuid, 2)
+
+                            gate.countDown()
+                            refresh.await()
+                            cancelAndIgnoreRemainingEvents()
+                        }
+
+                        repository.getHighlightsFlow(uuid).first() shouldBe loaded(1)
+                    }
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#300 TC-4: returns NoServer") {
+                sut().deleteHighlight(randomString(), randomLong()) shouldBe
+                    HighlightDeleteResult.Failed(HighlightError.NoServer)
+            }
+        }
+
+        it("#300 TC-4: returns the typed error for each answer") {
+            withScriptedServer {
+                val failures = listOf(
+                    dropped() to HighlightError.Unreachable,
+                    reply(401) to HighlightError.SessionExpired,
+                    reply(500) to HighlightError.Http(500),
+                    reply(409) to HighlightError.Http(409),
+                )
+                checkAll(Exhaustive.collection(failures)) { (answer, error) ->
+                    script.answer("DELETE", answer)
+
+                    sut(server).deleteHighlight(randomString(), randomLong()) shouldBe HighlightDeleteResult.Failed(error)
+                }
+            }
+        }
+    }
 })

@@ -202,7 +202,7 @@ class ReaderHighlightTapTest {
         when (event) {
             is ReaderEvent.LoadStatusChanged -> ui.value = ui.value.copy(loadStatus = event.status)
             is ReaderEvent.AnnotationTap -> {
-                val known = ui.value.pageHighlights.associate { it.cfiRange.trim() to KnownHighlight(it.color, "text") }
+                val known = ui.value.pageHighlights.associate { it.cfiRange.trim() to KnownHighlight(it.color, "text", it.hasNote) }
                 ui.value = ui.value.copy(highlightMenu = highlightMenuOf(event.data, known))
             }
             else -> Unit

@@ -16,6 +16,7 @@ fun randomPageHighlight(): PageHighlight = PageHighlight(
 fun randomKnownHighlight(): KnownHighlight = KnownHighlight(
     color = randomEnum(),
     text = randomString().takeIf { randomBoolean() },
+    hasNote = randomBoolean(),
 )
 
 fun randomHighlightMenuEntry(): HighlightMenuEntry = HighlightMenuEntry(
@@ -23,4 +24,5 @@ fun randomHighlightMenuEntry(): HighlightMenuEntry = HighlightMenuEntry(
     rects = List(randomInt(1..3)) { randomPageRect() },
     color = randomEnum(),
     text = randomString().takeIf { randomBoolean() },
+    hasNote = randomBoolean(),
 )

@@ -242,4 +242,10 @@
     <string name="reader_highlight_position_a11y">Highlight %1$d of %2$d</string>
     <string name="reader_highlight_previous">Previous highlight</string>
     <string name="reader_highlight_next">Next highlight</string>
+    <string name="reader_highlight_delete">Delete highlight</string>
+    <string name="reader_highlight_delete_title">Delete this highlight?</string>
+    <string name="reader_highlight_delete_message">You wrote a note on this passage, and it\'ll be deleted along with the highlight. Are you sure?</string>
+    <string name="reader_highlight_delete_cancel">Cancel</string>
+    <string name="reader_highlight_delete_confirm">Delete</string>
+    <string name="reader_highlight_delete_failed">Couldn\'t delete highlight</string>
 </resources>

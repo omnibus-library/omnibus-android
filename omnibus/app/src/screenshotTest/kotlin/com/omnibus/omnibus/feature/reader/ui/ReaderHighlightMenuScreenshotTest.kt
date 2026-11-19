@@ -40,12 +40,16 @@ private val SAMPLE_LINES = listOf(
 private fun lineRect(index: Int, textTop: Double, left: Double = SAMPLE_LEFT, right: Double = SAMPLE_RIGHT): PageRect =
     PageRect(left, textTop + index * SAMPLE_LINE, right - left, SAMPLE_LINE)
 
-private fun sampleEntry(color: HighlightColor, rects: List<PageRect>): HighlightMenuEntry = HighlightMenuEntry(
-    cfiRange = "epubcfi(/6/2!/4/2/1:${color.ordinal},/4/2/1:9)",
-    rects = rects,
-    color = color,
-    text = "Every room held its breath",
-)
+private const val SAMPLE_TEXT = "Every room held its breath"
+
+private fun sampleEntry(color: HighlightColor, rects: List<PageRect>, text: String? = SAMPLE_TEXT): HighlightMenuEntry =
+    HighlightMenuEntry(
+        cfiRange = "epubcfi(/6/2!/4/2/1:${color.ordinal},/4/2/1:9)",
+        rects = rects,
+        color = color,
+        text = text,
+        hasNote = false,
+    )
 
 /**
  * One reading theme's tile: the sample prose on its ground, translucent tints behind the highlighted lines to stand in
@@ -87,13 +91,17 @@ private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, textTop: Double = 
             theme = theme,
             onStep = {},
             onCopy = {},
+            onDelete = {},
             onDismiss = {},
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
 
-/** The menu over one highlight on each of the four reading themes, each with a different active colour. */
+/**
+ * The menu over one highlight on each of the four reading themes, each with a different active colour. The light themes'
+ * highlights have text, so they show Copy and Delete; the dark themes' have none, so Delete follows the divider.
+ */
 @PreviewTest
 @Preview(widthDp = 360, heightDp = 1200)
 @Composable
@@ -101,7 +109,8 @@ fun ReaderHighlightMenuFourThemes() {
     Column(Modifier.size(360.dp, 1200.dp)) {
         ReaderTheme.entries.forEachIndexed { index, theme ->
             val rects = listOf(lineRect(1, 64.0), lineRect(2, 64.0), lineRect(3, 64.0))
-            MenuTile(theme, HighlightMenu(listOf(sampleEntry(HighlightColor.entries[index], rects))))
+            val text = SAMPLE_TEXT.takeIf { theme.isLight }
+            MenuTile(theme, HighlightMenu(listOf(sampleEntry(HighlightColor.entries[index], rects, text))))
         }
     }
 }

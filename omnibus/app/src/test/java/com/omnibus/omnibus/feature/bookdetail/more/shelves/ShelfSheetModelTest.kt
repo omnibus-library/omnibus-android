@@ -78,10 +78,12 @@ class ShelfSheetModelTest : DescribeSpec({
         it("#116 TC-39: stacks at most three covers of other books, in order") {
             val user = randomCurrentUser()
             val uuid = randomString()
+            // Derived from uuid, so no other cover can equal it (a short random uuid can equal a literal like "a").
+            val (a, b, c, d) = List(4) { "$uuid-$it" }
 
             checkAll(
                 Exhaustive.of(
-                    listOf("a", uuid, "b", "c", "d") to listOf("a", "b", "c"),
+                    listOf(a, uuid, b, c, d) to listOf(a, b, c),
                     listOf(uuid) to emptyList<String>(),
                     emptyList<String>() to emptyList<String>(),
                 ),
@@ -98,10 +100,11 @@ class ShelfSheetModelTest : DescribeSpec({
         it("#116 TC-39: takes its covers without this book, capped at three") {
             val user = randomCurrentUser()
             val uuid = randomString()
-            val shelf = smartShelf(user.id).copy(coverUuids = listOf("a", uuid, "b", "c", "d"))
+            val (a, b, c, d) = List(4) { "$uuid-$it" }
+            val shelf = smartShelf(user.id).copy(coverUuids = listOf(a, uuid, b, c, d))
 
             buildShelfSheet(shelvesOf(shelf, matching = setOf(shelf.id)), user, uuid, emptySet(), emptySet(), emptySet(), emptyMap())
-                .smart.single().coverUuids shouldBe listOf("a", "b", "c")
+                .smart.single().coverUuids shouldBe listOf(a, b, c)
         }
 
         it("#116 TC-39: carries only the rules already read") {

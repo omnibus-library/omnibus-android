@@ -52,8 +52,11 @@ class ReaderViewModelHighlightMenuTest : DescribeSpec({
 
                 vm.tap(hit)
 
-                vm.uiState.value.highlightMenu shouldBe
-                    HighlightMenu(listOf(HighlightMenuEntry(cfi, hit.rects, row.color, row.text)))
+                vm.uiState.value.highlightMenu shouldBe HighlightMenu(
+                    listOf(
+                        HighlightMenuEntry(cfi, hit.rects, row.color, row.text, hasNote = !row.note.isNullOrBlank()),
+                    ),
+                )
             }
 
             context("with a selection up") {
@@ -120,7 +123,7 @@ class ReaderViewModelHighlightMenuTest : DescribeSpec({
                 vm.tap(hit)
 
                 vm.uiState.value.highlightMenu shouldBe
-                    HighlightMenu(listOf(HighlightMenuEntry(cfi, hit.rects, color, word)))
+                    HighlightMenu(listOf(HighlightMenuEntry(cfi, hit.rects, color, word, hasNote = false)))
             }
         }
     }

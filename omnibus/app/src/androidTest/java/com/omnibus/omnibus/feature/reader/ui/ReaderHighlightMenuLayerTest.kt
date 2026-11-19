@@ -39,6 +39,7 @@ import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.HighlightMenu
 import com.omnibus.omnibus.feature.reader.HighlightMenuEntry
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -82,6 +83,7 @@ class ReaderHighlightMenuLayerTest {
         ),
         color = color,
         text = text,
+        hasNote = false,
     )
 
     /** Sets the overlay over the page's [under], with [menu] held by the test and stepped by [onStep] as default. */
@@ -90,6 +92,7 @@ class ReaderHighlightMenuLayerTest {
         under: @Composable () -> Unit = {},
         onStep: (Int) -> Unit = { delta -> menu.value = menu.value?.stepped(delta) },
         onCopy: (String) -> Unit = {},
+        onDelete: () -> Unit = {},
         onDismiss: () -> Unit = {},
     ) {
         rule.setContent {
@@ -102,6 +105,7 @@ class ReaderHighlightMenuLayerTest {
                             theme = ReaderTheme.Light,
                             onStep = onStep,
                             onCopy = onCopy,
+                            onDelete = onDelete,
                             onDismiss = onDismiss,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -285,6 +289,41 @@ class ReaderHighlightMenuLayerTest {
         assertEquals("a touch on the menu should not reach the page", 0, taps.size)
     }
 
+    // TC-14 (#300)
+    @Test
+    fun issue300_tc14_deleteShowsForEveryHighlightAfterCopy() {
+        val menu = mutableStateOf<HighlightMenu?>(null)
+        setOverlay(menu)
+
+        listOf<String?>(TEXT, null).forEach { text ->
+            showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = text))) }
+
+            rule.onNodeWithContentDescription("Delete highlight").assertIsDisplayed()
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        }
+
+        showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = TEXT))) }
+        val copy = rule.onNodeWithContentDescription("Copy").getUnclippedBoundsInRoot()
+        val delete = rule.onNodeWithContentDescription("Delete highlight").getUnclippedBoundsInRoot()
+        assertTrue("Delete should sit after Copy", delete.left >= copy.right)
+        val centreGap = abs((delete.top + delete.bottom).value / 2 - (copy.top + copy.bottom).value / 2)
+        assertTrue("Delete should share Copy's row", centreGap < (delete.bottom - delete.top).value)
+    }
+
+    // TC-15 (#300)
+    @Test
+    fun issue300_tc15_deleteCallsBack() {
+        val menu = mutableStateOf<HighlightMenu?>(null)
+        val deletes = mutableListOf<Unit>()
+        setOverlay(menu, onDelete = { deletes += Unit })
+        showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber))) }
+
+        rule.onNodeWithContentDescription("Delete highlight").performClick()
+        rule.waitForIdle()
+
+        assertEquals("Delete should call back exactly once", 1, deletes.size)
+    }
+
     // TC-32
     @Test
     fun issue299_tc32_longPressShowsEachIconsTooltip() {
@@ -294,7 +333,8 @@ class ReaderHighlightMenuLayerTest {
             HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber), highlight(width, height, HighlightColor.Green)))
         }
 
-        listOf("Previous highlight", "Next highlight", "Copy").forEach { label ->
+        // The Delete label is added by #300 (TC-14).
+        listOf("Previous highlight", "Next highlight", "Copy", "Delete highlight").forEach { label ->
             rule.onNodeWithContentDescription(label).performTouchInput { longClick() }
             rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() }
         }
