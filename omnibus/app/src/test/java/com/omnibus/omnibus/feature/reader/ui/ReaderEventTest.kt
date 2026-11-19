@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 import com.omnibus.omnibus.feature.reader.ui.ReaderEventFixtures.ANNOTATION_TAP
+import com.omnibus.omnibus.feature.reader.ui.ReaderEventFixtures.ANNOTATION_TAP_HITS
 import com.omnibus.omnibus.feature.reader.ui.ReaderEventFixtures.RELOCATE
 import com.omnibus.omnibus.feature.reader.ui.ReaderEventFixtures.SELECTION
 import com.omnibus.omnibus.feature.reader.ui.ReaderEventFixtures.SHARE_IMAGE
@@ -113,6 +114,44 @@ class ReaderEventTest : DescribeSpec({
         it("TC-13: applies defaults for explicit nulls") {
             decode("relocate", """{"page":null,"totalPages":null,"chapterTitle":null}""") shouldBe
                 ReaderEvent.Relocate(RelocateData())
+        }
+    }
+
+    describe("decoding a highlight tap") {
+        it("#299 TC-1: decodes every hit in the payload") {
+            decode("annotationTap", ANNOTATION_TAP_HITS)
+                .shouldBeInstanceOf<ReaderEvent.AnnotationTap>().data.allHits shouldBe listOf(
+                AnnotationHit(
+                    cfiRange = "epubcfi(/6/14!/4/2/1:0,/4/2/1:24)",
+                    rects = listOf(PageRect(x = 24.5, y = 310.0, width = 180.25, height = 22.0)),
+                ),
+                AnnotationHit(
+                    cfiRange = "epubcfi(/6/14!/4/2/1:12,/4/2/1:40)",
+                    rects = listOf(PageRect(x = 120.0, y = 310.0, width = 210.5, height = 22.0)),
+                ),
+                AnnotationHit(
+                    cfiRange = "epubcfi(/6/14!/4/2/1:30,/4/2/1:60)",
+                    rects = listOf(PageRect(x = 240.0, y = 310.0, width = 96.0, height = 22.0)),
+                ),
+            )
+        }
+
+        it("#299 TC-1: keeps the top-level pair equal to the first hit") {
+            val data = decode("annotationTap", ANNOTATION_TAP_HITS)
+                .shouldBeInstanceOf<ReaderEvent.AnnotationTap>().data
+
+            data.cfiRange shouldBe data.allHits.first().cfiRange
+            data.rects shouldBe data.allHits.first().rects
+        }
+
+        it("#299 TC-2: reads a payload without hits as one hit") {
+            checkAll(Exhaustive.of(ANNOTATION_TAP, """{"hits":[],""" + ANNOTATION_TAP.removePrefix("{"))) { payload ->
+                decode("annotationTap", payload)
+                    .shouldBeInstanceOf<ReaderEvent.AnnotationTap>().data.allHits.single() shouldBe AnnotationHit(
+                    cfiRange = "epubcfi(/6/14!/4/2/1:0,/4/2/1:24)",
+                    rects = listOf(PageRect(x = 24.5, y = 310.0, width = 180.25, height = 22.0)),
+                )
+            }
         }
     }
 
