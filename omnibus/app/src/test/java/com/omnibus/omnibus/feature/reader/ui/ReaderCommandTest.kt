@@ -27,5 +27,15 @@ class ReaderCommandTest : DescribeSpec({
 
             scripts shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS, ReaderScripts.seek(0.25, 1))
         }
+
+        it("#54 TC-30: runs a clear-selection on a ready page") {
+            val scripts = mutableListOf<String>()
+            val controller = ReaderController().apply { attach { scripts += it } }
+            controller.handle(ReaderEvent.Status("ready"))
+
+            controller.execute(ReaderCommand.ClearSelection)
+
+            scripts shouldContainExactly listOf(ReaderScripts.CLEAR_ANNOTATIONS, ReaderScripts.CLEAR_SELECTION)
+        }
     }
 })

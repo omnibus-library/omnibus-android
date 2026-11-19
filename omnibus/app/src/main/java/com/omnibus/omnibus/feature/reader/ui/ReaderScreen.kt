@@ -131,6 +131,7 @@ fun ReaderScreen(
         onBookmarkChosen = viewModel::onBookmarkChosen,
         onBookmarksRetryRequested = viewModel::onBookmarksRetryRequested,
         onContextLeft = viewModel::onContextLeft,
+    onSelectionDismissed = viewModel::onSelectionDismissed,
         onClose = onClose,
         modifier = modifier,
         bottomDock = {
@@ -173,6 +174,7 @@ fun ReaderScreen(
  * @param onBookmarkChosen a bookmark was chosen on the Bookmarks segment.
  * @param onBookmarksRetryRequested the Bookmarks segment's Try again was tapped.
  * @param onContextLeft back or a tap on the zoomed-out page left context mode.
+ * @param onSelectionDismissed back dismissed the page's selection, and its menu with it.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
 @Composable
@@ -199,6 +201,7 @@ internal fun ReaderScreenContent(
     onBookmarkChosen: (Bookmark) -> Unit = {},
     onBookmarksRetryRequested: () -> Unit = {},
     onContextLeft: () -> Unit = {},
+    onSelectionDismissed: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
 ) {
@@ -209,6 +212,7 @@ internal fun ReaderScreenContent(
     // Always enabled, so back takes this path in every state, and it outranks the root NavDisplay's handler.
     BackHandler {
         when (uiState.backAction()) {
+            ReaderBackAction.DismissSelection -> onSelectionDismissed()
             ReaderBackAction.DismissSheet -> onSheetDismissed()
             ReaderBackAction.DismissMenu -> onMenuDismissed()
             ReaderBackAction.LeaveContext -> onContextLeft()
@@ -453,6 +457,7 @@ internal fun ReaderScreenContent(
 internal fun ReaderController.execute(command: ReaderCommand) = when (command) {
     is ReaderCommand.Display -> display(command.target)
     is ReaderCommand.Seek -> seek(command.fraction)
+    ReaderCommand.ClearSelection -> clearSelection()
 }
 
 /** Test tags on the reader's own nodes, so tests can find them without depending on the layout. */
