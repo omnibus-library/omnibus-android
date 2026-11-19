@@ -10,7 +10,8 @@ reader depends on its additions (`seek(fraction)`, `chapterPagesLeft`, `applyHos
 
 | File | State |
 |---|---|
-| `epub.min.js`, `jszip.min.js`, `epub-reader-glue.js` | Byte-identical to the source commit. |
+| `epub.min.js`, `jszip.min.js` | Byte-identical to the source commit. |
+| `epub-reader-glue.js` | The source commit's glue plus two Android changes, to re-apply after a sync: #203 takes the percent from `book.locations.percentageFromCfi` once locations are ready, and #299 makes `annotationAtHostPoint` report every highlight under a tap (`hits`, in book order) rather than the first. |
 | `reader-fonts.css`, `*.woff2` | Byte-identical. The glue injects the sheet into every section through its `fontsHref` option. |
 | `reader.html` | Adapted, see below. |
 
@@ -33,5 +34,5 @@ re-apply just these three changes:
 
 ## Syncing from iOS
 
-Copy the iOS files over the byte-identical ones, merge any change to `reader.html` by hand, and
-update the source commit above.
+Copy the iOS files over the byte-identical ones, merge any change to `reader.html` and `epub-reader-glue.js`
+by hand (the glue is no longer byte-identical), and update the source commit above.

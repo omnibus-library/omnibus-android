@@ -3359,9 +3359,10 @@
     }
   }
 
-  // The highlight under a point, in host-window coordinates, with the same
-  // per-line geometry a selection reports so the host anchors one menu the
-  // same way for both.
+  // Every highlight under a point, in host-window coordinates, in book order,
+  // with the same per-line geometry a selection reports so the host anchors one
+  // menu the same way for both. The first one is also returned as the top-level
+  // pair, so an iOS-shaped reader that reads only that still decodes it.
   //
   // Hit-tested here rather than bound to the mark's own DOM listener: that
   // listener fires on `touchstart`, so a swipe that merely *began* on a
@@ -3372,6 +3373,7 @@
     if (!rendition || !rendition.annotations) return null;
     var store = rendition.annotations._annotations;
     if (!store) return null;
+    var hits = [];
     var keys = Object.keys(store);
     for (var i = 0; i < keys.length; i++) {
       var entry = store[keys[i]];
@@ -3399,11 +3401,28 @@
         // the mark is only as tall as the line box.
         if (x >= r.x - 4 && x <= r.x + r.width + 4 &&
             y >= r.y - 6 && y <= r.y + r.height + 6) {
-          return { cfiRange: entry.cfiRange, rects: rects };
+          hits.push({ cfiRange: entry.cfiRange, rects: rects, range: range });
+          break;
         }
       }
     }
-    return null;
+    if (hits.length === 0) return null;
+    hits.sort(function (a, b) {
+      // Book order: the earlier start first, then the earlier end. Ranges from two
+      // documents can't be compared, so they keep the store's order.
+      try {
+        var start = a.range.compareBoundaryPoints(Range.START_TO_START, b.range);
+        if (start !== 0) return start;
+        return a.range.compareBoundaryPoints(Range.END_TO_END, b.range);
+      } catch (e) {
+        return 0;
+      }
+    });
+    return {
+      cfiRange: hits[0].cfiRange,
+      rects: hits[0].rects,
+      hits: hits.map(function (h) { return { cfiRange: h.cfiRange, rects: h.rects }; }),
+    };
   }
 
   function emitAnnotationTap(hit) {

@@ -83,12 +83,31 @@ data class SelectionData(
     val dragging: Boolean = false,
 )
 
-/** The `annotationTap` payload: the tapped highlight's range and where it is drawn. */
+/** One highlight under an `annotationTap`: its range and where it is drawn. */
+@Serializable
+data class AnnotationHit(
+    val cfiRange: String? = null,
+    val rects: List<PageRect> = emptyList(),
+)
+
+/**
+ * The `annotationTap` payload. [hits] is every highlight under the tap, in book order; [cfiRange] and [rects] are the
+ * first one, for a page that reports only that. [allHits] is [hits], or that first one when [hits] is absent.
+ */
 @Serializable
 data class AnnotationTapData(
     val cfiRange: String? = null,
     val rects: List<PageRect> = emptyList(),
-)
+    val hits: List<AnnotationHit> = emptyList(),
+) {
+    /** Every highlight under the tap, in the page's order. */
+    val allHits: List<AnnotationHit>
+        get() = when {
+            hits.isNotEmpty() -> hits
+            cfiRange != null || rects.isNotEmpty() -> listOf(AnnotationHit(cfiRange, rects))
+            else -> emptyList()
+        }
+}
 
 /** The `hostReply` payload: the id of the call it answers and the value it produced. */
 @Serializable

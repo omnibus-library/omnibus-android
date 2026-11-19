@@ -30,6 +30,22 @@ internal object ReaderEventFixtures {
         """{"cfiRange":"epubcfi(/6/14!/4/2/1:0,/4/2/1:24)",""" +
             """"rects":[{"x":24.5,"y":310.0,"width":180.25,"height":22.0}]}"""
 
+    /**
+     * `annotationTap` with `hits`: three highlights under the tap, in book order, and the top-level pair equal to the
+     * first.
+     */
+    const val ANNOTATION_TAP_HITS =
+        """{"cfiRange":"epubcfi(/6/14!/4/2/1:0,/4/2/1:24)",""" +
+            """"rects":[{"x":24.5,"y":310.0,"width":180.25,"height":22.0}],""" +
+            """"hits":[""" +
+            """{"cfiRange":"epubcfi(/6/14!/4/2/1:0,/4/2/1:24)",""" +
+            """"rects":[{"x":24.5,"y":310.0,"width":180.25,"height":22.0}]},""" +
+            """{"cfiRange":"epubcfi(/6/14!/4/2/1:12,/4/2/1:40)",""" +
+            """"rects":[{"x":120.0,"y":310.0,"width":210.5,"height":22.0}]},""" +
+            """{"cfiRange":"epubcfi(/6/14!/4/2/1:30,/4/2/1:60)",""" +
+            """"rects":[{"x":240.0,"y":310.0,"width":96.0,"height":22.0}]}""" +
+            """]}"""
+
     /** `shareImage`, `{name, dataUrl}` with a base64 PNG data URL. */
     const val SHARE_IMAGE =
         """{"name":"quote-card.png","dataUrl":"data:image/png;base64,iVBORw0KGgo="}"""
