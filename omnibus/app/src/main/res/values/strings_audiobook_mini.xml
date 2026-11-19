@@ -6,4 +6,6 @@
     <string name="audiobook_mini_open_player">Open player</string>
     <!-- Spoken progress of the mini player, read after the title. %1$d is the whole-book percentage, 0 to 100. -->
     <string name="audiobook_mini_percent_listened">%1$d percent listened</string>
+    <!-- The rail mini player's label: the whole-book percentage listened, 0 to 100. -->
+    <string name="audiobook_mini_percent">%1$d%%</string>
 </resources>

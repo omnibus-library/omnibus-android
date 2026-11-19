@@ -326,8 +326,8 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 **Requirements**
 
-- P-MINI-1. While a book is loaded, a mini player shows on every screen except Book Detail and the player. In the shell it floats above the content as a rounded card (#271): below 600dp it is inset 12dp from each side and sits 8dp above the tab bar; from 600dp it is at most 560dp wide, centred beside the navigation rail, and 16dp above the bottom edge. Screens leave room for it, so their content scrolls under the card and clears it at the end. The reader keeps the docked strip (P-MINI-4).
-  - A thin whole-book progress line along its top when docked, and along its bottom edge in the shell's card.
+- P-MINI-1. While a book is loaded, a mini player shows on every screen except Book Detail and the player. In the shell, below 600dp (and in tabletop posture) it is a strip docked flush on the tab bar, sharing its surface, with the whole-book progress along its top edge; it collapses to one line (title, play/pause, close, progress along the seam) while a list scrolls down and expands when it scrolls up, or when the tab, the screen or the mini player itself changes (#286). From 600dp it is a block at the foot of the navigation rail below a hairline: the cover with a close button on its corner, a progress bar, and play/pause as a neutral rail-entry pill labelled with the whole-number percentage listened; when the window is too short for it, the cover and bar are dropped and the percentage opens the player. Screens leave room for the strip, so their content clears it at the end. The reader keeps the docked strip (P-MINI-4).
+  - A thin whole-book progress line along its top when docked, and along its bottom edge when the shell's strip is collapsed.
   - A small cover, then the title over the chapter title (else the author).
   - Back 15, play/pause, and a ✕.
 - P-MINI-2. The player's chevron-down collapses it to the mini player, and playback continues. Tapping the mini player opens the full player.
@@ -708,3 +708,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-04 | #170: P-CAR-3 says the play tile uses the app's accent colour; car mode is always black and dark, whatever the theme. |
 | 2026-11-04 | #168: I-SPD-3 also retries on reconnect and at the next load; I-SPD-4 sets the rate read order at load. |
 | 2026-11-10 | #271: P-MINI-1 floats the shell's mini player as a card above the content; the reader keeps the docked strip. |
+| 2026-11-18 | #286: P-MINI-1 docks the shell's mini player on the tab bar (collapsing on scroll) and moves it into the rail from 600dp, replacing the floating card. |

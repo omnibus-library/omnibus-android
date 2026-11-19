@@ -171,15 +171,26 @@ private fun CollapsedStrip(uiState: MiniPlayerUIState, actions: MiniPlayerAction
     }
 }
 
-/** The 2dp accent line for the whole-book progress (#286 R12). Drawn only while the percentage is known. */
+/**
+ * The 2dp line for the whole-book progress (#286 R12): an accent fill over a faint track, so a short fill reads as
+ * progress rather than a stray mark. The fill follows the whole-number percentage, so it agrees with the label and the
+ * rail's bar. Drawn only while the percentage is known.
+ */
 @Composable
 private fun ProgressLine(uiState: MiniPlayerUIState) {
-    if (uiState.percentListened != null) {
-        Box(Modifier.fillMaxWidth().height(2.dp).testTag(MiniPlayerTestTags.PROGRESS_TRACK)) {
+    val percent = uiState.percentListened
+    if (percent != null) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(OmnibusTheme.palette.line2)
+                .testTag(MiniPlayerTestTags.PROGRESS_TRACK),
+        ) {
             Box(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(uiState.progress)
+                    .fillMaxWidth(percent / 100f)
                     .background(OmnibusTheme.palette.accent)
                     .testTag(MiniPlayerTestTags.PROGRESS_FILL),
             )

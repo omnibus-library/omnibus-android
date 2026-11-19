@@ -1,17 +1,23 @@
 package com.omnibus.omnibus.feature.audiobook.mini
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.feature.shell.ShellTab
 import com.omnibus.omnibus.screenshot.Shot
 import com.omnibus.omnibus.ui.components.CoverIdentity
+import com.omnibus.omnibus.ui.components.OmnibusNavigationRail
 import com.omnibus.omnibus.ui.components.OmnibusTabBar
 import com.omnibus.omnibus.ui.components.OmnibusTabBarItem
 
@@ -34,28 +40,6 @@ fun MiniPlayerSubtitles() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             MiniPlayerBar(playing)
             MiniPlayerBar(playing.copy(subtitle = null))
-        }
-    }
-}
-
-/** The floating card (#271) with a subtitle, without one, and with a long title and subtitle that ellipsise. */
-@PreviewTest
-@PreviewLightDark
-@Composable
-fun FloatingMiniPlayer() {
-    Shot {
-        Column(
-            Modifier.padding(horizontal = 12.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            FloatingCard(playing)
-            FloatingCard(playing.copy(subtitle = null, isPlaying = false))
-            FloatingCard(
-                playing.copy(
-                    title = "A Very Long Title That Keeps Going Well Past The Bar Width And Must Stay On One Line",
-                    subtitle = "A Chapter Title That Is Also Rather Long For The Bar",
-                ),
-            )
         }
     }
 }
@@ -83,12 +67,34 @@ fun DockedMiniPlayer() {
     }
 }
 
+/** The rail's mini player block (#286): full in a full-height rail, compact in a 440dp one. */
+@PreviewTest
+@Preview(name = "Light", widthDp = 200, heightDp = 640)
+@Preview(name = "Dark", widthDp = 200, heightDp = 640, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-private fun MiniPlayerBar(uiState: MiniPlayerUIState) {
-    MiniPlayerContent(uiState = uiState, onExpand = {}, onSkipBack = {}, onPlayPauseToggled = {}, onStop = {})
+fun RailMiniPlayer() {
+    Shot {
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Box(Modifier.fillMaxHeight()) { RailWithBlock() }
+            Box(Modifier.height(440.dp)) { RailWithBlock() }
+        }
+    }
 }
 
 @Composable
-private fun FloatingCard(uiState: MiniPlayerUIState) {
-    MiniPlayerContent(uiState = uiState, onExpand = {}, onSkipBack = {}, onPlayPauseToggled = {}, onStop = {}, floating = true)
+private fun RailWithBlock() {
+    val tabs = ShellTab.entries.map { OmnibusTabBarItem(stringResource(it.label), it.icon, it.selectedIcon) }
+    OmnibusNavigationRail(
+        items = tabs,
+        selectedIndex = 0,
+        onSelect = {},
+        footer = { space ->
+            ShellMiniPlayerRailBlock(playing.copy(percentListened = 35), space, MiniPlayerActions({}, {}, {}, {}))
+        },
+    )
+}
+
+@Composable
+private fun MiniPlayerBar(uiState: MiniPlayerUIState) {
+    MiniPlayerContent(uiState = uiState, onExpand = {}, onSkipBack = {}, onPlayPauseToggled = {}, onStop = {})
 }

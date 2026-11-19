@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.window.layout.WindowInfoTracker
-import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayerFloatPlacement
 import com.omnibus.omnibus.feature.shell.ShellNavigationLayout
 import com.omnibus.omnibus.feature.shell.isTabletop
 import com.omnibus.omnibus.feature.shell.shellNavigationLayout
@@ -94,22 +93,19 @@ private val RailStartInsets: WindowInsets
 /**
  * The shell's bottom overlay: the docked mini player strip above the tab bar ([ShellNavigationLayout.Bar]) or above a
  * spacer as tall as the navigation bar ([ShellNavigationLayout.Rail]), so the overlay is never shorter than the
- * navigation bar. [miniPlayer] is always the first call, so it keeps its composition when the layout changes.
+ * navigation bar. In the rail layout the mini player lives in the rail, so the overlay overlaps nothing. [miniPlayer] is
+ * the first call in the bar layout, so it keeps its composition.
  */
 @Composable
 internal fun ShellBottomOverlay(
     navigationLayout: ShellNavigationLayout,
-    miniPlayer: @Composable (MiniPlayerFloatPlacement) -> Unit,
+    miniPlayer: @Composable () -> Unit,
     tabBar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val placement = when (navigationLayout) {
-        ShellNavigationLayout.Bar -> MiniPlayerFloatPlacement.Bar
-        ShellNavigationLayout.Rail -> MiniPlayerFloatPlacement.Rail
-    }
     Column(modifier.fillMaxWidth()) {
-        miniPlayer(placement)
         if (navigationLayout == ShellNavigationLayout.Bar) {
+            miniPlayer()
             tabBar()
         } else {
             Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))

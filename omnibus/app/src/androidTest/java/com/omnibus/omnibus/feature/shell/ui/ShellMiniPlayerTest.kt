@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -73,6 +77,9 @@ private fun RowList(rows: Int) {
 
 private const val LIST_TAG = "shell-mini-player-list"
 
+/** Matches the shell's tabs, bar or rail alike. */
+private val tabMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+
 /** The mini player inside [ShellScaffold], which the shell hands its state and actions to (#286 R17). */
 class ShellMiniPlayerTest {
 
@@ -90,6 +97,7 @@ class ShellMiniPlayerTest {
         rule.runOnIdle { layout.value = ShellNavigationLayout.Rail }
         rule.waitForIdle()
         rule.onAllNodesWithTag(MiniPlayerTestTags.BAR).assertCountEquals(1)
+        assertBarInsideRail()
         rule.runOnIdle { layout.value = ShellNavigationLayout.Bar }
         rule.waitForIdle()
         rule.onAllNodesWithTag(MiniPlayerTestTags.BAR).assertCountEquals(1)
@@ -181,6 +189,37 @@ class ShellMiniPlayerTest {
         assertEquals("the overlay is the tab bar alone", tabBar, overlay, 1f)
     }
 
+    // #286 TC-19b (R14)
+    @Test
+    fun issue286_tc19b_bookDetailHidesTheRailBlock() {
+        setShell(mutableStateOf(ShellNavigationLayout.Rail), shows = mutableStateOf(false))
+
+        rule.onAllNodesWithTag(MiniPlayerTestTags.BAR).assertCountEquals(0)
+        rule.onAllNodes(tabMatcher).assertCountEquals(ShellTab.entries.size)
+    }
+
+    // #286 TC-26 (R8, R16)
+    @Test
+    fun issue286_tc26_railBlockSitsUnderTheTabsAndOverlapsNothing() {
+        var overlayInset = 0
+        var navigationInset = 0
+        setShell(
+            mutableStateOf(ShellNavigationLayout.Rail),
+            content = {
+                val density = LocalDensity.current
+                overlayInset = WindowInsets.bottomOverlay.getBottom(density)
+                navigationInset = WindowInsets.navigationBars.getBottom(density)
+                Box(Modifier.fillMaxSize())
+            },
+        )
+
+        assertBarInsideRail()
+        val lowestTabBottom = rule.onAllNodes(tabMatcher).fetchSemanticsNodes().maxOf { it.boundsInRoot.bottom }
+        val bar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).bounds()
+        assertTrue("the block ${bar.top} starts under the tabs ending at $lowestTabBottom", bar.top >= lowestTabBottom - 1f)
+        assertEquals("the content's bottom inset is the navigation bar", navigationInset, overlayInset)
+    }
+
     // #286 TC-20 (R16)
     @Test
     fun issue286_tc20_overlayInsetTracksTheStrip() {
@@ -199,6 +238,16 @@ class ShellMiniPlayerTest {
         val collapsedOverlay = rule.onNodeWithTag(ShellTestTags.OVERLAY).bounds().height
         assertEquals("the collapsed inset", collapsedOverlay, inset.toFloat(), 1f)
         assertTrue("the collapsed overlay $collapsedOverlay is smaller than $expandedOverlay", collapsedOverlay < expandedOverlay)
+    }
+
+    /** The mini player block sits inside the rail's bounds (#286 R8). */
+    private fun assertBarInsideRail() {
+        val rail = rule.onNodeWithTag(ShellTestTags.RAIL).bounds()
+        val bar = rule.onNodeWithTag(MiniPlayerTestTags.BAR).bounds()
+        assertTrue(
+            "the block $bar is inside the rail $rail",
+            bar.left >= rail.left - 1f && bar.right <= rail.right + 1f && bar.top >= rail.top - 1f && bar.bottom <= rail.bottom + 1f,
+        )
     }
 
     /** Swipes up over the list, from the middle toward the top, so the gesture never starts on the bottom overlay. */
