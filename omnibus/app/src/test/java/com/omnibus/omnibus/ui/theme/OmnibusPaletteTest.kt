@@ -88,4 +88,25 @@ class OmnibusPaletteTest : DescribeSpec({
             }
         }
     }
+
+    describe("the failed Sync here label") {
+
+        context("in the dark theme") {
+            // TC-16, R10, R11, AC6: the error text reads on the tool row's ground
+            it("TC-16: reads at 4.5:1 or more on bg0") {
+                val palette = OmnibusPalette.Atrium
+
+                (contrastRatio(palette.badText, palette.bg0) >= 4.5) shouldBe true
+            }
+        }
+
+        context("in the light theme") {
+            // TC-17, R10, R11, AC6: Light bad is too pale here, so badText must be the darker one
+            it("TC-17: reads at 4.5:1 or more on bg0") {
+                val palette = OmnibusPalette.Light
+
+                (contrastRatio(palette.badText, palette.bg0) >= 4.5) shouldBe true
+            }
+        }
+    }
 })
