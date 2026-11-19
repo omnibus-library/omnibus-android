@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedback
@@ -30,6 +33,7 @@ import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -178,10 +182,62 @@ class OmnibusNavigationRailTest {
         assertEquals(1, haptics.count)
     }
 
+    // #286 TC-9a (R8, R11)
+    @Test
+    fun issue286_tc9a_footerSitsBelowTheCentredTabs() {
+        val insets = renderEdgeToEdgeRail(footer = { Box(Modifier.fillMaxWidth().height(48.dp).testTag(FOOTER_TAG)) })
+
+        val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
+        val footerBounds = rule.onNodeWithTag(FOOTER_TAG).bounds()
+        val tabs = rule.onAllNodes(TAB).fetchSemanticsNodes().map { it.boundsInRoot }
+        val hairline = with(rule.density) { 0.5.dp.roundToPx().coerceAtLeast(1) }
+        val groupTop = tabs.minOf { it.top }
+        val groupBottom = tabs.maxOf { it.bottom }
+        assertTrue("footer top ${footerBounds.top} is above the last tab's bottom $groupBottom", footerBounds.top >= groupBottom)
+        assertEquals("footer bottom", rail.bottom - insets.bottomInsetPx, footerBounds.bottom, 1f)
+        val gapAbove = groupTop - insets.statusTopPx
+        val gapBelow = footerBounds.top - hairline - groupBottom
+        assertEquals("gap above the tabs $gapAbove, below $gapBelow", gapAbove, gapBelow, 1f)
+    }
+
+    // #286 TC-9b (R11)
+    @Test
+    fun issue286_tc9b_footerSpaceIsWhatTheTabsLeave() {
+        val insets = renderEdgeToEdgeRail(footer = { space -> Box(Modifier.fillMaxWidth().height(space).testTag(FOOTER_TAG)) })
+
+        val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
+        val footerBounds = rule.onNodeWithTag(FOOTER_TAG).bounds()
+        val tabs = rule.onAllNodes(TAB).fetchSemanticsNodes().map { it.boundsInRoot }
+        val hairline = with(rule.density) { 0.5.dp.roundToPx().coerceAtLeast(1) }
+        val usable = rail.height - insets.statusTopPx - insets.bottomInsetPx
+        val tabGroupHeight = tabs.maxOf { it.bottom } - tabs.minOf { it.top }
+        assertEquals("the footer's height", usable - tabGroupHeight - hairline, footerBounds.height, 1f)
+        assertEquals("the first tab's top", rail.top + insets.statusTopPx, tabs.minOf { it.top }, 1f)
+    }
+
+    // #286 TC-9c (R11)
+    @Test
+    fun issue286_tc9c_tallFooterNeverPushesATabOff() {
+        val insets = renderEdgeToEdgeRail(
+            footer = { space -> Box(Modifier.fillMaxWidth().height(space + 200.dp).testTag(FOOTER_TAG)) },
+        )
+
+        val rail = rule.onNodeWithTag(RAIL_TAG).bounds()
+        val tabs = rule.onAllNodes(TAB).fetchSemanticsNodes().map { it.boundsInRoot }
+        tabs.forEach { tab ->
+            assertTrue(
+                "tab ${tab.top}..${tab.bottom} is outside the rail ${rail.top}..${rail.bottom}",
+                tab.top >= rail.top - 1f && tab.bottom <= rail.bottom + 1f,
+            )
+        }
+        assertEquals("the first tab's top", rail.top + insets.statusTopPx, tabs.minOf { it.top }, 1f)
+    }
+
     /**
      * Lays the rail out at the start of an edge-to-edge window and returns the raw insets the rail is expected to clear.
+     * [footer] is the rail's footer slot.
      */
-    private fun renderEdgeToEdgeRail(): EdgeInsets {
+    private fun renderEdgeToEdgeRail(footer: @Composable (Dp) -> Unit = {}): EdgeInsets {
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         val insets = EdgeInsets()
         rule.setContent {
@@ -198,6 +254,7 @@ class OmnibusNavigationRailTest {
                         selectedIndex = 0,
                         onSelect = {},
                         modifier = Modifier.testTag(RAIL_TAG),
+                        footer = footer,
                     )
                 }
             }
@@ -223,6 +280,7 @@ class OmnibusNavigationRailTest {
 
     private companion object {
         const val RAIL_TAG = "omnibus-navigation-rail"
+        const val FOOTER_TAG = "omnibus-navigation-rail-footer"
         val TAB: SemanticsMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
         val SELECTABLE_GROUP: SemanticsMatcher = SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup)
     }

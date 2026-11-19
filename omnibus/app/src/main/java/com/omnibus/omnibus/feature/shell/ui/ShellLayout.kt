@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -46,6 +48,8 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
  *
  * In [ShellNavigationLayout.Rail], [rail] sits on the leading edge and the content is laid out in the width beside it,
  * not under it. Both layouts share one tree, so [content] keeps its composition when the layout changes.
+ *
+ * @param contentNestedScroll observes every scroll inside [content]; the shell uses it to collapse the docked mini player.
  */
 @Composable
 internal fun ShellLayout(
@@ -53,6 +57,7 @@ internal fun ShellLayout(
     modifier: Modifier = Modifier,
     navigationLayout: ShellNavigationLayout = ShellNavigationLayout.Bar,
     rail: @Composable () -> Unit = {},
+    contentNestedScroll: NestedScrollConnection? = null,
     content: @Composable () -> Unit,
 ) {
     val isRail = navigationLayout == ShellNavigationLayout.Rail
@@ -70,7 +75,11 @@ internal fun ShellLayout(
             // The body ignores the padding; the overlay's height is the only thing the entries need from it.
             val bottom = innerPadding.calculateBottomPadding()
             val insets = remember(bottom) { WindowInsets(bottom = bottom) }
-            CompositionLocalProvider(LocalBottomOverlayInsets provides insets) { content() }
+            CompositionLocalProvider(LocalBottomOverlayInsets provides insets) {
+                Box(Modifier.fillMaxSize().then(if (contentNestedScroll != null) Modifier.nestedScroll(contentNestedScroll) else Modifier)) {
+                    content()
+                }
+            }
         }
     }
 }
