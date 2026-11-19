@@ -27,6 +27,7 @@ import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.reader.ui.AnnotationTapData
 import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
 import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
@@ -113,8 +114,11 @@ class ReaderViewModel @AssistedInject constructor(
     /** The book's saved highlights, as last loaded. A failed or loading read keeps them. */
     private var savedHighlights: List<Highlight> = emptyList()
 
-    /** A highlight made this session, drawn at once. [id] is local, so a failed save can find its row. */
-    private data class SessionHighlight(val id: Long, val highlight: PageHighlight)
+    /**
+     * A highlight made this session, drawn at once. [id] is local, so a failed save can find its row. [text] is the
+     * draft's trimmed text, which the highlight menu's Copy takes.
+     */
+    private data class SessionHighlight(val id: Long, val highlight: PageHighlight, val text: String?)
 
     /** This session's highlights, newest first. They stay until the save fails. */
     private var session: List<SessionHighlight> = emptyList()
@@ -170,22 +174,28 @@ class ReaderViewModel @AssistedInject constructor(
     fun onPageEvent(event: ReaderEvent) {
         when (event) {
             is ReaderEvent.Relocate -> {
-                _uiState.update { it.withLocation(event.data) }
+                // Closes the highlight menu on any move or echo: its rects are stale either way.
+                _uiState.update { it.withLocation(event.data).copy(highlightMenu = null) }
                 record(event.data)
             }
             is ReaderEvent.Toc -> _uiState.update { it.copy(toc = event.entries) }
             is ReaderEvent.Selection -> _uiState.update { it.copy(selection = event.data) }
+            is ReaderEvent.AnnotationTap -> onAnnotationTapped(event.data)
             ReaderEvent.SelectionCleared -> _uiState.update { it.copy(selection = null, adjustingSelection = false) }
             ReaderEvent.ToggleChrome -> onChromeToggled()
             is ReaderEvent.LoadStatusChanged -> {
-                _uiState.update { it.copy(loadStatus = event.status) }
+                _uiState.update {
+                    it.copy(
+                        loadStatus = event.status,
+                        highlightMenu = it.highlightMenu.takeIf { event.status == ReaderLoadStatus.Ready },
+                    )
+                }
                 if (event.status == ReaderLoadStatus.Ready) sendOpeningSeek()
             }
             // Status is ignored: the controller owns load status, and LoadStatusChanged reports it.
             is ReaderEvent.Status,
             // The rest belong to later work (#55, #63), so they leave the state alone.
             ReaderEvent.HostReady,
-            is ReaderEvent.AnnotationTap,
             is ReaderEvent.ShareText,
             is ReaderEvent.ShareImage,
             is ReaderEvent.TurnRequest,
@@ -197,6 +207,7 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader's chrome was shown or hidden. Hiding it also closes the menu. */
     fun onChromeToggled() {
         dismissSelection()
+        dismissHighlightMenu()
         _uiState.update { it.withChromeToggled() }
     }
 
@@ -219,18 +230,21 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader chose a row in the menu, which closes the menu and opens that row's sheet. */
     fun onMenuRowChosen(row: ReaderMenuRow) {
         dismissSelection()
+        dismissHighlightMenu()
         _uiState.update { it.withMenuRowChosen(row) }
     }
 
     /** The reader asked for the contents sheet, on its Contents segment. */
     fun onContentsRequested() {
         dismissSelection()
+        dismissHighlightMenu()
         _uiState.update { it.withSheet(ReaderSheet.Contents).copy(contentsTab = ReaderContentsTab.Contents) }
     }
 
     /** The reader asked for the settings sheet. */
     fun onSettingsRequested() {
         dismissSelection()
+        dismissHighlightMenu()
         _uiState.update { it.withSheet(ReaderSheet.Settings) }
     }
 
@@ -241,11 +255,39 @@ class ReaderViewModel @AssistedInject constructor(
         _commands.trySend(ReaderCommand.ClearSelection)
     }
 
+    /** Closes the highlight menu. Does nothing without one. */
+    private fun dismissHighlightMenu() {
+        _uiState.update { it.copy(highlightMenu = null) }
+    }
+
+    /**
+     * The reader tapped a highlight on the page. Opens the menu over the highlights the tap landed on, and clears any
+     * live selection. Ignored while the chrome is up or a sheet is open.
+     */
+    private fun onAnnotationTapped(tap: AnnotationTapData) {
+        val state = _uiState.value
+        if (state.chromeVisible || state.sheet != null) return
+        val menu = highlightMenuOf(tap, knownHighlights()) ?: return
+        dismissSelection()
+        _uiState.update { it.copy(highlightMenu = menu) }
+    }
+
     /** The reader went back with a selection up. */
     fun onSelectionDismissed() = dismissSelection()
 
     /** The reader copied the selection. The screen has already written the clipboard. */
     fun onSelectionCopied() = dismissSelection()
+
+    /** The reader moved the highlight menu to another highlight it landed on, wrapping at either end. */
+    fun onHighlightMenuStepped(delta: Int) {
+        _uiState.update { it.copy(highlightMenu = it.highlightMenu?.stepped(delta)) }
+    }
+
+    /** The reader dismissed the highlight menu. */
+    fun onHighlightMenuDismissed() = dismissHighlightMenu()
+
+    /** The reader copied the highlight. The screen has already written the clipboard. */
+    fun onHighlightCopied() = dismissHighlightMenu()
 
     /** A selection handle was grabbed, so the highlight menu waits for the drag to settle. */
     fun onSelectionHandleGrabbed() {
@@ -270,7 +312,7 @@ class ReaderViewModel @AssistedInject constructor(
         val selection = _uiState.value.selection ?: return
         dismissSelection()
         val draft = HighlightDraft.create(bookUuid, selection.cfiRange, color, selection.text) ?: return
-        val row = SessionHighlight(++nextSessionId, PageHighlight(draft.cfiRange, color, hasNote = false))
+        val row = SessionHighlight(++nextSessionId, PageHighlight(draft.cfiRange, color, hasNote = false), draft.text)
         // Newest first, so a range saved again in another colour shows the latest choice.
         session = listOf(row) + session
         publishHighlights()
@@ -287,7 +329,8 @@ class ReaderViewModel @AssistedInject constructor(
     fun onSettingsChanged(settings: ReaderSettings) {
         val next = settings.normalized()
         if (next == _uiState.value.settings) return
-        _uiState.update { it.copy(settings = next) }
+        // A reflow or a new theme leaves the menu's rects and colours stale, so it closes.
+        _uiState.update { it.copy(settings = next, highlightMenu = null) }
         // Application scope so the save outlives the reader; UNDISPATCHED so rapid taps reach DataStore in order.
         persistScope.launch(start = CoroutineStart.UNDISPATCHED) { settingsStore.save(next) }
     }
@@ -515,9 +558,36 @@ class ReaderViewModel @AssistedInject constructor(
         viewModelScope.launch { highlightsRepository.refresh(bookUuid) }
     }
 
-    /** Recomputes what the page draws from the highlights read so far. */
+    /**
+     * What the highlight menu knows of each drawn highlight, keyed by its trimmed range. A session highlight's text is
+     * its draft's; a saved one's comes from its row. Read at tap time, as iOS does.
+     */
+    private fun knownHighlights(): Map<String, KnownHighlight> {
+        // The first row for a range wins. Session rows come first, newest first. A null text still counts as a row,
+        // which is why this doesn't use putIfAbsent: it replaces a null value.
+        val texts = mutableMapOf<String, String?>()
+        fun remember(cfi: String, text: String?) {
+            if (!texts.containsKey(cfi)) texts[cfi] = text
+        }
+        session.forEach { row -> remember(row.highlight.cfiRange.trim(), row.text) }
+        savedHighlights.forEach { row -> row.location?.trim()?.let { remember(it, row.text) } }
+        return _uiState.value.pageHighlights.associate { highlight ->
+            val cfi = highlight.cfiRange.trim()
+            cfi to KnownHighlight(highlight.color, texts[cfi])
+        }
+    }
+
+    /**
+     * Recomputes what the page draws from the highlights read so far. The highlight menu closes when one of its
+     * highlights is no longer drawn, such as a session highlight whose save failed.
+     */
     private fun publishHighlights() {
-        _uiState.update { it.copy(pageHighlights = pageHighlightsOf(savedHighlights, session.map { row -> row.highlight })) }
+        val drawn = pageHighlightsOf(savedHighlights, session.map { row -> row.highlight })
+        val drawnRanges = drawn.mapTo(mutableSetOf()) { it.cfiRange.trim() }
+        _uiState.update { state ->
+            val menu = state.highlightMenu?.takeIf { menu -> menu.entries.all { it.cfiRange in drawnRanges } }
+            state.copy(pageHighlights = drawn, highlightMenu = menu)
+        }
     }
 
     /** Cancels any read in flight and collects the book, so a retry can't land after a newer one. */
@@ -590,6 +660,11 @@ data class ReaderUIState(
     val selection: SelectionData? = null,
     /** Whether a selection handle is held. The menu waits for the drag to settle. */
     val adjustingSelection: Boolean = false,
+    /**
+     * The menu over the highlights a tap landed on, or null. The screen shows it only on a ready page with the chrome
+     * hidden.
+     */
+    val highlightMenu: HighlightMenu? = null,
     /** A one-off message for the reader, cleared once shown. */
     val notice: ReaderNotice? = null,
 ) {
