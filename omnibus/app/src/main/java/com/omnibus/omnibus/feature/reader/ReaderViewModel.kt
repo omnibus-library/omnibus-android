@@ -333,6 +333,28 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(highlightDeleteConfirmation = null) }
     }
 
+    /** The reader chose [action] in the highlight menu. */
+    fun onHighlightMenuAction(action: HighlightMenuAction) {
+        when (action) {
+            // #331 Note
+            // #333 Quote card
+            // #330 Share
+            HighlightMenuAction.Copy -> onHighlightCopied()
+            HighlightMenuAction.Delete -> onHighlightDeleteRequested()
+        }
+    }
+
+    /** The reader chose [action] in the selection menu. Delete is never offered there, so it does nothing. */
+    fun onSelectionMenuAction(action: HighlightMenuAction) {
+        when (action) {
+            // #331 Note
+            // #333 Quote card
+            // #330 Share
+            HighlightMenuAction.Copy -> onSelectionCopied()
+            HighlightMenuAction.Delete -> Unit
+        }
+    }
+
     /** A selection handle was grabbed, so the highlight menu waits for the drag to settle. */
     fun onSelectionHandleGrabbed() {
         _uiState.update { it.copy(adjustingSelection = true) }
