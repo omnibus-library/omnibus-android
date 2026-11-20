@@ -26,6 +26,8 @@ material3 = "1.4.0"
 navigation3 = "1.2.0"
 media3 = "1.11.1"
 screenshot = "0.0.1-alpha16"
+camerax = "1.5.1"
+mlkitBarcodeScanning = "17.3.0"
 
 [libraries]
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
@@ -74,6 +76,11 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 androidx-window = { group = "androidx.window", name = "window", version.ref = "window" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcodeScanning" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
