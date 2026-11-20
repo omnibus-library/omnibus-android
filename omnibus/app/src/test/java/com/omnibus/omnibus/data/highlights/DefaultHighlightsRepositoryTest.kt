@@ -22,6 +22,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import java.util.concurrent.CountDownLatch
 import kotlin.time.Duration.Companion.seconds
@@ -681,6 +682,133 @@ class DefaultHighlightsRepositoryTest : DescribeSpec({
                     script.answer("DELETE", answer)
 
                     sut(server).deleteHighlight(randomString(), randomLong()) shouldBe HighlightDeleteResult.Failed(error)
+                }
+            }
+        }
+    }
+
+    describe("recolouring a highlight") {
+
+        it("#301 TC-1: sends PATCH for the id with the lowercase colour token") {
+            withScriptedServer {
+                val id = randomLong()
+                checkAll(Exhaustive.enum<HighlightColor>()) { color ->
+                    script.answer("PATCH", reply(204))
+
+                    sut(server).recolorHighlight(randomString(), id, color)
+
+                    val request = server.nextRequest()
+                    request.method shouldBe "PATCH"
+                    request.url.encodedPath shouldBe "/api/highlights/$id/color"
+                    val body = request.json()
+                    body.keys shouldBe setOf("color")
+                    body["color"]!!.jsonPrimitive.content shouldBe color.token
+                }
+            }
+        }
+
+        it("#301 TC-1: returns Recolored for any 2xx") {
+            withScriptedServer {
+                checkAll(Exhaustive.of(200, 204)) { code ->
+                    script.answer("PATCH", reply(code))
+
+                    sut(server).recolorHighlight(randomString(), randomLong(), randomEnum()) shouldBe
+                        HighlightRecolorResult.Recolored
+                }
+            }
+        }
+
+        it("#301 TC-3: returns the typed error for each answer") {
+            withScriptedServer {
+                val failures = listOf(
+                    dropped() to HighlightError.Unreachable,
+                    reply(401) to HighlightError.SessionExpired,
+                    reply(404) to HighlightError.Http(404),
+                    reply(409) to HighlightError.Http(409),
+                    reply(500) to HighlightError.Http(500),
+                )
+                checkAll(Exhaustive.collection(failures)) { (answer, error) ->
+                    script.answer("PATCH", answer)
+
+                    sut(server).recolorHighlight(randomString(), randomLong(), randomEnum()) shouldBe
+                        HighlightRecolorResult.Failed(error)
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#301 TC-3: returns NoServer") {
+                sut().recolorHighlight(randomString(), randomLong(), randomEnum()) shouldBe
+                    HighlightRecolorResult.Failed(HighlightError.NoServer)
+            }
+        }
+
+        context("when a list has loaded") {
+            it("#301 TC-4: replaces only the row's colour") {
+                withMockServer { server ->
+                    val passage = """{"id":2,"text":"a passage","note":"a note","color":"amber","epub_cfi_range":"epubcfi(/6/4)"}"""
+                    server.enqueue(reply(200, "[${row(1)},$passage,${row(3)}]"))
+                    server.enqueue(reply(204))
+                    val repository = sut(server)
+                    val uuid = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        val before = awaitItem() as HighlightsState.Loaded
+
+                        repository.recolorHighlight(uuid, 2, HighlightColor.Green)
+
+                        awaitItem() shouldBe HighlightsState.Loaded(
+                            before.highlights.map { if (it.id == 2L) it.copy(color = HighlightColor.Green) else it },
+                        )
+                    }
+                }
+            }
+
+            it("#301 TC-5: leaves a loaded list as it was") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "[${row(1)}]"))
+                    server.enqueue(reply(500))
+                    val repository = sut(server)
+                    val uuid = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        awaitItem() shouldBe loaded(1)
+
+                        repository.recolorHighlight(uuid, 1, randomEnum())
+
+                        expectNoEvents()
+                    }
+                }
+            }
+
+            context("when a fetch is in flight") {
+                it("#301 TC-6: a fetch in flight cannot put the old colour back") {
+                    withScriptedServer {
+                        val repository = threadedSut(server, scope)
+                        val uuid = randomString()
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"))
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"), gate)
+                        script.answer("PATCH", reply(204))
+
+                        repository.getHighlightsFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(loaded(1, 2))
+                            server.nextRequest()
+
+                            val refresh = scope.async { repository.refresh(uuid) }
+                            // The refresh's GET is on the server and held on its gate while the recolour succeeds.
+                            server.nextRequest()
+                            repository.recolorHighlight(uuid, 2, HighlightColor.Green)
+
+                            gate.countDown()
+                            refresh.await()
+                            cancelAndIgnoreRemainingEvents()
+                        }
+
+                        repository.getHighlightsFlow(uuid).first() shouldBe HighlightsState.Loaded(
+                            loaded(1, 2).highlights.map { if (it.id == 2L) it.copy(color = HighlightColor.Green) else it },
+                        )
+                    }
                 }
             }
         }
