@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.reader.ui
 
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -15,6 +16,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.highlights.HighlightColor
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
+import com.omnibus.omnibus.feature.reader.HighlightMenuTarget
 
 /**
  * The selection menu's body and tail as one outline, so its 1 dp border has no seam. The tail points up when [tailUp]
@@ -52,16 +55,18 @@ internal class SelectionMenuShape(
 }
 
 /**
- * The selection menu over the page: the highlight menu's toolbar with the five colours, a divider and Copy. It is drawn
- * at [placement] with its tail on the selection, in the reading theme's [colors]. Its size is fixed, so placement needs
- * no measure pass.
+ * The selection menu over the page: the highlight menu's two rows, the five colours and a rule over [actions]. It is
+ * drawn at [placement] with its tail on the selection, in the reading theme's [colors]. Its size is fixed, so placement
+ * needs no measure pass.
  */
 @Composable
 internal fun ReaderSelectionMenu(
     placement: SelectionMenuPlacement,
     colors: ReaderChromeColors,
+    target: HighlightMenuTarget,
+    actions: List<HighlightMenuAction>,
     onColorChosen: (HighlightColor) -> Unit,
-    onCopy: () -> Unit,
+    onAction: (HighlightMenuAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HighlightMenuSurface(
@@ -74,8 +79,8 @@ internal fun ReaderSelectionMenu(
         colors = colors,
         modifier = modifier.testTag(ReaderSelectionTags.MENU),
     ) {
-        HighlightMenuToolbar(selected = null, colors = colors, onColor = onColorChosen) {
-            HighlightMenuCopyAction(colors, onCopy)
-        }
+        HighlightMenuColorRow(selected = null, onColor = onColorChosen)
+        HorizontalDivider(thickness = HighlightMenuMetrics.RULE.dp, color = colors.border)
+        HighlightMenuActionRow(actions = actions, target = target, colors = colors, onAction = onAction)
     }
 }

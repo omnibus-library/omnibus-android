@@ -20,10 +20,7 @@ data class HighlightMenuEntry(
     val color: HighlightColor,
     val text: String?,
     val hasNote: Boolean,
-) {
-    /** Whether the menu offers Copy, which needs text to copy. */
-    val canCopy: Boolean get() = !text.isNullOrBlank()
-}
+)
 
 /**
  * The highlights a tap landed on, with [active] the one the menu shows. [stepped] moves between them and wraps at the

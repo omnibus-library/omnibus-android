@@ -25,7 +25,6 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -37,6 +36,7 @@ import androidx.compose.ui.test.swipe
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.HighlightMenu
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import com.omnibus.omnibus.feature.reader.HighlightMenuEntry
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlin.math.abs
@@ -46,7 +46,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * The highlight menu over the page: its swatches, Copy, the switcher, the outline, and the scrim that takes every touch
+ * The highlight menu over the page: its swatches, the action row, the switcher, the outline, and the scrim that takes every touch
  * outside it. Every highlight is a fraction of the window, so the cases hold on the 320x640 AVD and on a phone.
  */
 class ReaderHighlightMenuLayerTest {
@@ -86,14 +86,17 @@ class ReaderHighlightMenuLayerTest {
         hasNote = false,
     )
 
-    /** Sets the overlay over the page's [under], with [menu] held by the test and stepped by [onStep] as default. */
+    /**
+     * Sets the overlay over the page's [under], with [menu] held by the test and stepped by [onStep] as default. The
+     * action row shows [actions] as given, so these tests never depend on what the enum offers.
+     */
     private fun setOverlay(
         menu: MutableState<HighlightMenu?>,
         under: @Composable () -> Unit = {},
+        actions: List<HighlightMenuAction> = listOf(HighlightMenuAction.Copy, HighlightMenuAction.Delete),
         onStep: (Int) -> Unit = { delta -> menu.value = menu.value?.stepped(delta) },
         onColor: (HighlightColor) -> Unit = {},
-        onCopy: (String) -> Unit = {},
-        onDelete: () -> Unit = {},
+        onAction: (HighlightMenuAction) -> Unit = {},
         onDismiss: () -> Unit = {},
     ) {
         rule.setContent {
@@ -103,11 +106,11 @@ class ReaderHighlightMenuLayerTest {
                     menu.value?.let { current ->
                         ReaderHighlightMenuOverlay(
                             menu = current,
+                            actions = actions,
                             theme = ReaderTheme.Light,
                             onStep = onStep,
                             onColor = onColor,
-                            onCopy = onCopy,
-                            onDelete = onDelete,
+                            onAction = onAction,
                             onDismiss = onDismiss,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -157,32 +160,18 @@ class ReaderHighlightMenuLayerTest {
         }
     }
 
-    // TC-27
+    // TC-27, TC-15 (#329)
     @Test
-    fun issue299_tc27_copyHandsUpTheActiveText() {
+    fun issue299_tc27_copyCallsOnAction() {
         val menu = mutableStateOf<HighlightMenu?>(null)
-        val copies = mutableListOf<String>()
-        setOverlay(menu, onCopy = { copies += it })
+        val actions = mutableListOf<HighlightMenuAction>()
+        setOverlay(menu, onAction = { actions += it })
         showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = TEXT))) }
 
         rule.onNodeWithContentDescription("Copy").performClick()
         rule.waitForIdle()
 
-        assertEquals(listOf(TEXT), copies)
-    }
-
-    // TC-28
-    @Test
-    fun issue299_tc28_aHighlightWithoutTextHasNoCopy() {
-        val menu = mutableStateOf<HighlightMenu?>(null)
-        setOverlay(menu)
-
-        listOf<String?>(null, "   ").forEach { text ->
-            showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = text))) }
-
-            rule.onAllNodesWithContentDescription("Copy").assertCountEquals(0)
-            SWATCH_NAMES.forEach { rule.onNodeWithContentDescription(it).assertIsDisplayed() }
-        }
+        assertEquals(listOf(HighlightMenuAction.Copy), actions)
     }
 
     // TC-29
@@ -291,39 +280,75 @@ class ReaderHighlightMenuLayerTest {
         assertEquals("a touch on the menu should not reach the page", 0, taps.size)
     }
 
-    // TC-14 (#300)
+    // TC-12 (#329)
     @Test
-    fun issue300_tc14_deleteShowsForEveryHighlightAfterCopy() {
+    fun issue329_tc12_theActionsSitBelowTheColoursInOrder() {
         val menu = mutableStateOf<HighlightMenu?>(null)
         setOverlay(menu)
-
-        listOf<String?>(TEXT, null).forEach { text ->
-            showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = text))) }
-
-            rule.onNodeWithContentDescription("Delete highlight").assertIsDisplayed()
-                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-        }
-
         showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = TEXT))) }
+
         val copy = rule.onNodeWithContentDescription("Copy").getUnclippedBoundsInRoot()
         val delete = rule.onNodeWithContentDescription("Delete highlight").getUnclippedBoundsInRoot()
-        assertTrue("Delete should sit after Copy", delete.left >= copy.right)
+        rule.onNodeWithContentDescription("Copy").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        rule.onNodeWithContentDescription("Delete highlight").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        SWATCH_NAMES.forEach { name ->
+            val swatch = rule.onNodeWithContentDescription(name).getUnclippedBoundsInRoot()
+            assertTrue("$name should sit above Copy", swatch.bottom <= copy.top)
+            assertTrue("$name should sit above Delete", swatch.bottom <= delete.top)
+        }
+        assertTrue("Delete should sit after Copy", copy.right <= delete.left)
         val centreGap = abs((delete.top + delete.bottom).value / 2 - (copy.top + copy.bottom).value / 2)
-        assertTrue("Delete should share Copy's row", centreGap < (delete.bottom - delete.top).value)
+        assertTrue("Copy and Delete should share one row", centreGap < (delete.bottom - delete.top).value)
     }
 
-    // TC-15 (#300)
+    // TC-13 (#329)
     @Test
-    fun issue300_tc15_deleteCallsBack() {
+    fun issue329_tc13_theActionsAreCentredAndTheMenuFitsTheWindow() {
         val menu = mutableStateOf<HighlightMenu?>(null)
-        val deletes = mutableListOf<Unit>()
-        setOverlay(menu, onDelete = { deletes += Unit })
+        setOverlay(menu)
+        showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber, text = TEXT))) }
+
+        val copy = rule.onNodeWithContentDescription("Copy").getUnclippedBoundsInRoot()
+        val delete = rule.onNodeWithContentDescription("Delete highlight").getUnclippedBoundsInRoot()
+        val menuBounds = rule.onNodeWithTag(ReaderHighlightMenuTags.MENU, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val root = rule.onRoot().getUnclippedBoundsInRoot()
+        val groupCentre = (copy.left + delete.right).value / 2
+        val menuCentre = (menuBounds.left + menuBounds.right).value / 2
+        assertTrue("the actions should be centred on the menu", abs(groupCentre - menuCentre) < 1f)
+        assertTrue("the menu should not overflow the left edge", menuBounds.left >= root.left)
+        assertTrue("the menu should not overflow the right edge", menuBounds.right <= root.right)
+        assertTrue("the menu should not overflow the top edge", menuBounds.top >= root.top)
+        assertTrue("the menu should not overflow the bottom edge", menuBounds.bottom <= root.bottom)
+    }
+
+    // TC-14 (#329)
+    @Test
+    fun issue329_tc14_theSwitcherSitsAboveTheColours() {
+        val menu = mutableStateOf<HighlightMenu?>(null)
+        setOverlay(menu)
+        showMenu(menu) { width, height ->
+            HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber), highlight(width, height, HighlightColor.Green)))
+        }
+
+        val position = rule.onNodeWithTag(ReaderHighlightMenuTags.POSITION, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        SWATCH_NAMES.forEach { name ->
+            val swatch = rule.onNodeWithContentDescription(name).getUnclippedBoundsInRoot()
+            assertTrue("the switcher should sit above $name", position.bottom <= swatch.top)
+        }
+    }
+
+    // TC-15 (#300, #329)
+    @Test
+    fun issue300_tc15_deleteCallsOnAction() {
+        val menu = mutableStateOf<HighlightMenu?>(null)
+        val actions = mutableListOf<HighlightMenuAction>()
+        setOverlay(menu, onAction = { actions += it })
         showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber))) }
 
         rule.onNodeWithContentDescription("Delete highlight").performClick()
         rule.waitForIdle()
 
-        assertEquals("Delete should call back exactly once", 1, deletes.size)
+        assertEquals("Delete should call onAction exactly once", listOf(HighlightMenuAction.Delete), actions)
     }
 
     // TC-20 (#301)

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
@@ -33,6 +34,7 @@ import com.omnibus.omnibus.data.reader.BookFileResult
 import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderOpening
 import com.omnibus.omnibus.feature.reader.ReaderStart
@@ -102,8 +104,9 @@ class ReaderSelectionLayerTest {
         onGrab: (SelectionEdge) -> Unit = {},
         onDrag: (Float, Float, Float) -> Unit = { _, _, _ -> },
         onRelease: () -> Unit = {},
+        actions: List<HighlightMenuAction> = listOf(HighlightMenuAction.Copy),
         onColorChosen: (HighlightColor) -> Unit = {},
-        onCopy: () -> Unit = {},
+        onAction: (HighlightMenuAction) -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme {
@@ -117,8 +120,9 @@ class ReaderSelectionLayerTest {
                             onGrab = onGrab,
                             onDrag = onDrag,
                             onRelease = onRelease,
+                            actions = actions,
                             onColorChosen = onColorChosen,
-                            onCopy = onCopy,
+                            onAction = onAction,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -152,9 +156,9 @@ class ReaderSelectionLayerTest {
         assertEquals(6, rule.onAllNodes(hasClickAction().or(named)).fetchSemanticsNodes().size)
     }
 
-    // TC-31
+    // TC-31, TC-16 (#329)
     @Test
-    fun issue54_tc31_theColoursAreButtonsLeftToRightWithCopyAfterThem() {
+    fun issue54_tc31_theColoursAreButtonsLeftToRightWithCopyBelowThem() {
         val selection = mutableStateOf<SelectionData?>(null)
         setOverlay(selection, menuShown = true)
         showSettled(selection)
@@ -162,14 +166,15 @@ class ReaderSelectionLayerTest {
         val swatches = swatchNames.map { rule.onNodeWithContentDescription(it) }
         swatches.forEach { it.assertHasClickAction() }
         swatches.forEach { it.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)) }
+        swatches.forEach { it.assertIsNotSelected() }
         val lefts = swatches.map { it.getUnclippedBoundsInRoot().left.value }
         assertEquals("the colours should run left to right", lefts.sorted(), lefts)
 
         val copy = rule.onNodeWithContentDescription("Copy")
         copy.assertHasClickAction()
-        val copyLeft = copy.getUnclippedBoundsInRoot().left.value
+        val copyTop = copy.getUnclippedBoundsInRoot().top.value
         swatches.forEach { swatch ->
-            assertTrue("Copy should sit after every colour", copyLeft > swatch.getUnclippedBoundsInRoot().right.value)
+            assertTrue("Copy should sit below every colour", copyTop >= swatch.getUnclippedBoundsInRoot().bottom.value)
         }
     }
 
@@ -190,18 +195,18 @@ class ReaderSelectionLayerTest {
         )
     }
 
-    // TC-32
+    // TC-32, TC-17 (#329)
     @Test
-    fun issue54_tc32_tappingCopyCallsOnCopyOnce() {
+    fun issue54_tc32_tappingCopyCallsOnAction() {
         val selection = mutableStateOf<SelectionData?>(null)
-        var copies = 0
-        setOverlay(selection, menuShown = true, onCopy = { copies++ })
+        val actions = mutableListOf<HighlightMenuAction>()
+        setOverlay(selection, menuShown = true, onAction = { actions += it })
         showSettled(selection)
 
         rule.onNodeWithContentDescription("Copy").performClick()
         rule.waitForIdle()
 
-        assertEquals(1, copies)
+        assertEquals(listOf(HighlightMenuAction.Copy), actions)
     }
 
     // TC-33

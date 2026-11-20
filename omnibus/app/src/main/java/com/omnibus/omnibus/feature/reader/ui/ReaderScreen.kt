@@ -1,6 +1,5 @@
 package com.omnibus.omnibus.feature.reader.ui
 
-import android.content.ClipData
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -35,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -63,6 +60,7 @@ import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.audiobook.mini.MiniPlayer
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.libraryErrorText
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import com.omnibus.omnibus.feature.reader.ReaderBackAction
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
@@ -75,6 +73,8 @@ import com.omnibus.omnibus.feature.reader.ReaderUnavailableReason
 import com.omnibus.omnibus.feature.reader.ReaderViewModel
 import com.omnibus.omnibus.feature.reader.backAction
 import com.omnibus.omnibus.feature.reader.bootCfi
+import com.omnibus.omnibus.feature.reader.highlightMenuActions
+import com.omnibus.omnibus.feature.reader.menuTarget
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.theme.Motion
@@ -142,14 +142,13 @@ fun ReaderScreen(
         onContextLeft = viewModel::onContextLeft,
     onSelectionDismissed = viewModel::onSelectionDismissed,
         onHighlightColorChosen = viewModel::onHighlightColorChosen,
-        onSelectionCopied = viewModel::onSelectionCopied,
+        onSelectionMenuAction = viewModel::onSelectionMenuAction,
         onSelectionHandleGrabbed = viewModel::onSelectionHandleGrabbed,
         onSelectionHandleReleased = viewModel::onSelectionHandleReleased,
         onHighlightMenuStepped = viewModel::onHighlightMenuStepped,
         onHighlightMenuDismissed = viewModel::onHighlightMenuDismissed,
-        onHighlightCopied = viewModel::onHighlightCopied,
+        onHighlightMenuAction = viewModel::onHighlightMenuAction,
         onHighlightRecolorChosen = viewModel::onHighlightRecolorChosen,
-        onHighlightDeleteRequested = viewModel::onHighlightDeleteRequested,
         onHighlightDeleteConfirmed = viewModel::onHighlightDeleteConfirmed,
         onHighlightDeleteCancelled = viewModel::onHighlightDeleteCancelled,
         onNoticeShown = viewModel::onNoticeShown,
@@ -197,14 +196,13 @@ fun ReaderScreen(
  * @param onContextLeft back or a tap on the zoomed-out page left context mode.
  * @param onSelectionDismissed back dismissed the page's selection, and its menu with it.
  * @param onHighlightColorChosen a colour was chosen from the selection menu.
- * @param onSelectionCopied Copy was chosen from the selection menu, after the clipboard was written.
+ * @param onSelectionMenuAction an action was chosen from the selection menu, after its side effects (the clipboard) ran.
  * @param onSelectionHandleGrabbed a selection handle was grabbed.
  * @param onSelectionHandleReleased a selection handle was let go.
  * @param onHighlightMenuStepped the highlight menu's switcher moved to another highlight, by the given step.
  * @param onHighlightMenuDismissed a touch outside the highlight menu, or back, closed it.
- * @param onHighlightCopied Copy was chosen from the highlight menu, after the clipboard was written.
+ * @param onHighlightMenuAction an action was chosen from the highlight menu, after its side effects ran.
  * @param onHighlightRecolorChosen a colour was chosen in the highlight menu.
- * @param onHighlightDeleteRequested Delete was chosen from the highlight menu.
  * @param onHighlightDeleteConfirmed Delete was chosen in the note dialog.
  * @param onHighlightDeleteCancelled the note dialog was cancelled, by Cancel, back or a tap outside it.
  * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
@@ -236,14 +234,13 @@ internal fun ReaderScreenContent(
     onContextLeft: () -> Unit = {},
     onSelectionDismissed: () -> Unit = {},
     onHighlightColorChosen: (HighlightColor) -> Unit = {},
-    onSelectionCopied: () -> Unit = {},
+    onSelectionMenuAction: (HighlightMenuAction) -> Unit = {},
     onSelectionHandleGrabbed: () -> Unit = {},
     onSelectionHandleReleased: () -> Unit = {},
     onHighlightMenuStepped: (Int) -> Unit = {},
     onHighlightMenuDismissed: () -> Unit = {},
-    onHighlightCopied: () -> Unit = {},
+    onHighlightMenuAction: (HighlightMenuAction) -> Unit = {},
     onHighlightRecolorChosen: (HighlightColor) -> Unit = {},
-    onHighlightDeleteRequested: () -> Unit = {},
     onHighlightDeleteConfirmed: () -> Unit = {},
     onHighlightDeleteCancelled: () -> Unit = {},
     onNoticeShown: () -> Unit = {},
@@ -270,8 +267,7 @@ internal fun ReaderScreenContent(
         commands.collect { controller.execute(it) }
     }
     LaunchedEffect(controller, uiState.pageHighlights) { controller.applyHighlights(uiState.pageHighlights) }
-    val clipboard = LocalClipboard.current
-    val clipScope = rememberCoroutineScope()
+    val menuActionEffects = rememberMenuActionEffects()
     val snackbarHostState = remember { SnackbarHostState() }
     val noticeScope = rememberCoroutineScope()
     val saveFailedText = stringResource(R.string.reader_highlight_save_failed)
@@ -416,10 +412,11 @@ internal fun ReaderScreenContent(
                                             controller.endEdgeDrag()
                                             onSelectionHandleReleased()
                                         },
+                                        actions = highlightMenuActions(selection.menuTarget),
                                         onColorChosen = onHighlightColorChosen,
-                                        onCopy = {
-                                            clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, selection.text))) }
-                                            onSelectionCopied()
+                                        onAction = { action ->
+                                            menuActionEffects(action, selection.text)
+                                            onSelectionMenuAction(action)
                                         },
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -429,14 +426,14 @@ internal fun ReaderScreenContent(
                                     // Over the WebView's box too, so its CSS px are this layer's dp, as for the selection.
                                     ReaderHighlightMenuOverlay(
                                         menu = highlightMenu,
+                                        actions = highlightMenuActions(highlightMenu.activeEntry.menuTarget),
                                         theme = theme,
                                         onStep = onHighlightMenuStepped,
                                         onColor = onHighlightRecolorChosen,
-                                        onCopy = { text ->
-                                            clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, text))) }
-                                            onHighlightCopied()
+                                        onAction = { action ->
+                                            menuActionEffects(action, highlightMenu.activeEntry.text)
+                                            onHighlightMenuAction(action)
                                         },
-                                        onDelete = onHighlightDeleteRequested,
                                         onDismiss = onHighlightMenuDismissed,
                                         modifier = Modifier.fillMaxSize(),
                                     )
