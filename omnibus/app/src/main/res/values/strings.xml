@@ -64,6 +64,17 @@
     <!-- Masthead -->
     <string name="masthead_add_books">Add books by upload or barcode scan</string>
 
+    <!-- Add books -->
+    <string name="add_books_title">Add books</string>
+    <string name="add_books_done">Done</string>
+    <string name="add_books_upload_title">Upload a file</string>
+    <string name="add_books_upload_description">Add an EPUB, PDF, or audiobook from this device.</string>
+    <string name="add_books_upload_offline">Unavailable offline. Uploads go straight to your library.</string>
+    <string name="add_books_scan_title">Scan a barcode</string>
+    <string name="add_books_scan_description">Check in a physical copy you own on paper.</string>
+    <string name="add_books_wishlist_title">Add to your wishlist</string>
+    <string name="add_books_wishlist_description">Find a book you want but don\'t own yet.</string>
+
     <!-- Library -->
     <string name="library_title">Library</string>
     <string name="library_all_books">All books</string>

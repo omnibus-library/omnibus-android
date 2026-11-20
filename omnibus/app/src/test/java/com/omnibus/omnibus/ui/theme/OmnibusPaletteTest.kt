@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.ui.theme
 
 import androidx.compose.ui.graphics.compositeOver
+import com.omnibus.omnibus.feature.library.addbooks.addBooksSecondaryInk
 import com.omnibus.omnibus.ui.components.NavigationIndicatorAlpha
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -65,6 +66,25 @@ class OmnibusPaletteTest : DescribeSpec({
                 val pill = palette.accent.copy(alpha = NavigationIndicatorAlpha).compositeOver(palette.bg2)
 
                 (contrastRatio(palette.ink0, pill) >= 4.5) shouldBe true
+            }
+        }
+    }
+
+    describe("the Add books description") {
+
+        context("in the dark theme") {
+            it("#319 TC-7: reads at 4.5:1 or more on bg1") {
+                val palette = OmnibusPalette.Atrium
+
+                (contrastRatio(palette.addBooksSecondaryInk, palette.bg1) >= 4.5) shouldBe true
+            }
+        }
+
+        context("in the light theme") {
+            it("#319 TC-7: reads at 4.5:1 or more on bg1") {
+                val palette = OmnibusPalette.Light
+
+                (contrastRatio(palette.addBooksSecondaryInk, palette.bg1) >= 4.5) shouldBe true
             }
         }
     }
