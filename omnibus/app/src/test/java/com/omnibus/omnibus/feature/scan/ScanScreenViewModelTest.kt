@@ -559,7 +559,11 @@ class ScanScreenViewModelTest : DescribeSpec({
                     wishlistViewModel.uiState.value.stage shouldBe
                         ScanStage.Success(record.title, SuccessCover.Provider(record), "u-new", SuccessKind.Wishlisted)
                     wishlist.wishlistCalls.single().source shouldBe
-                        (if (via == FoundVia.Scan) WishlistSource.Scan else WishlistSource.Manual)
+                        when (via) {
+                            FoundVia.Scan -> WishlistSource.Scan
+                            FoundVia.Manual -> WishlistSource.Manual
+                            FoundVia.Search -> WishlistSource.Search
+                        }
                 }
             }
         }
