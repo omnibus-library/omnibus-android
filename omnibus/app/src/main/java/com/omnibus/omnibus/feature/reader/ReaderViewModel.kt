@@ -339,6 +339,7 @@ class ReaderViewModel @AssistedInject constructor(
             // #331 Note
             // #333 Quote card
             // #330 Share
+            HighlightMenuAction.Share -> dismissHighlightMenu()
             HighlightMenuAction.Copy -> onHighlightCopied()
             HighlightMenuAction.Delete -> onHighlightDeleteRequested()
         }
@@ -350,6 +351,7 @@ class ReaderViewModel @AssistedInject constructor(
             // #331 Note
             // #333 Quote card
             // #330 Share
+            HighlightMenuAction.Share -> dismissSelection()
             HighlightMenuAction.Copy -> onSelectionCopied()
             HighlightMenuAction.Delete -> Unit
         }
