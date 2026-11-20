@@ -62,7 +62,7 @@
     <string name="under_construction_you_message">Your page is on the cart, next in line. Thanks for keeping your voice down.</string>
 
     <!-- Masthead -->
-    <string name="masthead_add_books">Add books by upload or barcode scan</string>
+    <string name="masthead_add_books">Add books</string>
 
     <!-- Add books -->
     <string name="add_books_title">Add books</string>

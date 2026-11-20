@@ -20,6 +20,7 @@ import androidx.compose.ui.test.center
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -45,6 +46,7 @@ import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import androidx.test.espresso.Espresso
 import org.junit.Assert.assertEquals
@@ -91,6 +93,14 @@ class LibraryScreenTest {
 
         rule.onNodeWithContentDescription(ADD_LABEL).performClick()
         assertEquals(1, adds)
+    }
+
+    // TC-19
+    @Test
+    fun issue319_tc19_showsTheAddBooksSheetWhenOpen() {
+        setLibrary(LibraryUIState(books = listOf(book(1L)), hasLoaded = true, addBooksOpen = true))
+
+        rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithTag(AddBooksTestTags.SHEET).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
@@ -459,7 +469,7 @@ class LibraryScreenTest {
         val CONNECT_UI_ERROR = LibraryUIError.Failed(LibraryError.Unreachable)
         const val CONNECT_ERROR = "Could not connect to the server."
         const val TRY_AGAIN = "Try again"
-        const val ADD_LABEL = "Add books by upload or barcode scan"
+        const val ADD_LABEL = "Add books"
         const val FILTER_LABEL = "Filter and sort"
 
         /** A private manual shelf of the viewer's, with no covers, so its card is a plate. */
