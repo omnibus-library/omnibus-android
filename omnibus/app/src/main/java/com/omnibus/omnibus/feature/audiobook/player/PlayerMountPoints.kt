@@ -39,4 +39,6 @@ data class PlayerToolButton(
     val onClick: () -> Unit,
     /** Spoken after [label] while the cell is disabled, such as why it is unavailable. */
     val disabledDescription: String? = null,
+    /** Draws the cell in the error colour with the failure glyph, such as a failed Sync here. */
+    val isError: Boolean = false,
 )

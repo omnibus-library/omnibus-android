@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.bookmarks.randomBookmark
 import com.omnibus.omnibus.feature.audiobook.player.PlayerToolButton
 import com.omnibus.omnibus.feature.bookdetail.more.bookmarks.BookmarkPlacement
 import com.omnibus.omnibus.testing.randomBoolean
+import com.omnibus.omnibus.testing.randomOf
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -17,6 +18,8 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 
 class AudioBookmarkRulesTest : DescribeSpec({
@@ -24,9 +27,11 @@ class AudioBookmarkRulesTest : DescribeSpec({
     fun syncCell(
         state: SyncHereUIState,
         syncHere: String = randomString(),
+        syncing: String = randomString(),
         synced: String = randomString(),
+        failed: String = randomString(),
         needsConnection: String = randomString(),
-    ): PlayerToolButton? = syncHereButton(state, syncHere, synced, needsConnection, onClick = {})
+    ): PlayerToolButton? = syncHereButton(state, syncHere, syncing, synced, failed, needsConnection, onClick = {})
 
     fun row(position: String) = playerBookmarkRows(
         randomString(),
@@ -123,35 +128,66 @@ class AudioBookmarkRulesTest : DescribeSpec({
 
     describe("the Sync here cell") {
         context("when it is not visible") {
-            // TC13, R7, AC3: the cell is hidden unless visible
-            it("TC13: is hidden") {
-                syncCell(SyncHereUIState(visible = false, online = randomBoolean(), synced = randomBoolean())).shouldBeNull()
+            // TC-13, R7, AC3: the cell is hidden unless visible
+            it("TC-13: is hidden") {
+                syncCell(SyncHereUIState(visible = false, online = randomBoolean(), status = randomOf(SyncHereStatus.entries))).shouldBeNull()
             }
         }
 
-        // TC13, R8, R10, AC4: enabled online, disabled with a reason offline
-        it("TC13: is enabled online, disabled with a reason offline") {
-            val reason = randomString()
-            val state = SyncHereUIState(visible = true, synced = randomBoolean())
+        // TC-13, R1, R6, AC1, AC2: each status reads its own label
+        it("TC-13: names the status") {
+            val base = randomString()
+            val idle = "$base-idle"
+            val syncing = "$base-syncing"
+            val synced = "$base-synced"
+            val failed = "$base-failed"
+            val labels = mapOf(
+                SyncHereStatus.Idle to idle,
+                SyncHereStatus.Syncing to syncing,
+                SyncHereStatus.Synced to synced,
+                SyncHereStatus.Failed to failed,
+            )
 
-            val online = syncCell(state.copy(online = true), needsConnection = reason).shouldNotBeNull()
-            val offline = syncCell(state.copy(online = false), needsConnection = reason).shouldNotBeNull()
+            checkAll(Exhaustive.enum<SyncHereStatus>()) { status ->
+                val cell = syncCell(
+                    SyncHereUIState(visible = true, online = randomBoolean(), status = status),
+                    syncHere = idle,
+                    syncing = syncing,
+                    synced = synced,
+                    failed = failed,
+                )
 
-            online.enabled shouldBe true
-            online.disabledDescription.shouldBeNull()
-            offline.enabled shouldBe false
-            offline.disabledDescription shouldBe reason
+                cell.shouldNotBeNull().label shouldBe labels.getValue(status)
+            }
         }
 
-        // TC13, R9, AC3, AC5: the label reads synced after a declaration
-        it("TC13: names whether it is synced") {
-            val syncHere = randomString()
-            val synced = "$syncHere-synced"
+        // TC-14, R3, R8, AC1, AC7: enabled only online and not while syncing
+        it("TC-14: is enabled only online and not syncing") {
+            checkAll(Exhaustive.enum<SyncHereStatus>(), Exhaustive.boolean()) { status, online ->
+                val cell = syncCell(SyncHereUIState(visible = true, online = online, status = status)).shouldNotBeNull()
 
-            checkAll(Exhaustive.of(true to synced, false to syncHere)) { (isSynced, expected) ->
-                val cell = syncCell(SyncHereUIState(visible = true, online = randomBoolean(), synced = isSynced), syncHere, synced)
+                cell.enabled shouldBe (online && status != SyncHereStatus.Syncing)
+            }
+        }
 
-                cell.shouldNotBeNull().label shouldBe expected
+        // TC-14, R8, P-A11Y-5, AC7: says why only while offline
+        it("TC-14: speaks the reason only while offline") {
+            checkAll(Exhaustive.enum<SyncHereStatus>(), Exhaustive.boolean()) { status, online ->
+                val reason = randomString()
+
+                val cell = syncCell(SyncHereUIState(visible = true, online = online, status = status), needsConnection = reason)
+                    .shouldNotBeNull()
+
+                cell.disabledDescription shouldBe reason.takeIf { !online }
+            }
+        }
+
+        // TC-15, R6, AC2: only a failed cell is an error
+        it("TC-15: is an error only when failed") {
+            checkAll(Exhaustive.enum<SyncHereStatus>()) { status ->
+                val cell = syncCell(SyncHereUIState(visible = true, online = randomBoolean(), status = status)).shouldNotBeNull()
+
+                cell.isError shouldBe (status == SyncHereStatus.Failed)
             }
         }
     }

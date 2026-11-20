@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
  * @property warn Offline and caution tint.
  * @property seriesFill The tint inside an unfolded series' container in the Library grid.
  * @property ok Success tint, such as a ready request's status dot.
+ * @property badText Error text and icons on [bg0] that must read at 4.5:1, such as the failed Sync here cell. Android-only:
+ *   Light [bad] is too pale on [bg0]. Equal to [bad] in the dark theme.
  */
 data class OmnibusPalette(
     val bg0: Color,
@@ -40,6 +42,7 @@ data class OmnibusPalette(
     val warn: Color,
     val seriesFill: Color,
     val ok: Color,
+    val badText: Color,
 ) {
     companion object {
         /** The default dark theme. */
@@ -59,6 +62,7 @@ data class OmnibusPalette(
             warn = Oklch(0.78, 0.13, 75.0).toColor(),
             seriesFill = Color(0xFFF0A556).copy(alpha = 0.13f),
             ok = Oklch(0.78, 0.13, 150.0).toColor(),
+            badText = Color(0xFFF97770),
         )
 
         val Light = OmnibusPalette(
@@ -77,6 +81,7 @@ data class OmnibusPalette(
             warn = Oklch(0.78, 0.13, 75.0).toColor(),
             seriesFill = Color(0xFFF0A556).copy(alpha = 0.16f),
             ok = Oklch(0.48, 0.11, 150.0).toColor(),
+            badText = Oklch(0.55, 0.18, 27.0).toColor(),
         )
     }
 }

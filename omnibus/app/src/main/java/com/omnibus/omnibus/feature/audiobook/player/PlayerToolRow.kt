@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -25,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -95,14 +98,19 @@ internal fun PlayerToolRow(
         }
         val sync = actions.syncHere
         if (sync != null && hasEbook) {
+            val tone = if (sync.isError) palette.badText else palette.ink2
             ToolCell(
                 label = sync.label,
                 tag = PlayerTestTags.TOOL_SYNC,
                 enabled = sync.enabled,
                 disabledDescription = sync.disabledDescription,
+                labelColor = tone,
                 onClick = sync.onClick,
             ) {
-                ToolIcon(R.drawable.ic_audiobook_player_sync)
+                ToolIcon(
+                    if (sync.isError) R.drawable.ic_audiobook_player_sync_failed else R.drawable.ic_audiobook_player_sync,
+                    tint = tone,
+                )
             }
         }
     }
@@ -126,18 +134,19 @@ internal fun rateLabel(rate: Double, locale: Locale = Locale.getDefault()): Stri
 }
 
 @Composable
-private fun ToolIcon(iconRes: Int) {
+private fun ToolIcon(iconRes: Int, tint: Color = OmnibusTheme.palette.ink2) {
     Icon(
         painter = painterResource(iconRes),
         contentDescription = null,
         modifier = Modifier.size(24.dp),
-        tint = OmnibusTheme.palette.ink2,
+        tint = tint,
     )
 }
 
 /**
  * One tool cell: its glyph over its label, sharing the row's width equally. A disabled cell is dimmed, not clickable, and
- * speaks [disabledDescription] after its label.
+ * speaks [disabledDescription] after its label. The label is drawn in [labelColor] and shrinks from 11sp to 9sp only when
+ * it would not fit on one line.
  */
 @Composable
 private fun RowScope.ToolCell(
@@ -145,10 +154,10 @@ private fun RowScope.ToolCell(
     tag: String,
     enabled: Boolean = true,
     disabledDescription: String? = null,
+    labelColor: Color = OmnibusTheme.palette.ink2,
     onClick: () -> Unit,
     glyph: @Composable () -> Unit,
 ) {
-    val palette = OmnibusTheme.palette
     Column(
         Modifier
             .weight(1f)
@@ -168,9 +177,10 @@ private fun RowScope.ToolCell(
         Spacer(Modifier.height(Spacing.xs))
         Text(
             text = label,
-            style = uiTextStyle(11, FontWeight.Normal, palette.ink2),
+            style = uiTextStyle(11, FontWeight.Normal, labelColor),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 11.sp, stepSize = 0.5.sp),
         )
     }
 }
