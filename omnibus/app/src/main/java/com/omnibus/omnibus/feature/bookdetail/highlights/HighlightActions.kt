@@ -1,10 +1,8 @@
 package com.omnibus.omnibus.feature.bookdetail.highlights
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
@@ -15,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -55,13 +52,11 @@ internal fun HighlightRowActions(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(276.dp),
             offset = DpOffset(0.dp, 6.dp),
             shape = RoundedCornerShape(16.dp),
-            containerColor = Color(0xEB282420),
+            containerColor = OmnibusTheme.palette.bg2,
             tonalElevation = 0.dp,
             shadowElevation = 8.dp,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
         ) {
             BookMoreMenuRow(
                 label = stringResource(R.string.book_detail_highlights_quote_card),

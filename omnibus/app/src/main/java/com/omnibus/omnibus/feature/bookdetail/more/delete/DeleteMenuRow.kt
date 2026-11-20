@@ -27,8 +27,8 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
  * The destructive row in the More menu. It draws nothing when the row is [DeleteRow.Hidden]. Offline, the row is dimmed
  * and shows the needs-connection sub-line.
  *
- * `BookMoreMenuRow` has no colour parameter, so this row repeats its metrics: 17 sp label, 13 sp sub-line, a 21 dp icon,
- * 16 x 8 dp padding, and 42 % alpha when disabled.
+ * `BookMoreMenuRow` has no colour parameter, so this row repeats its metrics in the theme's danger colour: a 21 dp
+ * leading icon, 17 sp label, 13 sp sub-line, 16 x 8 dp padding, and 42 % alpha when disabled.
  */
 @Composable
 internal fun DeleteMenuRow(row: DeleteRow, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -38,7 +38,8 @@ internal fun DeleteMenuRow(row: DeleteRow, onClick: () -> Unit, modifier: Modifi
         is DeleteRow.DisabledOffline -> row.label
     }
     val enabled = row is DeleteRow.Enabled
-    val ink = if (enabled) DeleteColors.RowInk else OmnibusTheme.palette.ink0
+    val palette = OmnibusTheme.palette
+    val ink = palette.badText
     Row(
         modifier
             .fillMaxWidth()
@@ -49,22 +50,22 @@ internal fun DeleteMenuRow(row: DeleteRow, onClick: () -> Unit, modifier: Modifi
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(rowLabel(label), style = uiTextStyle(17, FontWeight.Normal, ink))
-            if (!enabled) {
-                Text(
-                    stringResource(R.string.book_detail_more_needs_connection),
-                    style = uiTextStyle(13, FontWeight.Normal, DeleteColors.Muted),
-                )
-            }
-        }
-        Spacer(Modifier.width(12.dp))
         Icon(
             painter = painterResource(R.drawable.ic_book_detail_more_delete),
             contentDescription = null,
             modifier = Modifier.size(21.dp).testTag(DeleteTestTags.MENU_ICON),
             tint = ink,
         )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(rowLabel(label), style = uiTextStyle(17, FontWeight.Normal, ink))
+            if (!enabled) {
+                Text(
+                    stringResource(R.string.book_detail_more_needs_connection),
+                    style = uiTextStyle(13, FontWeight.Normal, palette.ink2),
+                )
+            }
+        }
     }
 }
 

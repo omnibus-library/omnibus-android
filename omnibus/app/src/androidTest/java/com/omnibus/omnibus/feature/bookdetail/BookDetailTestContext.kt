@@ -5,9 +5,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
@@ -164,3 +167,12 @@ internal fun switchablePanes(twoPane: State<Boolean>): (Dp, Dp) -> PaneSplit? = 
 /** The node's current vertical scroll value. For tests that cannot hold the [ScrollState] itself. */
 fun SemanticsNodeInteraction.scrollValue(): Float =
     fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+/**
+ * The colour of the menu panel behind a menu row: the pixel just inside the row's end edge, which is the row's empty
+ * end padding, so it shows the panel and no text or icon.
+ */
+fun SemanticsNodeInteraction.menuPanelColor(): Color {
+    val pixels = captureToImage().toPixelMap()
+    return pixels[pixels.width - 2, pixels.height / 2]
+}

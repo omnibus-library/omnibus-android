@@ -22,8 +22,6 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailSectionContext
 internal object BookMoreTestTags {
     const val MORE_BUTTON = "book-detail-more-button"
     const val MENU = "book-detail-more-menu"
-    const val MENU_RULE = "book-detail-more-menu-rule"
-    const val GROUP = "book-detail-more-menu-group"
 }
 
 /**
