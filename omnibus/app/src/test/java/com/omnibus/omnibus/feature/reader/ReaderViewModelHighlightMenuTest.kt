@@ -54,7 +54,7 @@ class ReaderViewModelHighlightMenuTest : DescribeSpec({
 
                 vm.uiState.value.highlightMenu shouldBe HighlightMenu(
                     listOf(
-                        HighlightMenuEntry(cfi, hit.rects, row.color, row.text, hasNote = !row.note.isNullOrBlank()),
+                        HighlightMenuEntry(cfi, hit.rects, row.color, row.text, !row.note.isNullOrBlank(), row.note),
                     ),
                 )
             }

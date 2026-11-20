@@ -5,14 +5,16 @@ import com.omnibus.omnibus.feature.reader.ui.AnnotationTapData
 import com.omnibus.omnibus.feature.reader.ui.PageRect
 
 /**
- * A saved highlight the menu can show: its colour, the text Copy takes (null when there is none), and whether it carries a
- * note, which makes Delete ask first.
+ * A saved highlight the menu can show: its colour, the text Copy takes (null when there is none), whether it carries a
+ * note, which makes Delete ask first, and the note's text, null when it has none (it fills the note screen in edit
+ * mode).
  */
-data class KnownHighlight(val color: HighlightColor, val text: String?, val hasNote: Boolean)
+data class KnownHighlight(val color: HighlightColor, val text: String?, val hasNote: Boolean, val note: String? = null)
 
 /**
- * One highlight in the menu: its trimmed range, where the page draws it, its colour, its text and whether it carries a note,
- * which makes Delete ask first.
+ * One highlight in the menu: its trimmed range, where the page draws it, its colour, its text, whether it carries a
+ * note, which makes Delete ask first, and the note's text, null when it has none (it fills the note screen in edit
+ * mode).
  */
 data class HighlightMenuEntry(
     val cfiRange: String,
@@ -20,6 +22,7 @@ data class HighlightMenuEntry(
     val color: HighlightColor,
     val text: String?,
     val hasNote: Boolean,
+    val note: String? = null,
 )
 
 /**
@@ -59,7 +62,7 @@ fun highlightMenuOf(tap: AnnotationTapData, known: Map<String, KnownHighlight>):
         if (hit.rects.isEmpty()) return@mapNotNull null
         val highlight = known[cfi] ?: return@mapNotNull null
         if (!seen.add(cfi)) return@mapNotNull null
-        HighlightMenuEntry(cfi, hit.rects, highlight.color, highlight.text, highlight.hasNote)
+        HighlightMenuEntry(cfi, hit.rects, highlight.color, highlight.text, highlight.hasNote, highlight.note)
     }
     return entries.takeIf { it.isNotEmpty() }?.let { HighlightMenu(it) }
 }

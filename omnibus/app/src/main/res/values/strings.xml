@@ -274,4 +274,13 @@
     <string name="reader_note_discard_title">Discard note?</string>
     <string name="reader_note_discard_keep">Keep writing</string>
     <string name="reader_note_discard_confirm">Discard</string>
+    <!-- #332 note edit -->
+    <string name="reader_highlight_note_edit">Edit note</string>
+    <string name="reader_note_title_edit">Edit note</string>
+    <string name="reader_note_delete">Delete note</string>
+    <string name="reader_note_deleting">Deleting</string>
+    <string name="reader_note_delete_failed">Couldn\'t delete note</string>
+    <string name="reader_note_delete_title">Delete this note?</string>
+    <string name="reader_note_delete_cancel">Cancel</string>
+    <string name="reader_note_delete_confirm">Delete</string>
 </resources>

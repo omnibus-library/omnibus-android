@@ -122,13 +122,15 @@ class ReaderViewModel @AssistedInject constructor(
 
     /**
      * A highlight made this session, drawn at once. [id] is local, so a failed save can find its row. [text] is the
-     * draft's trimmed text, which the highlight menu's Copy takes. [saved] completes with the saved row's id, or null when
-     * the save failed, so a delete of the row can wait for it.
+     * draft's trimmed text, which the highlight menu's Copy takes. [note] is the note saved on it this session, which
+     * the menu's Note reads. [saved] completes with the saved row's id, or null when the save failed, so a delete of the
+     * row can wait for it.
      */
     private data class SessionHighlight(
         val id: Long,
         val highlight: PageHighlight,
         val text: String?,
+        val note: String? = null,
         val saved: CompletableDeferred<Long?> = CompletableDeferred(),
     )
 
@@ -414,11 +416,21 @@ class ReaderViewModel @AssistedInject constructor(
         }
     }
 
-    /** The reader chose Note in the highlight menu. The menu closes and the note screen opens for that highlight. */
+    /**
+     * The reader chose Note in the highlight menu. The menu closes and the note screen opens for that highlight: in
+     * edit mode, filled with the note, when it has one; otherwise a new note.
+     */
     private fun openNoteForHighlight() {
         val entry = _uiState.value.highlightMenu?.activeEntry ?: return
         dismissHighlightMenu()
-        _uiState.update { it.copy(noteComposer = NoteComposerState(cfiRange = entry.cfiRange, quote = entry.text)) }
+        val existing = entry.note?.takeIf { it.isNotBlank() }
+        val composer = NoteComposerState(
+            cfiRange = entry.cfiRange,
+            quote = entry.text,
+            text = existing.orEmpty(),
+            existing = existing,
+        )
+        _uiState.update { it.copy(noteComposer = composer) }
     }
 
     /**
@@ -433,10 +445,13 @@ class ReaderViewModel @AssistedInject constructor(
         _uiState.update { it.copy(noteComposer = composer) }
     }
 
-    /** The reader typed in the note field. The text is cut at the server's limit. Ignored while a save is in flight. */
+    /**
+     * The reader typed in the note field. The text is cut at the server's limit. Ignored while a save or delete is in
+     * flight.
+     */
     fun onNoteTextChanged(text: String) {
         _uiState.update { state ->
-            val composer = state.noteComposer?.takeIf { !it.saving } ?: return@update state
+            val composer = state.noteComposer?.takeIf { !it.busy } ?: return@update state
             state.copy(noteComposer = composer.copy(text = cappedNote(text)))
         }
     }
@@ -450,7 +465,7 @@ class ReaderViewModel @AssistedInject constructor(
         val composer = _uiState.value.noteComposer?.takeIf { it.canSave } ?: return
         val cfiRange = composer.cfiRange
         val note = composer.text.trim()
-        updateComposer(cfiRange) { it.copy(saving = true, failed = false) }
+        updateComposer(cfiRange) { it.copy(saving = true, failed = false, deleteFailed = false) }
         viewModelScope.launch {
             val id = savedIdOf(cfiRange)
             if (id == null) {
@@ -460,33 +475,26 @@ class ReaderViewModel @AssistedInject constructor(
             }
             when (highlightsRepository.updateHighlightNote(bookUuid, id, note)) {
                 HighlightNoteResult.Saved -> {
-                    // Patch the local copies first: the session row wins over the saved one on the page.
-                    session = session.map { row ->
-                        if (row.highlight.cfiRange.trim() == cfiRange) {
-                            row.copy(highlight = row.highlight.copy(hasNote = true))
-                        } else {
-                            row
-                        }
-                    }
-                    savedHighlights = savedHighlights.map { if (it.id == id) it.copy(note = note) else it }
-                    publishHighlights()
-                    _uiState.update { state ->
-                        if (state.noteComposer?.cfiRange == cfiRange) state.copy(noteComposer = null) else state
-                    }
+                    applyNote(cfiRange, id, note)
+                    closeComposerFor(cfiRange)
                 }
                 is HighlightNoteResult.Failed -> updateComposer(cfiRange) { it.copy(saving = false, failed = true) }
             }
         }
     }
 
-    /** The reader tapped close or went back. Typed text asks first; blank text closes at once. Ignored while saving. */
+    /**
+     * The reader tapped close or went back. A note that changes asks first (typed text for a new note, a trimmed change
+     * for an existing one); otherwise it closes at once. An open delete dialog is closed instead. Ignored while a save
+     * or delete is in flight.
+     */
     fun onNoteCloseRequested() {
         val composer = _uiState.value.noteComposer ?: return
-        if (composer.saving) return
-        if (composer.text.isNotBlank()) {
-            updateComposer(composer.cfiRange) { it.copy(confirmingDiscard = true) }
-        } else {
-            _uiState.update { it.copy(noteComposer = null) }
+        if (composer.busy) return
+        when {
+            composer.confirmingDelete -> updateComposer(composer.cfiRange) { it.copy(confirmingDelete = false) }
+            composer.isChanged -> updateComposer(composer.cfiRange) { it.copy(confirmingDiscard = true) }
+            else -> _uiState.update { it.copy(noteComposer = null) }
         }
     }
 
@@ -498,6 +506,69 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader chose Keep writing, or dismissed the dialog. */
     fun onNoteDiscardCancelled() {
         _uiState.update { state -> state.copy(noteComposer = state.noteComposer?.copy(confirmingDiscard = false)) }
+    }
+
+    /** The reader tapped the trash button. Asks first; only for an existing note with no write in flight. */
+    fun onNoteDeleteRequested() {
+        val composer = _uiState.value.noteComposer?.takeIf { it.canDelete } ?: return
+        updateComposer(composer.cfiRange) { it.copy(confirmingDelete = true) }
+    }
+
+    /** The reader chose Cancel, or dismissed the "Delete this note?" dialog. The note stays. */
+    fun onNoteDeleteCancelled() {
+        _uiState.update { state -> state.copy(noteComposer = state.noteComposer?.copy(confirmingDelete = false)) }
+    }
+
+    /**
+     * The reader confirmed the delete. The note is removed on the server; success drops the underline and closes the
+     * screen, keeping the highlight. A failure keeps the screen and the text, and shows the error.
+     */
+    fun onNoteDeleteConfirmed() {
+        val composer = _uiState.value.noteComposer?.takeIf { it.confirmingDelete && it.canDelete } ?: return
+        val cfiRange = composer.cfiRange
+        updateComposer(cfiRange) {
+            it.copy(confirmingDelete = false, deleting = true, deleteFailed = false, failed = false)
+        }
+        viewModelScope.launch {
+            val id = savedIdOf(cfiRange)
+            if (id == null) {
+                updateComposer(cfiRange) { it.copy(deleting = false, deleteFailed = true) }
+                return@launch
+            }
+            when (highlightsRepository.updateHighlightNote(bookUuid, id, null)) {
+                HighlightNoteResult.Saved -> {
+                    applyNote(cfiRange, id, null)
+                    closeComposerFor(cfiRange)
+                }
+                is HighlightNoteResult.Failed -> updateComposer(cfiRange) {
+                    it.copy(deleting = false, deleteFailed = true)
+                }
+            }
+        }
+    }
+
+    /**
+     * Patches the local copies of a highlight after its note was written: the session row and the saved row, both
+     * keeping the note the screen will show next. The session row wins over the saved one on the page, so it goes
+     * first. A null [note] removes the underline and keeps the highlight.
+     */
+    private fun applyNote(cfiRange: String, id: Long, note: String?) {
+        session = session.map { row ->
+            if (row.highlight.cfiRange.trim() == cfiRange) {
+                row.copy(highlight = row.highlight.copy(hasNote = note != null), note = note)
+            } else {
+                row
+            }
+        }
+        savedHighlights = savedHighlights.map { if (it.id == id) it.copy(note = note) else it }
+        publishHighlights()
+    }
+
+    /** Closes the note screen, but only while it is still the one for [cfiRange]. */
+    private fun closeComposerFor(cfiRange: String) {
+        _uiState.update { state ->
+            if (state.noteComposer?.cfiRange == cfiRange) state.copy(noteComposer = null) else state
+        }
     }
 
     /** Changes the open note screen with [change], only while it is still the one for [cfiRange]. */
@@ -742,21 +813,22 @@ class ReaderViewModel @AssistedInject constructor(
     }
 
     /**
-     * What the highlight menu knows of each drawn highlight, keyed by its trimmed range. A session highlight's text is
-     * its draft's; a saved one's comes from its row. Read at tap time, as iOS does.
+     * What the highlight menu knows of each drawn highlight, keyed by its trimmed range. A session highlight's text and
+     * note are its own; a saved one's come from its row. Read at tap time, as iOS does.
      */
     private fun knownHighlights(): Map<String, KnownHighlight> {
         // The first row for a range wins. Session rows come first, newest first. A null text still counts as a row,
-        // which is why this doesn't use putIfAbsent: it replaces a null value.
-        val texts = mutableMapOf<String, String?>()
-        fun remember(cfi: String, text: String?) {
-            if (!texts.containsKey(cfi)) texts[cfi] = text
+        // which is why this doesn't use putIfAbsent: it replaces a null value. Text and note come from that one row.
+        val rows = mutableMapOf<String, Pair<String?, String?>>()
+        fun remember(cfi: String, text: String?, note: String?) {
+            if (!rows.containsKey(cfi)) rows[cfi] = text to note
         }
-        session.forEach { row -> remember(row.highlight.cfiRange.trim(), row.text) }
-        savedHighlights.forEach { row -> row.location?.trim()?.let { remember(it, row.text) } }
+        session.forEach { row -> remember(row.highlight.cfiRange.trim(), row.text, row.note) }
+        savedHighlights.forEach { row -> row.location?.trim()?.let { remember(it, row.text, row.note) } }
         return _uiState.value.pageHighlights.associate { highlight ->
             val cfi = highlight.cfiRange.trim()
-            cfi to KnownHighlight(highlight.color, texts[cfi], highlight.hasNote)
+            val (text, note) = rows[cfi] ?: (null to null)
+            cfi to KnownHighlight(highlight.color, text, highlight.hasNote, note)
         }
     }
 

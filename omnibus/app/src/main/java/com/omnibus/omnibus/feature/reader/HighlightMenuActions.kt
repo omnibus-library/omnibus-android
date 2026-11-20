@@ -10,7 +10,8 @@ enum class HighlightMenuAction {
     // #331 Note
     Note {
         override fun isOfferedOn(target: HighlightMenuTarget): Boolean = true
-        override fun labelOn(target: HighlightMenuTarget): Int = R.string.reader_highlight_note_add
+        override fun labelOn(target: HighlightMenuTarget): Int =
+            if (target.hasNote) R.string.reader_highlight_note_edit else R.string.reader_highlight_note_add
         override val icon: Int = R.drawable.ic_reader_note
     },
     // #333 Quote card
