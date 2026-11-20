@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.highlights.HighlightDeleteResult
 import com.omnibus.omnibus.data.highlights.HighlightDraft
+import com.omnibus.omnibus.data.highlights.HighlightRecolorResult
 import com.omnibus.omnibus.data.highlights.HighlightWriteResult
 import com.omnibus.omnibus.data.highlights.HighlightsRepository
 import com.omnibus.omnibus.data.highlights.HighlightsState
@@ -133,6 +134,15 @@ class ReaderViewModel @AssistedInject constructor(
 
     /** The id of the next [SessionHighlight]. */
     private var nextSessionId = 0L
+
+    /** A colour drawn before the server confirms it. [token] tells a recolour's own override from a newer one. */
+    private data class PendingRecolor(val color: HighlightColor, val token: Long)
+
+    /** Colours chosen in the highlight menu and not yet answered, by trimmed range. They win over every row. */
+    private val recolors = mutableMapOf<String, PendingRecolor>()
+
+    /** The token of the next [PendingRecolor]. */
+    private var nextRecolorToken = 0L
 
     /** Whether the open's landing (its first relocate) has been seen. */
     private var sawFirstRelocate = false
@@ -336,6 +346,18 @@ class ReaderViewModel @AssistedInject constructor(
     /** The reader has seen a notice, so it is cleared. */
     fun onNoticeShown() {
         _uiState.update { it.copy(notice = null) }
+    }
+
+    /**
+     * The reader chose [color] in the highlight menu. The menu closes. A new colour is drawn at once and saved in the
+     * background; a failed save puts the previous colour back and raises [ReaderNotice.HighlightRecolorFailed]. The
+     * colour the highlight already has changes nothing.
+     */
+    fun onHighlightRecolorChosen(color: HighlightColor) {
+        val entry = _uiState.value.highlightMenu?.activeEntry ?: return
+        dismissHighlightMenu()
+        if (color == entry.color) return
+        recolorHighlightAt(entry.cfiRange, color)
     }
 
     /**
@@ -626,11 +648,52 @@ class ReaderViewModel @AssistedInject constructor(
             when (highlightsRepository.deleteHighlight(bookUuid, id)) {
                 HighlightDeleteResult.Deleted -> {
                     session = session.filterNot { it.highlight.cfiRange.trim() == cfiRange }
+                    recolors.remove(cfiRange)
                     publishHighlights()
                 }
                 is HighlightDeleteResult.Failed -> _uiState.update { it.copy(notice = ReaderNotice.HighlightDeleteFailed) }
             }
         }
+    }
+
+    /** Draws [color] at [cfiRange], a trimmed range, at once, then saves it. Only this call's own override is cleared. */
+    private fun recolorHighlightAt(cfiRange: String, color: HighlightColor) {
+        val token = ++nextRecolorToken
+        recolors[cfiRange] = PendingRecolor(color, token)
+        publishHighlights()
+        viewModelScope.launch {
+            val id = savedIdOf(cfiRange)
+            if (id == null) {
+                // The save failed: the highlight is gone and its own notice showed.
+                clearRecolor(cfiRange, token)
+                return@launch
+            }
+            when (highlightsRepository.recolorHighlight(bookUuid, id, color)) {
+                HighlightRecolorResult.Recolored -> {
+                    // Patch the local copies before the override goes, so the old colour never shows while the
+                    // repository's new list is still on its way to the collector.
+                    session = session.map { row ->
+                        if (row.highlight.cfiRange.trim() == cfiRange) {
+                            row.copy(highlight = row.highlight.copy(color = color))
+                        } else {
+                            row
+                        }
+                    }
+                    savedHighlights = savedHighlights.map { if (it.id == id) it.copy(color = color) else it }
+                    clearRecolor(cfiRange, token)
+                }
+                is HighlightRecolorResult.Failed -> {
+                    clearRecolor(cfiRange, token)
+                    _uiState.update { it.copy(notice = ReaderNotice.HighlightRecolorFailed) }
+                }
+            }
+        }
+    }
+
+    /** Drops the override at [cfiRange] if it is still the one [token] set, and redraws. */
+    private fun clearRecolor(cfiRange: String, token: Long) {
+        if (recolors[cfiRange]?.token == token) recolors.remove(cfiRange)
+        publishHighlights()
     }
 
     /**
@@ -643,11 +706,14 @@ class ReaderViewModel @AssistedInject constructor(
     }
 
     /**
-     * Recomputes what the page draws from the highlights read so far. The highlight menu closes when one of its
-     * highlights is no longer drawn, such as a session highlight whose save failed.
+     * Recomputes what the page draws from the highlights read so far, with any colour not yet confirmed drawn over them.
+     * The highlight menu closes when one of its highlights is no longer drawn, such as a session highlight whose save
+     * failed.
      */
     private fun publishHighlights() {
-        val drawn = pageHighlightsOf(savedHighlights, session.map { row -> row.highlight })
+        val drawn = pageHighlightsOf(savedHighlights, session.map { row -> row.highlight }).map { highlight ->
+            recolors[highlight.cfiRange.trim()]?.let { highlight.copy(color = it.color) } ?: highlight
+        }
         val drawnRanges = drawn.mapTo(mutableSetOf()) { it.cfiRange.trim() }
         _uiState.update { state ->
             val menu = state.highlightMenu?.takeIf { menu -> menu.entries.all { it.cfiRange in drawnRanges } }
@@ -815,7 +881,7 @@ enum class ReaderBookmarksStatus { Loading, Failed, Loaded }
 enum class ReaderMenuRow { Contents, Bookmarks, Settings }
 
 /** A one-off message for the reader. */
-enum class ReaderNotice { HighlightSaveFailed, HighlightDeleteFailed }
+enum class ReaderNotice { HighlightSaveFailed, HighlightDeleteFailed, HighlightRecolorFailed }
 
 /** The note confirmation for deleting the drawn highlight at [cfiRange], a trimmed range. */
 data class HighlightDeleteConfirmation(val cfiRange: String)

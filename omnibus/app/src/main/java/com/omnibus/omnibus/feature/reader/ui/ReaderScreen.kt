@@ -148,6 +148,7 @@ fun ReaderScreen(
         onHighlightMenuStepped = viewModel::onHighlightMenuStepped,
         onHighlightMenuDismissed = viewModel::onHighlightMenuDismissed,
         onHighlightCopied = viewModel::onHighlightCopied,
+        onHighlightRecolorChosen = viewModel::onHighlightRecolorChosen,
         onHighlightDeleteRequested = viewModel::onHighlightDeleteRequested,
         onHighlightDeleteConfirmed = viewModel::onHighlightDeleteConfirmed,
         onHighlightDeleteCancelled = viewModel::onHighlightDeleteCancelled,
@@ -202,6 +203,7 @@ fun ReaderScreen(
  * @param onHighlightMenuStepped the highlight menu's switcher moved to another highlight, by the given step.
  * @param onHighlightMenuDismissed a touch outside the highlight menu, or back, closed it.
  * @param onHighlightCopied Copy was chosen from the highlight menu, after the clipboard was written.
+ * @param onHighlightRecolorChosen a colour was chosen in the highlight menu.
  * @param onHighlightDeleteRequested Delete was chosen from the highlight menu.
  * @param onHighlightDeleteConfirmed Delete was chosen in the note dialog.
  * @param onHighlightDeleteCancelled the note dialog was cancelled, by Cancel, back or a tap outside it.
@@ -240,6 +242,7 @@ internal fun ReaderScreenContent(
     onHighlightMenuStepped: (Int) -> Unit = {},
     onHighlightMenuDismissed: () -> Unit = {},
     onHighlightCopied: () -> Unit = {},
+    onHighlightRecolorChosen: (HighlightColor) -> Unit = {},
     onHighlightDeleteRequested: () -> Unit = {},
     onHighlightDeleteConfirmed: () -> Unit = {},
     onHighlightDeleteCancelled: () -> Unit = {},
@@ -273,10 +276,12 @@ internal fun ReaderScreenContent(
     val noticeScope = rememberCoroutineScope()
     val saveFailedText = stringResource(R.string.reader_highlight_save_failed)
     val deleteFailedText = stringResource(R.string.reader_highlight_delete_failed)
+    val recolorFailedText = stringResource(R.string.reader_highlight_recolor_failed)
     LaunchedEffect(uiState.notice) {
         val text = when (uiState.notice) {
             ReaderNotice.HighlightSaveFailed -> saveFailedText
             ReaderNotice.HighlightDeleteFailed -> deleteFailedText
+            ReaderNotice.HighlightRecolorFailed -> recolorFailedText
             null -> return@LaunchedEffect
         }
         onNoticeShown() // clears the notice, which cancels this effect, so the snackbar runs in noticeScope
@@ -426,6 +431,7 @@ internal fun ReaderScreenContent(
                                         menu = highlightMenu,
                                         theme = theme,
                                         onStep = onHighlightMenuStepped,
+                                        onColor = onHighlightRecolorChosen,
                                         onCopy = { text ->
                                             clipScope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, text))) }
                                             onHighlightCopied()
