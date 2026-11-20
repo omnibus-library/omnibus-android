@@ -117,6 +117,12 @@ androidComponents {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    // The screenshot suite renders every preview in one JVM, and Gradle's 512 MB default test heap runs out as
+    // previews are added.
+    maxHeapSize = "3g"
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
