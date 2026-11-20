@@ -10,6 +10,7 @@ import com.omnibus.omnibus.data.highlights.Highlight
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.highlights.HighlightDeleteResult
 import com.omnibus.omnibus.data.highlights.HighlightDraft
+import com.omnibus.omnibus.data.highlights.HighlightNoteResult
 import com.omnibus.omnibus.data.highlights.HighlightRecolorResult
 import com.omnibus.omnibus.data.highlights.HighlightWriteResult
 import com.omnibus.omnibus.data.highlights.HighlightsRepository
@@ -29,6 +30,8 @@ import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.TimeSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.reader.note.NoteComposerState
+import com.omnibus.omnibus.feature.reader.note.cappedNote
 import com.omnibus.omnibus.feature.reader.ui.AnnotationTapData
 import com.omnibus.omnibus.feature.reader.ui.ReaderContentsTab
 import com.omnibus.omnibus.feature.reader.ui.ReaderEvent
@@ -337,6 +340,7 @@ class ReaderViewModel @AssistedInject constructor(
     fun onHighlightMenuAction(action: HighlightMenuAction) {
         when (action) {
             // #331 Note
+            HighlightMenuAction.Note -> openNoteForHighlight()
             // #333 Quote card
             // #330 Share
             HighlightMenuAction.Share -> dismissHighlightMenu()
@@ -349,6 +353,7 @@ class ReaderViewModel @AssistedInject constructor(
     fun onSelectionMenuAction(action: HighlightMenuAction) {
         when (action) {
             // #331 Note
+            HighlightMenuAction.Note -> openNoteForSelection()
             // #333 Quote card
             // #330 Share
             HighlightMenuAction.Share -> dismissSelection()
@@ -406,6 +411,100 @@ class ReaderViewModel @AssistedInject constructor(
                     _uiState.update { it.copy(notice = ReaderNotice.HighlightSaveFailed) }
                 }
             }
+        }
+    }
+
+    /** The reader chose Note in the highlight menu. The menu closes and the note screen opens for that highlight. */
+    private fun openNoteForHighlight() {
+        val entry = _uiState.value.highlightMenu?.activeEntry ?: return
+        dismissHighlightMenu()
+        _uiState.update { it.copy(noteComposer = NoteComposerState(cfiRange = entry.cfiRange, quote = entry.text)) }
+    }
+
+    /**
+     * The reader chose Note in the selection menu. The selection is saved as an amber highlight first, as choosing
+     * amber does, and the note screen opens at once. Its save waits for that highlight's.
+     */
+    private fun openNoteForSelection() {
+        val selection = _uiState.value.selection ?: return
+        val draft = HighlightDraft.create(bookUuid, selection.cfiRange, HighlightColor.Amber, selection.text) ?: return
+        onHighlightColorChosen(HighlightColor.Amber)
+        val composer = NoteComposerState(cfiRange = draft.cfiRange.trim(), quote = draft.text)
+        _uiState.update { it.copy(noteComposer = composer) }
+    }
+
+    /** The reader typed in the note field. The text is cut at the server's limit. Ignored while a save is in flight. */
+    fun onNoteTextChanged(text: String) {
+        _uiState.update { state ->
+            val composer = state.noteComposer?.takeIf { !it.saving } ?: return@update state
+            state.copy(noteComposer = composer.copy(text = cappedNote(text)))
+        }
+    }
+
+    /**
+     * The reader tapped Save. The trimmed note is saved once the highlight has a server id, which for a new selection
+     * means waiting for its save. Success draws the note underline and closes the screen; a failure keeps the text and
+     * shows the error.
+     */
+    fun onNoteSaveRequested() {
+        val composer = _uiState.value.noteComposer?.takeIf { it.canSave } ?: return
+        val cfiRange = composer.cfiRange
+        val note = composer.text.trim()
+        updateComposer(cfiRange) { it.copy(saving = true, failed = false) }
+        viewModelScope.launch {
+            val id = savedIdOf(cfiRange)
+            if (id == null) {
+                // The highlight's own save failed; its notice already showed.
+                updateComposer(cfiRange) { it.copy(saving = false, failed = true) }
+                return@launch
+            }
+            when (highlightsRepository.updateHighlightNote(bookUuid, id, note)) {
+                HighlightNoteResult.Saved -> {
+                    // Patch the local copies first: the session row wins over the saved one on the page.
+                    session = session.map { row ->
+                        if (row.highlight.cfiRange.trim() == cfiRange) {
+                            row.copy(highlight = row.highlight.copy(hasNote = true))
+                        } else {
+                            row
+                        }
+                    }
+                    savedHighlights = savedHighlights.map { if (it.id == id) it.copy(note = note) else it }
+                    publishHighlights()
+                    _uiState.update { state ->
+                        if (state.noteComposer?.cfiRange == cfiRange) state.copy(noteComposer = null) else state
+                    }
+                }
+                is HighlightNoteResult.Failed -> updateComposer(cfiRange) { it.copy(saving = false, failed = true) }
+            }
+        }
+    }
+
+    /** The reader tapped close or went back. Typed text asks first; blank text closes at once. Ignored while saving. */
+    fun onNoteCloseRequested() {
+        val composer = _uiState.value.noteComposer ?: return
+        if (composer.saving) return
+        if (composer.text.isNotBlank()) {
+            updateComposer(composer.cfiRange) { it.copy(confirmingDiscard = true) }
+        } else {
+            _uiState.update { it.copy(noteComposer = null) }
+        }
+    }
+
+    /** The reader chose Discard. The note screen closes; the highlight stays. */
+    fun onNoteDiscardConfirmed() {
+        _uiState.update { it.copy(noteComposer = null) }
+    }
+
+    /** The reader chose Keep writing, or dismissed the dialog. */
+    fun onNoteDiscardCancelled() {
+        _uiState.update { state -> state.copy(noteComposer = state.noteComposer?.copy(confirmingDiscard = false)) }
+    }
+
+    /** Changes the open note screen with [change], only while it is still the one for [cfiRange]. */
+    private fun updateComposer(cfiRange: String, change: (NoteComposerState) -> NoteComposerState) {
+        _uiState.update { state ->
+            val composer = state.noteComposer?.takeIf { it.cfiRange == cfiRange } ?: return@update state
+            state.copy(noteComposer = change(composer))
         }
     }
 
@@ -824,6 +923,8 @@ data class ReaderUIState(
     val notice: ReaderNotice? = null,
     /** The open "Delete this highlight?" dialog, or null. It outlives the menu, which closes when it opens. */
     val highlightDeleteConfirmation: HighlightDeleteConfirmation? = null,
+    /** The open note screen, or null. It outlives the menu and the selection, which close when it opens. */
+    val noteComposer: NoteComposerState? = null,
 ) {
 
     /** The number of bookmarks in the state, so an optimistic add counts at once and a failed one drops off. */
@@ -911,10 +1012,11 @@ enum class ReaderNotice { HighlightSaveFailed, HighlightDeleteFailed, HighlightR
 data class HighlightDeleteConfirmation(val cfiRange: String)
 
 /**
- * What system back does next, in order: the highlight menu, the selection, the sheet, the dropdown, context mode, then
- * the reader itself.
+ * What system back does next, in order: the note screen, the highlight menu, the selection, the sheet, the dropdown,
+ * context mode, then the reader itself.
  */
 enum class ReaderBackAction {
+    CloseNoteComposer,
     DismissHighlightMenu,
     DismissSelection,
     DismissSheet,
@@ -924,6 +1026,7 @@ enum class ReaderBackAction {
 }
 
 internal fun ReaderUIState.backAction(): ReaderBackAction = when {
+    noteComposer != null -> ReaderBackAction.CloseNoteComposer
     highlightMenu != null -> ReaderBackAction.DismissHighlightMenu
     selection != null -> ReaderBackAction.DismissSelection
     sheet != null -> ReaderBackAction.DismissSheet

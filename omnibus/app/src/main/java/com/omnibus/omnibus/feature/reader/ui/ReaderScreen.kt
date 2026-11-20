@@ -75,6 +75,7 @@ import com.omnibus.omnibus.feature.reader.backAction
 import com.omnibus.omnibus.feature.reader.bootCfi
 import com.omnibus.omnibus.feature.reader.highlightMenuActions
 import com.omnibus.omnibus.feature.reader.menuTarget
+import com.omnibus.omnibus.feature.reader.note.ReaderNoteScreen
 import com.omnibus.omnibus.ui.components.ErrorStateView
 import com.omnibus.omnibus.ui.components.LoadingStateView
 import com.omnibus.omnibus.ui.theme.Motion
@@ -151,6 +152,11 @@ fun ReaderScreen(
         onHighlightRecolorChosen = viewModel::onHighlightRecolorChosen,
         onHighlightDeleteConfirmed = viewModel::onHighlightDeleteConfirmed,
         onHighlightDeleteCancelled = viewModel::onHighlightDeleteCancelled,
+        onNoteTextChanged = viewModel::onNoteTextChanged,
+        onNoteSaveRequested = viewModel::onNoteSaveRequested,
+        onNoteCloseRequested = viewModel::onNoteCloseRequested,
+        onNoteDiscardConfirmed = viewModel::onNoteDiscardConfirmed,
+        onNoteDiscardCancelled = viewModel::onNoteDiscardCancelled,
         onNoticeShown = viewModel::onNoticeShown,
         onClose = onClose,
         modifier = modifier,
@@ -175,7 +181,8 @@ fun ReaderScreen(
  * The chrome is an overlay sibling of the page and never resizes it. The bookmark ribbon hangs from the page's top edge
  * under the labels, the top bar and the sheets, and takes no touches. Sheets opened from the menu
  * (#47, #48) must use the app theme, so host them outside this function's
- * `OmnibusTheme(darkTheme = !theme.isLight)` or re-wrap them in `OmnibusTheme()`.
+ * `OmnibusTheme(darkTheme = !theme.isLight)` or re-wrap them in `OmnibusTheme()`. The note screen is drawn last,
+ * over the page and the dock.
  *
  * @param commands page commands from the ViewModel, each applied to [controller] once.
  * @param onSheetDismissed a sheet was dismissed by any means, including back.
@@ -205,6 +212,11 @@ fun ReaderScreen(
  * @param onHighlightRecolorChosen a colour was chosen in the highlight menu.
  * @param onHighlightDeleteConfirmed Delete was chosen in the note dialog.
  * @param onHighlightDeleteCancelled the note dialog was cancelled, by Cancel, back or a tap outside it.
+ * @param onNoteTextChanged the reader typed in the note screen's field.
+ * @param onNoteSaveRequested Save was tapped on the note screen.
+ * @param onNoteCloseRequested the note screen's close button or back was used.
+ * @param onNoteDiscardConfirmed Discard was chosen in the "Discard note?" dialog.
+ * @param onNoteDiscardCancelled the "Discard note?" dialog was dismissed or Keep writing was chosen.
  * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
@@ -243,6 +255,11 @@ internal fun ReaderScreenContent(
     onHighlightRecolorChosen: (HighlightColor) -> Unit = {},
     onHighlightDeleteConfirmed: () -> Unit = {},
     onHighlightDeleteCancelled: () -> Unit = {},
+    onNoteTextChanged: (String) -> Unit = {},
+    onNoteSaveRequested: () -> Unit = {},
+    onNoteCloseRequested: () -> Unit = {},
+    onNoteDiscardConfirmed: () -> Unit = {},
+    onNoteDiscardCancelled: () -> Unit = {},
     onNoticeShown: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
@@ -254,6 +271,7 @@ internal fun ReaderScreenContent(
     // Always enabled, so back takes this path in every state, and it outranks the root NavDisplay's handler.
     BackHandler {
         when (uiState.backAction()) {
+            ReaderBackAction.CloseNoteComposer -> onNoteCloseRequested()
             ReaderBackAction.DismissHighlightMenu -> onHighlightMenuDismissed()
             ReaderBackAction.DismissSelection -> onSelectionDismissed()
             ReaderBackAction.DismissSheet -> onSheetDismissed()
@@ -565,6 +583,21 @@ internal fun ReaderScreenContent(
                         .testTag(ReaderScreenTags.DOCK),
                 ) {
                     bottomDock()
+                }
+            }
+            // Last in the root, so it covers the page and the dock. The app theme, as the sheets and dialogs.
+            val noteComposer = uiState.noteComposer
+            if (noteComposer != null) {
+                OmnibusTheme(darkTheme = appDark) {
+                    ReaderNoteScreen(
+                        state = noteComposer,
+                        onTextChanged = onNoteTextChanged,
+                        onSave = onNoteSaveRequested,
+                        onClose = onNoteCloseRequested,
+                        onDiscardConfirmed = onNoteDiscardConfirmed,
+                        onDiscardCancelled = onNoteDiscardCancelled,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
