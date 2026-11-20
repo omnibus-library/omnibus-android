@@ -46,6 +46,7 @@ import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
 import com.omnibus.omnibus.feature.library.ResumeTarget
 import com.omnibus.omnibus.feature.library.UnavailableBook
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksOptionKind
 import com.omnibus.omnibus.feature.library.addbooks.AddBooksTestTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import androidx.test.espresso.Espresso
@@ -349,6 +350,23 @@ class LibraryScreenTest {
     }
 
     @Test
+    fun issue317_tc4_scanRowOpensTheScanner() {
+        val scanner = mutableListOf<Unit>()
+        val closed = mutableListOf<Unit>()
+        setLibrary(
+            LibraryUIState(books = listOf(book(1L)), hasLoaded = true, addBooksOpen = true),
+            onAddBooksClosed = { closed += Unit },
+            onOpenScanner = { scanner += Unit },
+        )
+
+        rule.onNodeWithTag(AddBooksTestTags.option(AddBooksOptionKind.Scan)).performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, scanner.size)
+        assertEquals(1, closed.size)
+    }
+
+    @Test
     fun issue233_tc15_theShelvesSectionShowsOnlyWithRailShelves() {
         val uiState = mutableStateOf(
             LibraryUIState(books = listOf(book(1L)), hasLoaded = true, shelves = listOf(ownShelf(1L)), viewerId = 1L),
@@ -402,6 +420,8 @@ class LibraryScreenTest {
         onScrolledToTop: () -> Unit = {},
         gridState: LazyGridState? = null,
         onOpenShelves: () -> Unit = {},
+        onAddBooksClosed: () -> Unit = {},
+        onOpenScanner: () -> Unit = {},
     ) = setLibraryState(
         uiState = mutableStateOf(uiState),
         onOpenBook = onOpenBook,
@@ -414,6 +434,8 @@ class LibraryScreenTest {
         onScrolledToTop = onScrolledToTop,
         gridState = gridState,
         onOpenShelves = onOpenShelves,
+        onAddBooksClosed = onAddBooksClosed,
+        onOpenScanner = onOpenScanner,
     )
 
     /** Like [setLibrary], but reads the state each recomposition so a test can change it between steps. */
@@ -434,6 +456,8 @@ class LibraryScreenTest {
         onResumeHandled: () -> Unit = {},
         onUnavailableDismissed: () -> Unit = {},
         onOpenShelves: () -> Unit = {},
+        onAddBooksClosed: () -> Unit = {},
+        onOpenScanner: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -459,6 +483,8 @@ class LibraryScreenTest {
                         onResumeHandled = onResumeHandled,
                         onUnavailableDismissed = onUnavailableDismissed,
                         onOpenShelves = onOpenShelves,
+                        onAddBooksClosed = onAddBooksClosed,
+                        onOpenScanner = onOpenScanner,
                     )
                 }
             }

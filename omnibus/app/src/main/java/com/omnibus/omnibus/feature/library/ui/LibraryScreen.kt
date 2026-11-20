@@ -63,6 +63,7 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ContinueCard
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksOptionKind
 import com.omnibus.omnibus.feature.library.addbooks.AddBooksSheet
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
@@ -152,6 +153,7 @@ fun LibraryScreen(
     onOpenSeries: (seriesId: Long, name: String) -> Unit = { _, _ -> },
     onOpenShelves: () -> Unit = {},
     onOpenShelf: (Long) -> Unit = {},
+    onOpenScanner: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -169,6 +171,7 @@ fun LibraryScreen(
         onOpenBook = onOpenBook,
         onAddBooks = viewModel::addBooksTapped,
         onAddBooksClosed = viewModel::addBooksClosed,
+        onOpenScanner = onOpenScanner,
         onTransientErrorShown = viewModel::transientErrorShown,
         modifier = modifier,
         onSelectCategory = viewModel::selectCategory,
@@ -221,6 +224,7 @@ fun LibraryScreen(
  * @param onUnavailableDismissed Called when the "can't open offline" alert is dismissed.
  * @param onAddBooks Called when the masthead's add button is tapped.
  * @param onAddBooksClosed Called when the Add books sheet closes, by Done, an option, Back, the scrim or a swipe.
+ * @param onOpenScanner Called when Scan a barcode is chosen on the Add books sheet, after the sheet has closed.
  * @param reducedMotion Whether the system asks for no animation. Tests pass it to force either path.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -255,6 +259,7 @@ internal fun LibraryScreenContent(
     onResumeHandled: () -> Unit = {},
     onUnavailableDismissed: () -> Unit = {},
     onAddBooksClosed: () -> Unit = {},
+    onOpenScanner: () -> Unit = {},
     reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val scope = rememberCoroutineScope()
@@ -372,8 +377,15 @@ internal fun LibraryScreenContent(
         uiState.unavailableBook?.let { ContinueUnavailableDialog(book = it, onDismiss = onUnavailableDismissed) }
 
         if (uiState.addBooksOpen) {
-            // Every option only closes the sheet for now; uploading, scanning and the wishlist come in #316 to #318.
-            AddBooksSheet(options = uiState.addBooksOptions, onSelect = { onAddBooksClosed() }, onClose = onAddBooksClosed)
+            // Upload and the wishlist only close the sheet until #316 and #318.
+            AddBooksSheet(
+                options = uiState.addBooksOptions,
+                onSelect = { kind ->
+                    onAddBooksClosed()
+                    if (kind == AddBooksOptionKind.Scan) onOpenScanner()
+                },
+                onClose = onAddBooksClosed,
+            )
         }
 
         SnackbarHost(
