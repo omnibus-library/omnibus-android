@@ -27,6 +27,9 @@ class TestWishlistRepository : WishlistRepository {
     /** Every uuid passed to [removeFromWishlist], in call order. */
     val removeCalls = mutableListOf<String>()
 
+    /** Every uuid passed to [invalidate], in call order. */
+    val invalidateCalls = mutableListOf<String>()
+
     /** The next refresh's answer. A refresh applies the head when present, and otherwise leaves the state alone. */
     val refreshResults = ArrayDeque<WishlistState>()
 
@@ -51,6 +54,11 @@ class TestWishlistRepository : WishlistRepository {
     override suspend fun refresh(bookUuid: String) {
         refreshCalls += bookUuid
         refreshResults.removeFirstOrNull()?.let { stateFor(bookUuid).value = it }
+    }
+
+    override fun invalidate(bookUuid: String) {
+        invalidateCalls += bookUuid
+        stateFor(bookUuid).value = WishlistState.Unknown
     }
 
     override suspend fun removeFromWishlist(bookUuid: String): WishlistRemovalResult {

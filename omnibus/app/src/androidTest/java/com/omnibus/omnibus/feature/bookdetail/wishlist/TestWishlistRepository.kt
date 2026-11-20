@@ -27,6 +27,9 @@ internal class TestWishlistRepository : WishlistRepository {
     /** Every uuid passed to [refresh], in call order. */
     val refreshCalls = mutableListOf<String>()
 
+    /** Every uuid passed to [invalidate], in call order. */
+    val invalidateCalls = mutableListOf<String>()
+
     /** Sets [bookUuid]'s state as if the server had answered it. */
     fun seed(bookUuid: String, state: WishlistState) {
         stateFor(bookUuid).value = state
@@ -41,6 +44,11 @@ internal class TestWishlistRepository : WishlistRepository {
 
     override suspend fun refresh(bookUuid: String) {
         refreshCalls += bookUuid
+    }
+
+    override fun invalidate(bookUuid: String) {
+        invalidateCalls += bookUuid
+        stateFor(bookUuid).value = WishlistState.Unknown
     }
 
     override suspend fun removeFromWishlist(bookUuid: String): WishlistRemovalResult {

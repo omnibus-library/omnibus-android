@@ -333,6 +333,51 @@ class DefaultWishlistRepositoryTest : DescribeSpec({
         }
     }
 
+    describe("forgetting the wishlist entry") {
+
+        context("when a read is in flight") {
+
+            it("#317 TC-34: a read that was in flight can't bring back the answer it forgot") {
+                withScriptedServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    load(repository, uuid, randomWishlistEntry())
+                    script.answer("GET", reply(randomWishlistEntry()), gate)
+
+                    val read = scope.async { repository.refresh(uuid) }
+                    nextRequest()
+                    repository.invalidate(uuid)
+                    gate.countDown()
+                    read.await()
+
+                    repository.cachedState(uuid) shouldBe WishlistState.Unknown
+                }
+            }
+
+            it("#317 TC-34: the next collector fetches the entry again rather than joining the forgotten read") {
+                withScriptedServer {
+                    val uuid = randomString()
+                    val gate = CountDownLatch(1)
+                    val repository = threadedSut()
+                    load(repository, uuid, randomWishlistEntry())
+                    script.answer("GET", reply(randomWishlistEntry()), gate)
+                    script.answer("GET", reply(200, "null"))
+
+                    val read = scope.async { repository.refresh(uuid) }
+                    nextRequest()
+                    repository.invalidate(uuid)
+                    val collected = scope.async { repository.getWishlistFlow(uuid).first { it == WishlistState.Absent } }
+                    nextRequest()
+                    gate.countDown()
+                    read.await()
+
+                    withTimeout(5_000) { collected.await() } shouldBe WishlistState.Absent
+                }
+            }
+        }
+    }
+
     describe("removing from the wishlist") {
 
         it("#119 TC-6: sends a DELETE with the uuid as one encoded path segment") {
