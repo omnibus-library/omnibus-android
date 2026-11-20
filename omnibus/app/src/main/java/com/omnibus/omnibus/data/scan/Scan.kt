@@ -44,8 +44,14 @@ sealed interface ScanOutcome {
     /** The providers know the ISBN, but the library has no such book. [online] is the provider's record. */
     data class NotInLibrary(val online: ProviderRecord) : ScanOutcome
 
-    /** Any answer this version can't act on yet: a close match, unresolved, or an unknown kind. */
-    data object Unplaced : ScanOutcome
+    /**
+     * The providers know the ISBN, and [candidates] are library books with the same title and author. The reader
+     * confirms which one, if any, before anything is written. [scanned] is the provider's record of the ISBN in hand.
+     */
+    data class CloseMatch(val candidates: List<ScanBook>, val scanned: ProviderRecord) : ScanOutcome
+
+    /** Neither the library nor any provider knows the ISBN. An unknown or missing kind reads as this too. */
+    data object Unresolved : ScanOutcome
 }
 
 /** The result of one scan request. Only cancellation escapes as an exception. */

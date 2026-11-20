@@ -139,35 +139,53 @@ class DefaultScanRepositoryTest : DescribeSpec({
             }
         }
 
-        it("#317 TC-21: decodes close_match to Unplaced") {
+        it("#335 TC-61: decodes close_match to CloseMatch with the book and the scanned record") {
             withScriptedServer {
-                script.answer("POST", reply(200, outcomeBody("close_match", randomScanBook())))
+                val book = randomScanBook()
+                val record = randomProviderRecord()
+                script.answer("POST", reply(200, """{"kind":"close_match","book":${book.toJson()},"scanned":${record.raw}}"""))
 
-                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unplaced)
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.CloseMatch(listOf(book), record))
             }
         }
 
-        it("#317 TC-21: decodes unresolved to Unplaced") {
+        it("#317 TC-21: decodes unresolved to Unresolved") {
             withScriptedServer {
                 script.answer("POST", reply(200, outcomeBody("unresolved", randomScanBook())))
 
-                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unplaced)
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unresolved)
             }
         }
 
-        it("#317 TC-21: decodes an unknown kind to Unplaced") {
+        it("#317 TC-21: decodes an unknown kind to Unresolved") {
             withScriptedServer {
                 script.answer("POST", reply(200, outcomeBody(randomString(), randomScanBook())))
 
-                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unplaced)
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unresolved)
             }
         }
 
-        it("#317 TC-21: decodes a body with no kind to Unplaced") {
+        it("#317 TC-21: decodes a body with no kind to Unresolved") {
             withScriptedServer {
                 script.answer("POST", reply(200, """{"book":${randomScanBook().toJson()}}"""))
 
-                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unplaced)
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unresolved)
+            }
+        }
+
+        it("#335 TC-61: lists a close match's first book, then its others, in the server's order") {
+            withScriptedServer {
+                val first = randomScanBook()
+                val others = listOf(randomScanBook(), randomScanBook())
+                val record = randomProviderRecord()
+                val othersJson = others.joinToString(prefix = "[", postfix = "]") { it.toJson() }
+                script.answer(
+                    "POST",
+                    reply(200, """{"kind":"close_match","book":${first.toJson()},"others":$othersJson,"scanned":${record.raw}}"""),
+                )
+
+                sut(url).resolve(randomValidIsbn13()) shouldBe
+                    ScanResult.Success(ScanOutcome.CloseMatch(listOf(first) + others, record))
             }
         }
 
@@ -208,6 +226,62 @@ class DefaultScanRepositoryTest : DescribeSpec({
 
                 nextRequest().let { Triple(it.method, it.url.encodedPath, Json.parseToJsonElement(it.body!!.utf8())) } shouldBe
                     Triple("POST", "/api/scan/resolve", buildJsonObject { put("isbn", isbn) })
+            }
+        }
+    }
+
+    describe("searching by title") {
+
+        it("#335 TC-57: posts the trimmed query to api/scan/search") {
+            withScriptedServer {
+                script.answer("POST", reply(200, """{"results":[]}"""))
+
+                sut(url).searchByTitle(" dune ")
+
+                nextRequest().let { Triple(it.method, it.url.encodedPath, Json.parseToJsonElement(it.body!!.utf8())) } shouldBe
+                    Triple("POST", "/api/scan/search", buildJsonObject { put("query", "dune") })
+            }
+        }
+
+        it("#335 TC-57: keeps each provider record whole") {
+            withScriptedServer {
+                val first = randomProviderRecord()
+                val second = randomProviderRecord()
+                script.answer("POST", reply(200, """{"results":[${first.raw},${second.raw}]}"""))
+
+                sut(url).searchByTitle(randomString()) shouldBe ScanResult.Success(listOf(first, second))
+            }
+        }
+
+        it("#335 TC-57: an answer with no results is an empty success") {
+            withScriptedServer {
+                script.answer("POST", reply(200, """{"results":[]}"""))
+
+                sut(url).searchByTitle(randomString()) shouldBe ScanResult.Success(emptyList())
+            }
+        }
+    }
+
+    describe("resolving a picked search result") {
+
+        it("#335 TC-57: posts the record untouched to api/scan/resolve-meta") {
+            withScriptedServer {
+                val record = randomProviderRecord()
+                script.answer("POST", reply(200, outcomeBody("unresolved", randomScanBook())))
+
+                sut(url).resolveRecord(record)
+
+                nextRequest().let { Triple(it.method, it.url.encodedPath, Json.parseToJsonElement(it.body!!.utf8())) } shouldBe
+                    Triple("POST", "/api/scan/resolve-meta", buildJsonObject { put("meta", record.raw) })
+            }
+        }
+
+        it("#335 TC-57: decodes the outcome the server answers with") {
+            withScriptedServer {
+                val book = randomScanBook()
+                script.answer("POST", reply(200, outcomeBody("in_library_unowned", book)))
+
+                sut(url).resolveRecord(randomProviderRecord()) shouldBe ScanResult.Success(ScanOutcome.InLibraryUnowned(book))
             }
         }
     }

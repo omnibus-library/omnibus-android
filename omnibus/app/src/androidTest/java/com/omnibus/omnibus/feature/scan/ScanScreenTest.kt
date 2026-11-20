@@ -21,6 +21,11 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import org.junit.Assert.assertTrue
+import kotlin.math.abs
 
 class ScanScreenTest {
 
@@ -160,5 +165,21 @@ class ScanScreenTest {
 
         assertEquals(1, tries)
         rule.onNodeWithTag("fake-camera").assertExists()
+    }
+
+    // TC-56
+    @Test
+    fun issue335_tc56_searchByTitleSitsBesideEnterIsbn() {
+        var searched = 0
+        setContent(actions = ScanActions(onSearchByTitle = { searched++ }))
+
+        val enterIsbn = rule.onNode(hasText(scanText(R.string.scan_enter_isbn)) and hasClickAction()).getUnclippedBoundsInRoot()
+        val searchByTitle = rule.onNode(hasText(scanText(R.string.scan_search_by_title)) and hasClickAction())
+            .getUnclippedBoundsInRoot()
+
+        assertTrue("Search by title is not on the row of Enter ISBN", abs((searchByTitle.top - enterIsbn.top).value) <= 1f)
+        assertTrue("Search by title is not beside Enter ISBN", searchByTitle.left >= enterIsbn.right)
+        rule.onNode(hasText(scanText(R.string.scan_search_by_title)) and hasClickAction()).performClick()
+        assertEquals(1, searched)
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.scan.ScanOutcome
+import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.feature.scan.camera.CameraAvailability
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertTrue
@@ -159,5 +160,104 @@ class ScanAccessibilityTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
         // The merged tree is what TalkBack reads: the canvas sits under a node that clears semantics, so it isn't in it.
         rule.onNodeWithTag(ScanTestTags.CELEBRATION).assertDoesNotExist()
+    }
+
+    // TC-42
+    @Test
+    fun issue335_tc42_closeMatchTargetsAreAtLeast48dp() {
+        val record = scanRecord()
+        setStage(ScanStage.Outcome(ScanOutcome.CloseMatch(listOf(scanBook()), record), "9781635575636", FoundVia.Scan))
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-42
+    @Test
+    fun issue335_tc42_severalCloseMatchTargetsAreAtLeast48dp() {
+        val candidates = listOf(scanBook(uuid = "book-1"), scanBook(uuid = "book-2"))
+        setStage(
+            ScanStage.Outcome(
+                ScanOutcome.CloseMatch(candidates, scanRecord()),
+                "9781635575636",
+                FoundVia.Scan,
+                wishlistedCandidates = setOf("book-1"),
+            ),
+        )
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-42
+    @Test
+    fun issue335_tc42_unresolvedTargetsAreAtLeast48dp() {
+        setStage(ScanStage.Outcome(ScanOutcome.Unresolved, "9781635575636", FoundVia.Scan))
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-42
+    @Test
+    fun issue335_tc42_titleSearchTargetsAreAtLeast48dp() {
+        setStage(ScanStage.TitleSearch(query = "dune", results = listOf(scanRecord())))
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-42
+    @Test
+    fun issue335_tc42_libraryPickerTargetsAreAtLeast48dp() {
+        val hit = LibraryHit("book-1", "The Overstory", "Richard Powers", null, listOf("EPUB"), null, null)
+        setStage(
+            ScanStage.LibraryPicker(
+                query = "over",
+                hits = listOf(hit),
+                total = 1,
+                returnTo = ScanStage.Outcome(ScanOutcome.Unresolved, "9781635575636", FoundVia.Scan),
+            ),
+        )
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-43
+    @Test
+    fun issue335_tc43_closeMatchTitleIsAPoliteHeading() {
+        setStage(ScanStage.Outcome(ScanOutcome.CloseMatch(listOf(scanBook()), scanRecord()), "9781635575636", FoundVia.Scan))
+
+        rule.onNodeWithTag(ScanTestTags.TITLE, useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    }
+
+    // TC-43
+    @Test
+    fun issue335_tc43_unresolvedTitleIsAPoliteHeading() {
+        setStage(ScanStage.Outcome(ScanOutcome.Unresolved, "9781635575636", FoundVia.Scan))
+
+        rule.onNodeWithTag(ScanTestTags.TITLE, useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    }
+
+    // TC-43
+    @Test
+    fun issue335_tc43_titleSearchTitleIsAPoliteHeading() {
+        setStage(ScanStage.TitleSearch())
+
+        rule.onNodeWithTag(ScanTestTags.TITLE, useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    }
+
+    // TC-43
+    @Test
+    fun issue335_tc43_libraryPickerTitleIsAPoliteHeading() {
+        setStage(
+            ScanStage.LibraryPicker(returnTo = ScanStage.Outcome(ScanOutcome.Unresolved, "9781635575636", FoundVia.Scan)),
+        )
+
+        rule.onNodeWithTag(ScanTestTags.TITLE, useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     }
 }

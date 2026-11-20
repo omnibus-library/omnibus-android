@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.feature.scan
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.omnibus.omnibus.data.scan.ProviderRecord
+import com.omnibus.omnibus.data.scan.ScanBook
+import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.feature.scan.camera.BarcodeCamera
 import com.omnibus.omnibus.feature.scan.camera.CameraAvailability
 import com.omnibus.omnibus.feature.scan.camera.rememberBarcodeCamera
@@ -59,6 +63,15 @@ data class ScanActions(
     val onAddToWishlist: () -> Unit = {},
     val onScanAnother: () -> Unit = {},
     val onViewBook: (String) -> Unit = {},
+    val onSearchByTitle: () -> Unit = {},
+    val onTitleQueryChanged: (String) -> Unit = {},
+    val onTitleSearchSubmitted: () -> Unit = {},
+    val onSearchResultPicked: (ProviderRecord) -> Unit = {},
+    val onCandidatePicked: (ScanBook) -> Unit = {},
+    val onCloseMatchDeclined: () -> Unit = {},
+    val onAlreadyHave: () -> Unit = {},
+    val onLibraryQueryChanged: (String) -> Unit = {},
+    val onLibraryHitPicked: (LibraryHit) -> Unit = {},
 )
 
 /** The barcode scanner. Shows one stage at a time, and leaves through [onClose] or [onViewBook]. */
@@ -94,6 +107,15 @@ fun ScanScreen(
             onAddToWishlist = viewModel::addToWishlistTapped,
             onScanAnother = viewModel::scanAnotherTapped,
             onViewBook = onViewBook,
+            onSearchByTitle = viewModel::searchByTitleTapped,
+            onTitleQueryChanged = viewModel::titleQueryChanged,
+            onTitleSearchSubmitted = viewModel::titleSearchSubmitted,
+            onSearchResultPicked = viewModel::searchResultPicked,
+            onCandidatePicked = viewModel::candidatePicked,
+            onCloseMatchDeclined = viewModel::closeMatchDeclined,
+            onAlreadyHave = viewModel::alreadyHaveTapped,
+            onLibraryQueryChanged = viewModel::libraryQueryChanged,
+            onLibraryHitPicked = viewModel::libraryHitPicked,
         ),
         modifier = modifier,
     )
@@ -112,6 +134,10 @@ internal fun ScanScreenContent(
     val palette = OmnibusTheme.palette
     LaunchedEffect(camera.availability) {
         if (camera.availability == CameraAvailability.Unknown) camera.requestPermission()
+    }
+    // The title search and the library picker go back one step, not out of the scanner (Q1).
+    BackHandler(enabled = uiState.stage is ScanStage.TitleSearch || uiState.stage is ScanStage.LibraryPicker) {
+        actions.onBack()
     }
     Box(modifier.fillMaxSize().background(palette.bg0).safeDrawingPadding()) {
         when (val stage = uiState.stage) {
@@ -143,9 +169,15 @@ internal fun ScanScreenContent(
                 writeFailed = stage.writeFailed,
                 actions = actions,
                 wide = wide,
+                via = stage.via,
+                declined = stage.declined,
+                wishlistedCandidates = stage.wishlistedCandidates,
+                titleDraft = stage.titleDraft,
             )
 
             is ScanStage.Success -> ScanSuccessStage(stage, actions, wide, reducedMotion)
+            is ScanStage.TitleSearch -> ScanTitleSearchStage(stage, actions, wide)
+            is ScanStage.LibraryPicker -> ScanLibraryPickerStage(stage, actions, wide)
         }
     }
 }

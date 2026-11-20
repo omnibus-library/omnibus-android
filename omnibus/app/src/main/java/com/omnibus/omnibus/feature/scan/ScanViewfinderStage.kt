@@ -221,12 +221,25 @@ internal fun ScanViewfinderStage(
                 }
             }
             if (resolvingIsbn == null) {
-                FilledButton(
-                    text = stringResource(R.string.scan_enter_isbn),
-                    onClick = actions.onEnterIsbn,
-                    prominent = false,
-                    modifier = Modifier.padding(horizontal = Spacing.screen, vertical = Spacing.md),
-                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.screen, vertical = Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    FilledButton(
+                        text = stringResource(R.string.scan_enter_isbn),
+                        onClick = actions.onEnterIsbn,
+                        prominent = false,
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilledButton(
+                        text = stringResource(R.string.scan_search_by_title),
+                        onClick = actions.onSearchByTitle,
+                        prominent = false,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }

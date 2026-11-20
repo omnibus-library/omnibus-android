@@ -6,15 +6,22 @@ import com.omnibus.omnibus.data.scan.ScanBook
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.scan.cleanIsbn
 import com.omnibus.omnibus.data.scan.isbnRejection
+import com.omnibus.omnibus.data.search.LibraryHit
 
-/** How the ISBN in hand was found. Only a camera read gets a haptic. */
-enum class FoundVia { Scan, Manual }
+/**
+ * How the ISBN in hand was found. Only a camera read gets a haptic. [Search] is a title-search result the reader picked,
+ * whose ISBN is the provider record's.
+ */
+enum class FoundVia { Scan, Manual, Search }
 
 /** The action whose write is in flight. */
 enum class WritingAction { CheckIn, Physical, Wishlist }
 
-/** A lookup that failed, kept so "Try again" can repeat it. */
-data class LookupFailure(val isbn: String, val via: FoundVia)
+/**
+ * A lookup that failed, kept so "Try again" can repeat it. [record] is set for a picked title-search result, which is
+ * matched without a second provider lookup.
+ */
+data class LookupFailure(val isbn: String, val via: FoundVia, val record: ProviderRecord? = null)
 
 /** A barcode that isn't a book's ISBN. [announce] is true when TalkBack should say it. */
 data class RejectedNotice(val value: String, val announce: Boolean)
@@ -49,7 +56,11 @@ sealed interface ScanStage {
     /** A lookup of [isbn] is in flight. */
     data class Resolving(val isbn: String) : ScanStage
 
-    /** What [isbn] matched. [writing] is set while a check-in is saved. */
+    /**
+     * What [isbn] matched. [writing] is set while a write is saved. [wishlistedCandidates] are the uuids of a close
+     * match's candidates that are on the wishlist. [declined] is set once the reader said "No, different book". [titleDraft]
+     * is the inline title an unresolved ISBN carries into title search.
+     */
     data class Outcome(
         val outcome: ScanOutcome,
         val isbn: String,
@@ -57,10 +68,31 @@ sealed interface ScanStage {
         val note: String = "",
         val writing: WritingAction? = null,
         val writeFailed: Boolean = false,
+        val wishlistedCandidates: Set<String> = emptySet(),
+        val declined: Boolean = false,
+        val titleDraft: String = "",
     ) : ScanStage
 
-    /** A copy was checked in. */
+    /** A copy was checked in, or a book was added. */
     data class Success(val title: String, val cover: SuccessCover, val bookUuid: String, val kind: SuccessKind) : ScanStage
+
+    /** Searching the providers by title. [results] is null until a search has answered. */
+    data class TitleSearch(
+        val query: String = "",
+        val results: List<ProviderRecord>? = null,
+        val loading: Boolean = false,
+        val failed: Boolean = false,
+    ) : ScanStage
+
+    /** Picking the library book a scan is. [hits] are at most five matches for [query]; [returnTo] is the outcome Back restores. */
+    data class LibraryPicker(
+        val query: String = "",
+        val hits: List<LibraryHit> = emptyList(),
+        val total: Int = 0,
+        val loading: Boolean = false,
+        val failed: Boolean = false,
+        val returnTo: Outcome,
+    ) : ScanStage
 }
 
 /** Everything the screen draws. */
