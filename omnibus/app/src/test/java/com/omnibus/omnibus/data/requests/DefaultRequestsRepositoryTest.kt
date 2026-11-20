@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.requests
 
 import com.omnibus.omnibus.data.cover.TestCoverRepository
+import com.omnibus.omnibus.data.search.DefaultLibrarySearchRepository
 import com.omnibus.omnibus.testing.ScriptedServer
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomLong
@@ -56,7 +57,15 @@ class DefaultRequestsRepositoryTest : DescribeSpec({
     fun sut(
         baseUrl: HttpUrl? = null,
         covers: TestCoverRepository = TestCoverRepository(),
-    ) = DefaultRequestsRepository(Dispatchers.Unconfined, testOmnibusHttpClient(baseUrl), covers)
+    ): DefaultRequestsRepository {
+        val client = testOmnibusHttpClient(baseUrl)
+        return DefaultRequestsRepository(
+            Dispatchers.Unconfined,
+            client,
+            covers,
+            DefaultLibrarySearchRepository(Dispatchers.Unconfined, client),
+        )
+    }
 
     fun ScriptedServer.repository(covers: TestCoverRepository = TestCoverRepository()) = sut(url, covers)
 

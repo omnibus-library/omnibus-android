@@ -2,10 +2,12 @@ package com.omnibus.omnibus.data.requests
 
 import android.util.Log
 import com.omnibus.omnibus.data.cover.CoverRepository
+import com.omnibus.omnibus.data.search.LibrarySearchError
+import com.omnibus.omnibus.data.search.LibrarySearchRepository
+import com.omnibus.omnibus.data.search.LibrarySearchResult
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.requests.remote.BookRequestDto
 import com.omnibus.omnibus.data.requests.remote.ChooseVersionDto
-import com.omnibus.omnibus.data.requests.remote.PaletteResultsDto
 import com.omnibus.omnibus.data.requests.remote.RequestListingDto
 import com.omnibus.omnibus.data.requests.remote.RequestsJson
 import com.omnibus.omnibus.data.requests.remote.ResolveMetaRequestDto
@@ -39,6 +41,7 @@ class DefaultRequestsRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val omnibusHttpClient: OmnibusHttpClient,
     private val coverRepository: CoverRepository,
+    private val librarySearchRepository: LibrarySearchRepository,
 ) : RequestsRepository {
 
     override suspend fun list(): RequestsResult<List<RequestListing>> =
@@ -97,8 +100,10 @@ class DefaultRequestsRepository @Inject constructor(
         send("GET", REQUESTS_PATH, listOf(id.toString(), COVER), read = { it.body.bytes() })
 
     override suspend fun searchLibrary(query: String): RequestsResult<List<LibraryHit>> =
-        call("GET", PALETTE_PATH, query = mapOf("q" to query)) { body ->
-            RequestsJson.decodeFromString<PaletteResultsDto>(body).books.map { it.toDomain() }
+        when (val result = librarySearchRepository.searchBooks(query)) {
+            is LibrarySearchResult.Success -> RequestsResult.Success(result.matches.books)
+            LibrarySearchResult.NoServer -> RequestsResult.NoServer
+            is LibrarySearchResult.Failure -> RequestsResult.Failure(result.error.toRequestsError())
         }
 
     override suspend fun searchProviders(query: String): RequestsResult<List<ProviderBook>> =
@@ -176,6 +181,14 @@ class DefaultRequestsRepository @Inject constructor(
         }
     }
 
+    /** The Requests error for a library search error. A search reports no server message, as its UI shows none. */
+    private fun LibrarySearchError.toRequestsError(): RequestsError = when (this) {
+        LibrarySearchError.Unreachable -> RequestsError.Unreachable
+        LibrarySearchError.SessionExpired -> RequestsError.SessionExpired
+        is LibrarySearchError.Http -> RequestsError.Http(code, null)
+        LibrarySearchError.UnexpectedResponse -> RequestsError.UnexpectedResponse
+    }
+
     private fun decodeRequest(body: String): BookRequest = RequestsJson.decodeFromString<BookRequestDto>(body).toDomain()
 
     private fun decodeListings(body: String): List<RequestListing> =
@@ -204,7 +217,6 @@ class DefaultRequestsRepository @Inject constructor(
         const val REQUESTS_PATH = "api/requests"
         const val BOOKS_PATH = "api/books"
         const val WISHLISTS_PATH = "api/wishlists"
-        const val PALETTE_PATH = "api/search/palette"
         const val SCAN_SEARCH_PATH = "api/scan/search"
         const val RESOLVE_META_PATH = "api/scan/resolve-meta"
 
