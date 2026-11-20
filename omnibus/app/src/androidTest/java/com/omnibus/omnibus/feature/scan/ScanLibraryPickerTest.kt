@@ -2,9 +2,12 @@ package com.omnibus.omnibus.feature.scan
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.search.LibraryHit
@@ -53,7 +56,11 @@ class ScanLibraryPickerTest {
         }
 
         rule.onNodeWithText(scanText(R.string.scan_picker_title)).assertIsDisplayed()
-        (0 until 5).forEach { rule.onNodeWithText("Library book $it").assertIsDisplayed() }
+        // The list scrolls inside the stage, and a small screen shows only some of its rows.
+        (0 until 5).forEach {
+            rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Library book $it"))
+            rule.onNodeWithText("Library book $it").assertIsDisplayed()
+        }
         rule.onNodeWithText(scanText(R.string.scan_picker_truncated).format(5, 23)).assertIsDisplayed()
     }
 

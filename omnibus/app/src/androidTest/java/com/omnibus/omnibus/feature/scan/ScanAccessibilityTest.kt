@@ -46,10 +46,11 @@ class ScanAccessibilityTest {
         val targets = rule.onAllNodes(hasClickAction()).fetchSemanticsNodes()
         assertTrue("the stage has no clickable nodes to check", targets.isNotEmpty())
         targets.forEach { node ->
-            val bounds = node.boundsInRoot
+            // The layout size, not the part inside the window: a stage that scrolls clips its lower targets on a small screen.
+            val size = node.size
             assertTrue(
-                "a target is ${bounds.width} x ${bounds.height} px, below $minimumPx px",
-                bounds.height >= minimumPx && bounds.width >= minimumPx,
+                "a target is ${size.width} x ${size.height} px, below $minimumPx px",
+                size.height >= minimumPx && size.width >= minimumPx,
             )
         }
     }

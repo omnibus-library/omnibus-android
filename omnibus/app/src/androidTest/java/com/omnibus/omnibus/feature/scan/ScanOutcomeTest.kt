@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.scan.ScanOutcome
@@ -145,7 +146,7 @@ class ScanOutcomeTest {
             scanText(R.string.scan_close_match_subtitle_several).format(scanText(R.string.scan_close_match_subject_scan)),
         ).assertIsDisplayed()
         rule.onAllNodesWithText(scanText(R.string.scan_this_one)).assertCountEquals(3)
-        rule.onNodeWithText(scanText(R.string.scan_none_of_these)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_none_of_these)).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(scanText(R.string.scan_badge_on_wishlist)).assertIsDisplayed()
         rule.onAllNodesWithText(scanText(R.string.scan_on_wishlist_body)).assertCountEquals(1)
     }
