@@ -54,7 +54,7 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
 
                 val placement = highlightMenuPlacement(
                     listOf(rect),
-                    highlightMenuSize(hasCopy = true, hasSwitcher = false),
+                    highlightMenuSize(hasSwitcher = false),
                     boundsWidth = 360f,
                     boundsHeight = 640f,
                 ).shouldNotBeNull()
@@ -67,7 +67,7 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
 
                 val placement = highlightMenuPlacement(
                     listOf(rect),
-                    highlightMenuSize(hasCopy = true, hasSwitcher = false),
+                    highlightMenuSize(hasSwitcher = false),
                     boundsWidth = 360f,
                     boundsHeight = 640f,
                 ).shouldNotBeNull()
@@ -80,7 +80,7 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
 
                 highlightMenuPlacement(
                     listOf(rect),
-                    highlightMenuSize(hasCopy = true, hasSwitcher = false),
+                    highlightMenuSize(hasSwitcher = false),
                     boundsWidth = 360f,
                     boundsHeight = 640f,
                 ).shouldNotBeNull().tailUp shouldBe true
@@ -93,7 +93,7 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
 
                 val placement = highlightMenuPlacement(
                     listOf(rect),
-                    highlightMenuSize(hasCopy = true, hasSwitcher = false),
+                    highlightMenuSize(hasSwitcher = false),
                     boundsWidth = 360f,
                     boundsHeight = 640f,
                 ).shouldNotBeNull()
@@ -106,7 +106,7 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
 
                 highlightMenuPlacement(
                     listOf(rect),
-                    highlightMenuSize(hasCopy = true, hasSwitcher = false),
+                    highlightMenuSize(hasSwitcher = false),
                     boundsWidth = 360f,
                     boundsHeight = 640f,
                 ).shouldNotBeNull().tailUp shouldBe false
@@ -114,12 +114,28 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
         }
     }
 
+    describe("sizing the highlight menu") {
+        it("#329 TC-10: is 240 dp wide and two rows tall without a switcher") {
+            val size = highlightMenuSize(hasSwitcher = false)
+
+            size.width shouldBe (240f plusOrMinus 0.01f)
+            size.bodyHeight shouldBe (112.5f plusOrMinus 0.01f)
+        }
+
+        it("#329 TC-10: adds the switcher row and a rule with a switcher") {
+            val size = highlightMenuSize(hasSwitcher = true)
+
+            size.width shouldBe (240f plusOrMinus 0.01f)
+            size.bodyHeight shouldBe (157f plusOrMinus 0.01f)
+        }
+    }
+
     describe("placing the highlight menu over any page, highlight and content") {
         it("#299 TC-10: keeps the menu at least 10 dp from both side edges") {
-            checkAll(arbPage(), Exhaustive.boolean(), Exhaustive.boolean()) { page, hasCopy, hasSwitcher ->
+            checkAll(arbPage(), Exhaustive.boolean()) { page, hasSwitcher ->
                 val placement = highlightMenuPlacement(
                     page.rects,
-                    highlightMenuSize(hasCopy, hasSwitcher),
+                    highlightMenuSize(hasSwitcher),
                     page.width,
                     page.height,
                 ).shouldNotBeNull()
@@ -130,10 +146,10 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
         }
 
         it("#299 TC-10: keeps the menu inside the page, above its bottom band") {
-            checkAll(arbPage(), Exhaustive.boolean(), Exhaustive.boolean()) { page, hasCopy, hasSwitcher ->
+            checkAll(arbPage(), Exhaustive.boolean()) { page, hasSwitcher ->
                 val placement = highlightMenuPlacement(
                     page.rects,
-                    highlightMenuSize(hasCopy, hasSwitcher),
+                    highlightMenuSize(hasSwitcher),
                     page.width,
                     page.height,
                 ).shouldNotBeNull()
@@ -144,10 +160,10 @@ class ReaderHighlightMenuPlacementTest : DescribeSpec({
         }
 
         it("#299 TC-10: keeps the tail's centre clear of both ends of the body") {
-            checkAll(arbPage(), Exhaustive.boolean(), Exhaustive.boolean()) { page, hasCopy, hasSwitcher ->
+            checkAll(arbPage(), Exhaustive.boolean()) { page, hasSwitcher ->
                 val placement = highlightMenuPlacement(
                     page.rects,
-                    highlightMenuSize(hasCopy, hasSwitcher),
+                    highlightMenuSize(hasSwitcher),
                     page.width,
                     page.height,
                 ).shouldNotBeNull()

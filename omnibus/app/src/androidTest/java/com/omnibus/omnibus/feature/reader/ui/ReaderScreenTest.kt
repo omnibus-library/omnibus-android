@@ -49,6 +49,7 @@ import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.data.reader.remote.BookFileSource
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.reader.HighlightDeleteConfirmation
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import com.omnibus.omnibus.feature.reader.ReaderBookState
 import com.omnibus.omnibus.feature.reader.ReaderCommand
 import com.omnibus.omnibus.feature.reader.ReaderMenuRow
@@ -128,7 +129,8 @@ class ReaderScreenTest {
         onBookmarksRetryRequested: () -> Unit = {},
         onContextLeft: () -> Unit = {},
         onNoticeShown: () -> Unit = {},
-        onSelectionCopied: () -> Unit = {},
+        onSelectionMenuAction: (HighlightMenuAction) -> Unit = {},
+        onHighlightMenuAction: (HighlightMenuAction) -> Unit = {},
         onHighlightDeleteConfirmed: () -> Unit = {},
         onHighlightDeleteCancelled: () -> Unit = {},
         /** The dock below the page; empty, as in the app without a book in the player. */
@@ -160,7 +162,8 @@ class ReaderScreenTest {
                         onBookmarksRetryRequested = onBookmarksRetryRequested,
                         onContextLeft = onContextLeft,
                         onNoticeShown = onNoticeShown,
-                        onSelectionCopied = onSelectionCopied,
+                        onSelectionMenuAction = onSelectionMenuAction,
+                        onHighlightMenuAction = onHighlightMenuAction,
                         onHighlightDeleteConfirmed = onHighlightDeleteConfirmed,
                         onHighlightDeleteCancelled = onHighlightDeleteCancelled,
                         bottomDock = bottomDock,
@@ -782,15 +785,15 @@ class ReaderScreenTest {
         assertEquals(1, notices.get())
     }
 
-    // TC-38
+    // TC-38, TC-18 (#329)
     @Test
     fun issue54_tc38_copyWritesTheSelectedTextToTheClipboard() {
         val text = "Somewhere behind the wall"
         val state = mutableStateOf(
             ReaderUIState(book = ReaderBookState.Ready(title = "Test Book"), loadStatus = ReaderLoadStatus.Ready),
         )
-        val copies = AtomicInteger()
-        show(uiState = { state.value }, inspection = true, onSelectionCopied = { copies.incrementAndGet() })
+        val actions = mutableListOf<HighlightMenuAction>()
+        show(uiState = { state.value }, inspection = true, onSelectionMenuAction = { actions += it })
         rule.waitForIdle()
         val root = rule.onRoot().getUnclippedBoundsInRoot()
         val width = (root.right - root.left).value
@@ -801,7 +804,7 @@ class ReaderScreenTest {
         rule.onNodeWithContentDescription("Copy").performClick()
 
         rule.waitUntil(timeoutMillis = 5_000) { clipboardText() == text }
-        assertEquals(1, copies.get())
+        rule.runOnIdle { assertEquals(listOf(HighlightMenuAction.Copy), actions) }
     }
 
     /** A settled one-line selection at the window's middle, from the window's size, so its menu has room above. */

@@ -83,12 +83,17 @@ class ReaderSelectionPlacementTest : DescribeSpec({
     }
 
     describe("placing the selection menu over any selection and page width") {
-        it("#54 TC-7: is min(297, page width - 20) dp wide") {
+        it("#329 TC-11: is min(240, page width - 20) dp wide") {
             checkAll(arbBoundsWidth(), arbBoundsHeight(), arbRects()) { boundsWidth, boundsHeight, rects ->
                 val placement = selectionMenuPlacement(rects, boundsWidth, boundsHeight).shouldNotBeNull()
 
-                placement.width shouldBe (minOf(297f, boundsWidth - 20f) plusOrMinus 0.01f)
+                placement.width shouldBe (minOf(240f, boundsWidth - 20f) plusOrMinus 0.01f)
             }
+        }
+
+        it("#329 TC-11: shares the highlight menu's two-row body height") {
+            SelectionMenuMetrics.BODY_HEIGHT shouldBe (112.5f plusOrMinus 0.01f)
+            SelectionMenuMetrics.BODY_HEIGHT shouldBe (highlightMenuSize(hasSwitcher = false).bodyHeight plusOrMinus 0.01f)
         }
 
         it("#54 TC-7: keeps the menu at least 10 dp from both side edges") {

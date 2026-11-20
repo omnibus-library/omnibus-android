@@ -21,6 +21,7 @@ import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.ReaderTheme
 import com.omnibus.omnibus.feature.reader.HighlightMenu
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import com.omnibus.omnibus.feature.reader.HighlightMenuEntry
 import com.omnibus.omnibus.ui.theme.tint
 
@@ -53,11 +54,11 @@ private fun sampleEntry(color: HighlightColor, rects: List<PageRect>, text: Stri
 
 /**
  * One reading theme's tile: the sample prose on its ground, translucent tints behind the highlighted lines to stand in
- * for the page's marks, and the highlight menu over them, with its text [textTop] dp down the tile.
+ * for the page's marks, and the highlight menu over them, showing [actions], with its text [textTop] dp down the tile.
  */
 @Composable
-private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, textTop: Double = 64.0) {
-    Box(Modifier.size(360.dp, 300.dp).background(Color(theme.groundArgb))) {
+private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, actions: List<HighlightMenuAction>, textTop: Double = 64.0) {
+    Box(Modifier.size(360.dp, 360.dp).background(Color(theme.groundArgb))) {
         menu.entries.forEach { entry ->
             entry.rects.forEach { rect ->
                 Box(
@@ -88,11 +89,11 @@ private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, textTop: Double = 
         }
         ReaderHighlightMenuOverlay(
             menu = menu,
+            actions = actions,
             theme = theme,
             onStep = {},
             onColor = {},
-            onCopy = {},
-            onDelete = {},
+            onAction = {},
             onDismiss = {},
             modifier = Modifier.fillMaxSize(),
         )
@@ -101,17 +102,22 @@ private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, textTop: Double = 
 
 /**
  * The menu over one highlight on each of the four reading themes, each with a different active colour. The light themes'
- * highlights have text, so they show Copy and Delete; the dark themes' have none, so Delete follows the divider.
+ * highlights have text, so they show Copy and Delete; the dark themes' have none, so Delete shows alone, centred.
  */
 @PreviewTest
-@Preview(widthDp = 360, heightDp = 1200)
+@Preview(widthDp = 360, heightDp = 1440)
 @Composable
 fun ReaderHighlightMenuFourThemes() {
-    Column(Modifier.size(360.dp, 1200.dp)) {
+    Column(Modifier.size(360.dp, 1440.dp)) {
         ReaderTheme.entries.forEachIndexed { index, theme ->
             val rects = listOf(lineRect(1, 64.0), lineRect(2, 64.0), lineRect(3, 64.0))
             val text = SAMPLE_TEXT.takeIf { theme.isLight }
-            MenuTile(theme, HighlightMenu(listOf(sampleEntry(HighlightColor.entries[index], rects, text))))
+            val actions = if (theme.isLight) {
+                listOf(HighlightMenuAction.Copy, HighlightMenuAction.Delete)
+            } else {
+                listOf(HighlightMenuAction.Delete)
+            }
+            MenuTile(theme, HighlightMenu(listOf(sampleEntry(HighlightColor.entries[index], rects, text))), actions)
         }
     }
 }
@@ -121,7 +127,7 @@ fun ReaderHighlightMenuFourThemes() {
  * highlight is outlined.
  */
 @PreviewTest
-@Preview(widthDp = 360, heightDp = 300)
+@Preview(widthDp = 360, heightDp = 360)
 @Composable
 fun ReaderHighlightMenuOverlapSwitcher() {
     val textTop = 40.0
@@ -130,5 +136,10 @@ fun ReaderHighlightMenuOverlapSwitcher() {
         listOf(lineRect(1, textTop), lineRect(2, textTop, right = 260.0)),
     )
     val blue = sampleEntry(HighlightColor.Blue, listOf(lineRect(2, textTop, left = 120.0, right = 280.0)))
-    MenuTile(ReaderTheme.Sepia, HighlightMenu(listOf(amber, blue), active = 1), textTop = textTop)
+    MenuTile(
+        ReaderTheme.Sepia,
+        HighlightMenu(listOf(amber, blue), active = 1),
+        actions = listOf(HighlightMenuAction.Copy, HighlightMenuAction.Delete),
+        textTop = textTop,
+    )
 }

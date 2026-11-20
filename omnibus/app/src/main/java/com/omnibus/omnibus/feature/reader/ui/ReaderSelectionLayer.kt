@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.highlights.HighlightColor
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
+import com.omnibus.omnibus.feature.reader.menuTarget
 import kotlin.math.max
 
 /** Test tags on the selection layer's nodes, so tests can find them without depending on the layout. */
@@ -80,8 +82,9 @@ private class LastAnchors {
  * @param onGrab A handle was grabbed.
  * @param onDrag The dragged handle's caret and the finger, in dp.
  * @param onRelease The handle was let go, or the layer left while a handle was held.
+ * @param actions The actions the menu's second row shows, in order.
  * @param onColorChosen A highlight colour was chosen from the menu.
- * @param onCopy Copy was chosen from the menu.
+ * @param onAction An action was chosen from the menu.
  */
 @Composable
 internal fun ReaderSelectionOverlay(
@@ -91,8 +94,9 @@ internal fun ReaderSelectionOverlay(
     onGrab: (SelectionEdge) -> Unit,
     onDrag: (caretX: Float, caretY: Float, fingerX: Float) -> Unit,
     onRelease: () -> Unit,
+    actions: List<HighlightMenuAction>,
     onColorChosen: (HighlightColor) -> Unit,
-    onCopy: () -> Unit,
+    onAction: (HighlightMenuAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tint = readerSelectionTint(theme)
@@ -149,8 +153,10 @@ internal fun ReaderSelectionOverlay(
                 ReaderSelectionMenu(
                     placement = placement,
                     colors = readerChromeColors(theme),
+                    target = selection.menuTarget,
+                    actions = actions,
                     onColorChosen = onColorChosen,
-                    onCopy = onCopy,
+                    onAction = onAction,
                 )
             }
         }

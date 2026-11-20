@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.reader.ReaderTheme
+import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 
 private const val SAMPLE_TEXT_TOP = 184.0
 private const val SAMPLE_LINE = 22.0
@@ -66,8 +67,9 @@ private fun SelectionTile(theme: ReaderTheme) {
             onGrab = {},
             onDrag = { _, _, _ -> },
             onRelease = {},
+            actions = listOf(HighlightMenuAction.Copy),
             onColorChosen = {},
-            onCopy = {},
+            onAction = {},
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -103,8 +105,9 @@ fun ReaderSelectionMenuBelowAtTheEdge() {
             onGrab = {},
             onDrag = { _, _, _ -> },
             onRelease = {},
+            actions = listOf(HighlightMenuAction.Copy),
             onColorChosen = {},
-            onCopy = {},
+            onAction = {},
             modifier = Modifier.fillMaxSize(),
         )
     }

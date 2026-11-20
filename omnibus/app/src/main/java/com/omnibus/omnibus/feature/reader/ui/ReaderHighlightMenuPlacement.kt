@@ -1,27 +1,30 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 /**
- * The highlight menu's metrics, in dp, which equal the page's CSS px. Its size comes from its content, not a measure
- * pass: swatches, Copy and Delete each take a [SLOT] touch target, and the switcher row adds a fixed height.
+ * The highlight menu's metrics, in dp, which equal the page's CSS px. Swatches and action buttons each take a [SLOT]
+ * touch target. The colour row, a rule and the action row set the height, and the switcher row adds a fixed height.
  */
 internal object HighlightMenuMetrics {
-    /** A swatch's, Copy's or Delete's touch slot. */
+    /** A swatch's or an action button's touch slot. */
     const val SLOT = 44f
 
-    /** The toolbar row. */
+    /** The colour row. */
     const val ROW_HEIGHT = 56f
 
-    /** The "N of M" row under the toolbar. */
+    /** The action row under the colours. */
+    const val ACTION_ROW_HEIGHT = 56f
+
+    /** The "N of M" row above the colours. */
     const val SWITCHER_HEIGHT = 44f
 
-    /** The rule between the two rows. */
+    /** A rule between two rows. */
     const val RULE = 0.5f
 
-    /** The toolbar row's side padding. */
+    /** The colour row's side padding. */
     const val PADDING = 10f
 
-    /** The divider before Copy and Delete, with 6 dp either side of it. */
-    const val DIVIDER_SPACE = 13f
+    /** The menu's width: the colour row's padding and five swatch slots. A narrower page shrinks it. */
+    const val WIDTH = 2 * PADDING + 5 * SLOT
 
     /** The body's corner radius, which the tail must clear. */
     const val CORNER = 28f
@@ -37,14 +40,12 @@ internal data class HighlightMenuSize(val width: Float, val bodyHeight: Float) {
 }
 
 /**
- * The size of the menu for the controls it shows: Delete always, Copy when [hasCopy], and the "N of M" row when
- * [hasSwitcher].
+ * The size of the menu: fixed, with the "N of M" row when [hasSwitcher]. The actions shown never change it.
  */
-internal fun highlightMenuSize(hasCopy: Boolean, hasSwitcher: Boolean): HighlightMenuSize {
+internal fun highlightMenuSize(hasSwitcher: Boolean): HighlightMenuSize {
     val m = HighlightMenuMetrics
-    val width = 2 * m.PADDING + 5 * m.SLOT + m.DIVIDER_SPACE + m.SLOT + (if (hasCopy) m.SLOT else 0f)
-    val bodyHeight = m.ROW_HEIGHT + (if (hasSwitcher) m.SWITCHER_HEIGHT + m.RULE else 0f)
-    return HighlightMenuSize(width, bodyHeight)
+    val bodyHeight = m.ROW_HEIGHT + m.RULE + m.ACTION_ROW_HEIGHT + (if (hasSwitcher) m.SWITCHER_HEIGHT + m.RULE else 0f)
+    return HighlightMenuSize(m.WIDTH, bodyHeight)
 }
 
 /**
