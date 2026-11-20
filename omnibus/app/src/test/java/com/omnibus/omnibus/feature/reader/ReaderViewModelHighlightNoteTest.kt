@@ -421,6 +421,303 @@ class ReaderViewModelHighlightNoteTest : DescribeSpec({
             }
         }
     }
+
+    describe("opening a note that already has text") {
+        it("#332 TC-6: opens in edit mode filled with the note") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val row = savedAt(cfi, randomEnum()).copy(note = note)
+            val vm = savedVm(row, highlights = repository())
+
+            vm.noteFromTapOn(cfi)
+
+            vm.uiState.value.noteComposer shouldBe
+                NoteComposerState(cfiRange = cfi, quote = row.text, text = note, existing = note)
+        }
+
+        it("#332 TC-7: opens in new mode for a blank note") {
+            checkAll(Exhaustive.of("", "   ", "\n\t")) { blank ->
+                val cfi = randomCfi()
+                val row = savedAt(cfi, randomEnum()).copy(note = blank)
+                val vm = savedVm(row, highlights = repository())
+
+                vm.noteFromTapOn(cfi)
+
+                vm.uiState.value.noteComposer shouldBe NoteComposerState(cfiRange = cfi, quote = row.text)
+            }
+        }
+    }
+
+    describe("showing the note on the menu") {
+        it("#332 TC-4: takes text and note from the row the page draws") {
+            val cfi = randomCfi()
+            val text = randomString()
+            val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = randomString()), highlights = repository())
+
+            vm.selectText(cfi, text)
+            vm.onHighlightColorChosen(randomEnum())
+            vm.tap(hitOn(cfi))
+
+            val entry = vm.uiState.value.highlightMenu.shouldNotBeNull().activeEntry
+            entry.text shouldBe text
+            entry.note.shouldBeNull()
+            entry.hasNote shouldBe false
+        }
+
+        it("#332 TC-5: shows the new note on the next menu open") {
+            checkAll(Exhaustive.enum<NoteOrigin>()) { origin ->
+                val cfi = randomCfi()
+                val note = randomString()
+                val vm = openedOn(origin, cfi, "  $note  ", repository(savedId = randomLong()))
+
+                vm.onNoteSaveRequested()
+                vm.tap(hitOn(cfi))
+
+                val entry = vm.uiState.value.highlightMenu.shouldNotBeNull().activeEntry
+                entry.note shouldBe note
+                entry.hasNote shouldBe true
+            }
+        }
+    }
+
+    describe("editing a note") {
+        it("#332 TC-11: sends the trimmed text for the saved id") {
+            val cfi = randomCfi()
+            val row = savedAt(cfi, randomEnum()).copy(note = "old${randomString()}")
+            val highlights = repository()
+            val vm = savedVm(row, highlights = highlights)
+            vm.noteFromTapOn(cfi)
+            val changed = "new${randomString()}"
+
+            vm.onNoteTextChanged("  $changed  ")
+            vm.onNoteSaveRequested()
+
+            highlights.notes shouldBe listOf(row.id to changed)
+        }
+    }
+
+    describe("asking to delete a note") {
+        it("#332 TC-12: asks before deleting an existing note, and not in new mode") {
+            val editCfi = randomCfi()
+            val editing = savedVm(savedAt(editCfi, randomEnum()).copy(note = randomString()), highlights = repository())
+            editing.noteFromTapOn(editCfi)
+
+            editing.onNoteDeleteRequested()
+
+            editing.uiState.value.noteComposer.shouldNotBeNull().confirmingDelete shouldBe true
+
+            val newCfi = randomCfi()
+            val fresh = savedVm(savedAt(newCfi, randomEnum()), highlights = repository())
+            fresh.noteFromTapOn(newCfi)
+
+            fresh.onNoteDeleteRequested()
+
+            fresh.uiState.value.noteComposer.shouldNotBeNull().confirmingDelete shouldBe false
+        }
+
+        it("#332 TC-13: keeps the note when the delete is cancelled") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val highlights = repository()
+            val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = note), highlights = highlights)
+            vm.noteFromTapOn(cfi)
+            vm.onNoteDeleteRequested()
+            val asking = vm.uiState.value.noteComposer.shouldNotBeNull()
+
+            vm.onNoteDeleteCancelled()
+
+            vm.uiState.value.noteComposer shouldBe asking.copy(confirmingDelete = false)
+            highlights.notes.shouldBeEmpty()
+        }
+
+        it("#332 TC-13: closing while the dialog is up only closes the dialog") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val highlights = repository()
+            val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = note), highlights = highlights)
+            vm.noteFromTapOn(cfi)
+            vm.onNoteDeleteRequested()
+
+            vm.onNoteCloseRequested()
+
+            val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+            composer.confirmingDelete shouldBe false
+            composer.confirmingDiscard shouldBe false
+            composer.text shouldBe note
+            highlights.notes.shouldBeEmpty()
+        }
+    }
+
+    describe("deleting a note") {
+        it("#332 TC-14: sends a null note and closes") {
+            checkAll(Exhaustive.enum<NoteOrigin>()) { origin ->
+                val id = randomLong()
+                val highlights = repository(savedId = id)
+                val vm = editingOn(origin, randomCfi(), randomString(), id, highlights)
+
+                vm.onNoteDeleteRequested()
+                vm.onNoteDeleteConfirmed()
+
+                highlights.notes.last() shouldBe (id to null)
+                vm.uiState.value.noteComposer.shouldBeNull()
+            }
+        }
+
+        it("#332 TC-15: removes the underline but keeps the highlight") {
+            checkAll(Exhaustive.enum<NoteOrigin>()) { origin ->
+                val cfi = randomCfi()
+                val id = randomLong()
+                val vm = editingOn(origin, cfi, randomString(), id, repository(savedId = id))
+                val before = vm.uiState.value.pageHighlights.single { it.cfiRange.trim() == cfi }
+
+                vm.onNoteDeleteRequested()
+                vm.onNoteDeleteConfirmed()
+
+                val after = vm.uiState.value.pageHighlights.single { it.cfiRange.trim() == cfi }
+                before.hasNote shouldBe true
+                after.hasNote shouldBe false
+                after.color shouldBe before.color
+
+                vm.tap(hitOn(cfi))
+                val entry = vm.uiState.value.highlightMenu.shouldNotBeNull().activeEntry
+                entry.note.shouldBeNull()
+                entry.hasNote shouldBe false
+            }
+        }
+
+        it("#332 TC-16: marks deleting and ignores typing and close") {
+            val cfi = randomCfi()
+            val gate = CompletableDeferred<Unit>()
+            val highlights = repository(noteGate = gate)
+            val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = randomString()), highlights = highlights)
+            vm.noteFromTapOn(cfi)
+            vm.onNoteDeleteRequested()
+            vm.onNoteDeleteConfirmed()
+            val inFlight = vm.uiState.value.noteComposer.shouldNotBeNull()
+
+            vm.onNoteTextChanged("typed")
+            vm.onNoteCloseRequested()
+
+            inFlight.deleting shouldBe true
+            inFlight.saving shouldBe false
+            vm.uiState.value.noteComposer shouldBe inFlight
+            gate.complete(Unit)
+        }
+    }
+
+    describe("a delete that fails") {
+        it("#332 TC-17: shows the delete error and keeps the note") {
+            checkAll(Exhaustive.collection(allNoteErrors())) { error ->
+                val cfi = randomCfi()
+                val note = randomString()
+                val vm = savedVm(
+                    savedAt(cfi, randomEnum()).copy(note = note),
+                    highlights = notesAnswering(HighlightNoteResult.Failed(error)),
+                )
+                vm.noteFromTapOn(cfi)
+
+                vm.onNoteDeleteRequested()
+                vm.onNoteDeleteConfirmed()
+
+                val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+                composer.deleteFailed shouldBe true
+                composer.deleting shouldBe false
+                composer.failed shouldBe false
+                composer.existing shouldBe note
+                composer.text shouldBe note
+            }
+        }
+
+        it("#332 TC-17: shows the delete error when the highlight has no server id") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val row = savedAt(cfi, randomEnum()).copy(note = note)
+            val uuid = randomString()
+            val highlights = repository()
+            highlights.seed(uuid, HighlightsState.Loaded(listOf(row)))
+            val vm = sut(bookUuid = uuid, highlightsRepository = highlights)
+            vm.noteFromTapOn(cfi)
+            highlights.seed(uuid, HighlightsState.Loaded(emptyList()))
+
+            vm.onNoteDeleteRequested()
+            vm.onNoteDeleteConfirmed()
+
+            val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+            composer.deleteFailed shouldBe true
+            composer.deleting shouldBe false
+            highlights.notes.shouldBeEmpty()
+        }
+
+        it("#332 TC-18: clears the save error when Delete starts") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val vm = savedVm(
+                savedAt(cfi, randomEnum()).copy(note = note),
+                highlights = notesAnswering(HighlightNoteResult.Failed(HighlightError.Unreachable)),
+            )
+            vm.noteFromTapOn(cfi)
+            vm.onNoteTextChanged("$note more")
+            vm.onNoteSaveRequested()
+            vm.uiState.value.noteComposer.shouldNotBeNull().failed shouldBe true
+
+            vm.onNoteDeleteRequested()
+            vm.onNoteDeleteConfirmed()
+
+            val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+            composer.failed shouldBe false
+            composer.deleteFailed shouldBe true
+        }
+
+        it("#332 TC-18: clears the delete error when Save starts") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val vm = savedVm(
+                savedAt(cfi, randomEnum()).copy(note = note),
+                highlights = notesAnswering(HighlightNoteResult.Failed(HighlightError.Unreachable)),
+            )
+            vm.noteFromTapOn(cfi)
+            vm.onNoteDeleteRequested()
+            vm.onNoteDeleteConfirmed()
+            vm.uiState.value.noteComposer.shouldNotBeNull().deleteFailed shouldBe true
+
+            vm.onNoteTextChanged("$note more")
+            vm.onNoteSaveRequested()
+
+            val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+            composer.deleteFailed shouldBe false
+            composer.failed shouldBe true
+        }
+    }
+
+    describe("closing an edited note") {
+        it("#332 TC-19: closes at once when the note is unchanged after trimming") {
+            checkAll(Exhaustive.of("  ", "\n", " \t")) { pad ->
+                val cfi = randomCfi()
+                val note = randomString()
+                val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = note), highlights = repository())
+                vm.noteFromTapOn(cfi)
+                vm.onNoteTextChanged(pad + note)
+
+                vm.onNoteCloseRequested()
+
+                vm.uiState.value.noteComposer.shouldBeNull()
+            }
+        }
+
+        it("#332 TC-20: asks before discarding a changed note") {
+            val cfi = randomCfi()
+            val note = randomString()
+            val vm = savedVm(savedAt(cfi, randomEnum()).copy(note = note), highlights = repository())
+            vm.noteFromTapOn(cfi)
+            vm.onNoteTextChanged("$note more")
+
+            vm.onNoteCloseRequested()
+
+            val composer = vm.uiState.value.noteComposer.shouldNotBeNull()
+            composer.confirmingDiscard shouldBe true
+            composer.text shouldBe "$note more"
+        }
+    }
 })
 
 /** Every way a note write can fail, so a failure test covers each one. */
@@ -511,6 +808,25 @@ private fun openedWithTextAsking(text: String): ReaderViewModel {
     vm.onNoteTextChanged(text)
     vm.onNoteCloseRequested()
     return vm
+}
+
+/**
+ * A ViewModel with the note screen open in edit mode on a highlight of [origin] at [cfi], whose note is [note] and whose
+ * server id is [savedId]. A session highlight has its note saved first, then is tapped again, as a saved one reads.
+ */
+private fun editingOn(
+    origin: NoteOrigin,
+    cfi: String,
+    note: String,
+    savedId: Long,
+    highlights: TestHighlightsRepository,
+): ReaderViewModel = when (origin) {
+    NoteOrigin.Saved -> savedVm(savedAt(cfi, randomEnum()).copy(id = savedId, note = note), highlights = highlights)
+        .also { it.noteFromTapOn(cfi) }
+    NoteOrigin.Session -> openedOn(origin, cfi, note, highlights).also {
+        it.onNoteSaveRequested()
+        it.noteFromTapOn(cfi)
+    }
 }
 
 /** Taps the highlight at [cfi] and chooses Note in its menu. */

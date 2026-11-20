@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.reader
 
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.testing.randomBoolean
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContain
@@ -29,6 +30,15 @@ class HighlightMenuNoteActionTest : DescribeSpec({
     }
 
     describe("describing the note action") {
+        context("on a highlight with a note") {
+            it("#332 TC-1: is labelled Edit note") {
+                checkAll(Exhaustive.enum<HighlightMenuKind>()) { kind ->
+                    val target = HighlightMenuTarget(kind, randomString().takeIf { randomBoolean() }, hasNote = true)
+                    HighlightMenuAction.Note.labelOn(target) shouldBe R.string.reader_highlight_note_edit
+                }
+            }
+        }
+
         it("#331 TC-6: is labelled Add note on both menus") {
             checkAll(Exhaustive.enum<HighlightMenuKind>()) { kind ->
                 val target = HighlightMenuTarget(kind, randomString())

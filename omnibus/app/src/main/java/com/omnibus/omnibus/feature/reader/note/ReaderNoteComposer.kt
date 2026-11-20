@@ -11,6 +11,10 @@ import com.omnibus.omnibus.data.highlights.HIGHLIGHT_NOTE_MAX_LENGTH
  * @property saving Whether a save is in flight. Save, close and typing wait for it.
  * @property failed Whether the last save failed, which shows the error.
  * @property confirmingDiscard Whether the "Discard note?" dialog is up.
+ * @property existing The note being edited; non-null means edit mode. Never blank when set.
+ * @property confirmingDelete Whether the "Delete this note?" dialog is up.
+ * @property deleting Whether a delete is in flight. Kept apart from [saving] so Save does not spin for a delete.
+ * @property deleteFailed Whether the last delete failed. [failed] stays the save's flag.
  */
 data class NoteComposerState(
     val cfiRange: String,
@@ -19,9 +23,25 @@ data class NoteComposerState(
     val saving: Boolean = false,
     val failed: Boolean = false,
     val confirmingDiscard: Boolean = false,
+    val existing: String? = null,
+    val confirmingDelete: Boolean = false,
+    val deleting: Boolean = false,
+    val deleteFailed: Boolean = false,
 ) {
-    /** Whether Save is on: some non-blank text, and no save in flight. */
-    val canSave: Boolean get() = text.isNotBlank() && !saving
+    /** Whether the screen edits an existing note. */
+    val isEditing: Boolean get() = existing != null
+
+    /** Whether a save or a delete is in flight. */
+    internal val busy: Boolean get() = saving || deleting
+
+    /** Whether leaving would lose something: any text for a new note, a trimmed change for an existing one. */
+    val isChanged: Boolean get() = if (existing == null) text.isNotBlank() else text.trim() != existing.trim()
+
+    /** Whether Save is on: some non-blank text that changes the note, and no write in flight. */
+    val canSave: Boolean get() = text.isNotBlank() && isChanged && !busy
+
+    /** Whether the trash button is on: an existing note, and no write in flight. */
+    val canDelete: Boolean get() = isEditing && !busy
 }
 
 /** The length at which the counter appears, in code points. */

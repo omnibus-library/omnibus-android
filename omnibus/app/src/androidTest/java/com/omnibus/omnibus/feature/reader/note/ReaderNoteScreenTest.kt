@@ -67,6 +67,9 @@ class ReaderNoteScreenTest {
         onClose: () -> Unit = {},
         onDiscardConfirmed: () -> Unit = {},
         onDiscardCancelled: () -> Unit = {},
+        onDelete: () -> Unit = {},
+        onDeleteConfirmed: () -> Unit = {},
+        onDeleteCancelled: () -> Unit = {},
     ) {
         rule.setContent {
             OmnibusTheme {
@@ -77,6 +80,9 @@ class ReaderNoteScreenTest {
                     onClose = onClose,
                     onDiscardConfirmed = onDiscardConfirmed,
                     onDiscardCancelled = onDiscardCancelled,
+                    onDelete = onDelete,
+                    onDeleteConfirmed = onDeleteConfirmed,
+                    onDeleteCancelled = onDeleteCancelled,
                 )
             }
         }
@@ -265,5 +271,104 @@ class ReaderNoteScreenTest {
         }
 
         assertEquals(0, docked.get())
+    }
+
+    // #332 TC-22: edit mode shows the edit title, the note in the field, and the trash button left of Save
+    @Test
+    fun issue332_tc22_editModeShowsTitleNoteAndTrash() {
+        val note = "A note to keep"
+        val state = mutableStateOf(
+            NoteComposerState(cfiRange = cfi, quote = "A passage", text = note, existing = note),
+        )
+        show(state = { state.value })
+
+        rule.onNodeWithTag(ReaderNoteScreenTags.TITLE).assertTextEquals("Edit note")
+        rule.onNodeWithTag(ReaderNoteScreenTags.FIELD).assertTextEquals(note)
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertIsDisplayed()
+
+        val trash = rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).fetchSemanticsNode().boundsInRoot
+        val save = rule.onNodeWithTag(ReaderNoteScreenTags.SAVE).fetchSemanticsNode().boundsInRoot
+        assertTrue("the trash button sits left of Save", trash.right <= save.left + 1f)
+    }
+
+    // #332 TC-22: a new note has no trash button and keeps the new title
+    @Test
+    fun issue332_tc22_newModeHasNoTrash() {
+        show(state = { NoteComposerState(cfiRange = cfi, quote = null) })
+
+        rule.onNodeWithTag(ReaderNoteScreenTags.TITLE).assertTextEquals("New note")
+        rule.onAllNodesWithTag(ReaderNoteScreenTags.DELETE).assertCountEquals(0)
+    }
+
+    // #332 TC-23: the trash button is named "Delete note", is off while a write is in flight, and reads "Deleting"
+    @Test
+    fun issue332_tc23_trashFollowsTheState() {
+        val note = "A note to keep"
+        val state = mutableStateOf(NoteComposerState(cfiRange = cfi, quote = null, text = note, existing = note))
+        show(state = { state.value })
+
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertIsEnabled()
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertContentDescriptionEquals("Delete note")
+
+        rule.runOnIdle { state.value = state.value.copy(saving = true) }
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertIsNotEnabled()
+
+        rule.runOnIdle { state.value = state.value.copy(saving = false, deleting = true) }
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertIsNotEnabled()
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).assertContentDescriptionEquals("Delete note")
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Deleting"))
+    }
+
+    // #332 TC-24: the trash button asks, and the dialog's Delete and Cancel each reach their callback once
+    @Test
+    fun issue332_tc24_theDeleteDialogRoutesItsButtons() {
+        val note = "A note to keep"
+        val state = mutableStateOf(NoteComposerState(cfiRange = cfi, quote = null, text = note, existing = note))
+        val opened = AtomicInteger(0)
+        val cancelled = AtomicInteger(0)
+        val confirmed = AtomicInteger(0)
+        show(
+            state = { state.value },
+            onDelete = { opened.incrementAndGet() },
+            onDeleteConfirmed = { confirmed.incrementAndGet() },
+            onDeleteCancelled = { cancelled.incrementAndGet() },
+        )
+
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE).performClick()
+        assertEquals(1, opened.get())
+
+        rule.runOnIdle { state.value = state.value.copy(confirmingDelete = true) }
+        rule.onNodeWithText("Delete this note?").assertIsDisplayed()
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE_CANCEL).performClick()
+        assertEquals(1, cancelled.get())
+
+        rule.runOnIdle { state.value = state.value.copy(confirmingDelete = false) }
+        rule.runOnIdle { state.value = state.value.copy(confirmingDelete = true) }
+        rule.onNodeWithTag(ReaderNoteScreenTags.DELETE_CONFIRM).performClick()
+        assertEquals(1, confirmed.get())
+        assertEquals(1, opened.get())
+        assertEquals(1, cancelled.get())
+    }
+
+    // #332 TC-25: a failed delete shows its own error, a failed save shows the save error, and only one shows
+    @Test
+    fun issue332_tc25_errorTextFollowsTheFailedWrite() {
+        val note = "A note to keep"
+        val state = mutableStateOf(
+            NoteComposerState(cfiRange = cfi, quote = null, text = note, existing = note, deleteFailed = true),
+        )
+        show(state = { state.value })
+
+        rule.onAllNodesWithText("Couldn't delete note").assertCountEquals(1)
+        rule.onAllNodesWithText("Couldn't save note").assertCountEquals(0)
+
+        rule.runOnIdle { state.value = state.value.copy(deleteFailed = false, failed = true) }
+        rule.onAllNodesWithText("Couldn't save note").assertCountEquals(1)
+        rule.onAllNodesWithText("Couldn't delete note").assertCountEquals(0)
+
+        rule.runOnIdle { state.value = state.value.copy(deleteFailed = true) }
+        rule.onAllNodesWithText("Couldn't delete note").assertCountEquals(1)
+        rule.onAllNodesWithText("Couldn't save note").assertCountEquals(0)
     }
 }

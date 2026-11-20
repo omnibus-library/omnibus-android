@@ -17,6 +17,7 @@ fun randomKnownHighlight(): KnownHighlight = KnownHighlight(
     color = randomEnum(),
     text = randomString().takeIf { randomBoolean() },
     hasNote = randomBoolean(),
+    note = randomString().takeIf { randomBoolean() },
 )
 
 fun randomHighlightMenuEntry(): HighlightMenuEntry = HighlightMenuEntry(
@@ -25,4 +26,5 @@ fun randomHighlightMenuEntry(): HighlightMenuEntry = HighlightMenuEntry(
     color = randomEnum(),
     text = randomString().takeIf { randomBoolean() },
     hasNote = randomBoolean(),
+    note = randomString().takeIf { randomBoolean() },
 )

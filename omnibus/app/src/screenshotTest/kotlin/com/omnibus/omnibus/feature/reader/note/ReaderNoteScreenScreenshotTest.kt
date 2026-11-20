@@ -22,6 +22,9 @@ fun ReaderNoteScreenEmpty() {
             onClose = {},
             onDiscardConfirmed = {},
             onDiscardCancelled = {},
+            onDelete = {},
+            onDeleteConfirmed = {},
+            onDeleteCancelled = {},
         )
     }
 }
@@ -44,6 +47,9 @@ fun ReaderNoteScreenCounterAndError() {
             onClose = {},
             onDiscardConfirmed = {},
             onDiscardCancelled = {},
+            onDelete = {},
+            onDeleteConfirmed = {},
+            onDeleteCancelled = {},
         )
     }
 }
@@ -66,6 +72,36 @@ fun ReaderNoteScreenWide() {
             onClose = {},
             onDiscardConfirmed = {},
             onDiscardCancelled = {},
+            onDelete = {},
+            onDeleteConfirmed = {},
+            onDeleteCancelled = {},
+        )
+    }
+}
+
+/** Editing an existing note, unchanged so Save is off, with the trash button, in light and dark. */
+@PreviewTest
+@PreviewLightDark
+@Composable
+fun ReaderNoteScreenEdit() {
+    val note = "Echoes the porch scene in chapter two. Compare with the letter she burns later, and check whether the " +
+        "street is named again."
+    Shot {
+        ReaderNoteScreen(
+            state = NoteComposerState(
+                cfiRange = "epubcfi(/6/4!/4/2,/1:0,/1:20)",
+                quote = PASSAGE,
+                text = note,
+                existing = note,
+            ),
+            onTextChanged = {},
+            onSave = {},
+            onClose = {},
+            onDiscardConfirmed = {},
+            onDiscardCancelled = {},
+            onDelete = {},
+            onDeleteConfirmed = {},
+            onDeleteCancelled = {},
         )
     }
 }

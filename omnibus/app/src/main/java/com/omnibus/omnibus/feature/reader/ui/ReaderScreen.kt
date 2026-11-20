@@ -157,6 +157,9 @@ fun ReaderScreen(
         onNoteCloseRequested = viewModel::onNoteCloseRequested,
         onNoteDiscardConfirmed = viewModel::onNoteDiscardConfirmed,
         onNoteDiscardCancelled = viewModel::onNoteDiscardCancelled,
+        onNoteDeleteRequested = viewModel::onNoteDeleteRequested,
+        onNoteDeleteConfirmed = viewModel::onNoteDeleteConfirmed,
+        onNoteDeleteCancelled = viewModel::onNoteDeleteCancelled,
         onNoticeShown = viewModel::onNoticeShown,
         onClose = onClose,
         modifier = modifier,
@@ -217,6 +220,9 @@ fun ReaderScreen(
  * @param onNoteCloseRequested the note screen's close button or back was used.
  * @param onNoteDiscardConfirmed Discard was chosen in the "Discard note?" dialog.
  * @param onNoteDiscardCancelled the "Discard note?" dialog was dismissed or Keep writing was chosen.
+ * @param onNoteDeleteRequested the note screen's trash button was tapped.
+ * @param onNoteDeleteConfirmed Delete was chosen in the "Delete this note?" dialog.
+ * @param onNoteDeleteCancelled the "Delete this note?" dialog was cancelled, by Cancel or a dismiss.
  * @param onNoticeShown the reader has shown [ReaderNotice], so it is cleared.
  * @param bottomDock drawn below the page, which ends at its top edge (the mini player dock, P-MINI-4). Empty by default.
  */
@@ -260,6 +266,9 @@ internal fun ReaderScreenContent(
     onNoteCloseRequested: () -> Unit = {},
     onNoteDiscardConfirmed: () -> Unit = {},
     onNoteDiscardCancelled: () -> Unit = {},
+    onNoteDeleteRequested: () -> Unit = {},
+    onNoteDeleteConfirmed: () -> Unit = {},
+    onNoteDeleteCancelled: () -> Unit = {},
     onNoticeShown: () -> Unit = {},
     modifier: Modifier = Modifier,
     bottomDock: @Composable () -> Unit = {},
@@ -596,6 +605,9 @@ internal fun ReaderScreenContent(
                         onClose = onNoteCloseRequested,
                         onDiscardConfirmed = onNoteDiscardConfirmed,
                         onDiscardCancelled = onNoteDiscardCancelled,
+                        onDelete = onNoteDeleteRequested,
+                        onDeleteConfirmed = onNoteDeleteConfirmed,
+                        onDeleteCancelled = onNoteDeleteCancelled,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

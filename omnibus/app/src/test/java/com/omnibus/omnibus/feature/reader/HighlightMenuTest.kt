@@ -65,6 +65,21 @@ class HighlightMenuTest : DescribeSpec({
                     listOf(earlier.cfi, middle.cfi)
             }
 
+            it("#332 TC-2: carries each highlight's note into its entry") {
+                val earlier = randomAnnotationHit()
+                val later = randomAnnotationHit()
+                val known = mapOf(
+                    earlier.cfi to randomKnownHighlight().copy(note = randomString()),
+                    later.cfi to randomKnownHighlight().copy(note = null),
+                )
+                val tap = AnnotationTapData(hits = listOf(later, earlier))
+
+                val menu = highlightMenuOf(tap, known).shouldNotBeNull()
+
+                menu.entries.associate { it.cfiRange to it.note } shouldBe
+                    known.mapValues { (_, highlight) -> highlight.note }
+            }
+
             it("#299 TC-5: opens on the first highlight") {
                 val earlier = randomAnnotationHit()
                 val later = randomAnnotationHit()

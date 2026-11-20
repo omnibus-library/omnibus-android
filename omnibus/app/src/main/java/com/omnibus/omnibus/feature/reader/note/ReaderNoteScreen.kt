@@ -93,6 +93,9 @@ internal object ReaderNoteScreenTags {
     const val ERROR = "reader_note_error"
     const val DISCARD = "reader_note_discard"
     const val KEEP_WRITING = "reader_note_keep_writing"
+    const val DELETE = "reader_note_delete"
+    const val DELETE_CONFIRM = "reader_note_delete_confirm"
+    const val DELETE_CANCEL = "reader_note_delete_cancel"
 }
 
 /**
@@ -105,6 +108,9 @@ internal object ReaderNoteScreenTags {
  * @param onClose The close button was tapped.
  * @param onDiscardConfirmed Discard was chosen in the "Discard note?" dialog.
  * @param onDiscardCancelled Keep writing was chosen, or the dialog was dismissed.
+ * @param onDelete The trash button was tapped.
+ * @param onDeleteConfirmed Delete was chosen in the "Delete this note?" dialog.
+ * @param onDeleteCancelled Cancel was chosen, or the dialog was dismissed.
  */
 @Composable
 fun ReaderNoteScreen(
@@ -114,6 +120,9 @@ fun ReaderNoteScreen(
     onClose: () -> Unit,
     onDiscardConfirmed: () -> Unit,
     onDiscardCancelled: () -> Unit,
+    onDelete: () -> Unit,
+    onDeleteConfirmed: () -> Unit,
+    onDeleteCancelled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
@@ -131,6 +140,9 @@ fun ReaderNoteScreen(
     val savingLabel = stringResource(R.string.reader_note_saving)
     val fieldLabel = stringResource(R.string.reader_note_field_label)
     val errorText = stringResource(R.string.reader_note_save_failed)
+    val deleteLabel = stringResource(R.string.reader_note_delete)
+    val deletingLabel = stringResource(R.string.reader_note_deleting)
+    val deleteErrorText = stringResource(R.string.reader_note_delete_failed)
 
     Box(
         modifier
@@ -163,7 +175,9 @@ fun ReaderNoteScreen(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.reader_note_title_new),
+                    text = stringResource(
+                        if (state.isEditing) R.string.reader_note_title_edit else R.string.reader_note_title_new,
+                    ),
                     style = uiTextStyle(17.sp, FontWeight.SemiBold, palette.ink0),
                     modifier = Modifier
                         .weight(1f)
@@ -171,6 +185,34 @@ fun ReaderNoteScreen(
                         .semantics { heading() }
                         .testTag(ReaderNoteScreenTags.TITLE),
                 )
+                if (state.isEditing) {
+                    IconButton(
+                        onClick = onDelete,
+                        enabled = state.canDelete,
+                        modifier = Modifier
+                            .semantics {
+                                if (state.deleting) {
+                                    contentDescription = deleteLabel
+                                    stateDescription = deletingLabel
+                                }
+                            }
+                            .testTag(ReaderNoteScreenTags.DELETE),
+                    ) {
+                        if (state.deleting) {
+                            CircularProgressIndicator(
+                                Modifier.size(16.dp),
+                                color = palette.ink0.copy(alpha = 0.58f),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_reader_delete),
+                                contentDescription = deleteLabel,
+                                tint = if (state.canDelete) palette.bad else palette.ink0.copy(alpha = 0.58f),
+                            )
+                        }
+                    }
+                }
                 Box(
                     Modifier
                         .heightIn(min = 48.dp)
@@ -246,7 +288,7 @@ fun ReaderNoteScreen(
                     BasicTextField(
                         value = state.text,
                         onValueChange = onTextChanged,
-                        readOnly = state.saving,
+                        readOnly = state.busy,
                         textStyle = uiTextStyle(16.sp, FontWeight.Normal, palette.ink0).copy(lineHeight = 23.sp),
                         cursorBrush = SolidColor(palette.accent),
                         minLines = 6,
@@ -290,7 +332,7 @@ fun ReaderNoteScreen(
                         .padding(
                             start = Spacing.lg,
                             end = Spacing.lg,
-                            bottom = if (state.showsCounter || state.failed) Spacing.lg else 0.dp,
+                            bottom = if (state.showsCounter || state.failed || state.deleteFailed) Spacing.lg else 0.dp,
                         ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
@@ -316,7 +358,11 @@ fun ReaderNoteScreen(
                     }
 
                     InlineError(
-                        message = if (state.failed) errorText else null,
+                        message = when {
+                            state.deleteFailed -> deleteErrorText
+                            state.failed -> errorText
+                            else -> null
+                        },
                         modifier = Modifier
                             .semantics { liveRegion = LiveRegionMode.Polite }
                             .testTag(ReaderNoteScreenTags.ERROR),
@@ -328,6 +374,9 @@ fun ReaderNoteScreen(
 
     if (state.confirmingDiscard) {
         ReaderNoteDiscardDialog(onDiscard = onDiscardConfirmed, onKeepWriting = onDiscardCancelled)
+    }
+    if (state.confirmingDelete) {
+        ReaderNoteDeleteDialog(onDelete = onDeleteConfirmed, onCancel = onDeleteCancelled)
     }
 }
 
@@ -354,6 +403,36 @@ private fun ReaderNoteDiscardDialog(onDiscard: () -> Unit, onKeepWriting: () -> 
                 colors = ButtonDefaults.textButtonColors(contentColor = palette.ink0),
             ) {
                 Text(stringResource(R.string.reader_note_discard_keep))
+            }
+        },
+        containerColor = palette.bg2,
+        titleContentColor = palette.ink0,
+    )
+}
+
+/** The "Delete this note?" dialog: Delete and Cancel, with no body. Dismissing it cancels. */
+@Composable
+private fun ReaderNoteDeleteDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
+    val palette = OmnibusTheme.palette
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.reader_note_delete_title)) },
+        confirmButton = {
+            TextButton(
+                onClick = onDelete,
+                modifier = Modifier.heightIn(min = 48.dp).testTag(ReaderNoteScreenTags.DELETE_CONFIRM),
+                colors = ButtonDefaults.textButtonColors(contentColor = palette.bad),
+            ) {
+                Text(stringResource(R.string.reader_note_delete_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.heightIn(min = 48.dp).testTag(ReaderNoteScreenTags.DELETE_CANCEL),
+                colors = ButtonDefaults.textButtonColors(contentColor = palette.ink0),
+            ) {
+                Text(stringResource(R.string.reader_note_delete_cancel))
             }
         },
         containerColor = palette.bg2,

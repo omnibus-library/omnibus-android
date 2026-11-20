@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.boolean
 import io.kotest.property.exhaustive.of
 
 class ReaderNoteComposerTest : DescribeSpec({
@@ -23,6 +24,53 @@ class ReaderNoteComposerTest : DescribeSpec({
 
             it("#331 TC-18: is off while a save is in flight") {
                 val state = NoteComposerState(randomString(), quote = null, text = randomString(), saving = true)
+                state.canSave shouldBe false
+            }
+        }
+    }
+
+    describe("editing an existing note") {
+        it("#332 TC-8: cannot save a note that is unchanged after trimming") {
+            val note = randomString()
+            checkAll(Exhaustive.of(" $note", "$note\n", "\t$note  ")) { text ->
+                NoteComposerState(randomString(), quote = null, text = text, existing = note).canSave shouldBe false
+            }
+        }
+
+        it("#332 TC-9: can save a changed note") {
+            val note = randomString()
+            NoteComposerState(randomString(), quote = null, text = "$note more", existing = note).canSave shouldBe true
+        }
+    }
+
+    describe("deleting a note") {
+        it("#332 TC-10: can delete only an existing note while idle") {
+            val note = randomString()
+            checkAll(Exhaustive.boolean(), Exhaustive.boolean()) { saving, deleting ->
+                val busy = saving || deleting
+                NoteComposerState(
+                    randomString(),
+                    quote = null,
+                    text = note,
+                    existing = note,
+                    saving = saving,
+                    deleting = deleting,
+                ).canDelete shouldBe !busy
+                NoteComposerState(randomString(), quote = null, text = note, saving = saving, deleting = deleting)
+                    .canDelete shouldBe false
+            }
+        }
+
+        it("#332 TC-10: cannot save while deleting") {
+            val note = randomString()
+            checkAll(Exhaustive.boolean()) { editing ->
+                val state = NoteComposerState(
+                    randomString(),
+                    quote = null,
+                    text = "$note more",
+                    existing = if (editing) note else null,
+                    deleting = true,
+                )
                 state.canSave shouldBe false
             }
         }
