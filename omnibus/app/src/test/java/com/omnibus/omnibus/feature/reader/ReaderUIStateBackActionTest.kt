@@ -1,6 +1,8 @@
 package com.omnibus.omnibus.feature.reader
 
+import com.omnibus.omnibus.feature.reader.note.NoteComposerState
 import com.omnibus.omnibus.feature.reader.ui.SelectionData
+import com.omnibus.omnibus.feature.reader.ui.randomCfi
 import com.omnibus.omnibus.feature.reader.ui.randomSelectionData
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -12,6 +14,34 @@ import io.kotest.property.exhaustive.of
 class ReaderUIStateBackActionTest : DescribeSpec({
 
     describe("what back does") {
+        context("with a note screen open") {
+            it("#331 TC-19: closes the note screen, whatever else is open") {
+                val selections = Exhaustive.of<SelectionData?>(null, randomSelectionData())
+                val sheets = Exhaustive.of<ReaderSheet?>(null, ReaderSheet.Contents, ReaderSheet.Settings)
+                val highlightMenus =
+                    Exhaustive.of<HighlightMenu?>(null, HighlightMenu(listOf(randomHighlightMenuEntry())))
+
+                checkAll(
+                    selections,
+                    sheets,
+                    highlightMenus,
+                    Exhaustive.boolean(),
+                    Exhaustive.boolean(),
+                ) { selection, sheet, highlightMenu, menuOpen, chromeVisible ->
+                    val state = ReaderUIState(
+                        noteComposer = NoteComposerState(cfiRange = randomCfi(), quote = null),
+                        highlightMenu = highlightMenu,
+                        selection = selection,
+                        sheet = sheet,
+                        menuOpen = menuOpen,
+                        chromeVisible = chromeVisible,
+                    )
+
+                    state.backAction() shouldBe ReaderBackAction.CloseNoteComposer
+                }
+            }
+        }
+
         context("with a highlight menu open") {
             it("#299 TC-21: closes the highlight menu, ahead of the selection, the sheet, the dropdown and context mode") {
                 val selections = Exhaustive.of<SelectionData?>(null, randomSelectionData())

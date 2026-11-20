@@ -1,10 +1,20 @@
 package com.omnibus.omnibus.feature.reader.note
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -12,6 +22,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -21,9 +32,23 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.test.platform.app.InstrumentationRegistry
+import com.omnibus.omnibus.data.reader.BookFileResult
+import com.omnibus.omnibus.data.reader.ReaderAssetLoaderFactory
+import com.omnibus.omnibus.data.reader.remote.BookFileSource
+import com.omnibus.omnibus.feature.reader.ReaderBookState
+import com.omnibus.omnibus.feature.reader.ReaderUIState
+import com.omnibus.omnibus.feature.reader.ui.ReaderController
+import com.omnibus.omnibus.feature.reader.ui.ReaderLoadStatus
+import com.omnibus.omnibus.feature.reader.ui.ReaderScreenContent
+import com.omnibus.omnibus.feature.reader.ui.ReaderScreenTags
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -148,5 +173,97 @@ class ReaderNoteScreenTest {
 
         assertEquals(1, cancelled.get())
         assertEquals(1, confirmed.get())
+    }
+
+    /** Sets the whole reader screen, in inspection mode so no page loads, with an open note screen. */
+    private fun showInReader(
+        onNoteCloseRequested: () -> Unit = {},
+        onClose: () -> Unit = {},
+        bottomDock: @Composable () -> Unit = {},
+    ) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val loader = ReaderAssetLoaderFactory(context, Dispatchers.Unconfined, BookFileSource { BookFileResult.NotFound })
+        val uiState = ReaderUIState(
+            book = ReaderBookState.Ready(title = "Test Book"),
+            loadStatus = ReaderLoadStatus.Ready,
+            noteComposer = NoteComposerState(cfi, "Quote"),
+        )
+        rule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                OmnibusTheme {
+                    ReaderScreenContent(
+                        uiState = uiState,
+                        bookUuid = "book-1",
+                        controller = ReaderController(),
+                        assetLoaderFactory = loader,
+                        commands = emptyFlow(),
+                        onPageEvent = {},
+                        onSheetDismissed = {},
+                        onTocEntryChosen = {},
+                        onMenuOpened = {},
+                        onMenuDismissed = {},
+                        onMenuRowChosen = {},
+                        onRetryBookRequested = {},
+                        onReaderClosed = {},
+                        onReaderStopped = {},
+                        onSyncOfferAccepted = {},
+                        onSyncOfferDismissed = {},
+                        onClose = onClose,
+                        onNoteCloseRequested = onNoteCloseRequested,
+                        bottomDock = bottomDock,
+                    )
+                }
+            }
+        }
+    }
+
+    // TC-24, R15: back closes the note screen first, and the reader stays open
+    @Test
+    fun issue331_tc24_backClosesTheNoteScreenFirst() {
+        val noteClosed = AtomicInteger(0)
+        val closed = AtomicInteger(0)
+        showInReader(
+            onNoteCloseRequested = { noteClosed.incrementAndGet() },
+            onClose = { closed.incrementAndGet() },
+        )
+        rule.waitForIdle()
+
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
+
+        assertEquals(1, noteClosed.get())
+        assertEquals(0, closed.get())
+    }
+
+    // TC-25, R4 and R14: the note screen covers the page and the dock, and takes the dock's touches
+    @Test
+    fun issue331_tc25_theNoteScreenCoversTheReaderAndTheDock() {
+        val docked = AtomicInteger(0)
+        showInReader(
+            bottomDock = {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.1f)
+                        .clickable { docked.incrementAndGet() }
+                        .testTag("test_dock"),
+                )
+            },
+        )
+        rule.waitForIdle()
+        val reader = rule.onNodeWithTag(ReaderScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
+        val note = rule.onNodeWithTag(ReaderNoteScreenTags.ROOT).fetchSemanticsNode().boundsInRoot
+        val dock = rule.onNodeWithTag("test_dock").fetchSemanticsNode().boundsInRoot
+
+        assertEquals(reader.top, note.top, 1f)
+        assertEquals(reader.bottom, note.bottom, 1f)
+        assertTrue("the note screen covers the dock's top edge", note.top <= dock.top + 1f)
+        assertTrue("the note screen covers the dock's bottom edge", note.bottom >= dock.bottom - 1f)
+
+        rule.onNodeWithTag(ReaderNoteScreenTags.ROOT).performTouchInput {
+            click(Offset(dock.center.x - note.left, dock.center.y - note.top))
+        }
+
+        assertEquals(0, docked.get())
     }
 }

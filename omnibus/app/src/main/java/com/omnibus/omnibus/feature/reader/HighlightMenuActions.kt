@@ -8,6 +8,11 @@ import com.omnibus.omnibus.feature.reader.ui.SelectionData
 /** The second-row actions of the reader's menus. Enum order is row order; each entry owns when it shows, its label and its icon. */
 enum class HighlightMenuAction {
     // #331 Note
+    Note {
+        override fun isOfferedOn(target: HighlightMenuTarget): Boolean = true
+        override fun labelOn(target: HighlightMenuTarget): Int = R.string.reader_highlight_note_add
+        override val icon: Int = R.drawable.ic_reader_note
+    },
     // #333 Quote card
     // #330 Share
     Share {
