@@ -21,7 +21,7 @@ This app is one client of [Omnibus](https://github.com/omnibus-library/omnibus),
 | [`server/`](https://github.com/omnibus-library/omnibus/tree/main/server) | API server (Rust) | Endpoints and request/response shapes (`server/src/backend/routes.rs`). |
 | [`docs/design/atrium-design-system.md`](https://github.com/omnibus-library/omnibus/blob/main/docs/design/atrium-design-system.md) | Atrium design system | Palette, spacing, type, and motion. `ui/theme/` mirrors these. |
 
-When adding or changing a feature, check how iOS does it first and match it unless there's an Android-specific reason not to. Read the files on GitHub, or clone the repository if you need to search it.
+When adding or changing a feature, check how iOS does it first and match it unless there's an Android-specific reason not to. The design-system docs below are such a reason: where one applies, follow it over iOS. Read the files on GitHub, or clone the repository if you need to search it.
 
 ## Layout
 
@@ -32,6 +32,7 @@ omnibus/
 ├── app/src/androidTest/                     # Instrumented tests
 ├── app/src/screenshotTest/                  # Compose preview screenshot tests
 ├── docs/engineering/                        # Engineering guidelines (read these)
+├── docs/design-system/                      # Design-system rules for UI components (read these)
 └── gradle/libs.versions.toml                # Version catalog
 ```
 
@@ -60,6 +61,12 @@ Follow the documents in `docs/engineering/`:
 - [Pull Requests](docs/engineering/pull-requests.md): Each PR delivers one meaningful change to the user experience. Split features by user impact, never by architecture layer. Deliver a multi-PR feature as one linear `gh stack`.
 - [KDocs](docs/engineering/kdocs.md): Document public APIs with KDoc. Keep descriptions concise and avoid restating what is obvious from the signature.
 - [Testing](docs/engineering/testing.md): Unit test non-Android Kotlin/KMP code with Kotest on the JUnit runner, preferring the [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec) style. Test code that needs an Android `Context` with instrumented tests in `app/src/androidTest/`. Check how a piece of UI looks with a screenshot test in `app/src/screenshotTest/`.
+
+## Design System
+
+Follow the documents in `docs/design-system/` when building or changing UI:
+
+- [Bottom Sheets](docs/design-system/bottom-sheet.md): When to use a bottom sheet instead of a full screen, dialog, menu or snackbar, what content belongs on one, and how sheets behave, look and adapt to wide windows. Read it before adding a sheet or putting content in one.
 
 ## Conventions
 
