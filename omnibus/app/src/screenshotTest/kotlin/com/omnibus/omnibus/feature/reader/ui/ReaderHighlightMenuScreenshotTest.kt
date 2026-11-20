@@ -90,6 +90,7 @@ private fun MenuTile(theme: ReaderTheme, menu: HighlightMenu, textTop: Double = 
             menu = menu,
             theme = theme,
             onStep = {},
+            onColor = {},
             onCopy = {},
             onDelete = {},
             onDismiss = {},

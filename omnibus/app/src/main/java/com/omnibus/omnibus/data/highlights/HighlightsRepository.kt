@@ -66,6 +66,13 @@ interface HighlightsRepository {
      * it, and drops it from a loaded list. Ordered after any create for the book. A 404 counts as deleted.
      */
     suspend fun deleteHighlight(bookUuid: String, id: Long): HighlightDeleteResult
+
+    /**
+     * Changes the colour of the highlight with server [id] in [bookUuid] to [color] in the application scope, so leaving the
+     * reader cannot cancel it, and replaces the colour in a loaded list once the server confirms. Ordered after any earlier
+     * write for the book.
+     */
+    suspend fun recolorHighlight(bookUuid: String, id: Long, color: HighlightColor): HighlightRecolorResult
 }
 
 /** The outcome of a highlight create. A failed create leaves the loaded list as it was. */
@@ -86,7 +93,16 @@ sealed interface HighlightDeleteResult {
     data class Failed(val error: HighlightError) : HighlightDeleteResult
 }
 
-/** Why a highlight write (a create or a delete) failed. */
+/** The outcome of a highlight recolour. A failed recolour leaves the loaded list as it was. */
+sealed interface HighlightRecolorResult {
+    /** The server changed the colour. */
+    data object Recolored : HighlightRecolorResult
+
+    /** The recolour did not take. [error] says why; a 404 is `Http(404)`. */
+    data class Failed(val error: HighlightError) : HighlightRecolorResult
+}
+
+/** Why a highlight write (a create, a delete or a recolour) failed. */
 sealed interface HighlightError {
     /** No server is configured, so no request was made. */
     data object NoServer : HighlightError

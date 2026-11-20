@@ -8,10 +8,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * In-memory [HighlightsRepository] for consumers' tests. It follows [DefaultHighlightsRepository]'s rules: a loaded list
  * never regresses, and a refresh from Failed shows Loading while it runs. A saved create is appended to a loaded list, as
- * production does. A deleted row leaves a loaded list, as production does. There is no HTTP.
+ * production does. A deleted row leaves a loaded list, as production does. A confirmed recolour changes the row's colour in a
+ * loaded list, as production does. There is no HTTP.
  *
  * Unlike production, collecting [getHighlightsFlow] does not fetch. Call [seed] or [refresh] first. A create is answered by
- * [onAdd], which a test replaces to script its result. A delete is answered by [onDelete].
+ * [onAdd], which a test replaces to script its result. A delete is answered by [onDelete]. A recolour is answered by
+ * [onRecolor].
  */
 class TestHighlightsRepository : HighlightsRepository {
 
@@ -84,6 +86,27 @@ class TestHighlightsRepository : HighlightsRepository {
             val state = stateFor(bookUuid)
             (state.value as? HighlightsState.Loaded)?.let { loaded ->
                 state.value = HighlightsState.Loaded(loaded.highlights.filterNot { it.id == id })
+            }
+        }
+        return result
+    }
+
+    /** Every recolour, as (id, colour), in call order. Recorded before [onRecolor] runs, so a gated call is listed at once. */
+    val recolors = mutableListOf<Pair<Long, HighlightColor>>()
+
+    /** Answers a recolour. */
+    var onRecolor: suspend (bookUuid: String, id: Long, color: HighlightColor) -> HighlightRecolorResult =
+        { _, _, _ -> unscripted("recolorHighlight") }
+
+    override suspend fun recolorHighlight(bookUuid: String, id: Long, color: HighlightColor): HighlightRecolorResult {
+        recolors += id to color
+        val result = onRecolor(bookUuid, id, color)
+        if (result is HighlightRecolorResult.Recolored) {
+            val state = stateFor(bookUuid)
+            (state.value as? HighlightsState.Loaded)?.let { loaded ->
+                state.value = HighlightsState.Loaded(
+                    loaded.highlights.map { if (it.id == id) it.copy(color = color) else it },
+                )
             }
         }
         return result

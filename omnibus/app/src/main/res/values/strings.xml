@@ -248,4 +248,5 @@
     <string name="reader_highlight_delete_cancel">Cancel</string>
     <string name="reader_highlight_delete_confirm">Delete</string>
     <string name="reader_highlight_delete_failed">Couldn\'t delete highlight</string>
+    <string name="reader_highlight_recolor_failed">Couldn\'t change highlight colour</string>
 </resources>

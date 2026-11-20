@@ -759,6 +759,29 @@ class ReaderScreenTest {
         assertEquals(1, notices.get())
     }
 
+    // TC-21 (#301)
+    @Test
+    fun issue301_tc21_aFailedRecolourShowsTheSnackbar() {
+        val notices = AtomicInteger()
+        show(
+            uiState = {
+                ReaderUIState(
+                    book = ReaderBookState.Ready(title = "Test Book"),
+                    loadStatus = ReaderLoadStatus.Ready,
+                    notice = ReaderNotice.HighlightRecolorFailed,
+                )
+            },
+            inspection = true,
+            onNoticeShown = { notices.incrementAndGet() },
+        )
+
+        rule.waitUntil(timeoutMillis = 10_000) {
+            rule.onAllNodesWithText("Couldn't change highlight colour").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("Couldn't change highlight colour").assertIsDisplayed()
+        assertEquals(1, notices.get())
+    }
+
     // TC-38
     @Test
     fun issue54_tc38_copyWritesTheSelectedTextToTheClipboard() {

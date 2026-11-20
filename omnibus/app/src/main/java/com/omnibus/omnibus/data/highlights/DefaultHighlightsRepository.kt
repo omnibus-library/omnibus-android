@@ -3,6 +3,7 @@ package com.omnibus.omnibus.data.highlights
 import android.util.Log
 import com.omnibus.omnibus.data.highlights.remote.HighlightCreateRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightDto
+import com.omnibus.omnibus.data.highlights.remote.HighlightRecolorRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightsJson
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.ApplicationScope
@@ -27,10 +28,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches, creates and deletes run in the application
- * scope, so leaving the page cannot cancel them. Writes for one book go to the server one at a time in call order. A failed
- * fetch never replaces a loaded list. Every failure becomes a state or a typed result, so no exception leaves this class
- * except cancellation.
+ * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches, creates, deletes and recolours run in the
+ * application scope, so leaving the page cannot cancel them. Writes for one book go to the server one at a time in call
+ * order. A failed fetch never replaces a loaded list. Every failure becomes a state or a typed result, so no exception
+ * leaves this class except cancellation.
  */
 @Singleton
 class DefaultHighlightsRepository @Inject constructor(
@@ -47,7 +48,7 @@ class DefaultHighlightsRepository @Inject constructor(
         val state = MutableStateFlow<HighlightsState>(HighlightsState.Loading)
         var inFlightFetch: Deferred<HighlightsState>? = null
 
-        /** Serialises the writes (creates and deletes) for this book, so they reach the server in call order. */
+        /** Serialises the writes (creates, deletes and recolours) for this book, so they reach the server in call order. */
         val writeMutex = Mutex()
 
         /** Rows saved while a fetch is in flight, so the fetch's answer can be corrected for them. */
@@ -55,6 +56,9 @@ class DefaultHighlightsRepository @Inject constructor(
 
         /** Ids deleted while a fetch is in flight, so the fetch's answer can drop them. */
         val deletedIds = mutableSetOf<Long>()
+
+        /** Colours changed while a fetch is in flight, by id, so the fetch's answer can be corrected for them. */
+        val recolored = mutableMapOf<Long, HighlightColor>()
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -106,6 +110,26 @@ class DefaultHighlightsRepository @Inject constructor(
                     }
                     entry.journal.removeAll { it.id == id }
                     if (entry.inFlightFetch != null) entry.deletedIds += id
+                }
+            }
+            result
+        }.await()
+    }
+
+    override suspend fun recolorHighlight(bookUuid: String, id: Long, color: HighlightColor): HighlightRecolorResult {
+        val entry = entry(bookUuid)
+        // UNDISPATCHED reaches the FIFO mutex before returning, so writes reach the server in call order.
+        return applicationScope.async(start = CoroutineStart.UNDISPATCHED) {
+            val result = entry.writeMutex.withLock { sendRecolor(id, color) }
+            if (result is HighlightRecolorResult.Recolored) {
+                synchronized(entry.lock) {
+                    fun Highlight.recolored() = if (this.id == id) copy(color = color) else this
+                    val loaded = entry.state.value as? HighlightsState.Loaded
+                    if (loaded != null && loaded.highlights.any { it.id == id }) {
+                        entry.state.value = HighlightsState.Loaded(loaded.highlights.map { it.recolored() })
+                    }
+                    entry.journal.replaceAll { it.recolored() }
+                    if (entry.inFlightFetch != null) entry.recolored[id] = color
                 }
             }
             result
@@ -182,6 +206,35 @@ class DefaultHighlightsRepository @Inject constructor(
         }
     }
 
+    /** One PATCH of the highlight's colour. A 2xx answer is Recolored; a 401, 404 or other code is a typed failure. */
+    private suspend fun sendRecolor(id: Long, color: HighlightColor): HighlightRecolorResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(HIGHLIGHTS_CREATE_PATH)
+            ?: return@withContext HighlightRecolorResult.Failed(HighlightError.NoServer)
+        val url = builder.build().url.newBuilder()
+            .addPathSegment(id.toString())
+            .addPathSegment("color")
+            .build()
+        val request = builder.url(url).patch(HighlightRecolorRequestDto(color.token).toJsonRequest()).build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                when {
+                    response.isSuccessful -> HighlightRecolorResult.Recolored
+                    response.code == HTTP_UNAUTHORIZED -> HighlightRecolorResult.Failed(HighlightError.SessionExpired)
+                    else -> HighlightRecolorResult.Failed(HighlightError.Http(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server to recolour a highlight", ex)
+            HighlightRecolorResult.Failed(HighlightError.Unreachable)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure recolouring a highlight", ex)
+            HighlightRecolorResult.Failed(HighlightError.UnexpectedResponse)
+        }
+    }
+
     /**
      * Starts a GET, or returns the one already in flight. It runs in the application scope, not the caller's. The in-flight
      * slot is cleared in the same lock as the state write, so a caller that sees Failed always starts a new fetch.
@@ -191,6 +244,7 @@ class DefaultHighlightsRepository @Inject constructor(
             entry.inFlightFetch?.takeIf { !it.isCompleted }?.let { return it }
             entry.journal.clear()
             entry.deletedIds.clear()
+            entry.recolored.clear()
             applicationScope.async(start = CoroutineStart.LAZY) {
                 // A retry after a failure shows progress; a loaded list stays on screen while it refreshes.
                 synchronized(entry.lock) {
@@ -199,12 +253,13 @@ class DefaultHighlightsRepository @Inject constructor(
                 val fetched = get(uuid)
                 synchronized(entry.lock) {
                     val outcome = if (fetched is HighlightsState.Loaded) {
-                        // A row saved while this GET ran may be missing from its answer, and a row deleted while it ran
-                        // may still be in it, so both are corrected.
+                        // A row saved while this GET ran may be missing from its answer, a row deleted while it ran
+                        // may still be in it, and a colour changed while it ran may be stale, so all three are corrected.
                         val ids = fetched.highlights.mapTo(HashSet()) { it.id }
                         HighlightsState.Loaded(
                             (fetched.highlights + entry.journal.filter { it.id !in ids })
-                                .filterNot { it.id in entry.deletedIds },
+                                .filterNot { it.id in entry.deletedIds }
+                                .map { row -> entry.recolored[row.id]?.let { row.copy(color = it) } ?: row },
                         )
                     } else {
                         fetched
@@ -216,6 +271,7 @@ class DefaultHighlightsRepository @Inject constructor(
                     }
                     entry.journal.clear()
                     entry.deletedIds.clear()
+                    entry.recolored.clear()
                     entry.inFlightFetch = null
                     outcome
                 }
@@ -264,7 +320,10 @@ class DefaultHighlightsRepository @Inject constructor(
         /** Relative, so it resolves beneath the server's base URL. */
         const val HIGHLIGHTS_PATH = "api/highlights/book"
 
-        /** Relative, so it resolves beneath the server's base URL. A create POSTs here; a delete appends the id. */
+        /**
+         * Relative, so it resolves beneath the server's base URL. A create POSTs here; a delete appends the id; a recolour
+         * appends the id and `color`.
+         */
         const val HIGHLIGHTS_CREATE_PATH = "api/highlights"
 
         const val HTTP_BAD_REQUEST = 400

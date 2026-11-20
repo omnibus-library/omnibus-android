@@ -76,6 +76,7 @@ internal object ReaderHighlightMenuTags {
  * @param menu The highlights under the tap, and which one the menu shows.
  * @param theme The reading theme, which sets the menu's colours.
  * @param onStep Moves the active highlight by one place: -1 for previous, 1 for next.
+ * @param onColor A colour was chosen for the active highlight; the checked one too.
  * @param onCopy Copy was chosen, with the active highlight's text.
  * @param onDelete Delete was chosen for the active highlight.
  * @param onDismiss A touch outside the menu was lifted.
@@ -85,6 +86,7 @@ internal fun ReaderHighlightMenuOverlay(
     menu: HighlightMenu,
     theme: ReaderTheme,
     onStep: (delta: Int) -> Unit,
+    onColor: (HighlightColor) -> Unit,
     onCopy: (text: String) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
@@ -127,14 +129,15 @@ internal fun ReaderHighlightMenuOverlay(
             boundsWidth = maxWidth.value,
             boundsHeight = maxHeight.value,
         )?.let { placement ->
-            ReaderHighlightMenu(menu, placement, colors, onStep, onCopy, onDelete)
+            ReaderHighlightMenu(menu, placement, colors, onStep, onColor, onCopy, onDelete)
         }
     }
 }
 
 /**
  * The menu's body and tail, with the "N of M" row above the toolbar when [menu] has a switcher. The toolbar holds the
- * five colours, with a check on the active one, Copy when the active highlight has text, and Delete.
+ * five colours, which recolour the active highlight, with a check on the active one, Copy when the active highlight has
+ * text, and Delete.
  */
 @Composable
 private fun ReaderHighlightMenu(
@@ -142,6 +145,7 @@ private fun ReaderHighlightMenu(
     placement: HighlightMenuPlacement,
     colors: ReaderChromeColors,
     onStep: (delta: Int) -> Unit,
+    onColor: (HighlightColor) -> Unit,
     onCopy: (text: String) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -201,7 +205,7 @@ private fun ReaderHighlightMenu(
                             Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .selectable(selected = selected, role = Role.Button, onClick = {})
+                                .selectable(selected = selected, role = Role.Button, onClick = { onColor(color) })
                                 .semantics { contentDescription = label },
                             contentAlignment = Alignment.Center,
                         ) {

@@ -91,6 +91,7 @@ class ReaderHighlightMenuLayerTest {
         menu: MutableState<HighlightMenu?>,
         under: @Composable () -> Unit = {},
         onStep: (Int) -> Unit = { delta -> menu.value = menu.value?.stepped(delta) },
+        onColor: (HighlightColor) -> Unit = {},
         onCopy: (String) -> Unit = {},
         onDelete: () -> Unit = {},
         onDismiss: () -> Unit = {},
@@ -104,6 +105,7 @@ class ReaderHighlightMenuLayerTest {
                             menu = current,
                             theme = ReaderTheme.Light,
                             onStep = onStep,
+                            onColor = onColor,
                             onCopy = onCopy,
                             onDelete = onDelete,
                             onDismiss = onDismiss,
@@ -322,6 +324,21 @@ class ReaderHighlightMenuLayerTest {
         rule.waitForIdle()
 
         assertEquals("Delete should call back exactly once", 1, deletes.size)
+    }
+
+    // TC-20 (#301)
+    @Test
+    fun issue301_tc20_tappingASwatchCallsBackWithItsColour() {
+        val menu = mutableStateOf<HighlightMenu?>(null)
+        val colours = mutableListOf<HighlightColor>()
+        setOverlay(menu, onColor = { colours += it })
+        showMenu(menu) { width, height -> HighlightMenu(listOf(highlight(width, height, HighlightColor.Amber))) }
+
+        rule.onNodeWithContentDescription(SWATCH_NAMES[HighlightColor.Green.ordinal]).performClick()
+        rule.onNodeWithContentDescription(SWATCH_NAMES[HighlightColor.Amber.ordinal]).performClick()
+        rule.waitForIdle()
+
+        assertEquals(listOf(HighlightColor.Green, HighlightColor.Amber), colours)
     }
 
     // TC-32
