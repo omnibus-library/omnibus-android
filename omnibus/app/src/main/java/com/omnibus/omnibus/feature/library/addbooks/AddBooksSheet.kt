@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library.addbooks
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -39,8 +42,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
@@ -67,14 +72,46 @@ internal val OmnibusPalette.addBooksSecondaryInk: Color
 private const val DISABLED_ALPHA = 0.4f
 
 /**
- * The Add books bottom sheet. Opens at half height and drags to full. Done and an option hide the sheet first, then report.
+ * The width from which Add books is a centered dialog rather than a bottom sheet. It is the shell's own 600 dp rail
+ * breakpoint (`ShellNavigationLayout.kt`), so the sheet and the navigation change together. Material keeps bottom sheets
+ * for compact windows, where a 640 dp sheet would float at the bottom of a wide, tall window.
+ */
+internal val ADD_BOOKS_CENTERED_MIN_WIDTH: Dp = 600.dp
+
+/** The width of the centered dialog. */
+private val DialogWidth = 448.dp
+
+/** The corner radius of the centered dialog: Material's large container shape. */
+private val DialogRadius = 28.dp
+
+/**
+ * The Add books sheet: a bottom sheet in a compact window, and from [ADD_BOOKS_CENTERED_MIN_WIDTH] up a [centered] dialog
+ * with the same content. Either closes through [onClose] or reports an option through [onSelect].
  *
  * @param onSelect Called with the kind of an option the user tapped, after the sheet has hidden.
  * @param onClose Called after the sheet has hidden for Done, the scrim, a swipe down or Back.
+ * @param centered Whether to show the dialog rather than the bottom sheet. Tests pass it to force either layout.
+ */
+@Composable
+internal fun AddBooksSheet(
+    options: List<AddBooksOption>,
+    onSelect: (AddBooksOptionKind) -> Unit,
+    onClose: () -> Unit,
+    centered: Boolean = LocalWindowInfo.current.containerDpSize.width >= ADD_BOOKS_CENTERED_MIN_WIDTH,
+) {
+    if (centered) {
+        AddBooksDialog(options, onSelect, onClose)
+    } else {
+        AddBooksBottomSheet(options, onSelect, onClose)
+    }
+}
+
+/**
+ * The Add books bottom sheet. Opens at half height and drags to full. Done and an option hide the sheet first, then report.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AddBooksSheet(
+private fun AddBooksBottomSheet(
     options: List<AddBooksOption>,
     onSelect: (AddBooksOptionKind) -> Unit,
     onClose: () -> Unit,
@@ -104,6 +141,43 @@ internal fun AddBooksSheet(
             // Filling the sheet's height gives it a half-height detent even though three rows are short (R8).
             modifier = Modifier.fillMaxHeight(),
         )
+    }
+}
+
+/** The Add books dialog: [AddBooksDialogCard] centered over a scrim. A dialog has no slide to wait for, so taps report at once. */
+@Composable
+private fun AddBooksDialog(
+    options: List<AddBooksOption>,
+    onSelect: (AddBooksOptionKind) -> Unit,
+    onClose: () -> Unit,
+) {
+    Dialog(onDismissRequest = onClose) {
+        AddBooksDialogCard(options, onSelect, onDone = onClose, modifier = Modifier.testTag(AddBooksTestTags.SHEET))
+    }
+}
+
+/**
+ * The dialog's card: [AddBooksSheetContent] on the sheet's background, [DialogWidth] wide and as tall as its rows.
+ *
+ * @param onSelect Called with the kind of an enabled option the user tapped.
+ * @param onDone Called when the user taps Done.
+ */
+@Composable
+internal fun AddBooksDialogCard(
+    options: List<AddBooksOption>,
+    onSelect: (AddBooksOptionKind) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OmnibusTheme.palette
+    Surface(
+        modifier = modifier.width(DialogWidth),
+        shape = RoundedCornerShape(DialogRadius),
+        color = palette.bg0,
+        contentColor = palette.ink0,
+        border = BorderStroke(0.5.dp, palette.line2),
+    ) {
+        AddBooksSheetContent(options, onSelect, onDone, Modifier.padding(top = Spacing.md))
     }
 }
 

@@ -28,7 +28,7 @@ class AddBooksSheetTest {
         val closes = mutableListOf<Unit>()
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                AddBooksSheet(options = allEnabled, onSelect = { selected += it }, onClose = { closes += Unit })
+                AddBooksSheet(options = allEnabled, onSelect = { selected += it }, onClose = { closes += Unit }, centered = false)
             }
         }
         val scan = AddBooksTestTags.option(AddBooksOptionKind.Scan)
@@ -49,7 +49,7 @@ class AddBooksSheetTest {
         val closes = mutableListOf<Unit>()
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
-                AddBooksSheet(options = allEnabled, onSelect = { selected += it }, onClose = { closes += Unit })
+                AddBooksSheet(options = allEnabled, onSelect = { selected += it }, onClose = { closes += Unit }, centered = false)
             }
         }
         rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithTag(AddBooksTestTags.DONE).fetchSemanticsNodes().isNotEmpty() }
@@ -59,5 +59,26 @@ class AddBooksSheetTest {
         rule.waitForIdle()
 
         assertTrue("Done should not select an option", selected.isEmpty())
+    }
+
+    // TC-22
+    @Test
+    fun issue319_tc22_centeredDialogReportsAnOptionAndClosesWithDone() {
+        val selected = mutableListOf<AddBooksOptionKind>()
+        val closes = mutableListOf<Unit>()
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                AddBooksSheet(options = allEnabled, onSelect = { selected += it }, onClose = { closes += Unit }, centered = true)
+            }
+        }
+        val scan = AddBooksTestTags.option(AddBooksOptionKind.Scan)
+        rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithTag(scan).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.onNodeWithTag(scan).performClick()
+        rule.waitUntil(timeoutMillis = 5_000) { selected.isNotEmpty() }
+        assertEquals(listOf(AddBooksOptionKind.Scan), selected)
+
+        rule.onNodeWithTag(AddBooksTestTags.DONE).performClick()
+        rule.waitUntil(timeoutMillis = 5_000) { closes.size == 1 }
     }
 }
