@@ -75,6 +75,9 @@
     <string name="add_books_wishlist_title">Add to your wishlist</string>
     <string name="add_books_wishlist_description">Find a book you want but don\'t own yet.</string>
 
+    <!-- Scan a barcode (#317) -->
+    <string name="add_books_scan_offline">Unavailable offline. Looking up a book needs a connection.</string>
+
     <!-- Library -->
     <string name="library_title">Library</string>
     <string name="library_all_books">All books</string>

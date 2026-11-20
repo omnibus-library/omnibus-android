@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -90,18 +92,19 @@ class AddBooksSheetContentTest {
 
     // TC-13
     @Test
-    fun issue319_tc13_offlineDisablesOnlyUpload() {
+    fun issue319_tc13_offlineDisablesUploadAndScan() {
         setContent(
             listOf(
                 AddBooksOption(AddBooksOptionKind.Upload, enabled = false),
-                AddBooksOption(AddBooksOptionKind.Scan, enabled = true),
+                AddBooksOption(AddBooksOptionKind.Scan, enabled = false),
                 AddBooksOption(AddBooksOptionKind.Wishlist, enabled = true),
             ),
         )
 
         rule.onNodeWithTag(AddBooksTestTags.option(AddBooksOptionKind.Upload)).assertIsNotEnabled()
-        rule.onNodeWithTag(AddBooksTestTags.option(AddBooksOptionKind.Scan)).assertIsEnabled()
+        rule.onNodeWithTag(AddBooksTestTags.option(AddBooksOptionKind.Scan)).assertIsNotEnabled()
         rule.onNodeWithTag(AddBooksTestTags.option(AddBooksOptionKind.Wishlist)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.add_books_scan_offline)).assertIsDisplayed()
     }
 
     // TC-14

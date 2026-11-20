@@ -275,7 +275,11 @@ private fun AddBooksOption.optionCopy(): OptionCopy = when (kind) {
         R.string.add_books_upload_title,
         if (enabled) R.string.add_books_upload_description else R.string.add_books_upload_offline,
     )
-    AddBooksOptionKind.Scan -> OptionCopy(R.drawable.ic_add_books_scan, R.string.add_books_scan_title, R.string.add_books_scan_description)
+    AddBooksOptionKind.Scan -> OptionCopy(
+        R.drawable.ic_add_books_scan,
+        R.string.add_books_scan_title,
+        if (enabled) R.string.add_books_scan_description else R.string.add_books_scan_offline,
+    )
     AddBooksOptionKind.Wishlist -> OptionCopy(
         R.drawable.ic_add_books_wishlist,
         R.string.add_books_wishlist_title,
