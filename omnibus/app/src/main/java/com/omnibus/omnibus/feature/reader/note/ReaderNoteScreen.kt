@@ -279,7 +279,21 @@ fun ReaderNoteScreen(
                             }
                         },
                     )
-
+                }
+            }
+            // Pinned under the scroll, so a long note never pushes the counter or the save error off screen.
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                        .padding(
+                            start = Spacing.lg,
+                            end = Spacing.lg,
+                            bottom = if (state.showsCounter || state.failed) Spacing.lg else 0.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
                     if (state.showsCounter) {
                         val count = noteLength(state.text)
                         val format = NumberFormat.getIntegerInstance()
