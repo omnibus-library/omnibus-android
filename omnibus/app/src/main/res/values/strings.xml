@@ -249,6 +249,7 @@
     <string name="reader_bookmark_untitled">Saved position</string>
     <string name="reader_highlight_save_failed">Couldn\'t save highlight</string>
     <string name="reader_selection_copy">Copy</string>
+    <string name="reader_highlight_share">Share</string>
     <string name="reader_highlight_position">%1$d of %2$d</string>
     <string name="reader_highlight_position_a11y">Highlight %1$d of %2$d</string>
     <string name="reader_highlight_previous">Previous highlight</string>

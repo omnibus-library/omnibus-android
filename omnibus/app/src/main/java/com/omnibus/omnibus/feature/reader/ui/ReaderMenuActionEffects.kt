@@ -7,6 +7,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import com.omnibus.omnibus.feature.quotecard.passageShareIntent
 import com.omnibus.omnibus.feature.reader.HighlightMenuAction
 import kotlinx.coroutines.launch
 
@@ -24,6 +25,7 @@ internal fun rememberMenuActionEffects(): (action: HighlightMenuAction, passage:
             when (action) {
                 HighlightMenuAction.Copy -> passage?.let { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, it))) } }
                 // #330 Share
+                HighlightMenuAction.Share -> passage?.let { context.startActivity(passageShareIntent(it)) }
                 else -> Unit
             }
         }

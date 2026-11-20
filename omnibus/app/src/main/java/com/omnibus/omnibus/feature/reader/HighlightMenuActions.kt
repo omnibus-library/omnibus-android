@@ -10,6 +10,11 @@ enum class HighlightMenuAction {
     // #331 Note
     // #333 Quote card
     // #330 Share
+    Share {
+        override fun isOfferedOn(target: HighlightMenuTarget): Boolean = target.hasText
+        override fun labelOn(target: HighlightMenuTarget): Int = R.string.reader_highlight_share
+        override val icon: Int = R.drawable.ic_book_detail_more_export
+    },
     Copy {
         override fun isOfferedOn(target: HighlightMenuTarget): Boolean = target.hasText
         override fun labelOn(target: HighlightMenuTarget): Int = R.string.reader_selection_copy
