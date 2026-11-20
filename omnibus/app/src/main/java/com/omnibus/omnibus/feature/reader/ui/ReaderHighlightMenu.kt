@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -151,26 +153,80 @@ private fun ReaderHighlightMenu(
 ) {
     val m = HighlightMenuMetrics
     val entry = menu.activeEntry
-    val shape = SelectionMenuShape(
+    HighlightMenuSurface(
+        left = placement.left,
+        top = placement.top,
+        width = placement.width,
+        height = placement.height,
         tailUp = placement.tailUp,
-        tailCenterX = placement.tailCenterX.dp,
-        corner = m.CORNER.dp,
-    )
+        tailCenterX = placement.tailCenterX,
+        colors = colors,
+        // A touch on the menu is the menu's, so the scrim beneath never sees it (the menu is hit first).
+        modifier = Modifier
+            .testTag(ReaderHighlightMenuTags.MENU)
+            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } },
+    ) {
+        if (menu.hasSwitcher) {
+            SwitcherRow(menu, colors, onStep)
+            HorizontalDivider(thickness = m.RULE.dp, color = colors.border)
+        }
+        HighlightMenuToolbar(selected = entry.color, colors = colors, onColor = onColor) {
+            entry.text?.takeIf { entry.canCopy }?.let { text -> HighlightMenuCopyAction(colors) { onCopy(text) } }
+            val deleteLabel = stringResource(R.string.reader_highlight_delete)
+            MenuTooltip(deleteLabel) {
+                Box(
+                    Modifier
+                        .size(m.SLOT.dp)
+                        .testTag(ReaderHighlightMenuTags.DELETE)
+                        .clickable(role = Role.Button, onClick = onDelete)
+                        .semantics { contentDescription = deleteLabel },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_reader_delete),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.danger,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The floating plate that both the highlight menu and the selection menu sit on: a rounded body with a tail, at [left]
+ * and [top] with the given [width] and [height] in the page's dp. The tail points up when [tailUp] (the menu is below
+ * its anchor), centred [tailCenterX] from the left edge. [content] fills the body, clear of the tail. [modifier] is
+ * applied to the plate, after its position and size.
+ */
+@Composable
+internal fun HighlightMenuSurface(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    tailUp: Boolean,
+    tailCenterX: Float,
+    colors: ReaderChromeColors,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val m = HighlightMenuMetrics
+    val shape = SelectionMenuShape(tailUp = tailUp, tailCenterX = tailCenterX.dp, corner = m.CORNER.dp)
     val tailPadding = m.TAIL_HEIGHT.dp
     Box(
         Modifier
-            .offset(placement.left.dp, placement.top.dp)
-            .size(placement.width.dp, placement.height.dp)
-            .testTag(ReaderHighlightMenuTags.MENU)
-            // A touch on the menu is the menu's, so the scrim beneath never sees it (the menu is hit first).
-            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } },
+            .offset(left.dp, top.dp)
+            .size(width.dp, height.dp)
+            .then(modifier),
     ) {
         // The shadow goes on the body alone, since a tail outline casts none before API 29.
         Box(
             Modifier
                 .fillMaxWidth()
-                .height((placement.height - m.TAIL_HEIGHT).dp)
-                .align(if (placement.tailUp) Alignment.BottomStart else Alignment.TopStart)
+                .height((height - m.TAIL_HEIGHT).dp)
+                .align(if (tailUp) Alignment.BottomStart else Alignment.TopStart)
                 .shadow(8.dp, RoundedCornerShape(m.CORNER.dp)),
         )
         Box(
@@ -182,93 +238,86 @@ private fun ReaderHighlightMenu(
             Column(
                 Modifier
                     .fillMaxSize()
-                    .padding(
-                        top = if (placement.tailUp) tailPadding else 0.dp,
-                        bottom = if (placement.tailUp) 0.dp else tailPadding,
-                    ),
+                    .padding(top = if (tailUp) tailPadding else 0.dp, bottom = if (tailUp) 0.dp else tailPadding),
+                content = content,
+            )
+        }
+    }
+}
+
+/**
+ * The toolbar row: the five colours in [HighlightColor] order, with a check on [selected] (none when it is null), a
+ * divider, then [actions]. Choosing a colour calls [onColor], the checked one too.
+ */
+@Composable
+internal fun HighlightMenuToolbar(
+    selected: HighlightColor?,
+    colors: ReaderChromeColors,
+    onColor: (HighlightColor) -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    val m = HighlightMenuMetrics
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(m.ROW_HEIGHT.dp)
+            .padding(horizontal = m.PADDING.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HighlightColor.entries.forEach { color ->
+            val label = stringResource(color.labelRes)
+            val isSelected = color == selected
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .selectable(selected = isSelected, role = Role.Button, onClick = { onColor(color) })
+                    .semantics { contentDescription = label },
+                contentAlignment = Alignment.Center,
             ) {
-                if (menu.hasSwitcher) {
-                    SwitcherRow(menu, colors, onStep)
-                    HorizontalDivider(thickness = m.RULE.dp, color = colors.border)
-                }
-                Row(
+                Box(
                     Modifier
-                        .fillMaxWidth()
-                        .height(m.ROW_HEIGHT.dp)
-                        .padding(horizontal = m.PADDING.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .size(26.dp)
+                        .background(color.tint(), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    HighlightColor.entries.forEach { color ->
-                        val label = stringResource(color.labelRes)
-                        val selected = color == entry.color
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .selectable(selected = selected, role = Role.Button, onClick = { onColor(color) })
-                                .semantics { contentDescription = label },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(26.dp)
-                                    .background(color.tint(), CircleShape)
-                                    .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (selected) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_check),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = Color.White,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Box(Modifier.padding(horizontal = 6.dp)) {
-                        Box(Modifier.size(width = 1.dp, height = 24.dp).background(colors.border))
-                    }
-                    entry.text?.takeIf { entry.canCopy }?.let { text ->
-                        val copyLabel = stringResource(R.string.reader_selection_copy)
-                        MenuTooltip(copyLabel) {
-                            Box(
-                                Modifier
-                                    .size(m.SLOT.dp)
-                                    .clickable(role = Role.Button) { onCopy(text) }
-                                    .semantics { contentDescription = copyLabel },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_reader_copy),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = colors.ink,
-                                )
-                            }
-                        }
-                    }
-                    val deleteLabel = stringResource(R.string.reader_highlight_delete)
-                    MenuTooltip(deleteLabel) {
-                        Box(
-                            Modifier
-                                .size(m.SLOT.dp)
-                                .testTag(ReaderHighlightMenuTags.DELETE)
-                                .clickable(role = Role.Button, onClick = onDelete)
-                                .semantics { contentDescription = deleteLabel },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_reader_delete),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = colors.danger,
-                            )
-                        }
+                    if (isSelected) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White,
+                        )
                     }
                 }
             }
+        }
+        Box(Modifier.padding(horizontal = 6.dp)) {
+            Box(Modifier.size(width = 1.dp, height = 24.dp).background(colors.border))
+        }
+        actions()
+    }
+}
+
+/** The Copy button, an icon in a 44 dp slot with a long-press tooltip, that calls [onCopy] when tapped. */
+@Composable
+internal fun HighlightMenuCopyAction(colors: ReaderChromeColors, onCopy: () -> Unit) {
+    val copyLabel = stringResource(R.string.reader_selection_copy)
+    MenuTooltip(copyLabel) {
+        Box(
+            Modifier
+                .size(HighlightMenuMetrics.SLOT.dp)
+                .clickable(role = Role.Button, onClick = onCopy)
+                .semantics { contentDescription = copyLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_reader_copy),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = colors.ink,
+            )
         }
     }
 }
@@ -340,7 +389,7 @@ private fun ArrowButton(icon: Int, label: String, colors: ReaderChromeColors, on
 /** Shows [label] above [content] on a long press. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MenuTooltip(label: String, content: @Composable () -> Unit) {
+internal fun MenuTooltip(label: String, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
         tooltip = { PlainTooltip { Text(label) } },

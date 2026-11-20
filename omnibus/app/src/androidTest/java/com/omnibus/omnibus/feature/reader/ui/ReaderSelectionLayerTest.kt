@@ -24,7 +24,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -155,7 +154,7 @@ class ReaderSelectionLayerTest {
 
     // TC-31
     @Test
-    fun issue54_tc31_theColoursAreButtonsLeftToRightWithCopyBelowThem() {
+    fun issue54_tc31_theColoursAreButtonsLeftToRightWithCopyAfterThem() {
         val selection = mutableStateOf<SelectionData?>(null)
         setOverlay(selection, menuShown = true)
         showSettled(selection)
@@ -166,11 +165,11 @@ class ReaderSelectionLayerTest {
         val lefts = swatches.map { it.getUnclippedBoundsInRoot().left.value }
         assertEquals("the colours should run left to right", lefts.sorted(), lefts)
 
-        val copy = rule.onNodeWithText("Copy")
+        val copy = rule.onNodeWithContentDescription("Copy")
         copy.assertHasClickAction()
-        val copyTop = copy.getUnclippedBoundsInRoot().top.value
+        val copyLeft = copy.getUnclippedBoundsInRoot().left.value
         swatches.forEach { swatch ->
-            assertTrue("Copy should sit below every colour", copyTop > swatch.getUnclippedBoundsInRoot().bottom.value)
+            assertTrue("Copy should sit after every colour", copyLeft > swatch.getUnclippedBoundsInRoot().right.value)
         }
     }
 
@@ -199,7 +198,7 @@ class ReaderSelectionLayerTest {
         setOverlay(selection, menuShown = true, onCopy = { copies++ })
         showSettled(selection)
 
-        rule.onNodeWithText("Copy").performClick()
+        rule.onNodeWithContentDescription("Copy").performClick()
         rule.waitForIdle()
 
         assertEquals(1, copies)

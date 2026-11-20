@@ -798,7 +798,7 @@ class ReaderScreenTest {
         rule.runOnIdle { state.value = state.value.copy(selection = settledSelection(width, height, text)) }
         rule.waitForIdle()
 
-        rule.onNodeWithText("Copy").performClick()
+        rule.onNodeWithContentDescription("Copy").performClick()
 
         rule.waitUntil(timeoutMillis = 5_000) { clipboardText() == text }
         assertEquals(1, copies.get())

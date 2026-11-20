@@ -1,17 +1,20 @@
 package com.omnibus.omnibus.feature.reader.ui
 
 /**
- * The selection menu's metrics, in dp, which equal the page's CSS px. The menu is a body with a tail pointing at the
- * selection, and [GAP] plus [KNOB_REACH] keeps the tail's tip clear of the handles' knobs.
+ * The selection menu's metrics, in dp, which equal the page's CSS px. The menu is the highlight menu's toolbar, the five
+ * colours and Copy, so it shares [HighlightMenuMetrics]. It is a body with a tail pointing at the selection, and [GAP]
+ * plus [KNOB_REACH] keeps the tail's tip clear of the handles' knobs.
  */
 internal object SelectionMenuMetrics {
-    const val MAX_WIDTH = 300f
-    const val BODY_HEIGHT = 112f
+    /** The menu's width: the toolbar's padding, five colours, the divider and Copy. A narrower page shrinks it. */
+    const val MAX_WIDTH = 2 * HighlightMenuMetrics.PADDING + 5 * HighlightMenuMetrics.SLOT +
+        HighlightMenuMetrics.DIVIDER_SPACE + HighlightMenuMetrics.SLOT
+    const val BODY_HEIGHT = HighlightMenuMetrics.ROW_HEIGHT
     const val TAIL_HEIGHT = 8f
     const val TAIL_WIDTH = 24f
 
     /** The body's corner radius, which the tail must clear. */
-    const val CORNER = 14f
+    const val CORNER = HighlightMenuMetrics.CORNER
 
     /** The gap between the selection's line edge and the menu's tip. */
     const val GAP = 8f

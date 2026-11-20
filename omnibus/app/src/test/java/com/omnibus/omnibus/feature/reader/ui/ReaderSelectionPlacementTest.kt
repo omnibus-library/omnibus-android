@@ -83,11 +83,11 @@ class ReaderSelectionPlacementTest : DescribeSpec({
     }
 
     describe("placing the selection menu over any selection and page width") {
-        it("#54 TC-7: is min(300, page width - 20) dp wide") {
+        it("#54 TC-7: is min(297, page width - 20) dp wide") {
             checkAll(arbBoundsWidth(), arbBoundsHeight(), arbRects()) { boundsWidth, boundsHeight, rects ->
                 val placement = selectionMenuPlacement(rects, boundsWidth, boundsHeight).shouldNotBeNull()
 
-                placement.width shouldBe (minOf(300f, boundsWidth - 20f) plusOrMinus 0.01f)
+                placement.width shouldBe (minOf(297f, boundsWidth - 20f) plusOrMinus 0.01f)
             }
         }
 
@@ -100,12 +100,12 @@ class ReaderSelectionPlacementTest : DescribeSpec({
             }
         }
 
-        it("#54 TC-7: keeps the tail's centre at least 26 dp from either end of the menu") {
+        it("#54 TC-7: keeps the tail's centre at least 40 dp from either end of the menu") {
             checkAll(arbBoundsWidth(), arbBoundsHeight(), arbRects()) { boundsWidth, boundsHeight, rects ->
                 val placement = selectionMenuPlacement(rects, boundsWidth, boundsHeight).shouldNotBeNull()
 
-                placement.tailCenterX shouldBeGreaterThanOrEqual (26f - 0.01f)
-                placement.tailCenterX shouldBeLessThanOrEqual (placement.width - 26f + 0.01f)
+                placement.tailCenterX shouldBeGreaterThanOrEqual (40f - 0.01f)
+                placement.tailCenterX shouldBeLessThanOrEqual (placement.width - 40f + 0.01f)
             }
         }
     }
