@@ -3,6 +3,7 @@ package com.omnibus.omnibus.data.highlights
 import android.util.Log
 import com.omnibus.omnibus.data.highlights.remote.HighlightCreateRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightDto
+import com.omnibus.omnibus.data.highlights.remote.HighlightNoteRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightRecolorRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightsJson
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
@@ -28,10 +29,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches, creates, deletes and recolours run in the
- * application scope, so leaving the page cannot cancel them. Writes for one book go to the server one at a time in call
- * order. A failed fetch never replaces a loaded list. Every failure becomes a state or a typed result, so no exception
- * leaves this class except cancellation.
+ * Default [HighlightsRepository]. Keeps one hot state per book uuid. Fetches, creates, deletes, recolours and note writes
+ * run in the application scope, so leaving the page cannot cancel them. Writes for one book go to the server one at a
+ * time in call order. A failed fetch never replaces a loaded list. Every failure becomes a state or a typed result, so
+ * no exception leaves this class except cancellation.
  */
 @Singleton
 class DefaultHighlightsRepository @Inject constructor(
@@ -48,7 +49,7 @@ class DefaultHighlightsRepository @Inject constructor(
         val state = MutableStateFlow<HighlightsState>(HighlightsState.Loading)
         var inFlightFetch: Deferred<HighlightsState>? = null
 
-        /** Serialises the writes (creates, deletes and recolours) for this book, so they reach the server in call order. */
+        /** Serialises the writes (creates, deletes, recolours and notes) for this book, so they reach the server in call order. */
         val writeMutex = Mutex()
 
         /** Rows saved while a fetch is in flight, so the fetch's answer can be corrected for them. */
@@ -59,6 +60,9 @@ class DefaultHighlightsRepository @Inject constructor(
 
         /** Colours changed while a fetch is in flight, by id, so the fetch's answer can be corrected for them. */
         val recolored = mutableMapOf<Long, HighlightColor>()
+
+        /** Notes changed while a fetch is in flight, by id, so the fetch's answer can be corrected for them. */
+        val noted = mutableMapOf<Long, String?>()
     }
 
     private val entries = ConcurrentHashMap<String, Entry>()
@@ -130,6 +134,26 @@ class DefaultHighlightsRepository @Inject constructor(
                     }
                     entry.journal.replaceAll { it.recolored() }
                     if (entry.inFlightFetch != null) entry.recolored[id] = color
+                }
+            }
+            result
+        }.await()
+    }
+
+    override suspend fun updateHighlightNote(bookUuid: String, id: Long, note: String?): HighlightNoteResult {
+        val entry = entry(bookUuid)
+        // UNDISPATCHED reaches the FIFO mutex before returning, so writes reach the server in call order.
+        return applicationScope.async(start = CoroutineStart.UNDISPATCHED) {
+            val result = entry.writeMutex.withLock { sendNote(id, note) }
+            if (result is HighlightNoteResult.Saved) {
+                synchronized(entry.lock) {
+                    fun Highlight.noted() = if (this.id == id) copy(note = note) else this
+                    val loaded = entry.state.value as? HighlightsState.Loaded
+                    if (loaded != null && loaded.highlights.any { it.id == id }) {
+                        entry.state.value = HighlightsState.Loaded(loaded.highlights.map { it.noted() })
+                    }
+                    entry.journal.replaceAll { it.noted() }
+                    if (entry.inFlightFetch != null) entry.noted[id] = note
                 }
             }
             result
@@ -235,6 +259,36 @@ class DefaultHighlightsRepository @Inject constructor(
         }
     }
 
+    /** One PATCH of the highlight's note. A 2xx answer is Saved; a 400, 401 or other code is a typed failure. */
+    private suspend fun sendNote(id: Long, note: String?): HighlightNoteResult = withContext(ioDispatcher) {
+        val builder = omnibusHttpClient.request(HIGHLIGHTS_CREATE_PATH)
+            ?: return@withContext HighlightNoteResult.Failed(HighlightError.NoServer)
+        val url = builder.build().url.newBuilder()
+            .addPathSegment(id.toString())
+            .addPathSegment("note")
+            .build()
+        val request = builder.url(url).patch(HighlightNoteRequestDto(note).toJsonRequest()).build()
+
+        try {
+            omnibusHttpClient.execute(request).use { response ->
+                when {
+                    response.isSuccessful -> HighlightNoteResult.Saved
+                    response.code == HTTP_BAD_REQUEST -> HighlightNoteResult.Failed(HighlightError.Rejected)
+                    response.code == HTTP_UNAUTHORIZED -> HighlightNoteResult.Failed(HighlightError.SessionExpired)
+                    else -> HighlightNoteResult.Failed(HighlightError.Http(response.code))
+                }
+            }
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: IOException) {
+            Log.w(TAG, "Unable to reach the server to save a highlight's note", ex)
+            HighlightNoteResult.Failed(HighlightError.Unreachable)
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unexpected failure saving a highlight's note", ex)
+            HighlightNoteResult.Failed(HighlightError.UnexpectedResponse)
+        }
+    }
+
     /**
      * Starts a GET, or returns the one already in flight. It runs in the application scope, not the caller's. The in-flight
      * slot is cleared in the same lock as the state write, so a caller that sees Failed always starts a new fetch.
@@ -245,6 +299,7 @@ class DefaultHighlightsRepository @Inject constructor(
             entry.journal.clear()
             entry.deletedIds.clear()
             entry.recolored.clear()
+            entry.noted.clear()
             applicationScope.async(start = CoroutineStart.LAZY) {
                 // A retry after a failure shows progress; a loaded list stays on screen while it refreshes.
                 synchronized(entry.lock) {
@@ -254,12 +309,16 @@ class DefaultHighlightsRepository @Inject constructor(
                 synchronized(entry.lock) {
                     val outcome = if (fetched is HighlightsState.Loaded) {
                         // A row saved while this GET ran may be missing from its answer, a row deleted while it ran
-                        // may still be in it, and a colour changed while it ran may be stale, so all three are corrected.
+                        // may still be in it, and a colour or a note changed while it ran may be stale, so all four are
+                        // corrected.
                         val ids = fetched.highlights.mapTo(HashSet()) { it.id }
                         HighlightsState.Loaded(
                             (fetched.highlights + entry.journal.filter { it.id !in ids })
                                 .filterNot { it.id in entry.deletedIds }
-                                .map { row -> entry.recolored[row.id]?.let { row.copy(color = it) } ?: row },
+                                .map { row -> entry.recolored[row.id]?.let { row.copy(color = it) } ?: row }
+                                .map { row ->
+                                    if (entry.noted.containsKey(row.id)) row.copy(note = entry.noted[row.id]) else row
+                                },
                         )
                     } else {
                         fetched
@@ -272,6 +331,7 @@ class DefaultHighlightsRepository @Inject constructor(
                     entry.journal.clear()
                     entry.deletedIds.clear()
                     entry.recolored.clear()
+                    entry.noted.clear()
                     entry.inFlightFetch = null
                     outcome
                 }
@@ -322,7 +382,7 @@ class DefaultHighlightsRepository @Inject constructor(
 
         /**
          * Relative, so it resolves beneath the server's base URL. A create POSTs here; a delete appends the id; a recolour
-         * appends the id and `color`.
+         * appends the id and `color`; a note appends the id and `note`.
          */
         const val HIGHLIGHTS_CREATE_PATH = "api/highlights"
 

@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * In-memory [HighlightsRepository] for consumers' tests. It follows [DefaultHighlightsRepository]'s rules: a loaded list
  * never regresses, and a refresh from Failed shows Loading while it runs. A saved create is appended to a loaded list, as
  * production does. A deleted row leaves a loaded list, as production does. A confirmed recolour changes the row's colour in a
- * loaded list, as production does. There is no HTTP.
+ * loaded list, as production does. A confirmed note write changes the row's note in a loaded list, as production does.
+ * There is no HTTP.
  *
  * Unlike production, collecting [getHighlightsFlow] does not fetch. Call [seed] or [refresh] first. A create is answered by
  * [onAdd], which a test replaces to script its result. A delete is answered by [onDelete]. A recolour is answered by
- * [onRecolor].
+ * [onRecolor]. A note write is answered by [onNote].
  */
 class TestHighlightsRepository : HighlightsRepository {
 
@@ -106,6 +107,27 @@ class TestHighlightsRepository : HighlightsRepository {
             (state.value as? HighlightsState.Loaded)?.let { loaded ->
                 state.value = HighlightsState.Loaded(
                     loaded.highlights.map { if (it.id == id) it.copy(color = color) else it },
+                )
+            }
+        }
+        return result
+    }
+
+    /** Every note write, as (id, note), in call order. Recorded before [onNote] runs, so a gated call is listed at once. */
+    val notes = mutableListOf<Pair<Long, String?>>()
+
+    /** Answers a note write. */
+    var onNote: suspend (bookUuid: String, id: Long, note: String?) -> HighlightNoteResult =
+        { _, _, _ -> unscripted("updateHighlightNote") }
+
+    override suspend fun updateHighlightNote(bookUuid: String, id: Long, note: String?): HighlightNoteResult {
+        notes += id to note
+        val result = onNote(bookUuid, id, note)
+        if (result is HighlightNoteResult.Saved) {
+            val state = stateFor(bookUuid)
+            (state.value as? HighlightsState.Loaded)?.let { loaded ->
+                state.value = HighlightsState.Loaded(
+                    loaded.highlights.map { if (it.id == id) it.copy(note = note) else it },
                 )
             }
         }

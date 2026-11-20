@@ -813,4 +813,133 @@ class DefaultHighlightsRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("updating a note") {
+
+        it("#331 TC-1: sends PATCH for the id with the note in the body") {
+            withScriptedServer {
+                val id = randomLong()
+                val note = randomString()
+                script.answer("PATCH", reply(204))
+
+                sut(server).updateHighlightNote(randomString(), id, note)
+
+                val request = server.nextRequest()
+                request.method shouldBe "PATCH"
+                request.url.encodedPath shouldBe "/api/highlights/$id/note"
+                val body = request.json()
+                body.keys shouldBe setOf("note")
+                body["note"]!!.jsonPrimitive.content shouldBe note
+            }
+        }
+
+        it("#331 TC-1: sends an empty object for a null note") {
+            withScriptedServer {
+                script.answer("PATCH", reply(204))
+
+                sut(server).updateHighlightNote(randomString(), randomLong(), null)
+
+                server.nextRequest().body!!.utf8() shouldBe "{}"
+            }
+        }
+
+        it("#331 TC-2: returns the typed result for each answer") {
+            withScriptedServer {
+                val answers = listOf(
+                    reply(200) to HighlightNoteResult.Saved,
+                    reply(204) to HighlightNoteResult.Saved,
+                    reply(400) to HighlightNoteResult.Failed(HighlightError.Rejected),
+                    reply(401) to HighlightNoteResult.Failed(HighlightError.SessionExpired),
+                    reply(404) to HighlightNoteResult.Failed(HighlightError.Http(404)),
+                    reply(500) to HighlightNoteResult.Failed(HighlightError.Http(500)),
+                    dropped() to HighlightNoteResult.Failed(HighlightError.Unreachable),
+                )
+                checkAll(Exhaustive.collection(answers)) { (answer, expected) ->
+                    script.answer("PATCH", answer)
+
+                    sut(server).updateHighlightNote(randomString(), randomLong(), randomString()) shouldBe expected
+                }
+            }
+        }
+
+        context("when no server is saved") {
+            it("#331 TC-2: returns NoServer") {
+                sut().updateHighlightNote(randomString(), randomLong(), randomString()) shouldBe
+                    HighlightNoteResult.Failed(HighlightError.NoServer)
+            }
+        }
+
+        context("when a list has loaded") {
+            it("#331 TC-3: replaces only the row's note") {
+                withMockServer { server ->
+                    val passage = """{"id":2,"text":"a passage","note":"an old note","color":"amber","epub_cfi_range":"epubcfi(/6/4)"}"""
+                    server.enqueue(reply(200, "[${row(1)},$passage,${row(3)}]"))
+                    server.enqueue(reply(204))
+                    val repository = sut(server)
+                    val uuid = randomString()
+                    val note = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        val before = awaitItem() as HighlightsState.Loaded
+
+                        repository.updateHighlightNote(uuid, 2, note)
+
+                        awaitItem() shouldBe HighlightsState.Loaded(
+                            before.highlights.map { if (it.id == 2L) it.copy(note = note) else it },
+                        )
+                    }
+                }
+            }
+
+            it("#331 TC-3: leaves a loaded list as it was") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, "[${row(1)}]"))
+                    server.enqueue(reply(500))
+                    val repository = sut(server)
+                    val uuid = randomString()
+
+                    repository.getHighlightsFlow(uuid).test {
+                        awaitItem() shouldBe loaded(1)
+
+                        repository.updateHighlightNote(uuid, 1, randomString()) shouldBe
+                            HighlightNoteResult.Failed(HighlightError.Http(500))
+
+                        expectNoEvents()
+                    }
+                }
+            }
+
+            context("when a fetch is in flight") {
+                it("#331 TC-4: a fetch in flight cannot put the old note back") {
+                    withScriptedServer {
+                        val repository = threadedSut(server, scope)
+                        val uuid = randomString()
+                        val note = randomString()
+                        val gate = CountDownLatch(1)
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"))
+                        script.answer("GET", reply(200, "[${row(1)},${row(2)}]"), gate)
+                        script.answer("PATCH", reply(204))
+
+                        repository.getHighlightsFlow(uuid).test(timeout = AWAIT_TIMEOUT) {
+                            awaitState(loaded(1, 2))
+                            server.nextRequest()
+
+                            val refresh = scope.async { repository.refresh(uuid) }
+                            // The refresh's GET is on the server and held on its gate while the note save succeeds.
+                            server.nextRequest()
+                            repository.updateHighlightNote(uuid, 2, note)
+
+                            gate.countDown()
+                            refresh.await()
+                            cancelAndIgnoreRemainingEvents()
+                        }
+
+                        repository.getHighlightsFlow(uuid).first() shouldBe HighlightsState.Loaded(
+                            loaded(1, 2).highlights.map { if (it.id == 2L) it.copy(note = note) else it },
+                        )
+                    }
+                }
+            }
+        }
+    }
 })

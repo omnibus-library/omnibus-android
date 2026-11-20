@@ -43,6 +43,9 @@ sealed interface HighlightsState {
     data class Loaded(val highlights: List<Highlight>) : HighlightsState
 }
 
+/** The longest note the server accepts, in code points. */
+const val HIGHLIGHT_NOTE_MAX_LENGTH = 4096
+
 /** The reader's highlights per book. Every failure is a state, so nothing throws except cancellation. */
 interface HighlightsRepository {
 
@@ -73,6 +76,13 @@ interface HighlightsRepository {
      * write for the book.
      */
     suspend fun recolorHighlight(bookUuid: String, id: Long, color: HighlightColor): HighlightRecolorResult
+
+    /**
+     * Sets the note on the highlight with server [id] in [bookUuid] to [note] in the application scope, so leaving the
+     * reader cannot cancel it, and replaces the note in a loaded list once the server confirms. A null [note] removes
+     * it. Ordered after any earlier write for the book.
+     */
+    suspend fun updateHighlightNote(bookUuid: String, id: Long, note: String?): HighlightNoteResult
 }
 
 /** The outcome of a highlight create. A failed create leaves the loaded list as it was. */
@@ -102,7 +112,16 @@ sealed interface HighlightRecolorResult {
     data class Failed(val error: HighlightError) : HighlightRecolorResult
 }
 
-/** Why a highlight write (a create, a delete or a recolour) failed. */
+/** The outcome of a note write. A failed write leaves the loaded list as it was. */
+sealed interface HighlightNoteResult {
+    /** The server stored the note. */
+    data object Saved : HighlightNoteResult
+
+    /** The write did not take. [error] says why; a 400 is `Rejected` and a 404 is `Http(404)`. */
+    data class Failed(val error: HighlightError) : HighlightNoteResult
+}
+
+/** Why a highlight write (a create, a delete, a recolour or a note) failed. */
 sealed interface HighlightError {
     /** No server is configured, so no request was made. */
     data object NoServer : HighlightError
@@ -118,7 +137,7 @@ sealed interface HighlightError {
      */
     data object BookNotFound : HighlightError
 
-    /** The server answered 400, so it rejected the highlight's fields. */
+    /** The server answered 400, so it rejected the highlight's fields or the note's length. */
     data object Rejected : HighlightError
 
     /** The server answered another non-2xx code. */
