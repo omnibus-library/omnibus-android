@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.13](https://github.com/omnibus-library/omnibus-android/compare/v0.1.12...v0.1.13) (2026-11-20)
+
+
+### Features
+
+* **audiobook:** show Sync here progress and failure ([#313](https://github.com/omnibus-library/omnibus-android/issues/313)) ([8c18277](https://github.com/omnibus-library/omnibus-android/commit/8c18277b6ba3cfbce527f6a4453ce3e4510eb205))
+* **library:** open an Add books sheet from the masthead ([#320](https://github.com/omnibus-library/omnibus-android/issues/320)) ([0ea8702](https://github.com/omnibus-library/omnibus-android/commit/0ea87028d0edc87cf627379d9f03b3c368feac32))
+* **reader:** delete a highlight from the highlight menu ([#314](https://github.com/omnibus-library/omnibus-android/issues/314)) ([d9e4043](https://github.com/omnibus-library/omnibus-android/commit/d9e4043283141124fc999f2d4e4a25154f3f8d23))
+* **reader:** hold a highlight menu when a highlight is tapped ([#305](https://github.com/omnibus-library/omnibus-android/issues/305)) ([95a0187](https://github.com/omnibus-library/omnibus-android/commit/95a0187203ef8c1729e12f8fb08caa728b56f152))
+* **reader:** open a menu when a highlight is tapped ([#307](https://github.com/omnibus-library/omnibus-android/issues/307)) ([32ddf52](https://github.com/omnibus-library/omnibus-android/commit/32ddf5294360409598269ac5b9efce899e8675cc))
+* **reader:** recolour a highlight from the highlight menu ([#315](https://github.com/omnibus-library/omnibus-android/issues/315)) ([3320f0e](https://github.com/omnibus-library/omnibus-android/commit/3320f0ef14c9182ddcb589172463d634b008bef6))
+* **reader:** report every highlight under a tap and add menu rules ([#304](https://github.com/omnibus-library/omnibus-android/issues/304)) ([6b0513a](https://github.com/omnibus-library/omnibus-android/commit/6b0513a56a8bf104e08a734e8c4ad98cc585035f))
+
 ## [0.1.12](https://github.com/omnibus-library/omnibus-android/compare/v0.1.11...v0.1.12) (2026-11-19)
 
 
