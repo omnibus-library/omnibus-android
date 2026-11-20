@@ -77,6 +77,48 @@
 
     <!-- Scan a barcode (#317) -->
     <string name="add_books_scan_offline">Unavailable offline. Looking up a book needs a connection.</string>
+    <string name="scan_title">Scan a barcode</string>
+    <string name="scan_close">Close</string>
+    <string name="scan_back">Back</string>
+    <string name="scan_hint">Point at the barcode on the back cover</string>
+    <string name="scan_viewfinder_description">Camera viewfinder. Point at the barcode on the back cover.</string>
+    <string name="scan_not_isbn">That barcode isn\'t a book\'s ISBN. Look for the one on the back cover, starting 978 or 979.</string>
+    <string name="scan_looking_up">Looking up %1$s…</string>
+    <string name="scan_lookup_failed">Couldn\'t look that up.</string>
+    <string name="scan_try_again">Try again</string>
+    <string name="scan_enter_isbn">Enter ISBN</string>
+    <string name="scan_torch">Torch</string>
+    <string name="scan_torch_on">On</string>
+    <string name="scan_torch_off">Off</string>
+    <string name="scan_camera_unavailable">Camera unavailable</string>
+    <string name="scan_camera_unavailable_body">Omnibus needs camera access to read barcodes. You can still add a book by hand.</string>
+    <string name="scan_open_settings">Open settings</string>
+    <string name="scan_manual_title">Enter the ISBN</string>
+    <string name="scan_manual_hint">The 13-digit number under the barcode on the back cover.</string>
+    <string name="scan_manual_placeholder">ISBN</string>
+    <string name="scan_find_book">Find book</string>
+    <string name="scan_scan_instead">Scan instead</string>
+    <string name="scan_isbn_wrong_length">Enter a 10- or 13-digit ISBN.</string>
+    <string name="scan_isbn_bad_check_digit">ISBN has an invalid check digit</string>
+    <string name="scan_isbn_invalid_characters">ISBN contains invalid characters</string>
+    <string name="scan_outcome_title">Check in</string>
+    <string name="scan_badge_in_library">In your library</string>
+    <string name="scan_in_library_body">You have this one digitally. Checking in adds your print copy.</string>
+    <string name="scan_edition_note">Edition note (optional)</string>
+    <string name="scan_check_in">Check in this copy</string>
+    <string name="scan_scan_another">Scan another</string>
+    <string name="scan_badge_on_wishlist">On your wishlist</string>
+    <string name="scan_on_wishlist_body">Checking a copy in clears this book from your wishlist.</string>
+    <string name="scan_go_to_book_details">Go to Book Details</string>
+    <string name="scan_badge_already_owned">Already on your shelf</string>
+    <string name="scan_already_owned_body">You\'ve already checked in a physical copy of this book.</string>
+    <string name="scan_view_book">View book</string>
+    <string name="scan_cant_place_title">Can\'t place this book yet</string>
+    <string name="scan_cant_place_body">This ISBN isn\'t on a book in your library. Adding books you don\'t have yet is coming.</string>
+    <string name="scan_save_failed">Couldn\'t save that. Try again.</string>
+    <string name="scan_saving">Saving</string>
+    <string name="scan_success_checked_in">In your physical collection</string>
+    <string name="scan_success_off_wishlist">Off your wishlist, on your shelf</string>
 
     <!-- Library -->
     <string name="library_title">Library</string>
