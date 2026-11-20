@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.library
 
 import app.cash.turbine.test
 import com.omnibus.omnibus.data.library.Book
+import com.omnibus.omnibus.data.auth.CurrentUser
 import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.BookAvailability
@@ -35,6 +36,7 @@ import com.omnibus.omnibus.data.library.withRecord
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.TestConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksOptionKind
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
@@ -1160,6 +1162,60 @@ class LibraryViewModelTest : DescribeSpec({
 
                 viewModel.uiState.value.viewerId shouldBe null
                 viewModel.uiState.value.railShelves.shouldBeEmpty()
+            }
+        }
+    }
+
+    describe("#319 the Add books sheet") {
+        it("#319 TC-3: opens when the add button is tapped") {
+            val viewModel = sut()
+
+            viewModel.addBooksTapped()
+
+            viewModel.uiState.value.addBooksOpen shouldBe true
+        }
+
+        context("while it is open") {
+            it("#319 TC-4: closes when the sheet reports a close") {
+                val viewModel = sut()
+                viewModel.addBooksTapped()
+
+                viewModel.addBooksClosed()
+
+                viewModel.uiState.value.addBooksOpen shouldBe false
+            }
+        }
+    }
+
+    describe("#319 the Add books options") {
+        it("#319 TC-5: lists Upload only for a known user who can upload, over unknown, permitted and unpermitted users") {
+            checkAll(
+                Exhaustive.of<Pair<CurrentUser?, Boolean>>(
+                    null to false,
+                    randomCurrentUser().copy(canUpload = true) to true,
+                    randomCurrentUser().copy(canUpload = false) to false,
+                ),
+            ) { (user, expectedUpload) ->
+                val auth = TestAuthRepository().apply { currentUserState.value = user }
+                val viewModel = sut(auth = auth)
+
+                viewModel.uiState.value.addBooksOptions.any { it.kind == AddBooksOptionKind.Upload } shouldBe expectedUpload
+            }
+        }
+
+        context("while the sheet is open") {
+            it("#319 TC-6: dims Upload live as connectivity changes") {
+                val monitor = TestConnectivityMonitor(online = true)
+                val auth = TestAuthRepository().apply { currentUserState.value = randomCurrentUser().copy(canUpload = true) }
+                val viewModel = sut(monitor = monitor, auth = auth)
+                viewModel.addBooksTapped()
+                fun upload() = viewModel.uiState.value.addBooksOptions.single { it.kind == AddBooksOptionKind.Upload }
+
+                monitor.isOnline.value = false
+                upload().enabled shouldBe false
+
+                monitor.isOnline.value = true
+                upload().enabled shouldBe true
             }
         }
     }

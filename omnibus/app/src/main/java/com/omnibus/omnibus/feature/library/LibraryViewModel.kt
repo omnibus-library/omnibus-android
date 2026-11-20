@@ -22,6 +22,8 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.data.library.local.LibrarySortPreferenceStore
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.di.TimeSource
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksOption
+import com.omnibus.omnibus.feature.library.addbooks.addBooksOptions as addBooksOptionsFor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +94,9 @@ class LibraryViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            authRepository.currentUser.collect { user -> _uiState.update { it.copy(viewerId = user?.id) } }
+            authRepository.currentUser.collect { user ->
+                _uiState.update { it.copy(viewerId = user?.id, canUpload = user?.canUpload == true) }
+            }
         }
     }
 
@@ -179,6 +183,16 @@ class LibraryViewModel @Inject constructor(
     /** Clears the one-shot [LibraryUIState.unavailableBook] once the alert is dismissed. */
     fun unavailableDismissed() {
         _uiState.update { it.copy(unavailableBook = null) }
+    }
+
+    /** Opens the Add books sheet when the masthead's add button is tapped. */
+    fun addBooksTapped() {
+        _uiState.update { it.copy(addBooksOpen = true) }
+    }
+
+    /** Closes the Add books sheet: Done, an option, Back, the scrim or a swipe down. */
+    fun addBooksClosed() {
+        _uiState.update { it.copy(addBooksOpen = false) }
     }
 
     /**
@@ -405,6 +419,8 @@ class LibraryViewModel @Inject constructor(
  * @property unfoldedSeries The ids of the series unfolded in the grid. Cleared when grouping is turned off.
  * @property shelves Every shelf the user can see, unfiltered, in server order.
  * @property viewerId The signed-in user's id, or null while it is unknown or signed out.
+ * @property addBooksOpen Whether the Add books sheet is showing. Set by [LibraryViewModel.addBooksTapped], cleared by [LibraryViewModel.addBooksClosed].
+ * @property canUpload Whether the signed-in user may upload. False while the user is unknown, so Upload never flashes in.
  */
 data class LibraryUIState(
     val books: List<Book> = emptyList(),
@@ -429,6 +445,8 @@ data class LibraryUIState(
     val unfoldedSeries: Set<Long> = emptySet(),
     val shelves: List<ShelfPreview> = emptyList(),
     val viewerId: Long? = null,
+    val addBooksOpen: Boolean = false,
+    val canUpload: Boolean = false,
 ) {
 
     /** The grid's entries: each book, or with grouping on, each series in place of its first loaded book. */
@@ -444,6 +462,10 @@ data class LibraryUIState(
     /** The shelves the rail shows: [shelves] filtered for [viewerId] by [railShelvesOf], at most eight. */
     val railShelves: List<ShelfPreview>
         get() = railShelvesOf(shelves, viewerId)
+
+    /** The Add books sheet's rows for [canUpload] and [isOffline]. */
+    val addBooksOptions: List<AddBooksOption>
+        get() = addBooksOptionsFor(canUpload, isOffline)
 
     /** The page query for the current category, sort and direction. */
     fun toQuery(): BooksPageQuery = category.toQuery(sort, direction)

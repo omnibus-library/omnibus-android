@@ -177,7 +177,6 @@ private fun SignedInShellContent(
                         entry<LibraryRoot> {
                             LibraryScreen(
                                 onOpenBook = { navigator.navigateTo(BookDetailRoute(it), ShellTab.Library) },
-                                onAddBooks = { /* Add books sheet: later ticket */ },
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
                                 onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },

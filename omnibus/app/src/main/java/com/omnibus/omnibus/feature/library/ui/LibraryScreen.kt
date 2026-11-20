@@ -63,6 +63,7 @@ import com.omnibus.omnibus.data.library.SortDirection
 import com.omnibus.omnibus.feature.bookdetail.transition.BookCoverOrigin
 import com.omnibus.omnibus.feature.bookdetail.transition.rememberBookCoverOpener
 import com.omnibus.omnibus.feature.library.ContinueCard
+import com.omnibus.omnibus.feature.library.addbooks.AddBooksSheet
 import com.omnibus.omnibus.feature.library.LibraryScreenState
 import com.omnibus.omnibus.feature.library.LibraryUIError
 import com.omnibus.omnibus.feature.library.LibraryUIState
@@ -137,7 +138,6 @@ private val GRID_BOTTOM_GAP = 40.dp
  * the status bar and the shell's bottom overlay, behind a `bg0` scrim over the status bar.
  *
  * @param onOpenBook Called with the book's uuid when a cell is tapped.
- * @param onAddBooks Called when the masthead's add button is tapped.
  * @param onOpenReader Called with the book's uuid when a Continue card resumes reading.
  * @param onOpenPlayer Called with the book's uuid and saved file id when a Continue card resumes listening.
  * @param onOpenSeries Called with the series id and name when an unfolded series' "Series page" is tapped.
@@ -146,7 +146,6 @@ private val GRID_BOTTOM_GAP = 40.dp
 @Composable
 fun LibraryScreen(
     onOpenBook: (uuid: String) -> Unit,
-    onAddBooks: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenReader: (bookUuid: String) -> Unit = {},
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
@@ -168,7 +167,8 @@ fun LibraryScreen(
         onRefresh = viewModel::refresh,
         onLoadMore = viewModel::loadMoreIfNeeded,
         onOpenBook = onOpenBook,
-        onAddBooks = onAddBooks,
+        onAddBooks = viewModel::addBooksTapped,
+        onAddBooksClosed = viewModel::addBooksClosed,
         onTransientErrorShown = viewModel::transientErrorShown,
         modifier = modifier,
         onSelectCategory = viewModel::selectCategory,
@@ -219,6 +219,8 @@ fun LibraryScreen(
  * @param onOpenPlayer Called with the uuid and saved file id when a resume opens the player stub.
  * @param onResumeHandled Called once a pending resume has been passed to [onOpenReader] or [onOpenPlayer].
  * @param onUnavailableDismissed Called when the "can't open offline" alert is dismissed.
+ * @param onAddBooks Called when the masthead's add button is tapped.
+ * @param onAddBooksClosed Called when the Add books sheet closes, by Done, an option, Back, the scrim or a swipe.
  * @param reducedMotion Whether the system asks for no animation. Tests pass it to force either path.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -252,6 +254,7 @@ internal fun LibraryScreenContent(
     onOpenPlayer: (bookUuid: String, bookFileId: Long?) -> Unit = { _, _ -> },
     onResumeHandled: () -> Unit = {},
     onUnavailableDismissed: () -> Unit = {},
+    onAddBooksClosed: () -> Unit = {},
     reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val scope = rememberCoroutineScope()
@@ -367,6 +370,11 @@ internal fun LibraryScreenContent(
         }
 
         uiState.unavailableBook?.let { ContinueUnavailableDialog(book = it, onDismiss = onUnavailableDismissed) }
+
+        if (uiState.addBooksOpen) {
+            // Every option only closes the sheet for now; uploading, scanning and the wishlist come in #316 to #318.
+            AddBooksSheet(options = uiState.addBooksOptions, onSelect = { onAddBooksClosed() }, onClose = onAddBooksClosed)
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,

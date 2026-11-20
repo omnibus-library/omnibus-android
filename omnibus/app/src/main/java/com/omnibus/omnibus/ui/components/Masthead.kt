@@ -120,8 +120,8 @@ fun Masthead(
 }
 
 /**
- * The circular add control on the masthead. Its neutral fill keeps it quiet beside the title, and
- * the accent glyph marks it as the one action.
+ * The circular add control on the masthead: an accent book-with-plus in a neutral circle. Its touch target is
+ * 48 dp, wider than the 32 dp circle.
  *
  * @param onAddBooks Called once per tap, after a light haptic tick.
  */
@@ -149,7 +149,7 @@ fun MastheadAddButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_add_scan),
+            painter = painterResource(R.drawable.ic_add_book),
             contentDescription = null,
             tint = palette.accent,
             modifier = Modifier.size(17.dp),
