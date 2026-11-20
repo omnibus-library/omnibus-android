@@ -9,6 +9,7 @@ import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPage
 import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.LibraryCategory
+import com.omnibus.omnibus.data.library.LibraryChanges
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibrarySort
@@ -72,7 +73,8 @@ class LibraryViewModelTest : DescribeSpec({
         availability: BookAvailability = TestBookAvailability(),
         time: TimeSource = randomLong().let { now -> TimeSource { now } },
         auth: TestAuthRepository = TestAuthRepository(),
-    ) = LibraryViewModel(repository, sortStore, monitor, availability, time, auth)
+        changes: LibraryChanges = LibraryChanges(),
+    ) = LibraryViewModel(repository, sortStore, monitor, availability, time, auth, changes)
 
     fun pageOf(range: LongRange, cursor: String? = null) = page(*range.toList().toLongArray(), cursor = cursor)
 
@@ -861,6 +863,22 @@ class LibraryViewModelTest : DescribeSpec({
                 repository.seriesRequests shouldBe listOf(series, series)
                 viewModel.uiState.value.seriesBooks shouldBe mapOf(series to read)
             }
+        }
+    }
+
+    describe("a book added outside the Library") {
+        it("#336 TC-53: reloads the first page when the library changes") {
+            val repository = TestLibraryRepository()
+            repository.enqueue(pageOf(1L..60L, cursor = "c1"))
+            val changes = LibraryChanges()
+            val viewModel = sut(repository, changes = changes)
+            repository.enqueue(pageOf(100L..101L, cursor = "new"))
+
+            changes.notifyBooksChanged()
+
+            viewModel.bookIds() shouldBe listOf(100L, 101L)
+            viewModel.uiState.value.isInitialLoading shouldBe false
+            viewModel.uiState.value.scrollToTop shouldBe false
         }
     }
 
