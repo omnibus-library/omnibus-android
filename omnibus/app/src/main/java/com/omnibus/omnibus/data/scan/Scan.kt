@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.data.scan
 
+import kotlinx.serialization.json.JsonObject
+
 /** A library book an ISBN matched. [isbn] is the book's own ISBN, which can differ from the one in hand. */
 data class ScanBook(
     val uuid: String,
@@ -9,6 +11,23 @@ data class ScanBook(
     val hasPhysical: Boolean,
     val hasFiles: Boolean,
     val isbn: String?,
+)
+
+/**
+ * A provider's record of a book. [raw] is the server's object, sent back untouched on a write; the other fields are
+ * the parts the app shows.
+ */
+data class ProviderRecord(
+    val raw: JsonObject,
+    val isbn13: String,
+    val title: String,
+    val authors: List<String>,
+    val year: String?,
+    val firstPublishYear: Long?,
+    val publisher: String?,
+    val pages: Long?,
+    val series: String?,
+    val coverUrl: String?,
 )
 
 /** What an ISBN matched, as `POST api/scan/resolve` answers. */
@@ -22,7 +41,10 @@ sealed interface ScanOutcome {
     /** [book] is in the library as a digital copy only, so a physical copy can be checked in. */
     data class InLibraryUnowned(val book: ScanBook) : ScanOutcome
 
-    /** Any answer this version can't act on yet: not in the library, a close match, unresolved, or an unknown kind. */
+    /** The providers know the ISBN, but the library has no such book. [online] is the provider's record. */
+    data class NotInLibrary(val online: ProviderRecord) : ScanOutcome
+
+    /** Any answer this version can't act on yet: a close match, unresolved, or an unknown kind. */
     data object Unplaced : ScanOutcome
 }
 

@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.scan
 
+import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.testing.unscripted
 import kotlinx.coroutines.CompletableDeferred
 
@@ -30,6 +31,27 @@ class TestScanRepository : ScanRepository {
     /** When set, [checkIn] waits on it before taking its answer. */
     var checkInGate: CompletableDeferred<Unit>? = null
 
+    /** Every call to [addPhysicalOnly], in call order. */
+    val physicalOnlyCalls = mutableListOf<ProviderRecord>()
+
+    /** The answers [addPhysicalOnly] gives, one per call. */
+    val physicalOnlyAnswers = ArrayDeque<ScanResult<String>>()
+
+    /** When set, [addPhysicalOnly] waits on it before taking its answer. */
+    var physicalOnlyGate: CompletableDeferred<Unit>? = null
+
+    /** One recorded [addToWishlist] call. */
+    data class WishlistCall(val record: ProviderRecord, val source: WishlistSource)
+
+    /** Every call to [addToWishlist], in call order. */
+    val wishlistCalls = mutableListOf<WishlistCall>()
+
+    /** The answers [addToWishlist] gives, one per call. */
+    val wishlistAnswers = ArrayDeque<ScanResult<String>>()
+
+    /** When set, [addToWishlist] waits on it before taking its answer. */
+    var wishlistGate: CompletableDeferred<Unit>? = null
+
     override suspend fun resolve(isbn: String): ScanResult<ScanOutcome> {
         resolveCalls += isbn
         resolveGate?.await()
@@ -40,5 +62,17 @@ class TestScanRepository : ScanRepository {
         checkInCalls += CheckInCall(bookUuid, isbn, note)
         checkInGate?.await()
         return checkInAnswers.removeFirstOrNull() ?: unscripted("checkIn")
+    }
+
+    override suspend fun addPhysicalOnly(record: ProviderRecord): ScanResult<String> {
+        physicalOnlyCalls += record
+        physicalOnlyGate?.await()
+        return physicalOnlyAnswers.removeFirstOrNull() ?: unscripted("addPhysicalOnly")
+    }
+
+    override suspend fun addToWishlist(record: ProviderRecord, source: WishlistSource): ScanResult<String> {
+        wishlistCalls += WishlistCall(record, source)
+        wishlistGate?.await()
+        return wishlistAnswers.removeFirstOrNull() ?: unscripted("addToWishlist")
     }
 }

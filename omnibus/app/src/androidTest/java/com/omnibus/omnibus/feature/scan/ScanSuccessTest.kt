@@ -51,4 +51,33 @@ class ScanSuccessTest {
         assertEquals(1, scanAnother.size)
         assertEquals(listOf("new-1"), viewed)
     }
+
+    // TC-51
+    @Test
+    fun issue336_tc51_wishlistSuccessExplainsItself() {
+        val record = scanRecord()
+        val scanAnother = mutableListOf<Unit>()
+        val viewed = mutableListOf<String>()
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanScreenContent(
+                    uiState = ScanUIState(
+                        stage = ScanStage.Success(record.title, SuccessCover.Provider(record), "wish-new", SuccessKind.Wishlisted),
+                    ),
+                    camera = FakeBarcodeCamera(),
+                    actions = ScanActions(onScanAnother = { scanAnother += Unit }, onViewBook = { viewed += it }),
+                    wide = false,
+                    reducedMotion = true,
+                )
+            }
+        }
+
+        rule.onNodeWithText(scanText(R.string.scan_success_wishlisted)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_wishlisted_body)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_scan_another)).performClick()
+        rule.onNodeWithText(scanText(R.string.scan_view_book)).performClick()
+
+        assertEquals(1, scanAnother.size)
+        assertEquals(listOf("wish-new"), viewed)
+    }
 }

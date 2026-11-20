@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.scan.ScanRepository
 import com.omnibus.omnibus.data.scan.ScanResult
+import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.di.TimeSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -94,6 +95,58 @@ class ScanScreenViewModel @Inject constructor(
     /** Turns the torch on or off. */
     fun torchToggled() {
         _uiState.update { it.copy(torchOn = !it.torchOn) }
+    }
+
+    /** Adds the provider's record as a physical book, with its first copy checked in. A second tap while saving does nothing. */
+    fun addPhysicalTapped() {
+        val stage = _uiState.value.stage as? ScanStage.Outcome ?: return
+        val record = (stage.outcome as? ScanOutcome.NotInLibrary)?.online ?: return
+        if (stage.writing != null) return
+        _uiState.update { state -> state.copy(stage = stage.copy(writing = WritingAction.Physical, writeFailed = false)) }
+        viewModelScope.launch {
+            when (val result = scanRepository.addPhysicalOnly(record)) {
+                is ScanResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(stage = ScanStage.Success(record.title, SuccessCover.Provider(record), result.value, SuccessKind.CheckedIn))
+                    }
+                    _effects.trySend(ScanEffect.Confirm)
+                }
+                else -> _uiState.update { state ->
+                    val current = state.stage
+                    if (current is ScanStage.Outcome && current.writing == WritingAction.Physical) {
+                        state.copy(stage = current.copy(writing = null, writeFailed = true))
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
+    }
+
+    /** Puts the provider's record on the reader's wishlist, from a camera read or a typed ISBN. A second tap while saving does nothing. */
+    fun addToWishlistTapped() {
+        val stage = _uiState.value.stage as? ScanStage.Outcome ?: return
+        val record = (stage.outcome as? ScanOutcome.NotInLibrary)?.online ?: return
+        if (stage.writing != null) return
+        _uiState.update { state -> state.copy(stage = stage.copy(writing = WritingAction.Wishlist, writeFailed = false)) }
+        viewModelScope.launch {
+            when (val result = scanRepository.addToWishlist(record, stage.via.toWishlistSource())) {
+                is ScanResult.Success -> {
+                    _uiState.update { state ->
+                        state.copy(stage = ScanStage.Success(record.title, SuccessCover.Provider(record), result.value, SuccessKind.Wishlisted))
+                    }
+                    _effects.trySend(ScanEffect.Confirm)
+                }
+                else -> _uiState.update { state ->
+                    val current = state.stage
+                    if (current is ScanStage.Outcome && current.writing == WritingAction.Wishlist) {
+                        state.copy(stage = current.copy(writing = null, writeFailed = true))
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
     }
 
     /** Replaces the edition note of an outcome, unless a save is in flight. */
@@ -199,4 +252,10 @@ class ScanScreenViewModel @Inject constructor(
         /** How long a not-an-ISBN notice stays on the camera. */
         const val NOTICE_MILLIS = 3_000L
     }
+}
+
+/** The wishlist source of a write made from [FoundVia]: a camera read or a typed ISBN. */
+private fun FoundVia.toWishlistSource(): WishlistSource = when (this) {
+    FoundVia.Scan -> WishlistSource.Scan
+    FoundVia.Manual -> WishlistSource.Manual
 }

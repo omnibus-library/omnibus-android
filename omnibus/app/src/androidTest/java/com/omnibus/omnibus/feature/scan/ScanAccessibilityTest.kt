@@ -105,6 +105,23 @@ class ScanAccessibilityTest {
         assertEveryTargetIsAtLeast48dp()
     }
 
+    // TC-42
+    @Test
+    fun issue336_tc42_notInLibraryTargetsAreAtLeast48dp() {
+        setStage(ScanStage.Outcome(ScanOutcome.NotInLibrary(scanRecord()), "9781635575636", FoundVia.Scan))
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
+    // TC-42
+    @Test
+    fun issue336_tc42_wishlistSuccessTargetsAreAtLeast48dp() {
+        val record = scanRecord()
+        setStage(ScanStage.Success(record.title, SuccessCover.Provider(record), "wish-1", SuccessKind.Wishlisted))
+
+        assertEveryTargetIsAtLeast48dp()
+    }
+
     // TC-43
     @Test
     fun issue317_tc43_viewfinderTitleAnnouncesAndDescribesTheCamera() {

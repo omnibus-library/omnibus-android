@@ -55,6 +55,8 @@ data class ScanActions(
     val onTryAgain: () -> Unit = {},
     val onNoteChanged: (String) -> Unit = {},
     val onCheckIn: () -> Unit = {},
+    val onAddPhysical: () -> Unit = {},
+    val onAddToWishlist: () -> Unit = {},
     val onScanAnother: () -> Unit = {},
     val onViewBook: (String) -> Unit = {},
 )
@@ -88,6 +90,8 @@ fun ScanScreen(
             onTryAgain = viewModel::tryAgainTapped,
             onNoteChanged = viewModel::noteChanged,
             onCheckIn = viewModel::checkInTapped,
+            onAddPhysical = viewModel::addPhysicalTapped,
+            onAddToWishlist = viewModel::addToWishlistTapped,
             onScanAnother = viewModel::scanAnotherTapped,
             onViewBook = onViewBook,
         ),

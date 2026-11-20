@@ -30,11 +30,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.scan.ProviderRecord
 import com.omnibus.omnibus.data.scan.ScanBook
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.ui.components.FilledButton
 import com.omnibus.omnibus.ui.components.InlineError
 import com.omnibus.omnibus.ui.components.OmnibusTextField
+import com.omnibus.omnibus.ui.components.ProviderCover
 import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -82,12 +84,13 @@ internal fun ScanOutcomeStage(
             is ScanOutcome.AlreadyOwned -> BookOutcome(outcome.book, outcome, note, writing, writeFailed, actions, wide)
             is ScanOutcome.OnWishlist -> BookOutcome(outcome.book, outcome, note, writing, writeFailed, actions, wide)
             is ScanOutcome.InLibraryUnowned -> BookOutcome(outcome.book, outcome, note, writing, writeFailed, actions, wide)
+            is ScanOutcome.NotInLibrary -> ProviderOutcome(outcome.online, writing, writeFailed, actions, wide)
             ScanOutcome.Unplaced -> UnplacedOutcome(actions)
         }
     }
 }
 
-/** A book outcome: its card, its lines, the note when it is offered, and the actions. Two panes from [wide]. */
+/** A library book's outcome: its card, its lines, the note when it is offered, and the actions. */
 @Composable
 private fun BookOutcome(
     book: ScanBook,
@@ -110,37 +113,94 @@ private fun BookOutcome(
         is ScanOutcome.OnWishlist -> stringResource(R.string.scan_on_wishlist_body)
         else -> stringResource(R.string.scan_already_owned_body)
     }
-    val card: @Composable (Modifier, Dp) -> Unit = { modifier, coverWidth ->
-        ScanBookCard(
-            cover = { ScanLibraryCover(book.uuid, book.title, book.authors, book.coverUrl != null) },
-            badge = badge,
-            badgeColor = badgeColor,
-            title = book.title,
-            author = book.authors.joinToString(", ").ifBlank { null },
-            details = emptyList(),
-            coverWidth = coverWidth,
-            modifier = modifier,
-        )
-    }
-    val lines: @Composable () -> Unit = {
-        body?.let { Text(text = it, style = uiTextStyle(15, FontWeight.Normal, palette.ink2)) }
-        if (outcome is ScanOutcome.InLibraryUnowned) {
-            OmnibusTextField(
-                value = note,
-                onValueChange = actions.onNoteChanged,
-                placeholder = stringResource(R.string.scan_edition_note),
-                modifier = Modifier.fillMaxWidth(),
+    OutcomeBody(
+        card = { modifier, coverWidth ->
+            ScanBookCard(
+                cover = { ScanLibraryCover(book.uuid, book.title, book.authors, book.coverUrl != null) },
+                badge = badge,
+                badgeColor = badgeColor,
+                title = book.title,
+                author = book.authors.joinToString(", ").ifBlank { null },
+                details = emptyList(),
+                coverWidth = coverWidth,
+                modifier = modifier,
             )
-        }
-    }
+        },
+        lines = {
+            body?.let { Text(text = it, style = uiTextStyle(15, FontWeight.Normal, palette.ink2)) }
+            if (outcome is ScanOutcome.InLibraryUnowned) {
+                OmnibusTextField(
+                    value = note,
+                    onValueChange = actions.onNoteChanged,
+                    placeholder = stringResource(R.string.scan_edition_note),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        writeFailed = writeFailed,
+        actions = { OutcomeActions(book, outcome, writing, actions) },
+        wide = wide,
+    )
+}
+
+/**
+ * A book the library doesn't have, as a provider describes it: the provider's card and its facts, then the two ways to
+ * add it and Scan another. There is no note field.
+ */
+@Composable
+private fun ProviderOutcome(
+    record: ProviderRecord,
+    writing: WritingAction?,
+    writeFailed: Boolean,
+    actions: ScanActions,
+    wide: Boolean,
+) {
+    val palette = OmnibusTheme.palette
+    val firstPublishedFormat = stringResource(R.string.scan_fact_first_published)
+    val pagesFormat = stringResource(R.string.scan_fact_pages)
+    val facts = providerFactParts(
+        record,
+        firstPublished = { firstPublishedFormat.format(it) },
+        pages = { pagesFormat.format(it) },
+    ).joinToString(" · ").takeIf { it.isNotEmpty() }
+    OutcomeBody(
+        card = { modifier, coverWidth ->
+            ScanBookCard(
+                cover = { ProviderCover(record.title, record.authors.firstOrNull(), record.coverUrl) },
+                badge = stringResource(R.string.scan_badge_not_in_library),
+                badgeColor = palette.warn,
+                title = record.title,
+                author = record.authors.joinToString(", ").ifBlank { null },
+                details = listOfNotNull(record.series, facts),
+                coverWidth = coverWidth,
+                modifier = modifier,
+            )
+        },
+        lines = {},
+        writeFailed = writeFailed,
+        actions = { ProviderActions(writing, actions) },
+        wide = wide,
+    )
+}
+
+/**
+ * The shared outcome layout: the card with its save error, the lines and the actions. Two panes from [wide]: the card
+ * on the left, the lines, error and actions on the right.
+ */
+@Composable
+private fun OutcomeBody(
+    card: @Composable (Modifier, Dp) -> Unit,
+    lines: @Composable () -> Unit,
+    writeFailed: Boolean,
+    actions: @Composable () -> Unit,
+    wide: Boolean,
+) {
+    val palette = OmnibusTheme.palette
     val error: @Composable () -> Unit = {
         InlineError(
             message = if (writeFailed) stringResource(R.string.scan_save_failed) else null,
             modifier = Modifier.testTag(ScanTestTags.WRITE_ERROR),
         )
-    }
-    val actionsColumn: @Composable () -> Unit = {
-        OutcomeActions(book, outcome, writing, actions)
     }
     if (wide) {
         Row(Modifier.fillMaxSize()) {
@@ -155,7 +215,7 @@ private fun BookOutcome(
                 lines()
                 error()
                 Spacer(Modifier.height(Spacing.md))
-                actionsColumn()
+                actions()
             }
         }
     } else {
@@ -166,15 +226,14 @@ private fun BookOutcome(
                 lines()
             }
             Spacer(Modifier.weight(1f))
-            actionsColumn()
+            actions()
         }
     }
 }
 
-/** The actions a book outcome allows, each disabled while a save is in flight. */
+/** The actions a library book's outcome allows, each disabled while a save is in flight. */
 @Composable
 private fun OutcomeActions(book: ScanBook, outcome: ScanOutcome, writing: WritingAction?, actions: ScanActions) {
-    val palette = OmnibusTheme.palette
     val idle = writing == null
     val saving = stringResource(R.string.scan_saving)
     Column(
@@ -207,15 +266,49 @@ private fun OutcomeActions(book: ScanBook, outcome: ScanOutcome, writing: Writin
 
             else -> Unit
         }
-        TextLinkButton(
-            text = stringResource(R.string.scan_scan_another),
-            color = palette.accent,
-            size = 15,
-            onClick = actions.onScanAnother,
-            enabled = idle,
-            modifier = Modifier.heightIn(min = 48.dp).fillMaxWidth(),
-        )
+        ScanAnotherLink(actions.onScanAnother, idle)
     }
+}
+
+/** The actions a provider's outcome allows: the two ways to add the book, each with its own spinner, then Scan another. */
+@Composable
+private fun ProviderActions(writing: WritingAction?, actions: ScanActions) {
+    val idle = writing == null
+    val saving = stringResource(R.string.scan_saving)
+    Column(
+        Modifier.fillMaxWidth().testTag(ScanTestTags.ACTIONS),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        FilledButton(
+            text = stringResource(R.string.scan_add_physical),
+            onClick = actions.onAddPhysical,
+            enabled = idle,
+            isLoading = writing == WritingAction.Physical,
+            loadingDescription = saving,
+        )
+        FilledButton(
+            text = stringResource(R.string.scan_add_to_wishlist),
+            onClick = actions.onAddToWishlist,
+            enabled = idle,
+            isLoading = writing == WritingAction.Wishlist,
+            loadingDescription = saving,
+            prominent = false,
+        )
+        ScanAnotherLink(actions.onScanAnother, idle)
+    }
+}
+
+/** The text button that returns to the camera, disabled while a save is in flight. */
+@Composable
+private fun ScanAnotherLink(onClick: () -> Unit, enabled: Boolean) {
+    TextLinkButton(
+        text = stringResource(R.string.scan_scan_another),
+        color = OmnibusTheme.palette.accent,
+        size = 15,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.heightIn(min = 48.dp).fillMaxWidth(),
+    )
 }
 
 /** The "can't place" outcome: a centred message and Scan another, with no card. */

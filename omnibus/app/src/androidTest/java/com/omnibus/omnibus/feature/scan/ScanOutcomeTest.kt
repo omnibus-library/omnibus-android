@@ -1,11 +1,15 @@
 package com.omnibus.omnibus.feature.scan
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.omnibus.omnibus.R
@@ -125,6 +129,47 @@ class ScanOutcomeTest {
         assertTrue(error.bottom <= firstAction.top)
         rule.onNodeWithText(scanText(R.string.scan_check_in)).assertIsDisplayed()
         rule.onNodeWithText(scanText(R.string.scan_save_failed)).assertIsDisplayed()
+    }
+
+    // TC-46
+    @Test
+    fun issue336_tc46_notInLibraryShowsTheProviderCard() {
+        val record = scanRecord()
+        setContent(ScanOutcome.NotInLibrary(record))
+        val facts = listOf(
+            scanText(R.string.scan_fact_first_published).format(record.firstPublishYear),
+            record.publisher,
+            scanText(R.string.scan_fact_pages).format(record.pages),
+        ).joinToString(" · ")
+
+        rule.onNodeWithText(scanText(R.string.scan_badge_not_in_library)).assertIsDisplayed()
+        rule.onAllNodesWithText(record.title).onFirst().assertIsDisplayed()
+        rule.onAllNodesWithText(record.authors.single()).onFirst().assertIsDisplayed()
+        rule.onNodeWithText(record.series!!).assertIsDisplayed()
+        rule.onNodeWithText(facts).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_edition_note)).assertDoesNotExist()
+
+        val physical = rule.onNodeWithText(scanText(R.string.scan_add_physical)).getUnclippedBoundsInRoot()
+        val wishlist = rule.onNodeWithText(scanText(R.string.scan_add_to_wishlist)).getUnclippedBoundsInRoot()
+        val scanAnother = rule.onNodeWithText(scanText(R.string.scan_scan_another)).getUnclippedBoundsInRoot()
+        assertTrue("Add to wishlist is not below Add as physical book", wishlist.top >= physical.bottom)
+        assertTrue("Scan another is not below Add to wishlist", scanAnother.top >= wishlist.bottom)
+    }
+
+    // TC-50
+    @Test
+    fun issue336_tc50_savingSpinsOnlyTheTappedAction() {
+        setContent(ScanOutcome.NotInLibrary(scanRecord()), writing = WritingAction.Physical)
+
+        rule.onNodeWithText(scanText(R.string.scan_add_physical)).assertDoesNotExist()
+        rule.onNodeWithText(scanText(R.string.scan_add_to_wishlist)).assertIsNotEnabled()
+        rule.onNodeWithText(scanText(R.string.scan_scan_another)).assertIsNotEnabled()
+        rule.onAllNodesWithContentDescription(scanText(R.string.scan_saving)).assertCountEquals(1)
+        rule.onNodeWithContentDescription(scanText(R.string.scan_saving)).assertIsDisplayed()
+
+        val progress = rule.onNodeWithContentDescription(scanText(R.string.scan_saving)).getUnclippedBoundsInRoot()
+        val wishlist = rule.onNodeWithText(scanText(R.string.scan_add_to_wishlist)).getUnclippedBoundsInRoot()
+        assertTrue("the spinner is not inside the tapped Add as physical book", progress.bottom <= wishlist.top)
     }
 
     // TC-37

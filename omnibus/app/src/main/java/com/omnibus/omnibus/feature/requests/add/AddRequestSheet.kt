@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -30,9 +28,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -43,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.requests.LibraryHit
 import com.omnibus.omnibus.data.requests.ProviderBook
@@ -56,6 +50,7 @@ import com.omnibus.omnibus.feature.requests.providersHeading
 import com.omnibus.omnibus.ui.components.BookCover
 import com.omnibus.omnibus.ui.components.CoverIdentity
 import com.omnibus.omnibus.ui.components.OmnibusTextField
+import com.omnibus.omnibus.ui.components.ProviderCover
 import com.omnibus.omnibus.ui.components.TextLinkButton
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -237,7 +232,7 @@ private fun ProviderSection(
     Section(providersHeading(heading, wording), uiState.providers) { book ->
         // A bare provider record always starts: the library book it matches is only known once it is resolved.
         ResultRow(
-            cover = { ProviderCover(book) },
+            cover = { ProviderCover(book.title, book.authors.firstOrNull(), book.coverUrl) },
             title = book.title,
             byline = byline(listOf(book.authors.joinToString(", "), book.year), AddAction.Start),
             action = AddAction.Start,
@@ -368,20 +363,4 @@ private fun LibraryCover(hit: LibraryHit) {
         Modifier.fillMaxWidth(),
         cornerRadius = 4.dp,
     )
-}
-
-/** A provider's cover: the generated plate, with the provider's own art over it when it gave an http(s) address. */
-@Composable
-private fun ProviderCover(book: ProviderBook) {
-    val url = book.coverUrl?.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
-    Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp))) {
-        BookCover(
-            CoverIdentity(uuid = book.title, title = book.title, creator = book.authors.firstOrNull(), hasCover = false),
-            Modifier.fillMaxWidth(),
-            cornerRadius = 4.dp,
-        )
-        if (url != null && !LocalInspectionMode.current) {
-            AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-        }
-    }
 }

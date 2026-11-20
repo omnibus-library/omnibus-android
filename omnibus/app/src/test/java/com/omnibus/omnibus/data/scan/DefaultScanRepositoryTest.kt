@@ -1,6 +1,9 @@
 package com.omnibus.omnibus.data.scan
 
+import app.cash.turbine.test
+import com.omnibus.omnibus.data.library.LibraryChanges
 import com.omnibus.omnibus.data.wishlist.TestWishlistRepository
+import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.testing.dropped
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.nextRequest
@@ -15,6 +18,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,11 +53,13 @@ class DefaultScanRepositoryTest : DescribeSpec({
     fun sut(
         baseUrl: HttpUrl? = null,
         wishlist: TestWishlistRepository = TestWishlistRepository(),
+        changes: LibraryChanges = LibraryChanges(),
     ): DefaultScanRepository = DefaultScanRepository(
         ioDispatcher = Dispatchers.Unconfined,
         omnibusHttpClient = testOmnibusHttpClient(baseUrl),
         applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         wishlistRepository = wishlist,
+        libraryChanges = changes,
     )
 
     beforeSpec { mockAndroidLog() }
@@ -89,11 +95,47 @@ class DefaultScanRepositoryTest : DescribeSpec({
             }
         }
 
-        it("#317 TC-21: decodes not_in_library to Unplaced") {
+        it("#317 TC-21: decodes not_in_library to NotInLibrary with the provider's record") {
             withScriptedServer {
-                script.answer("POST", reply(200, outcomeBody("not_in_library", randomScanBook())))
+                val record = randomProviderRecord()
+                script.answer("POST", reply(200, """{"kind":"not_in_library","online":${record.raw},"future_key":{"nested":true}}"""))
 
-                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.Unplaced)
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.NotInLibrary(record))
+            }
+        }
+
+        it("#336 TC-44: decodes a not-in-library answer and keeps the record whole") {
+            withScriptedServer {
+                val record = randomProviderRecord()
+                script.answer("POST", reply(200, """{"kind":"not_in_library","online":${record.raw}}"""))
+
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(ScanOutcome.NotInLibrary(record))
+            }
+        }
+
+        it("#336 TC-44: decodes a minimal not-in-library record with its missing fields null") {
+            withScriptedServer {
+                val isbn = randomValidIsbn13()
+                val title = randomString()
+                val raw = buildJsonObject { put("isbn13", isbn); put("title", title); put("source", "open_library") }
+                script.answer("POST", reply(200, """{"kind":"not_in_library","online":$raw}"""))
+
+                sut(url).resolve(randomValidIsbn13()) shouldBe ScanResult.Success(
+                    ScanOutcome.NotInLibrary(
+                        ProviderRecord(
+                            raw = raw,
+                            isbn13 = isbn,
+                            title = title,
+                            authors = emptyList(),
+                            year = null,
+                            firstPublishYear = null,
+                            publisher = null,
+                            pages = null,
+                            series = null,
+                            coverUrl = null,
+                        ),
+                    ),
+                )
             }
         }
 
@@ -245,6 +287,70 @@ class DefaultScanRepositoryTest : DescribeSpec({
                 sut(url, wishlist).checkIn(randomString(), randomValidIsbn13(), null)
 
                 wishlist.invalidateCalls shouldBe emptyList()
+            }
+        }
+    }
+
+    describe("adding a book the library doesn't have") {
+
+        it("#336 TC-47: sends the record back untouched to physical-only") {
+            withScriptedServer {
+                val record = randomProviderRecord()
+                val uuid = randomString()
+                script.answer("POST", reply(200, bookRefBody(uuid)))
+
+                sut(url).addPhysicalOnly(record) shouldBe ScanResult.Success(uuid)
+
+                nextRequest().let { Triple(it.method, it.url.encodedPath, Json.parseToJsonElement(it.body!!.utf8())) } shouldBe
+                    Triple("POST", "/api/scan/physical-only", buildJsonObject { put("meta", record.raw) })
+            }
+        }
+
+        it("#336 TC-47: sends the record back untouched to the wishlist with the source token") {
+            withScriptedServer {
+                checkAll(Exhaustive.enum<WishlistSource>()) { source ->
+                    val record = randomProviderRecord()
+                    script.answer("POST", reply(200, bookRefBody(randomString())))
+
+                    sut(url).addToWishlist(record, source)
+
+                    nextRequest().let { Triple(it.method, it.url.encodedPath, Json.parseToJsonElement(it.body!!.utf8())) } shouldBe
+                        Triple(
+                            "POST",
+                            "/api/scan/wishlist",
+                            buildJsonObject { put("meta", record.raw); put("source", source.name.lowercase()) },
+                        )
+                }
+            }
+        }
+
+        it("#336 TC-52: tells the library after each successful add") {
+            withScriptedServer {
+                val changes = LibraryChanges()
+                script.answer("POST", reply(200, bookRefBody(randomString())))
+                script.answer("POST", reply(200, bookRefBody(randomString())))
+                val repository = sut(url, changes = changes)
+
+                changes.changes.test {
+                    repository.addPhysicalOnly(randomProviderRecord())
+                    awaitItem()
+                    repository.addToWishlist(randomProviderRecord(), WishlistSource.Scan)
+                    awaitItem()
+                    expectNoEvents()
+                }
+            }
+        }
+
+        it("#336 TC-52: tells the library nothing about a failed add") {
+            withScriptedServer {
+                val changes = LibraryChanges()
+                script.answer("POST", reply(400))
+
+                changes.changes.test {
+                    sut(url, changes = changes).addToWishlist(randomProviderRecord(), WishlistSource.Manual) shouldBe
+                        ScanResult.Failure(ScanError.Rejected)
+                    expectNoEvents()
+                }
             }
         }
     }

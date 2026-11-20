@@ -1,5 +1,7 @@
 package com.omnibus.omnibus.data.scan
 
+import com.omnibus.omnibus.data.wishlist.WishlistSource
+
 /** The scan routes: looking an ISBN up, and checking a copy in. Every failure is a result, not an exception. */
 interface ScanRepository {
 
@@ -11,4 +13,10 @@ interface ScanRepository {
      * caller is cancelled. Success holds the uuid the server wrote to, which a merge can make differ from [bookUuid].
      */
     suspend fun checkIn(bookUuid: String, isbn: String?, note: String?): ScanResult<String>
+
+    /** Creates a book with no files from [record] and checks in its first copy. Success holds the new book's uuid. */
+    suspend fun addPhysicalOnly(record: ProviderRecord): ScanResult<String>
+
+    /** Puts a new book from [record] on the reader's wishlist, recorded as coming from [source]. */
+    suspend fun addToWishlist(record: ProviderRecord, source: WishlistSource): ScanResult<String>
 }

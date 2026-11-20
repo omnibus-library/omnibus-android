@@ -2,12 +2,16 @@ package com.omnibus.omnibus.data.scan
 
 import android.util.Log
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
+import com.omnibus.omnibus.data.library.LibraryChanges
 import com.omnibus.omnibus.data.scan.remote.BookRefDto
 import com.omnibus.omnibus.data.scan.remote.CheckInRequestDto
+import com.omnibus.omnibus.data.scan.remote.PhysicalOnlyRequestDto
 import com.omnibus.omnibus.data.scan.remote.ResolveRequestDto
 import com.omnibus.omnibus.data.scan.remote.ScanJson
+import com.omnibus.omnibus.data.scan.remote.ScanWishlistRequestDto
 import com.omnibus.omnibus.data.scan.remote.decodeScanOutcome
 import com.omnibus.omnibus.data.wishlist.WishlistRepository
+import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.IOException
@@ -31,6 +35,7 @@ class DefaultScanRepository @Inject constructor(
     private val omnibusHttpClient: OmnibusHttpClient,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     private val wishlistRepository: WishlistRepository,
+    private val libraryChanges: LibraryChanges,
 ) : ScanRepository {
 
     override suspend fun resolve(isbn: String): ScanResult<ScanOutcome> =
@@ -46,6 +51,19 @@ class DefaultScanRepository @Inject constructor(
                     if (result.value != bookUuid) wishlistRepository.invalidate(result.value)
                 }
             }
+        }.await()
+
+    override suspend fun addPhysicalOnly(record: ProviderRecord): ScanResult<String> =
+        addBook(PHYSICAL_ONLY_PATH, ScanJson.encodeToString(PhysicalOnlyRequestDto(record.raw)))
+
+    override suspend fun addToWishlist(record: ProviderRecord, source: WishlistSource): ScanResult<String> =
+        addBook(WISHLIST_PATH, ScanJson.encodeToString(ScanWishlistRequestDto(record.raw, source.name.lowercase())))
+
+    /** Posts a new book and, on success, tells the Library it gained one. Runs to completion like a check-in. */
+    private suspend fun addBook(path: String, json: String): ScanResult<String> =
+        applicationScope.async {
+            post(path, json) { ScanJson.decodeFromString<BookRefDto>(it).bookUuid }
+                .also { result -> if (result is ScanResult.Success) libraryChanges.notifyBooksChanged() }
         }.await()
 
     private suspend fun <T> post(path: String, json: String, decode: (String) -> T): ScanResult<T> =
@@ -83,6 +101,8 @@ class DefaultScanRepository @Inject constructor(
         const val TAG = "DefaultScanRepository"
         const val RESOLVE_PATH = "api/scan/resolve"
         const val CHECK_IN_PATH = "api/scan/check-in"
+        const val PHYSICAL_ONLY_PATH = "api/scan/physical-only"
+        const val WISHLIST_PATH = "api/scan/wishlist"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 }

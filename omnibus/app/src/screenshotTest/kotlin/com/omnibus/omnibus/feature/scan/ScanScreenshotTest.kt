@@ -17,7 +17,7 @@ import androidx.compose.ui.tooling.preview.PreviewLightDark
 
 /** A camera that draws a black preview, so a reference shows the stage without any live picture. */
 @Stable
-private class PreviewCamera(override val availability: CameraAvailability) : BarcodeCamera {
+internal class PreviewCamera(override val availability: CameraAvailability) : BarcodeCamera {
     override val hasFlash: Boolean = true
 
     override fun requestPermission() = Unit

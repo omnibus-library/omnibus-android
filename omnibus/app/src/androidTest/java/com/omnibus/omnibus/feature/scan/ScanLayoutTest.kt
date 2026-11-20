@@ -68,6 +68,28 @@ class ScanLayoutTest {
         assertTrue("the card overlaps Check in this copy", card.right <= checkIn.left)
     }
 
+    // TC-54
+    @Test
+    fun issue336_tc54_wideNotInLibraryIsTwoPanes() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanOutcomeStage(
+                    outcome = ScanOutcome.NotInLibrary(scanRecord()),
+                    note = "",
+                    writing = null,
+                    writeFailed = false,
+                    actions = ScanActions(),
+                    wide = true,
+                )
+            }
+        }
+
+        val card = rule.onNodeWithTag(ScanTestTags.CARD).getUnclippedBoundsInRoot()
+        val addPhysical = rule.onNodeWithText(scanText(R.string.scan_add_physical)).getUnclippedBoundsInRoot()
+
+        assertTrue("the card overlaps Add as physical book", card.right <= addPhysical.left)
+    }
+
     // TC-40b
     @Test
     fun issue317_tc40b_narrowOutcomeIsOneColumn() {
