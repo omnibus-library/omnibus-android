@@ -140,6 +140,7 @@ class ScanAccessibilityTest {
         rule.onNodeWithTag(ScanTestTags.TITLE, useUnmergedTree = true)
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
-        rule.onNodeWithTag(ScanTestTags.CELEBRATION, useUnmergedTree = true).assertDoesNotExist()
+        // The merged tree is what TalkBack reads: the canvas sits under a node that clears semantics, so it isn't in it.
+        rule.onNodeWithTag(ScanTestTags.CELEBRATION).assertDoesNotExist()
     }
 }
