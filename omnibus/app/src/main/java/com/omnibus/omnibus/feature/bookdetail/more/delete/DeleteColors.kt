@@ -5,9 +5,6 @@ import com.omnibus.omnibus.ui.theme.Oklch
 
 /** The delete flow's colours, from the design boards. */
 internal object DeleteColors {
-    /** The destructive ink of an enabled row, the design's oklch(.76 .13 28). */
-    val RowInk = Oklch(0.76, 0.13, 28.0).toColor()
-
     /** The filled danger pill, the design's oklch(.47 .15 28). */
     val DangerFill = Oklch(0.47, 0.15, 28.0).toColor()
 
