@@ -119,6 +119,13 @@
     <string name="scan_saving">Saving</string>
     <string name="scan_success_checked_in">In your physical collection</string>
     <string name="scan_success_off_wishlist">Off your wishlist, on your shelf</string>
+    <string name="scan_badge_not_in_library">Not in your library</string>
+    <string name="scan_add_physical">Add as physical book</string>
+    <string name="scan_add_to_wishlist">Add to wishlist</string>
+    <string name="scan_success_wishlisted">On your wishlist</string>
+    <string name="scan_wishlisted_body">Wishlisting only tracks this book — check in a copy or add a file to move it into your library.</string>
+    <string name="scan_fact_first_published">First published %1$s</string>
+    <string name="scan_fact_pages">%1$d pages</string>
 
     <!-- Library -->
     <string name="library_title">Library</string>

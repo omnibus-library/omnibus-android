@@ -7,6 +7,7 @@ import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.BookAvailability
 import com.omnibus.omnibus.data.library.BooksPageQuery
 import com.omnibus.omnibus.data.library.LibraryCategory
+import com.omnibus.omnibus.data.library.LibraryChanges
 import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.library.LibraryPageResult
 import com.omnibus.omnibus.data.library.LibraryRepository
@@ -50,6 +51,7 @@ class LibraryViewModel @Inject constructor(
     private val bookAvailability: BookAvailability,
     private val timeSource: TimeSource,
     private val authRepository: AuthRepository,
+    private val libraryChanges: LibraryChanges,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -97,6 +99,9 @@ class LibraryViewModel @Inject constructor(
             authRepository.currentUser.collect { user ->
                 _uiState.update { it.copy(viewerId = user?.id, canUpload = user?.canUpload == true) }
             }
+        }
+        viewModelScope.launch {
+            libraryChanges.changes.collect { reload(refreshing = true) }
         }
     }
 

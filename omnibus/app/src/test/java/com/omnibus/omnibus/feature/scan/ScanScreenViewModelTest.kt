@@ -2,14 +2,17 @@ package com.omnibus.omnibus.feature.scan
 
 import app.cash.turbine.test
 import com.omnibus.omnibus.data.scan.IsbnRejection
+import com.omnibus.omnibus.data.scan.ProviderRecord
 import com.omnibus.omnibus.data.scan.ScanBook
 import com.omnibus.omnibus.data.scan.ScanError
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.scan.ScanResult
 import com.omnibus.omnibus.data.scan.TestScanRepository
+import com.omnibus.omnibus.data.scan.randomProviderRecord
 import com.omnibus.omnibus.data.scan.randomScanBook
 import com.omnibus.omnibus.data.scan.randomValidIsbn10
 import com.omnibus.omnibus.data.scan.randomValidIsbn13
+import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.testing.TestTimeSource
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
@@ -40,6 +43,33 @@ private fun TestScope.openOutcome(
     repository.resolveAnswers.addLast(ScanResult.Success(outcome))
     viewModel.barcodesSeen(listOf(isbn))
     runCurrent()
+}
+
+/** Makes the screen show [outcome] for a typed ISBN, or for a camera read, as [via] says. */
+private fun TestScope.openProviderOutcome(
+    viewModel: ScanScreenViewModel,
+    repository: TestScanRepository,
+    record: ProviderRecord,
+    via: FoundVia,
+) {
+    val outcome = ScanOutcome.NotInLibrary(record)
+    when (via) {
+        FoundVia.Scan -> openOutcome(viewModel, repository, outcome)
+        FoundVia.Manual -> {
+            repository.resolveAnswers.addLast(ScanResult.Success(outcome))
+            viewModel.enterIsbnTapped()
+            viewModel.isbnChanged(record.isbn13)
+            viewModel.findBookTapped()
+            runCurrent()
+        }
+    }
+}
+
+/** Runs the add-a-book action [action] on [viewModel]. */
+private fun ScanScreenViewModel.add(action: WritingAction) = when (action) {
+    WritingAction.CheckIn -> checkInTapped()
+    WritingAction.Physical -> addPhysicalTapped()
+    WritingAction.Wishlist -> addToWishlistTapped()
 }
 
 /** The success stage a check-in of [book] answered with [uuid] should show. */
@@ -449,6 +479,84 @@ class ScanScreenViewModelTest : DescribeSpec({
 
                     awaitItem() shouldBe ScanEffect.Confirm
                     expectNoEvents()
+                }
+            }
+        }
+    }
+
+    describe("adding a book the library doesn't have") {
+
+        it("#336 TC-48: adding ends in the right success") {
+            runTest {
+                checkAll(Exhaustive.collection(FoundVia.entries)) { via ->
+                    val record = randomProviderRecord()
+                    val physical = TestScanRepository().apply { physicalOnlyAnswers.addLast(ScanResult.Success("u-new")) }
+                    val physicalViewModel = sut(physical)
+                    openProviderOutcome(physicalViewModel, physical, record, via)
+
+                    physicalViewModel.addPhysicalTapped()
+                    runCurrent()
+
+                    physicalViewModel.uiState.value.stage shouldBe
+                        ScanStage.Success(record.title, SuccessCover.Provider(record), "u-new", SuccessKind.CheckedIn)
+
+                    val wishlist = TestScanRepository().apply { wishlistAnswers.addLast(ScanResult.Success("u-new")) }
+                    val wishlistViewModel = sut(wishlist)
+                    openProviderOutcome(wishlistViewModel, wishlist, record, via)
+
+                    wishlistViewModel.addToWishlistTapped()
+                    runCurrent()
+
+                    wishlistViewModel.uiState.value.stage shouldBe
+                        ScanStage.Success(record.title, SuccessCover.Provider(record), "u-new", SuccessKind.Wishlisted)
+                    wishlist.wishlistCalls.single().source shouldBe
+                        (if (via == FoundVia.Scan) WishlistSource.Scan else WishlistSource.Manual)
+                }
+            }
+        }
+
+        it("#336 TC-49: each add writes once and can be retried") {
+            runTest {
+                checkAll(Exhaustive.of(WritingAction.Physical, WritingAction.Wishlist)) { action ->
+                    val other = if (action == WritingAction.Physical) WritingAction.Wishlist else WritingAction.Physical
+                    val repository = TestScanRepository().apply {
+                        physicalOnlyGate = CompletableDeferred()
+                        wishlistGate = CompletableDeferred()
+                        physicalOnlyAnswers.addLast(ScanResult.Failure(ScanError.Unreachable))
+                        wishlistAnswers.addLast(ScanResult.Failure(ScanError.Unreachable))
+                    }
+                    val viewModel = sut(repository)
+                    openProviderOutcome(viewModel, repository, randomProviderRecord(), FoundVia.Scan)
+
+                    viewModel.add(action)
+                    viewModel.add(action)
+                    viewModel.add(other)
+                    viewModel.scanAnotherTapped()
+                    runCurrent()
+
+                    repository.physicalOnlyCalls.size + repository.wishlistCalls.size shouldBe 1
+                    (viewModel.uiState.value.stage as ScanStage.Outcome).writing shouldBe action
+
+                    repository.physicalOnlyGate?.complete(Unit)
+                    repository.wishlistGate?.complete(Unit)
+                    runCurrent()
+
+                    (viewModel.uiState.value.stage as ScanStage.Outcome).let { stage ->
+                        stage.writing shouldBe null
+                        stage.writeFailed shouldBe true
+                    }
+
+                    repository.physicalOnlyGate = null
+                    repository.wishlistGate = null
+                    if (action == WritingAction.Physical) {
+                        repository.physicalOnlyAnswers.addLast(ScanResult.Success("u-new"))
+                    } else {
+                        repository.wishlistAnswers.addLast(ScanResult.Success("u-new"))
+                    }
+                    viewModel.add(action)
+                    runCurrent()
+
+                    repository.physicalOnlyCalls.size + repository.wishlistCalls.size shouldBe 2
                 }
             }
         }

@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.scan
 
 import com.omnibus.omnibus.data.scan.IsbnRejection
+import com.omnibus.omnibus.data.scan.ProviderRecord
 import com.omnibus.omnibus.data.scan.ScanBook
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.scan.cleanIsbn
@@ -10,7 +11,7 @@ import com.omnibus.omnibus.data.scan.isbnRejection
 enum class FoundVia { Scan, Manual }
 
 /** The action whose write is in flight. */
-enum class WritingAction { CheckIn }
+enum class WritingAction { CheckIn, Physical, Wishlist }
 
 /** A lookup that failed, kept so "Try again" can repeat it. */
 data class LookupFailure(val isbn: String, val via: FoundVia)
@@ -22,10 +23,13 @@ data class RejectedNotice(val value: String, val announce: Boolean)
 sealed interface SuccessCover {
     /** The library's own cover of [book]. */
     data class Library(val book: ScanBook) : SuccessCover
+
+    /** The provider's cover of [record], or its lettered plate. */
+    data class Provider(val record: ProviderRecord) : SuccessCover
 }
 
 /** Which success message the reader sees: the copy went to the shelf, or came off the wishlist. */
-enum class SuccessKind { CheckedIn, OffWishlist }
+enum class SuccessKind { CheckedIn, OffWishlist, Wishlisted }
 
 /** The screen's stages. Only one is shown at a time. */
 sealed interface ScanStage {
