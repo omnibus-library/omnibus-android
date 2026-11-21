@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.14](https://github.com/omnibus-library/omnibus-android/compare/v0.1.13...v0.1.14) (2026-11-21)
+
+
+### Features
+
+* **library:** add a scanned book you don't have ([#341](https://github.com/omnibus-library/omnibus-android/issues/341)) ([23bbb6a](https://github.com/omnibus-library/omnibus-android/commit/23bbb6a90c1bb9edfe03285c5991d16baf1b9b7e))
+* **library:** recover a barcode scan that doesn't match ([#344](https://github.com/omnibus-library/omnibus-android/issues/344)) ([46e71d3](https://github.com/omnibus-library/omnibus-android/commit/46e71d3d27c33bd559ff87aedb4011e544169f2e))
+* **library:** scan a barcode to check in a book you have ([#340](https://github.com/omnibus-library/omnibus-android/issues/340)) ([2aee9bb](https://github.com/omnibus-library/omnibus-android/commit/2aee9bba412fb1809cf40be5f01a1eed72cef5bf))
+* **reader:** add a note to a highlight ([#339](https://github.com/omnibus-library/omnibus-android/issues/339)) ([19e67e3](https://github.com/omnibus-library/omnibus-android/commit/19e67e31c5934bfe90f339e4d4d40590ebec3d53))
+* **reader:** edit and delete a highlight's note ([#343](https://github.com/omnibus-library/omnibus-android/issues/343)) ([85a0fa8](https://github.com/omnibus-library/omnibus-android/commit/85a0fa8b71435fa5f29922567d8400672520cd6e))
+* **reader:** match the selection menu to the highlight menu ([#325](https://github.com/omnibus-library/omnibus-android/issues/325)) ([8eb0d25](https://github.com/omnibus-library/omnibus-android/commit/8eb0d25bdba8ce331ff10913f19a5917254d9e94))
+* **reader:** share a passage from the highlight menu ([#338](https://github.com/omnibus-library/omnibus-android/issues/338)) ([59e90c4](https://github.com/omnibus-library/omnibus-android/commit/59e90c4ac29ea3300fd7887f73b5a047d3ae5084))
+* **reader:** show the highlight menu in two rows ([#337](https://github.com/omnibus-library/omnibus-android/issues/337)) ([9f7c2ab](https://github.com/omnibus-library/omnibus-android/commit/9f7c2abc09e054a16c64e4792fdac59483401f04))
+
+
+### Bug Fixes
+
+* **bookdetail:** theme the More and highlight menus ([#334](https://github.com/omnibus-library/omnibus-android/issues/334)) ([32b1cd9](https://github.com/omnibus-library/omnibus-android/commit/32b1cd9a9cd7f029b2c6c6a8413ab1e8c729d163))
+
 ## [0.1.13](https://github.com/omnibus-library/omnibus-android/compare/v0.1.12...v0.1.13) (2026-11-20)
 
 
