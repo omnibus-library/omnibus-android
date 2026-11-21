@@ -19,4 +19,10 @@ interface ScanRepository {
 
     /** Puts a new book from [record] on the reader's wishlist, recorded as coming from [source]. */
     suspend fun addToWishlist(record: ProviderRecord, source: WishlistSource): ScanResult<String>
+
+    /** Provider records whose title matches [query] (trimmed), at most 20. An empty success means no match. */
+    suspend fun searchByTitle(query: String): ScanResult<List<ProviderRecord>>
+
+    /** Matches a provider record the reader picked from [searchByTitle] against the library, without a second provider lookup. */
+    suspend fun resolveRecord(record: ProviderRecord): ScanResult<ScanOutcome>
 }

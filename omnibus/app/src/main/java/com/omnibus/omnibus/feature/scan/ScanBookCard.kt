@@ -29,7 +29,7 @@ import com.omnibus.omnibus.ui.components.BookCover
 
 /**
  * The book an outcome is about: the cover on the left, then the badge, the title, the author and any fact lines. The
- * title is the stage's announced title.
+ * title is the stage's announced title unless [titleIsHeading] is false, as for a book inside a list of candidates.
  */
 @Composable
 internal fun ScanBookCard(
@@ -41,6 +41,7 @@ internal fun ScanBookCard(
     details: List<String>,
     coverWidth: Dp,
     modifier: Modifier = Modifier,
+    titleIsHeading: Boolean = true,
 ) {
     val palette = OmnibusTheme.palette
     Row(
@@ -54,12 +55,16 @@ internal fun ScanBookCard(
             Text(
                 text = title,
                 style = displayTextStyle(24, palette.ink0),
-                modifier = Modifier
-                    .testTag(ScanTestTags.TITLE)
-                    .semantics {
-                        heading()
-                        liveRegion = LiveRegionMode.Polite
-                    },
+                modifier = if (titleIsHeading) {
+                    Modifier
+                        .testTag(ScanTestTags.TITLE)
+                        .semantics {
+                            heading()
+                            liveRegion = LiveRegionMode.Polite
+                        }
+                } else {
+                    Modifier
+                },
             )
             author?.let { Text(text = it, style = uiTextStyle(14, FontWeight.Normal, palette.ink2)) }
             details.forEach { Text(text = it, style = uiTextStyle(12.5.sp, FontWeight.Normal, palette.ink2)) }

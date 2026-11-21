@@ -52,6 +52,24 @@ class TestScanRepository : ScanRepository {
     /** When set, [addToWishlist] waits on it before taking its answer. */
     var wishlistGate: CompletableDeferred<Unit>? = null
 
+    /** Every query passed to [searchByTitle], in call order. */
+    val searchCalls = mutableListOf<String>()
+
+    /** The answers [searchByTitle] gives, one per call. */
+    val searchAnswers = ArrayDeque<ScanResult<List<ProviderRecord>>>()
+
+    /** When set, [searchByTitle] waits on it before taking its answer. */
+    var searchGate: CompletableDeferred<Unit>? = null
+
+    /** Every record passed to [resolveRecord], in call order. */
+    val resolveRecordCalls = mutableListOf<ProviderRecord>()
+
+    /** The answers [resolveRecord] gives, one per call. */
+    val resolveRecordAnswers = ArrayDeque<ScanResult<ScanOutcome>>()
+
+    /** When set, [resolveRecord] waits on it before taking its answer. */
+    var resolveRecordGate: CompletableDeferred<Unit>? = null
+
     override suspend fun resolve(isbn: String): ScanResult<ScanOutcome> {
         resolveCalls += isbn
         resolveGate?.await()
@@ -74,5 +92,17 @@ class TestScanRepository : ScanRepository {
         wishlistCalls += WishlistCall(record, source)
         wishlistGate?.await()
         return wishlistAnswers.removeFirstOrNull() ?: unscripted("addToWishlist")
+    }
+
+    override suspend fun searchByTitle(query: String): ScanResult<List<ProviderRecord>> {
+        searchCalls += query
+        searchGate?.await()
+        return searchAnswers.removeFirstOrNull() ?: unscripted("searchByTitle")
+    }
+
+    override suspend fun resolveRecord(record: ProviderRecord): ScanResult<ScanOutcome> {
+        resolveRecordCalls += record
+        resolveRecordGate?.await()
+        return resolveRecordAnswers.removeFirstOrNull() ?: unscripted("resolveRecord")
     }
 }

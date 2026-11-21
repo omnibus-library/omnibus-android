@@ -8,6 +8,14 @@ import com.omnibus.omnibus.data.scan.ScanError
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.data.scan.ScanResult
 import com.omnibus.omnibus.data.scan.TestScanRepository
+import com.omnibus.omnibus.data.requests.randomLibraryHit
+import com.omnibus.omnibus.data.search.LibraryBookMatches
+import com.omnibus.omnibus.data.search.LibraryHit
+import com.omnibus.omnibus.data.search.LibrarySearchResult
+import com.omnibus.omnibus.data.search.TestLibrarySearchRepository
+import com.omnibus.omnibus.data.wishlist.TestWishlistRepository
+import com.omnibus.omnibus.data.wishlist.WishlistState
+import com.omnibus.omnibus.data.wishlist.randomWishlistEntry
 import com.omnibus.omnibus.data.scan.randomProviderRecord
 import com.omnibus.omnibus.data.scan.randomScanBook
 import com.omnibus.omnibus.data.scan.randomValidIsbn10
@@ -21,6 +29,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
+import io.kotest.property.exhaustive.enum
 import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,6 +41,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+
+/** How long the library picker waits after a keystroke before it searches. The picker's own debounce. */
+private const val PICKER_DEBOUNCE = 250L
 
 /** Makes the screen show [outcome] for a valid barcode read by the camera. */
 private fun TestScope.openOutcome(
@@ -62,6 +74,41 @@ private fun TestScope.openProviderOutcome(
             viewModel.findBookTapped()
             runCurrent()
         }
+        FoundVia.Search -> openVia(viewModel, repository, outcome, via, record.isbn13, record)
+    }
+}
+
+/**
+ * Makes the screen show [outcome] as [via] found it: a camera read, a typed ISBN, or a title-search pick of [record]. The
+ * ISBN in hand is [isbn] for a camera read or a typed ISBN, and the record's own for a pick.
+ */
+private fun TestScope.openVia(
+    viewModel: ScanScreenViewModel,
+    repository: TestScanRepository,
+    outcome: ScanOutcome,
+    via: FoundVia,
+    isbn: String,
+    record: ProviderRecord,
+) {
+    when (via) {
+        FoundVia.Scan -> openOutcome(viewModel, repository, outcome, isbn)
+        FoundVia.Manual -> {
+            repository.resolveAnswers.addLast(ScanResult.Success(outcome))
+            viewModel.enterIsbnTapped()
+            viewModel.isbnChanged(isbn)
+            viewModel.findBookTapped()
+            runCurrent()
+        }
+        FoundVia.Search -> {
+            repository.searchAnswers.addLast(ScanResult.Success(listOf(record)))
+            viewModel.searchByTitleTapped()
+            viewModel.titleQueryChanged(record.title)
+            viewModel.titleSearchSubmitted()
+            runCurrent()
+            repository.resolveRecordAnswers.addLast(ScanResult.Success(outcome))
+            viewModel.searchResultPicked(record)
+            runCurrent()
+        }
     }
 }
 
@@ -86,7 +133,9 @@ class ScanScreenViewModelTest : DescribeSpec({
     fun sut(
         repository: TestScanRepository = TestScanRepository(),
         time: TestTimeSource = TestTimeSource(randomLong()),
-    ): ScanScreenViewModel = ScanScreenViewModel(repository, time)
+        wishlist: TestWishlistRepository = TestWishlistRepository(),
+        librarySearch: TestLibrarySearchRepository = TestLibrarySearchRepository(),
+    ): ScanScreenViewModel = ScanScreenViewModel(repository, time, wishlist, librarySearch)
 
     describe("reading a barcode") {
 
@@ -290,7 +339,7 @@ class ScanScreenViewModelTest : DescribeSpec({
                             ScanOutcome.InLibraryUnowned(randomScanBook()),
                             ScanOutcome.OnWishlist(randomScanBook()),
                             ScanOutcome.AlreadyOwned(randomScanBook()),
-                            ScanOutcome.Unplaced,
+                            ScanOutcome.Unresolved,
                         ),
                     ) { outcome ->
                         val isbn = randomValidIsbn13()
@@ -510,7 +559,11 @@ class ScanScreenViewModelTest : DescribeSpec({
                     wishlistViewModel.uiState.value.stage shouldBe
                         ScanStage.Success(record.title, SuccessCover.Provider(record), "u-new", SuccessKind.Wishlisted)
                     wishlist.wishlistCalls.single().source shouldBe
-                        (if (via == FoundVia.Scan) WishlistSource.Scan else WishlistSource.Manual)
+                        when (via) {
+                            FoundVia.Scan -> WishlistSource.Scan
+                            FoundVia.Manual -> WishlistSource.Manual
+                            FoundVia.Search -> WishlistSource.Search
+                        }
                 }
             }
         }
@@ -632,7 +685,7 @@ class ScanScreenViewModelTest : DescribeSpec({
                 runCurrent()
 
                 viewModel.scanAnotherTapped()
-                repository.resolveAnswers.addLast(ScanResult.Success(ScanOutcome.Unplaced))
+                repository.resolveAnswers.addLast(ScanResult.Success(ScanOutcome.Unresolved))
                 gate.complete(Unit)
                 runCurrent()
 
@@ -651,7 +704,7 @@ class ScanScreenViewModelTest : DescribeSpec({
                 runCurrent()
 
                 repository.resolveGate = null
-                repository.resolveAnswers.addLast(ScanResult.Success(ScanOutcome.Unplaced))
+                repository.resolveAnswers.addLast(ScanResult.Success(ScanOutcome.Unresolved))
                 viewModel.enterIsbnTapped()
                 viewModel.isbnChanged(fresh)
                 viewModel.findBookTapped()
@@ -662,6 +715,432 @@ class ScanScreenViewModelTest : DescribeSpec({
                 runCurrent()
 
                 viewModel.uiState.value.stage shouldBe current
+            }
+        }
+    }
+
+    describe("searching by title") {
+
+        it("#335 TC-58: a title search lists the providers' matches") {
+            runTest {
+                val record = randomProviderRecord()
+                val repository = TestScanRepository().apply { searchAnswers.addLast(ScanResult.Success(listOf(record))) }
+                val viewModel = sut(repository)
+
+                viewModel.searchByTitleTapped()
+                viewModel.titleQueryChanged("dune")
+                viewModel.titleSearchSubmitted()
+                runCurrent()
+
+                viewModel.uiState.value.stage shouldBe ScanStage.TitleSearch(query = "dune", results = listOf(record))
+            }
+        }
+
+        it("#335 TC-58: picking a match opens the outcome a scan would, filed under the record's ISBN") {
+            runTest {
+                val record = randomProviderRecord()
+                val outcome = ScanOutcome.NotInLibrary(record)
+                val repository = TestScanRepository()
+                val viewModel = sut(repository)
+                openVia(viewModel, repository, outcome, FoundVia.Search, record.isbn13, record)
+
+                viewModel.uiState.value.stage shouldBe ScanStage.Outcome(outcome, record.isbn13, FoundVia.Search)
+            }
+        }
+
+        it("#335 TC-58: a picked match is matched from its record, without a second provider lookup") {
+            runTest {
+                val record = randomProviderRecord()
+                val repository = TestScanRepository()
+                openVia(sut(repository), repository, ScanOutcome.NotInLibrary(record), FoundVia.Search, record.isbn13, record)
+
+                repository.resolveCalls shouldBe emptyList()
+                repository.resolveRecordCalls shouldBe listOf(record)
+            }
+        }
+
+        it("#335 TC-58: wishlisting a picked match uses the search source") {
+            runTest {
+                val record = randomProviderRecord()
+                val repository = TestScanRepository().apply { wishlistAnswers.addLast(ScanResult.Success("u-new")) }
+                val viewModel = sut(repository)
+                openVia(viewModel, repository, ScanOutcome.NotInLibrary(record), FoundVia.Search, record.isbn13, record)
+
+                viewModel.addToWishlistTapped()
+                runCurrent()
+
+                repository.wishlistCalls.single().source shouldBe WishlistSource.Search
+            }
+        }
+
+        it("#335 TC-58: Scan instead returns to the camera from the title search") {
+            runTest {
+                val viewModel = sut()
+
+                viewModel.searchByTitleTapped()
+                viewModel.scanInsteadTapped()
+
+                viewModel.uiState.value.stage shouldBe ScanStage.Viewfinder()
+            }
+        }
+
+        context("when an unresolved ISBN carries a typed title") {
+
+            it("#335 TC-58: opens the title search with that title") {
+                runTest {
+                    val repository = TestScanRepository().apply { searchAnswers.addLast(ScanResult.Success(emptyList())) }
+                    val viewModel = sut(repository)
+                    openOutcome(viewModel, repository, ScanOutcome.Unresolved, randomValidIsbn13())
+                    viewModel.titleQueryChanged("wind")
+
+                    viewModel.searchByTitleTapped()
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe ScanStage.TitleSearch(query = "wind", results = emptyList())
+                }
+            }
+
+            it("#335 TC-58: searches the typed title") {
+                runTest {
+                    val repository = TestScanRepository().apply { searchAnswers.addLast(ScanResult.Success(emptyList())) }
+                    val viewModel = sut(repository)
+                    openOutcome(viewModel, repository, ScanOutcome.Unresolved, randomValidIsbn13())
+                    viewModel.titleQueryChanged("wind")
+
+                    viewModel.searchByTitleTapped()
+                    runCurrent()
+
+                    repository.searchCalls shouldBe listOf("wind")
+                }
+            }
+        }
+    }
+
+    describe("a close match") {
+
+        it("#335 TC-63: a picked candidate is filed under the scanned record's ISBN") {
+            runTest {
+                checkAll(Exhaustive.enum<FoundVia>()) { via ->
+                    val candidate = randomScanBook()
+                    val record = randomProviderRecord()
+                    val repository = TestScanRepository().apply { checkInAnswers.addLast(ScanResult.Success(candidate.uuid)) }
+                    val viewModel = sut(repository)
+                    openVia(viewModel, repository, ScanOutcome.CloseMatch(listOf(candidate), record), via, randomValidIsbn13(), record)
+
+                    viewModel.candidatePicked(candidate)
+                    viewModel.checkInTapped()
+                    runCurrent()
+
+                    repository.checkInCalls.single().isbn shouldBe record.isbn13
+                }
+            }
+        }
+
+        it("#335 TC-63: a library book picked in the picker is filed under the ISBN in hand") {
+            runTest {
+                checkAll(Exhaustive.enum<FoundVia>()) { via ->
+                    val record = randomProviderRecord()
+                    val repository = TestScanRepository().apply { checkInAnswers.addLast(ScanResult.Success("u-new")) }
+                    val librarySearch = TestLibrarySearchRepository().apply {
+                        answers.addLast(LibrarySearchResult.Success(LibraryBookMatches(listOf(randomLibraryHit()), 1)))
+                    }
+                    val viewModel = sut(repository, librarySearch = librarySearch)
+                    openVia(viewModel, repository, ScanOutcome.CloseMatch(listOf(randomScanBook()), record), via, randomValidIsbn13(), record)
+                    val inHand = (viewModel.uiState.value.stage as ScanStage.Outcome).isbn
+                    viewModel.alreadyHaveTapped()
+                    viewModel.libraryQueryChanged("lo")
+                    advanceTimeBy(PICKER_DEBOUNCE)
+                    runCurrent()
+
+                    viewModel.libraryHitPicked((viewModel.uiState.value.stage as ScanStage.LibraryPicker).hits.single())
+                    viewModel.checkInTapped()
+                    runCurrent()
+
+                    repository.checkInCalls.single().isbn shouldBe inHand
+                }
+            }
+        }
+
+        it("#335 TC-64: marks the candidates that are on the wishlist") {
+            runTest {
+                val present = randomScanBook()
+                val absent = randomScanBook()
+                val wishlist = TestWishlistRepository().apply {
+                    seed(present.uuid, WishlistState.Present(randomWishlistEntry()))
+                    seed(absent.uuid, WishlistState.Absent)
+                }
+                val repository = TestScanRepository()
+                val viewModel = sut(repository, wishlist = wishlist)
+                openOutcome(viewModel, repository, ScanOutcome.CloseMatch(listOf(present, absent), randomProviderRecord()))
+                runCurrent()
+
+                (viewModel.uiState.value.stage as ScanStage.Outcome).wishlistedCandidates shouldBe setOf(present.uuid)
+            }
+        }
+
+        it("#335 TC-64: picking a wishlisted candidate opens its wishlist confirm") {
+            runTest {
+                val present = randomScanBook()
+                val wishlist = TestWishlistRepository().apply { seed(present.uuid, WishlistState.Present(randomWishlistEntry())) }
+                val repository = TestScanRepository()
+                val viewModel = sut(repository, wishlist = wishlist)
+                openOutcome(viewModel, repository, ScanOutcome.CloseMatch(listOf(present), randomProviderRecord()))
+                runCurrent()
+
+                viewModel.candidatePicked(present)
+
+                (viewModel.uiState.value.stage as ScanStage.Outcome).outcome shouldBe ScanOutcome.OnWishlist(present)
+            }
+        }
+
+        it("#335 TC-64: checking a wishlisted candidate in ends off the wishlist") {
+            runTest {
+                val present = randomScanBook()
+                val wishlist = TestWishlistRepository().apply { seed(present.uuid, WishlistState.Present(randomWishlistEntry())) }
+                val repository = TestScanRepository().apply { checkInAnswers.addLast(ScanResult.Success(present.uuid)) }
+                val viewModel = sut(repository, wishlist = wishlist)
+                openOutcome(viewModel, repository, ScanOutcome.CloseMatch(listOf(present), randomProviderRecord()))
+                runCurrent()
+                viewModel.candidatePicked(present)
+
+                viewModel.checkInTapped()
+                runCurrent()
+
+                viewModel.uiState.value.stage shouldBe successFor(present, present.uuid, SuccessKind.OffWishlist)
+            }
+        }
+
+        it("#335 TC-65: saying no offers adding the scanned book") {
+            runTest {
+                val record = randomProviderRecord()
+                val isbn = randomValidIsbn13()
+                val repository = TestScanRepository()
+                val viewModel = sut(repository)
+                openVia(viewModel, repository, ScanOutcome.CloseMatch(listOf(randomScanBook()), record), FoundVia.Manual, isbn, record)
+
+                viewModel.closeMatchDeclined()
+
+                viewModel.uiState.value.stage shouldBe
+                    ScanStage.Outcome(ScanOutcome.NotInLibrary(record), isbn, FoundVia.Manual, declined = true)
+            }
+        }
+    }
+
+    describe("the library picker") {
+
+        it("#335 TC-67: opens from a close match, a book not in the library and an unresolved ISBN") {
+            runTest {
+                val record = randomProviderRecord()
+                checkAll(
+                    Exhaustive.of(
+                        ScanOutcome.CloseMatch(listOf(randomScanBook()), record),
+                        ScanOutcome.NotInLibrary(record),
+                        ScanOutcome.Unresolved,
+                    ),
+                ) { outcome ->
+                    val repository = TestScanRepository()
+                    val viewModel = sut(repository)
+                    openOutcome(viewModel, repository, outcome, randomValidIsbn13())
+                    val returnTo = viewModel.uiState.value.stage as ScanStage.Outcome
+
+                    viewModel.alreadyHaveTapped()
+
+                    viewModel.uiState.value.stage shouldBe ScanStage.LibraryPicker(returnTo = returnTo)
+                }
+            }
+        }
+
+        it("#335 TC-67: Back returns to the outcome it came from, exactly") {
+            runTest {
+                checkAll(Exhaustive.of(ScanOutcome.NotInLibrary(randomProviderRecord()), ScanOutcome.Unresolved)) { outcome ->
+                    val repository = TestScanRepository()
+                    val viewModel = sut(repository)
+                    openOutcome(viewModel, repository, outcome, randomValidIsbn13())
+                    val returnTo = viewModel.uiState.value.stage
+
+                    viewModel.alreadyHaveTapped()
+                    viewModel.backTapped()
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe returnTo
+                }
+            }
+        }
+
+        it("#335 TC-67: keeps at most five hits") {
+            runTest {
+                val repository = TestScanRepository()
+                val librarySearch = TestLibrarySearchRepository().apply {
+                    answers.addLast(LibrarySearchResult.Success(LibraryBookMatches(List(7) { randomLibraryHit() }, 7)))
+                }
+                val viewModel = sut(repository, librarySearch = librarySearch)
+                openOutcome(viewModel, repository, ScanOutcome.Unresolved, randomValidIsbn13())
+                viewModel.alreadyHaveTapped()
+
+                viewModel.libraryQueryChanged("lo")
+                advanceTimeBy(PICKER_DEBOUNCE)
+                runCurrent()
+
+                (viewModel.uiState.value.stage as ScanStage.LibraryPicker).hits.size shouldBe 5
+            }
+        }
+
+        it("#335 TC-67: a pick opens the library book as a copy to check in") {
+            runTest {
+                val hit = randomLibraryHit()
+                val repository = TestScanRepository()
+                val librarySearch = TestLibrarySearchRepository().apply {
+                    answers.addLast(LibrarySearchResult.Success(LibraryBookMatches(listOf(hit), 1)))
+                }
+                val viewModel = sut(repository, librarySearch = librarySearch)
+                val isbn = randomValidIsbn13()
+                openOutcome(viewModel, repository, ScanOutcome.Unresolved, isbn)
+                viewModel.alreadyHaveTapped()
+                viewModel.libraryQueryChanged("lo")
+                advanceTimeBy(PICKER_DEBOUNCE)
+                runCurrent()
+
+                viewModel.libraryHitPicked(hit)
+
+                viewModel.uiState.value.stage shouldBe ScanStage.Outcome(
+                    ScanOutcome.InLibraryUnowned(
+                        ScanBook(
+                            uuid = hit.uuid,
+                            title = hit.title,
+                            authors = listOf(hit.authorDisplay),
+                            coverUrl = hit.coverUrl,
+                            hasPhysical = false,
+                            hasFiles = hit.formats.isNotEmpty(),
+                            isbn = null,
+                        ),
+                    ),
+                    isbn,
+                    FoundVia.Scan,
+                )
+            }
+        }
+    }
+
+    describe("out-of-date search answers") {
+
+        context("when the title query changed while a title search was in flight") {
+            it("#335 TC-70: drops the title answer") {
+                runTest {
+                    val gate = CompletableDeferred<Unit>()
+                    val repository = TestScanRepository().apply { searchGate = gate }
+                    val viewModel = sut(repository)
+                    viewModel.searchByTitleTapped()
+                    viewModel.titleQueryChanged("dune")
+                    viewModel.titleSearchSubmitted()
+                    runCurrent()
+
+                    repository.searchGate = null
+                    viewModel.titleQueryChanged("dunes")
+                    repository.searchAnswers.addLast(ScanResult.Success(listOf(randomProviderRecord())))
+                    gate.complete(Unit)
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe ScanStage.TitleSearch(query = "dunes")
+                }
+            }
+        }
+
+        context("when the reader left the title search") {
+            it("#335 TC-70: drops the title answer") {
+                runTest {
+                    val gate = CompletableDeferred<Unit>()
+                    val repository = TestScanRepository().apply { searchGate = gate }
+                    val viewModel = sut(repository)
+                    viewModel.searchByTitleTapped()
+                    viewModel.titleQueryChanged("dune")
+                    viewModel.titleSearchSubmitted()
+                    runCurrent()
+
+                    viewModel.scanInsteadTapped()
+                    repository.searchAnswers.addLast(ScanResult.Success(listOf(randomProviderRecord())))
+                    gate.complete(Unit)
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe ScanStage.Viewfinder()
+                }
+            }
+        }
+
+        context("when a newer title search started") {
+            it("#335 TC-70: shows only the newest search's results") {
+                runTest {
+                    val gate = CompletableDeferred<Unit>()
+                    val stale = randomProviderRecord()
+                    val fresh = randomProviderRecord()
+                    val repository = TestScanRepository().apply { searchGate = gate }
+                    val viewModel = sut(repository)
+                    viewModel.searchByTitleTapped()
+                    viewModel.titleQueryChanged("dune")
+                    viewModel.titleSearchSubmitted()
+                    runCurrent()
+
+                    repository.searchGate = null
+                    repository.searchAnswers.addLast(ScanResult.Success(listOf(fresh)))
+                    viewModel.titleQueryChanged("dunes")
+                    viewModel.titleSearchSubmitted()
+                    runCurrent()
+                    repository.searchAnswers.addLast(ScanResult.Success(listOf(stale)))
+                    gate.complete(Unit)
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe ScanStage.TitleSearch(query = "dunes", results = listOf(fresh))
+                }
+            }
+        }
+
+        context("when the picker query changed while a library search was in flight") {
+            it("#335 TC-70: shows only the newest library search's hits") {
+                runTest {
+                    val gate = CompletableDeferred<Unit>()
+                    val fresh = randomLibraryHit()
+                    val repository = TestScanRepository()
+                    val librarySearch = TestLibrarySearchRepository().apply { this.gate = gate }
+                    val viewModel = sut(repository, librarySearch = librarySearch)
+                    openOutcome(viewModel, repository, ScanOutcome.Unresolved, randomValidIsbn13())
+                    viewModel.alreadyHaveTapped()
+                    viewModel.libraryQueryChanged("lo")
+                    advanceTimeBy(PICKER_DEBOUNCE)
+                    runCurrent()
+
+                    librarySearch.gate = null
+                    librarySearch.answers.addLast(LibrarySearchResult.Success(LibraryBookMatches(listOf(fresh), 1)))
+                    viewModel.libraryQueryChanged("lom")
+                    advanceTimeBy(PICKER_DEBOUNCE)
+                    runCurrent()
+
+                    (viewModel.uiState.value.stage as ScanStage.LibraryPicker).hits shouldBe listOf(fresh)
+                }
+            }
+        }
+
+        context("when the reader left the library picker") {
+            it("#335 TC-70: drops the library answer") {
+                runTest {
+                    val gate = CompletableDeferred<Unit>()
+                    val repository = TestScanRepository()
+                    val librarySearch = TestLibrarySearchRepository().apply {
+                        this.gate = gate
+                        answers.addLast(LibrarySearchResult.Success(LibraryBookMatches(listOf(randomLibraryHit()), 1)))
+                    }
+                    val viewModel = sut(repository, librarySearch = librarySearch)
+                    openOutcome(viewModel, repository, ScanOutcome.Unresolved, randomValidIsbn13())
+                    val returnTo = viewModel.uiState.value.stage
+                    viewModel.alreadyHaveTapped()
+                    viewModel.libraryQueryChanged("lo")
+                    advanceTimeBy(PICKER_DEBOUNCE)
+                    runCurrent()
+
+                    viewModel.backTapped()
+                    gate.complete(Unit)
+                    runCurrent()
+
+                    viewModel.uiState.value.stage shouldBe returnTo
+                }
             }
         }
     }

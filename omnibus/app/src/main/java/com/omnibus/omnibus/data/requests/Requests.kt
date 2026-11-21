@@ -136,16 +136,8 @@ fun CurrentUser?.toRequestViewer(): RequestViewer = this?.let {
 /** A reader who has a book on their wishlist. */
 data class Wanter(val id: Long, val name: String)
 
-/** A library book a title search found. */
-data class LibraryHit(
-    val uuid: String,
-    val title: String,
-    val authorDisplay: String,
-    val year: String?,
-    val formats: List<String>,
-    val coverUrl: String?,
-    val accent: String?,
-)
+/** A library book a title search found. Now defined by the library search domain. */
+typealias LibraryHit = com.omnibus.omnibus.data.search.LibraryHit
 
 /** A provider's record: shown by its parsed fields, sent back as [meta] untouched. */
 data class ProviderBook(

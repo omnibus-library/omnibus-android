@@ -1,10 +1,14 @@
 package com.omnibus.omnibus.feature.scan
 
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.scan.ScanOutcome
@@ -110,5 +114,98 @@ class ScanLayoutTest {
         val checkIn = rule.onNodeWithText(scanText(R.string.scan_check_in)).getUnclippedBoundsInRoot()
 
         assertTrue("Check in this copy is not below the card", checkIn.top >= card.bottom)
+    }
+
+    // TC-71a
+    @Test
+    fun issue335_tc71a_recoveryOutcomesAreTwoPanes() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanOutcomeStage(
+                    outcome = ScanOutcome.CloseMatch(listOf(scanBook()), scanRecord()),
+                    note = "",
+                    writing = null,
+                    writeFailed = false,
+                    actions = ScanActions(),
+                    wide = true,
+                )
+            }
+        }
+
+        val card = rule.onNodeWithTag(ScanTestTags.CARD).getUnclippedBoundsInRoot()
+        val pick = rule.onNode(hasText(scanText(R.string.scan_yes_thats_it)) and hasClickAction()).getUnclippedBoundsInRoot()
+        assertTrue("the close match's card overlaps its pick", card.right <= pick.left)
+    }
+
+    // TC-71a
+    @Test
+    fun issue335_tc71a_unresolvedIsTwoPanes() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanOutcomeStage(
+                    outcome = ScanOutcome.Unresolved,
+                    note = "",
+                    writing = null,
+                    writeFailed = false,
+                    actions = ScanActions(),
+                    wide = true,
+                )
+            }
+        }
+
+        val title = rule.onNodeWithTag(ScanTestTags.TITLE).getUnclippedBoundsInRoot()
+        val search = rule.onNode(hasText(scanText(R.string.scan_search_by_title)) and hasClickAction()).getUnclippedBoundsInRoot()
+        assertTrue("the message overlaps the title search", title.right <= search.left)
+    }
+
+    // TC-71b
+    @Test
+    fun issue335_tc71b_titleSearchColumnIsCentred() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanScreenContent(
+                    uiState = ScanUIState(stage = ScanStage.TitleSearch()),
+                    camera = FakeBarcodeCamera(),
+                    actions = ScanActions(),
+                    wide = true,
+                    reducedMotion = true,
+                )
+            }
+        }
+
+        assertCentredNarrowerThanRoot(rule.onNode(hasSetTextAction()).getUnclippedBoundsInRoot())
+    }
+
+    // TC-71b
+    @Test
+    fun issue335_tc71b_libraryPickerColumnIsCentred() {
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                ScanScreenContent(
+                    uiState = ScanUIState(
+                        stage = ScanStage.LibraryPicker(
+                            returnTo = ScanStage.Outcome(ScanOutcome.Unresolved, "9781635575636", FoundVia.Scan),
+                        ),
+                    ),
+                    camera = FakeBarcodeCamera(),
+                    actions = ScanActions(),
+                    wide = true,
+                    reducedMotion = true,
+                )
+            }
+        }
+
+        assertCentredNarrowerThanRoot(rule.onNode(hasSetTextAction()).getUnclippedBoundsInRoot())
+    }
+
+    /** The column holding [field] sits in the middle of the root, and is narrower than it. */
+    private fun assertCentredNarrowerThanRoot(field: DpRect) {
+        val root = rule.onRoot().getUnclippedBoundsInRoot()
+        val leftGap = field.left - root.left
+        val rightGap = root.right - field.right
+        val gapDifferencePx = with(rule.density) { abs((leftGap - rightGap).toPx()) }
+
+        assertTrue("the search column's gaps differ by $gapDifferencePx px", gapDifferencePx <= 1f)
+        assertTrue("the search column is as wide as the root", field.right - field.left < root.right - root.left)
     }
 }

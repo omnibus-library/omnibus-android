@@ -10,8 +10,11 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.scan.ScanOutcome
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -31,6 +34,9 @@ class ScanOutcomeTest {
         writing: WritingAction? = null,
         writeFailed: Boolean = false,
         actions: ScanActions = ScanActions(),
+        via: FoundVia = FoundVia.Scan,
+        wishlistedCandidates: Set<String> = emptySet(),
+        titleDraft: String = "",
     ) {
         rule.setContent {
             OmnibusTheme(darkTheme = true) {
@@ -41,6 +47,9 @@ class ScanOutcomeTest {
                     writeFailed = writeFailed,
                     actions = actions,
                     wide = false,
+                    via = via,
+                    wishlistedCandidates = wishlistedCandidates,
+                    titleDraft = titleDraft,
                 )
             }
         }
@@ -96,13 +105,75 @@ class ScanOutcomeTest {
 
     // TC-25d
     @Test
-    fun issue317_tc25d_unplacedOffersScanAnotherOnly() {
-        setContent(ScanOutcome.Unplaced)
+    fun issue317_tc25d_unresolvedShowsCouldntIdentifyAndScanAnother() {
+        setContent(ScanOutcome.Unresolved)
 
-        rule.onNodeWithText(scanText(R.string.scan_cant_place_title)).assertIsDisplayed()
-        rule.onNodeWithText(scanText(R.string.scan_cant_place_body)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_unresolved_title)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_unresolved_body)).assertIsDisplayed()
         rule.onNodeWithText(scanText(R.string.scan_scan_another)).assertIsDisplayed()
         rule.onNodeWithText(scanText(R.string.scan_check_in)).assertDoesNotExist()
+    }
+
+    // TC-62a
+    @Test
+    fun issue335_tc62a_oneCloseMatch() {
+        setContent(ScanOutcome.CloseMatch(listOf(scanBook(title = "The Overstory")), scanRecord()))
+
+        rule.onNodeWithText(scanText(R.string.scan_close_match_one)).assertIsDisplayed()
+        rule.onNodeWithText(
+            scanText(R.string.scan_close_match_subtitle_one).format(scanText(R.string.scan_close_match_subject_scan)),
+        ).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_found_scan)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_badge_possible_match)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_yes_thats_it)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_already_have)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_no_different_book)).assertIsDisplayed()
+    }
+
+    // TC-62b
+    @Test
+    fun issue335_tc62b_severalCloseMatchesWithAWishlistedOne() {
+        val first = scanBook(uuid = "book-1", title = "Dune")
+        val second = scanBook(uuid = "book-2", title = "Dune Messiah")
+        val third = scanBook(uuid = "book-3", title = "Children of Dune")
+        setContent(
+            ScanOutcome.CloseMatch(listOf(first, second, third), scanRecord()),
+            wishlistedCandidates = setOf(first.uuid),
+        )
+
+        rule.onNodeWithText(scanText(R.string.scan_close_match_several)).assertIsDisplayed()
+        rule.onNodeWithText(
+            scanText(R.string.scan_close_match_subtitle_several).format(scanText(R.string.scan_close_match_subject_scan)),
+        ).assertIsDisplayed()
+        rule.onAllNodesWithText(scanText(R.string.scan_this_one)).assertCountEquals(3)
+        rule.onNodeWithText(scanText(R.string.scan_badge_on_wishlist)).assertIsDisplayed()
+        rule.onAllNodesWithText(scanText(R.string.scan_on_wishlist_body)).assertCountEquals(1)
+        // Last, because scrolling down takes the first candidate out of view.
+        rule.onNodeWithText(scanText(R.string.scan_none_of_these)).performScrollTo().assertIsDisplayed()
+    }
+
+    // TC-69
+    @Test
+    fun issue335_tc69_unresolvedOffersTitleSearchPickerAndScanAnother() {
+        val typed = mutableListOf<String>()
+        var searched = 0
+        setContent(
+            ScanOutcome.Unresolved,
+            titleDraft = "",
+            actions = ScanActions(onTitleQueryChanged = { typed += it }, onSearchByTitle = { searched++ }),
+        )
+
+        rule.onNodeWithText(scanText(R.string.scan_unresolved_title)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_unresolved_body)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_unresolved_placeholder)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_already_have)).assertIsDisplayed()
+        rule.onNodeWithText(scanText(R.string.scan_scan_another)).assertIsDisplayed()
+
+        rule.onNode(hasSetTextAction()).performTextInput("wind")
+        assertEquals(listOf("wind"), typed)
+
+        rule.onNodeWithText(scanText(R.string.scan_search_by_title)).performClick()
+        assertEquals(1, searched)
     }
 
     // TC-29a

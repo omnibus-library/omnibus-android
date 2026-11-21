@@ -6,10 +6,14 @@ import com.omnibus.omnibus.data.library.LibraryChanges
 import com.omnibus.omnibus.data.scan.remote.BookRefDto
 import com.omnibus.omnibus.data.scan.remote.CheckInRequestDto
 import com.omnibus.omnibus.data.scan.remote.PhysicalOnlyRequestDto
+import com.omnibus.omnibus.data.scan.remote.ResolveMetaRequestDto
 import com.omnibus.omnibus.data.scan.remote.ResolveRequestDto
 import com.omnibus.omnibus.data.scan.remote.ScanJson
+import com.omnibus.omnibus.data.scan.remote.ScanSearchRequestDto
+import com.omnibus.omnibus.data.scan.remote.ScanSearchResponseDto
 import com.omnibus.omnibus.data.scan.remote.ScanWishlistRequestDto
 import com.omnibus.omnibus.data.scan.remote.decodeScanOutcome
+import com.omnibus.omnibus.data.scan.remote.toProviderRecord
 import com.omnibus.omnibus.data.wishlist.WishlistRepository
 import com.omnibus.omnibus.data.wishlist.WishlistSource
 import com.omnibus.omnibus.di.ApplicationScope
@@ -59,6 +63,14 @@ class DefaultScanRepository @Inject constructor(
     override suspend fun addToWishlist(record: ProviderRecord, source: WishlistSource): ScanResult<String> =
         addBook(WISHLIST_PATH, ScanJson.encodeToString(ScanWishlistRequestDto(record.raw, source.name.lowercase())))
 
+    override suspend fun searchByTitle(query: String): ScanResult<List<ProviderRecord>> =
+        post(SEARCH_PATH, ScanJson.encodeToString(ScanSearchRequestDto(query.trim()))) {
+            ScanJson.decodeFromString<ScanSearchResponseDto>(it).results.map { record -> record.toProviderRecord() }
+        }
+
+    override suspend fun resolveRecord(record: ProviderRecord): ScanResult<ScanOutcome> =
+        post(RESOLVE_META_PATH, ScanJson.encodeToString(ResolveMetaRequestDto(record.raw)), ::decodeScanOutcome)
+
     /** Posts a new book and, on success, tells the Library it gained one. Runs to completion like a check-in. */
     private suspend fun addBook(path: String, json: String): ScanResult<String> =
         applicationScope.async {
@@ -103,6 +115,8 @@ class DefaultScanRepository @Inject constructor(
         const val CHECK_IN_PATH = "api/scan/check-in"
         const val PHYSICAL_ONLY_PATH = "api/scan/physical-only"
         const val WISHLIST_PATH = "api/scan/wishlist"
+        const val SEARCH_PATH = "api/scan/search"
+        const val RESOLVE_META_PATH = "api/scan/resolve-meta"
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 }

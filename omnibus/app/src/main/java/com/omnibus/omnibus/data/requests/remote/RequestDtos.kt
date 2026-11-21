@@ -5,7 +5,6 @@ import com.omnibus.omnibus.data.library.remote.BookDto
 import com.omnibus.omnibus.data.library.remote.LibraryJson
 import com.omnibus.omnibus.data.requests.BookRequest
 import com.omnibus.omnibus.data.requests.CoverOffer
-import com.omnibus.omnibus.data.requests.LibraryHit
 import com.omnibus.omnibus.data.requests.MatchedBook
 import com.omnibus.omnibus.data.requests.ProviderBook
 import com.omnibus.omnibus.data.requests.ReleaseProtocol
@@ -139,23 +138,6 @@ internal fun JsonObject.toBook(): Book = LibraryJson.decodeFromJsonElement(BookD
 @Serializable
 internal data class WanterDto(val id: Long, val name: String) {
     fun toDomain() = Wanter(id, name)
-}
-
-/** The part of `GET api/search/palette` the sheet reads. */
-@Serializable
-internal data class PaletteResultsDto(val books: List<PaletteBookDto> = emptyList())
-
-@Serializable
-internal data class PaletteBookDto(
-    val uuid: String = "",
-    val title: String,
-    @SerialName("author_display") val authorDisplay: String = "",
-    val year: String? = null,
-    val formats: List<String> = emptyList(),
-    @SerialName("cover_url") val coverUrl: String? = null,
-    val accent: String? = null,
-) {
-    fun toDomain() = LibraryHit(uuid, title, authorDisplay, year, formats, coverUrl, accent)
 }
 
 /** The body of `POST api/scan/search`. */

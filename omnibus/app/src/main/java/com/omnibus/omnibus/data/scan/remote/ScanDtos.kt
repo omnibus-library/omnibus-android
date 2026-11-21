@@ -58,7 +58,19 @@ internal fun JsonObject.toProviderRecord(): ProviderRecord = ProviderRecord(
     coverUrl = (this["cover_url"] as? JsonPrimitive)?.contentOrNull,
 )
 
-/** Reads a `ScanOutcome` body by its `kind`. A kind this version doesn't act on, or no kind, is [ScanOutcome.Unplaced]. */
+/** The body of `POST api/scan/search`. */
+@Serializable internal data class ScanSearchRequestDto(val query: String)
+
+/** The answer to `POST api/scan/search`. Each record stays a [JsonObject] so it can be sent back untouched. */
+@Serializable internal data class ScanSearchResponseDto(val results: List<JsonObject> = emptyList())
+
+/** The body of `POST api/scan/resolve-meta`. [meta] is a provider record, sent back as the server wrote it. */
+@Serializable internal data class ResolveMetaRequestDto(val meta: JsonObject)
+
+/**
+ * Reads a `ScanOutcome` body by its `kind`. A `close_match` lists its book first, then its others. A kind this version
+ * doesn't know, or no kind, is [ScanOutcome.Unresolved].
+ */
 internal fun decodeScanOutcome(body: String): ScanOutcome {
     val obj = ScanJson.parseToJsonElement(body).jsonObject
     fun book() = ScanJson.decodeFromJsonElement(ScanBookDto.serializer(), obj.getValue("book")).toDomain()
@@ -67,6 +79,12 @@ internal fun decodeScanOutcome(body: String): ScanOutcome {
         "on_wishlist" -> ScanOutcome.OnWishlist(book())
         "in_library_unowned" -> ScanOutcome.InLibraryUnowned(book())
         "not_in_library" -> ScanOutcome.NotInLibrary(obj.getValue("online").jsonObject.toProviderRecord())
-        else -> ScanOutcome.Unplaced
+        "close_match" -> {
+            val others = (obj["others"] as? JsonArray).orEmpty().map {
+                ScanJson.decodeFromJsonElement(ScanBookDto.serializer(), it).toDomain()
+            }
+            ScanOutcome.CloseMatch(listOf(book()) + others, obj.getValue("scanned").jsonObject.toProviderRecord())
+        }
+        else -> ScanOutcome.Unresolved
     }
 }
