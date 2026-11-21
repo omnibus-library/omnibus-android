@@ -146,9 +146,10 @@ class ScanOutcomeTest {
             scanText(R.string.scan_close_match_subtitle_several).format(scanText(R.string.scan_close_match_subject_scan)),
         ).assertIsDisplayed()
         rule.onAllNodesWithText(scanText(R.string.scan_this_one)).assertCountEquals(3)
-        rule.onNodeWithText(scanText(R.string.scan_none_of_these)).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(scanText(R.string.scan_badge_on_wishlist)).assertIsDisplayed()
         rule.onAllNodesWithText(scanText(R.string.scan_on_wishlist_body)).assertCountEquals(1)
+        // Last, because scrolling down takes the first candidate out of view.
+        rule.onNodeWithText(scanText(R.string.scan_none_of_these)).performScrollTo().assertIsDisplayed()
     }
 
     // TC-69
