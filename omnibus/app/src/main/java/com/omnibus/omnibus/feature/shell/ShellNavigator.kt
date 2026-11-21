@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.shell
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 
 /**
  * Navigation state for the signed-in shell: one back stack per [ShellTab] and which tab is selected.
@@ -61,6 +62,15 @@ class ShellNavigator(
     fun navigateTo(key: NavKey, tab: ShellTab = selected) {
         val stack = stacks.getValue(tab)
         if (stack.lastOrNull() != key) stack.add(key)
+    }
+
+    /**
+     * Opens [uuid]'s Book Detail on the Library tab, selecting that tab if needed, so Back returns to the Library. A book
+     * already on top of the Library stack is not pushed again.
+     */
+    fun openScannedBook(uuid: String) {
+        if (selected != ShellTab.Library) selectedTab.value = ShellTab.Library
+        navigateTo(BookDetailRoute(uuid), ShellTab.Library)
     }
 
     /** Goes back to [key] when it is just below [tab]'s top, so a loop of links doesn't grow the stack, else pushes it. */

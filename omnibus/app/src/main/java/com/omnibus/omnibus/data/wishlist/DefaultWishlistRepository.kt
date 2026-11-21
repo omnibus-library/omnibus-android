@@ -41,7 +41,7 @@ class DefaultWishlistRepository @Inject constructor(
         val lock = Any()
         val state = MutableStateFlow<WishlistState>(WishlistState.Unknown)
 
-        /** Bumped by every successful removal, so a GET that started before it cannot bring the entry back. */
+        /** Bumped by every successful removal or invalidation, so a GET that started before it cannot bring the entry back. */
         var removalSeq = 0L
 
         var inFlightFetch: Deferred<WishlistState>? = null
@@ -64,6 +64,15 @@ class DefaultWishlistRepository @Inject constructor(
 
     override suspend fun refresh(bookUuid: String) {
         startFetch(bookUuid, entry(bookUuid)).await()
+    }
+
+    override fun invalidate(bookUuid: String) {
+        val entry = entries[bookUuid] ?: return
+        synchronized(entry.lock) {
+            entry.removalSeq++
+            entry.inFlightFetch = null
+            entry.state.value = WishlistState.Unknown
+        }
     }
 
     /** Starts a GET, or returns the one already in flight. It runs in the application scope, not the caller's. */

@@ -16,6 +16,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
+import com.omnibus.omnibus.feature.scan.ScanRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 
 /**
@@ -36,7 +37,17 @@ internal fun MutableList<NavKey>.leaveForLogin() {
  * would keep the shell's tab bar above the keyboard and stop the reader and the player going edge to edge.
  */
 internal fun drawsOwnInsets(top: NavKey?): Boolean =
-    top == SignedInShellRoute || top is ReaderRoute || top is PlayerRoute
+    top == SignedInShellRoute || top is ReaderRoute || top is PlayerRoute || top == ScanRoute
+
+/** Opens the scanner over the shell. A second open while it is on top is ignored. */
+internal fun MutableList<NavKey>.openScanner() {
+    if (lastOrNull() != ScanRoute) add(ScanRoute)
+}
+
+/** Leaves the scanner, but only when it is still on top. */
+internal fun MutableList<NavKey>.closeScanner() {
+    if (lastOrNull() == ScanRoute) removeAt(lastIndex)
+}
 
 /**
  * Opens the reader for [bookUuid] over the stack, at [startCfi] when given. A second open of the same route on top is

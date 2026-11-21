@@ -5,6 +5,7 @@ import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
+import com.omnibus.omnibus.feature.scan.ScanRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -157,6 +158,39 @@ class RootNavigationTest : DescribeSpec({
 
         it("#165 TC-4: is true for PlayerRoute") {
             drawsOwnInsets(PlayerRoute("x", null)) shouldBe true
+        }
+
+        it("#317 TC-3: is true for ScanRoute") {
+            drawsOwnInsets(ScanRoute) shouldBe true
+        }
+    }
+
+    describe("opening and closing the scanner") {
+
+        it("#317 TC-3: pushes ScanRoute, and ignores a second open while it is on top") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openScanner()
+            stack.openScanner()
+
+            stack shouldContainExactly listOf(SignedInShellRoute, ScanRoute)
+        }
+
+        it("#317 TC-3: pops ScanRoute once, and ignores a close while it is not on top") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, ScanRoute)
+
+            stack.closeScanner()
+            stack.closeScanner()
+
+            stack shouldContainExactly listOf(SignedInShellRoute)
+        }
+
+        it("#317 TC-3: a close does not pop another route on top of the scanner") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, ScanRoute, LoginScreenRoute)
+
+            stack.closeScanner()
+
+            stack shouldContainExactly listOf(SignedInShellRoute, ScanRoute, LoginScreenRoute)
         }
     }
 })

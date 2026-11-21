@@ -8,6 +8,9 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -22,6 +25,8 @@ import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenAct
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderScreen
+import com.omnibus.omnibus.feature.scan.ScanRoute
+import com.omnibus.omnibus.feature.scan.ScanScreen
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellScreen
 import com.omnibus.omnibus.ui.components.LaunchScreen
@@ -66,6 +71,8 @@ class MainActivity : ComponentActivity() {
 private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
     // Saveable, so after rotation or process death the restored stack wins over startRoute.
     val backstack = rememberNavBackStack(startRoute)
+    // A book the scanner's "View book" chose, for the shell to open on its Library tab.
+    var pendingScannedBook by rememberSaveable { mutableStateOf<String?>(null) }
 
     RootNavDisplay(
         backstack = backstack,
@@ -101,6 +108,19 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                 SignedInShellScreen(
                     onOpenReader = { uuid, cfi -> backstack.openReader(uuid, cfi) },
                     onOpenPlayer = { uuid, fileId, seconds -> backstack.openPlayer(uuid, fileId, seconds) },
+                    onOpenScanner = { backstack.openScanner() },
+                    pendingScannedBook = pendingScannedBook,
+                    onPendingScannedBookOpened = { pendingScannedBook = null },
+                )
+            }
+            entry<ScanRoute> {
+                ScanScreen(
+                    onClose = { backstack.closeScanner() },
+                    onViewBook = { uuid ->
+                        // Set before popping: the shell recomposes when the scanner leaves, and consumes the uuid once.
+                        pendingScannedBook = uuid
+                        backstack.closeScanner()
+                    },
                 )
             }
             entry<ReaderRoute> { key ->

@@ -7,11 +7,11 @@ enum class AddBooksOptionKind { Upload, Scan, Wishlist }
 data class AddBooksOption(val kind: AddBooksOptionKind, val enabled: Boolean)
 
 /**
- * The sheet's rows, in order: Upload (only for a user who can upload, and disabled offline), then Scan and
- * Wishlist, which are always listed and enabled.
+ * The sheet's rows, in order: Upload (only for a user who can upload), then Scan, then Wishlist. Upload and Scan
+ * are disabled offline; Wishlist is always enabled.
  */
 fun addBooksOptions(canUpload: Boolean, isOffline: Boolean): List<AddBooksOption> = buildList {
     if (canUpload) add(AddBooksOption(AddBooksOptionKind.Upload, enabled = !isOffline))
-    add(AddBooksOption(AddBooksOptionKind.Scan, enabled = true))
+    add(AddBooksOption(AddBooksOptionKind.Scan, enabled = !isOffline))
     add(AddBooksOption(AddBooksOptionKind.Wishlist, enabled = true))
 }

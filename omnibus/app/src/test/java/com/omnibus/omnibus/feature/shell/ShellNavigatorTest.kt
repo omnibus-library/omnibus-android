@@ -3,9 +3,11 @@ package com.omnibus.omnibus.feature.shell
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomInt
 import com.omnibus.omnibus.testing.randomOf
+import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 
@@ -88,6 +90,59 @@ class ShellNavigatorTest : DescribeSpec({
 
             listOf(stacks.getValue(asking).toList(), stacks.getValue(selected).toList()) shouldBe
                 listOf(listOf(asking.root, pushed), listOf(selected.root))
+        }
+    }
+
+    describe("opening a book from the scanner") {
+
+        context("when the Library tab is selected") {
+
+            it("#317 TC-38: opens the book on top of the Library stack") {
+                val stacks = rootStacks()
+                val uuid = randomString()
+                val navigator = sut(stacks, ShellTab.Library)
+
+                navigator.openScannedBook(uuid)
+
+                stacks.getValue(ShellTab.Library).toList() shouldBe listOf(ShellTab.Library.root, BookDetailRoute(uuid))
+            }
+
+            it("#317 TC-38: opening it twice pushes it once") {
+                val stacks = rootStacks()
+                val uuid = randomString()
+                val navigator = sut(stacks, ShellTab.Library)
+
+                navigator.openScannedBook(uuid)
+                navigator.openScannedBook(uuid)
+
+                stacks.getValue(ShellTab.Library).toList() shouldBe listOf(ShellTab.Library.root, BookDetailRoute(uuid))
+            }
+
+            it("#317 TC-38: one back returns to the Library root") {
+                val stacks = rootStacks()
+                val navigator = sut(stacks, ShellTab.Library)
+                val uuid = randomString()
+                navigator.openScannedBook(uuid)
+                navigator.openScannedBook(uuid)
+
+                navigator.back()
+
+                stacks.getValue(ShellTab.Library).toList() shouldBe listOf(ShellTab.Library.root)
+            }
+        }
+
+        context("when another tab is selected") {
+
+            it("#317 TC-38: selects Library and opens the book on it") {
+                val stacks = rootStacks()
+                val uuid = randomString()
+                val navigator = sut(stacks, tabOtherThan(ShellTab.Library))
+
+                navigator.openScannedBook(uuid)
+
+                navigator.selected shouldBe ShellTab.Library
+                stacks.getValue(ShellTab.Library).toList() shouldBe listOf(ShellTab.Library.root, BookDetailRoute(uuid))
+            }
         }
     }
 

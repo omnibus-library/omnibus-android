@@ -53,6 +53,12 @@ interface WishlistRepository {
     suspend fun refresh(bookUuid: String)
 
     /**
+     * Forgets what is known about [bookUuid], so the next collection of [getWishlistFlow] fetches it again. A fetch that
+     * was already in flight can no longer set the state. Call it after a write elsewhere changed the entry.
+     */
+    fun invalidate(bookUuid: String)
+
+    /**
      * Removes the book from the wishlist. The state becomes [WishlistState.Absent] on success and is left alone on
      * failure. The request is not cancelled when the caller is.
      */

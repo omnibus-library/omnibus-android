@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,9 @@ fun SignedInShellScreen(
     onOpenReader: (bookUuid: String, startCfi: String?) -> Unit,
     modifier: Modifier = Modifier,
     onOpenPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit = { _, _, _ -> },
+    onOpenScanner: () -> Unit = {},
+    pendingScannedBook: String? = null,
+    onPendingScannedBookOpened: () -> Unit = {},
 ) {
     val navigator = rememberShellNavigator()
     val activity = LocalActivity.current
@@ -87,6 +91,9 @@ fun SignedInShellScreen(
         onBack = { if (!navigator.back()) activity?.finish() },
         onOpenReader = onOpenReader,
         onOpenPlayer = onOpenPlayer,
+        onOpenScanner = onOpenScanner,
+        pendingScannedBook = pendingScannedBook,
+        onPendingScannedBookOpened = onPendingScannedBookOpened,
         modifier = modifier,
     )
 }
@@ -105,6 +112,9 @@ private fun SignedInShellContent(
     onBack: () -> Unit,
     onOpenReader: (bookUuid: String, startCfi: String?) -> Unit,
     onOpenPlayer: (bookUuid: String, bookFileId: Long?, positionSeconds: Double?) -> Unit,
+    onOpenScanner: () -> Unit,
+    pendingScannedBook: String?,
+    onPendingScannedBookOpened: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tabBarItems = ShellTab.entries.map {
@@ -142,6 +152,13 @@ private fun SignedInShellContent(
             onPlayPauseToggled = miniPlayerViewModel::onPlayPauseToggled,
             onStop = miniPlayerViewModel::onStop,
         )
+    }
+
+    // "View book" on the scanner: open the book on the Library tab, once.
+    LaunchedEffect(pendingScannedBook) {
+        val uuid = pendingScannedBook ?: return@LaunchedEffect
+        navigator.openScannedBook(uuid)
+        onPendingScannedBookOpened()
     }
 
     // With no bar over the navigation bar the system's own scrim should stay, so only the bar layout turns it off.
@@ -182,6 +199,7 @@ private fun SignedInShellContent(
                                 onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },
                                 onOpenShelves = { navigator.navigateTo(ShelvesRoute, ShellTab.Library) },
                                 onOpenShelf = { navigator.navigateTo(ShelfDetailRoute(it), ShellTab.Library) },
+                                onOpenScanner = onOpenScanner,
                             )
                         }
                         entry<BookDetailRoute> { key ->
