@@ -5,6 +5,7 @@ import com.omnibus.omnibus.data.search.GenreMatch
 import com.omnibus.omnibus.data.search.LibraryBookMatches
 import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.data.search.LibrarySearchResults
+import com.omnibus.omnibus.data.search.SeriesMatch
 import com.omnibus.omnibus.data.search.SearchMatches
 import com.omnibus.omnibus.data.search.TagMatch
 import kotlinx.serialization.SerialName
@@ -24,6 +25,8 @@ internal data class PaletteResultsDto(
     @SerialName("book_total") val bookTotal: Int? = null,
     val authors: List<PaletteAuthorDto> = emptyList(),
     @SerialName("author_total") val authorTotal: Int? = null,
+    val series: List<PaletteSeriesDto> = emptyList(),
+    @SerialName("series_total") val seriesTotal: Int? = null,
     val tags: List<PaletteTagDto> = emptyList(),
     @SerialName("tag_total") val tagTotal: Int? = null,
     val genres: List<PaletteGenreDto> = emptyList(),
@@ -37,6 +40,7 @@ internal data class PaletteResultsDto(
     fun toResults() = LibrarySearchResults(
         books = books.matches(bookTotal) { it.toDomain() },
         authors = authors.matches(authorTotal) { it.toDomain() },
+        series = series.matches(seriesTotal) { it.toDomain() },
         tags = tags.matches(tagTotal) { it.toDomain() },
         genres = genres.matches(genreTotal) { it.toDomain() },
     )
@@ -84,4 +88,14 @@ internal data class PaletteAuthorDto(
     @SerialName("lead_book_title") val leadBookTitle: String? = null,
 ) {
     fun toDomain() = AuthorMatch(id, name, bookCount, leadBookTitle)
+}
+
+@Serializable
+internal data class PaletteSeriesDto(
+    val id: Long,
+    val name: String,
+    @SerialName("book_count") val bookCount: Int = 0,
+    @SerialName("author_display") val authorDisplay: String? = null,
+) {
+    fun toDomain() = SeriesMatch(id, name, bookCount, authorDisplay)
 }

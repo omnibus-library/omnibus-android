@@ -25,6 +25,19 @@ fun randomAuthorMatches(): SearchMatches<AuthorMatch> {
     return SearchMatches(items, total = randomInt(items.size..items.size + 50))
 }
 
+fun randomSeriesMatch(): SeriesMatch = SeriesMatch(
+    id = randomInt(1..10_000).toLong(),
+    name = randomString(),
+    bookCount = randomInt(1..500),
+    authorDisplay = randomString(),
+)
+
+/** Up to five series, with a total at or above the number shown. */
+fun randomSeriesMatches(): SearchMatches<SeriesMatch> {
+    val items = List(randomInt(1..5)) { randomSeriesMatch() }
+    return SearchMatches(items, total = randomInt(items.size..items.size + 50))
+}
+
 fun randomTagMatch(): TagMatch = TagMatch(name = randomString(), bookCount = randomInt(1..500))
 
 /** Up to five tags, with a total at or above the number shown. */

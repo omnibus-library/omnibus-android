@@ -59,6 +59,7 @@ data class SearchNotice(val id: Long, val failure: SearchFailure)
 internal fun LibrarySearchResults.section(kind: SearchSectionKind): SearchMatches<*> = when (kind) {
     SearchSectionKind.Books -> books
     SearchSectionKind.Authors -> authors
+    SearchSectionKind.Series -> series
     SearchSectionKind.Tags -> tags
     SearchSectionKind.Genres -> genres
 }
