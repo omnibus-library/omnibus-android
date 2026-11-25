@@ -216,4 +216,101 @@ class DefaultSeriesRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    /** The details the server's answer [body] reads as. */
+    suspend fun detailsOf(body: String): SeriesDetails = withMockServer { server ->
+        server.enqueue(reply(200, body))
+        sut(server.url("/")).getSeriesDetails(randomLong()).shouldBeTypeOf<SeriesDetailsResult.Success>().details
+    }
+
+    describe("reading the series details") {
+
+        it("#349 TC-9: returns the books in the server's order, not re-sorted") {
+            val details = detailsOf(
+                """{"books":[{"id":3,"series_index":"3"},{"id":1,"series_index":"1"},{"id":2,"series_index":"2.5"}]}""",
+            )
+
+            details.books.map { it.id } shouldBe listOf(3L, 1L, 2L)
+        }
+
+        it("#349 TC-9: returns the series name") {
+            val name = randomString()
+
+            detailsOf("""{"name":"$name","books":[]}""").name shouldBe name
+        }
+
+        it("#349 TC-9: decodes each book as the library does") {
+            val details = detailsOf(
+                """{"books":[{"id":7,"unique_identifier":"u7","filename":"f.epub","title":"Title",""" +
+                    """"cover_url":"/c.jpg","accent":"#ff0000","formats":["epub","m4b"],""" +
+                    """"series_index":"2.5","has_physical":true}]}""",
+            )
+
+            val book = details.books.single()
+            book.uuid shouldBe "u7"
+            book.title shouldBe "Title"
+            book.coverUrl shouldBe "/c.jpg"
+            book.accent shouldBe "#ff0000"
+            book.formats shouldBe listOf("epub", "m4b")
+            book.seriesIndex shouldBe "2.5"
+            book.hasPhysical shouldBe true
+        }
+
+        it("#349 TC-9: decodes a series whose extra keys the page ignores") {
+            val details = detailsOf(
+                """{"id":4,"name":"Dune","sort":"title","book_count":1,"reading":{"x":1},"hidden_from_home":true,""" +
+                    """"books":[{"id":1,"hidden_from_home":true,"series_index":"1"}]}""",
+            )
+
+            details.name shouldBe "Dune"
+            details.books.map { it.id } shouldBe listOf(1L)
+        }
+
+        it("#349 TC-10: reports each failure status as its own error") {
+            withMockServer { server ->
+                checkAll(
+                    Exhaustive.of(
+                        401 to SeriesError.SessionExpired,
+                        404 to SeriesError.NotFound,
+                        429 to SeriesError.Http(429),
+                        500 to SeriesError.Http(500),
+                        503 to SeriesError.Http(503),
+                    ),
+                ) { (code, error) ->
+                    server.enqueue(reply(code))
+
+                    sut(server.url("/")).getSeriesDetails(randomLong()) shouldBe SeriesDetailsResult.Failure(error)
+                }
+            }
+        }
+
+        context("when the server cannot be reached") {
+
+            it("#349 TC-11: reports Unreachable") {
+                sut(unreachableUrl()).getSeriesDetails(randomLong()) shouldBe
+                    SeriesDetailsResult.Failure(SeriesError.Unreachable)
+            }
+        }
+
+        context("when the answer is not a series") {
+
+            it("#349 TC-11: reports UnexpectedResponse") {
+                withMockServer { server ->
+                    checkAll(Exhaustive.of("not json", "[]", """{"books":"nope"}""")) { body ->
+                        server.enqueue(reply(200, body))
+
+                        sut(server.url("/")).getSeriesDetails(randomLong()) shouldBe
+                            SeriesDetailsResult.Failure(SeriesError.UnexpectedResponse)
+                    }
+                }
+            }
+        }
+
+        context("when no server is saved") {
+
+            it("#349 TC-11: reports NoServer") {
+                sut().getSeriesDetails(randomLong()) shouldBe SeriesDetailsResult.NoServer
+            }
+        }
+    }
 })

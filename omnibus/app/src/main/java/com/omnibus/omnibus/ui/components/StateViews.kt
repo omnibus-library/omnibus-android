@@ -86,6 +86,8 @@ fun LoadingStateView(
  *
  * Sized as a screen state rather than a banner, so the error takes the whole content area.
  * [onRetry] runs on each tap; the caller decides whether that starts a reload.
+ *
+ * @param actionModifier Applied to the action button, e.g. a larger touch target.
  */
 @Composable
 fun ErrorStateView(
@@ -95,6 +97,7 @@ fun ErrorStateView(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     background: Color = OmnibusTheme.palette.bg0,
+    actionModifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
     Box(
@@ -133,7 +136,7 @@ fun ErrorStateView(
                 modifier = Modifier.widthIn(max = 320.dp),
             )
             Spacer(Modifier.height(20.dp))
-            StateActionButton(label = actionLabel, onClick = onRetry)
+            StateActionButton(label = actionLabel, onClick = onRetry, modifier = actionModifier)
         }
     }
 }

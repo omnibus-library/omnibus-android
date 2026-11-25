@@ -4,12 +4,15 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
+import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 import com.omnibus.omnibus.testing.randomEnum
 import com.omnibus.omnibus.testing.randomInt
+import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomOf
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 
 private data class Pushed(val id: Int) : NavKey
 
@@ -301,6 +304,95 @@ class ShellNavigatorTest : DescribeSpec({
         context("when at the start tab's root") {
             it("reports nowhere to go") {
                 sut(selected = ShellTab.Start).back() shouldBe false
+            }
+        }
+    }
+
+    describe("opening a series page") {
+
+        it("#349 TC-2: lands on the tab that opened it") {
+            val stacks = rootStacks()
+            val asking = randomEnum<ShellTab>()
+            val route = SeriesDetailsRoute(randomLong(), randomString())
+            val navigator = sut(stacks, tabOtherThan(asking))
+
+            navigator.navigateTo(route, asking)
+
+            stacks.getValue(asking).toList() shouldBe listOf(asking.root, route)
+        }
+
+        it("#349 TC-2: leaves the other tabs' stacks alone") {
+            val stacks = rootStacks()
+            val asking = randomEnum<ShellTab>()
+            val navigator = sut(stacks, tabOtherThan(asking))
+
+            navigator.navigateTo(SeriesDetailsRoute(randomLong(), randomString()), asking)
+
+            ShellTab.entries.filter { it != asking }.map { stacks.getValue(it).toList() } shouldBe
+                ShellTab.entries.filter { it != asking }.map { listOf(it.root) }
+        }
+
+        it("#349 TC-2: a double tap pushes nothing") {
+            val stacks = rootStacks()
+            val tab = randomEnum<ShellTab>()
+            val id = randomLong()
+            val name = randomString()
+            val navigator = sut(stacks, tab)
+
+            navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+            navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+
+            stacks.getValue(tab).toList() shouldBe listOf(tab.root, SeriesDetailsRoute(id, name))
+            stacks.getValue(tab).size shouldBe 2
+        }
+
+        context("when Book Details is on top of the series page") {
+
+            it("#349 TC-2: pushes another series page for the same series") {
+                val stacks = rootStacks()
+                val tab = randomEnum<ShellTab>()
+                val id = randomLong()
+                val name = randomString()
+                val navigator = sut(stacks, tab)
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+                navigator.navigateTo(BookDetailRoute(randomString()), tab)
+
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+
+                stacks.getValue(tab).size shouldBe 4
+                stacks.getValue(tab).last() shouldBe SeriesDetailsRoute(id, name)
+            }
+
+            it("#349 TC-2: gives the repeated page its own instance") {
+                val stacks = rootStacks()
+                val tab = randomEnum<ShellTab>()
+                val id = randomLong()
+                val name = randomString()
+                val navigator = sut(stacks, tab)
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+                navigator.navigateTo(BookDetailRoute(randomString()), tab)
+
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+
+                val pages = stacks.getValue(tab).filterIsInstance<SeriesDetailsRoute>()
+                pages.size shouldBe 2
+                pages[0].instance shouldNotBe pages[1].instance
+            }
+
+            it("#349 TC-2: one back returns to Book Details") {
+                val stacks = rootStacks()
+                val tab = randomEnum<ShellTab>()
+                val id = randomLong()
+                val name = randomString()
+                val book = BookDetailRoute(randomString())
+                val navigator = sut(stacks, tab)
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+                navigator.navigateTo(book, tab)
+                navigator.navigateTo(SeriesDetailsRoute(id, name), tab)
+
+                navigator.back(tab)
+
+                stacks.getValue(tab).last() shouldBe book
             }
         }
     }

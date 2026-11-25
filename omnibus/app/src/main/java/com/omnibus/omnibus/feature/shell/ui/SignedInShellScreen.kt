@@ -47,6 +47,8 @@ import com.omnibus.omnibus.feature.search.facet.FacetBooksScreen
 import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
 import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllScreen
 import com.omnibus.omnibus.feature.search.SearchScreen
+import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
+import com.omnibus.omnibus.feature.series.ui.SeriesDetailsScreen
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailRoute
 import com.omnibus.omnibus.feature.shelves.detail.ui.ShelfDetailScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
@@ -209,7 +211,7 @@ private fun SignedInShellContent(
                                 onOpenBook = { navigator.navigateTo(BookDetailRoute(it), ShellTab.Library) },
                                 onOpenReader = { onOpenReader(it, null) },
                                 onOpenPlayer = { uuid, fileId -> onOpenPlayer(uuid, fileId, null) },
-                                onOpenSeries = { _, name -> navigator.navigateTo(BookDetailPlaceholderRoute(name), ShellTab.Library) },
+                                onOpenSeries = { id, name -> navigator.navigateTo(SeriesDetailsRoute(id, name), ShellTab.Library) },
                                 onOpenShelves = { navigator.navigateTo(ShelvesRoute, ShellTab.Library) },
                                 onOpenShelf = { navigator.navigateTo(ShelfDetailRoute(it), ShellTab.Library) },
                                 onOpenScanner = onOpenScanner,
@@ -241,12 +243,22 @@ private fun SignedInShellContent(
                                     shelfId = key.shelfId,
                                     onBack = { navigator.back(navigator.ownerOf(key)) },
                                     onOpenBook = { navigator.navigateTo(BookDetailRoute(it), navigator.ownerOf(key)) },
-                                    onOpenSeries = { _, name ->
-                                        navigator.navigateTo(BookDetailPlaceholderRoute(name), navigator.ownerOf(key))
+                                    onOpenSeries = { id, name ->
+                                        navigator.navigateTo(SeriesDetailsRoute(id, name), navigator.ownerOf(key))
                                     },
                                     onAddBooks = {
                                         navigator.navigateTo(BookDetailPlaceholderRoute(addBooksTitle), navigator.ownerOf(key))
                                     },
+                                )
+                            }
+                        }
+                        entry<SeriesDetailsRoute>(clazzContentKey = { it.contentKey }) { key ->
+                            ShellUnderStatusBarEntry {
+                                SeriesDetailsScreen(
+                                    seriesId = key.seriesId,
+                                    name = key.name,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpenBook = { navigator.navigateTo(BookDetailRoute(it), navigator.ownerOf(key)) },
                                 )
                             }
                         }
