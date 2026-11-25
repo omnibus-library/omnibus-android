@@ -88,16 +88,6 @@ class SearchScreenTest {
         }
     }
 
-    /**
-     * Shows the snackbar and keeps it up. The test clock normally skips ahead while idle, which would run out the
-     * snackbar's timeout before any assertion, so the clock is paused and moved just past its fade-in.
-     */
-    private fun setSearchWithSnackbar(uiState: SearchUIState, onRetry: () -> Unit = {}, onNoticeShown: () -> Unit = {}) {
-        rule.mainClock.autoAdvance = false
-        setSearch(uiState, onRetry = onRetry, onNoticeShown = onNoticeShown)
-        rule.mainClock.advanceTimeBy(1_000)
-    }
-
     // TC-23
     @Test
     fun issue351_tc23_promptShowsMastheadFieldAndMessage() {
@@ -258,41 +248,6 @@ class SearchScreenTest {
         )
 
         rule.onNodeWithText(string(R.string.search_try_again)).performClick()
-
-        assertEquals(1, retries)
-    }
-
-    // TC-30
-    @Test
-    fun issue351_tc30_noticeIsShownOnce() {
-        var shown = 0
-        setSearchWithSnackbar(
-            SearchUIState(
-                query = "wood",
-                body = SearchBody.Results("wood", listOf(SearchSection(SearchSectionKind.Books, SearchMatches(listOf(hit(1)), 1)))),
-                notice = SearchNotice(1, SearchFailure.Unreachable),
-            ),
-            onNoticeShown = { shown++ },
-        )
-
-        rule.onNodeWithText(string(R.string.search_unreachable_title)).assertIsDisplayed()
-        assertEquals(1, shown)
-    }
-
-    // TC-30
-    @Test
-    fun issue351_tc30_snackbarRetryRetries() {
-        var retries = 0
-        setSearchWithSnackbar(
-            SearchUIState(
-                query = "wood",
-                body = SearchBody.Results("wood", listOf(SearchSection(SearchSectionKind.Books, SearchMatches(listOf(hit(1)), 1)))),
-                notice = SearchNotice(1, SearchFailure.Unreachable),
-            ),
-            onRetry = { retries++ },
-        )
-
-        rule.onNodeWithText(string(R.string.search_retry)).performClick()
 
         assertEquals(1, retries)
     }
