@@ -27,9 +27,6 @@ class UnderConstructionScreenTest {
     }
 
     @Test
-    fun searchPageMessageIsReachable() = assertMessageReachable(UnderConstructionPage.Search)
-
-    @Test
     fun statsPageMessageIsReachable() = assertMessageReachable(UnderConstructionPage.Stats)
 
     @Test

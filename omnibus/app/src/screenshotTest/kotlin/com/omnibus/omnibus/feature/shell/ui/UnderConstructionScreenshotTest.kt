@@ -8,15 +8,6 @@ import com.omnibus.omnibus.screenshot.Shot
 @PreviewTest
 @PreviewLightDark
 @Composable
-fun UnderConstructionSearch() {
-    Shot {
-        UnderConstructionScreen(UnderConstructionPage.Search)
-    }
-}
-
-@PreviewTest
-@PreviewLightDark
-@Composable
 fun UnderConstructionStats() {
     Shot {
         UnderConstructionScreen(UnderConstructionPage.Stats)

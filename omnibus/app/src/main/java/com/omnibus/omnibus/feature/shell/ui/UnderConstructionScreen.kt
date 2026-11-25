@@ -58,7 +58,6 @@ internal enum class UnderConstructionPage(
     @param:StringRes val title: Int,
     @param:StringRes val message: Int,
 ) {
-    Search(R.string.under_construction_search_title, R.string.under_construction_search_message),
     Stats(R.string.under_construction_stats_title, R.string.under_construction_stats_message),
     You(R.string.under_construction_you_title, R.string.under_construction_you_message),
 }
@@ -156,6 +155,6 @@ private const val SCENE_LOOP_MILLIS = 3200
 @PreviewLightDark
 private fun UnderConstructionScreenPreview() {
     OmnibusTheme {
-        UnderConstructionScreen(UnderConstructionPage.Search)
+        UnderConstructionScreen(UnderConstructionPage.Stats)
     }
 }
