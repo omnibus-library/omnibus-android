@@ -1,12 +1,13 @@
 package com.omnibus.omnibus.data.configuration
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.Preferences
 import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.libraries.LibraryHost
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
+import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import com.omnibus.omnibus.data.network.AuthTokenProvider
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
@@ -22,48 +23,21 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
-import java.io.File
 import java.io.IOException
-import kotlin.io.path.createTempDirectory
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
 import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-
-/** Runs [block] with an empty preferences store on a temp file, removed afterwards. */
-private suspend inline fun <T> withPreferences(block: (DataStore<Preferences>) -> T): T {
-    val directory = createTempDirectory("server-config-test").toFile()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    return try {
-        block(
-            PreferenceDataStoreFactory.create(
-                scope = scope,
-                produceFile = { File(directory, "server_configuration.preferences_pb") },
-            ),
-        )
-    } finally {
-        scope.coroutineContext.job.cancelAndJoin()
-        directory.deleteRecursively()
-    }
-}
-
-private suspend inline fun <T> withServerAndPreferences(block: (MockWebServer, DataStore<Preferences>) -> T): T =
-    withMockServer { server -> withPreferences { preferences -> block(server, preferences) } }
 
 private fun ok(): MockResponse = MockResponse.Builder().code(200).build()
 
 class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
     fun sut(
-        preferences: DataStore<Preferences>,
+        librariesRepository: LibrariesRepository = TestLibrariesRepository(),
         authTokenStore: AuthTokenStore = TestAuthTokenStore(),
         authTokenProvider: AuthTokenProvider = TestAuthTokenProvider(),
     ): DefaultServerConfigurationRepository = DefaultServerConfigurationRepository(
-        serverConfigPreferences = preferences,
+        librariesRepository = librariesRepository,
         omnibusHttpClient = OmnibusHttpClient(
             // Validation targets the candidate address, never the saved one.
             baseUrlProvider = TestServerBaseUrlProvider(),
@@ -80,101 +54,116 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
     afterSpec { unmockAndroidLog() }
 
     describe("observing the saved server") {
-        context("when no server has been saved") {
-            it("emits null") {
-                withPreferences { preferences ->
-                    sut(preferences).getSavedServerConfigFlow().first().shouldBeNull()
-                }
+        context("when no library is active") {
+            it("TC-35: emits null") {
+                sut().getSavedServerConfigFlow().first().shouldBeNull()
             }
         }
 
-        context("when a server has been saved") {
-            it("emits its address") {
-                withPreferences { preferences ->
-                    val address = randomServerAddress()
-                    val repository = sut(preferences)
+        context("when a library is active") {
+            it("TC-35: emits the active library's address") {
+                val address = randomServerAddress()
+                val libraries = TestLibrariesRepository(
+                    listOf(randomLibrary().copy(address = address, isActive = true)),
+                )
 
-                    repository.saveServerConfig(address)
-
-                    repository.getSavedServerConfigFlow().first() shouldBe address
-                }
+                sut(libraries).getSavedServerConfigFlow().first() shouldBe address
             }
         }
     }
 
     describe("saving a server") {
-        context("when no server was saved before") {
-            it("signs out") {
-                withPreferences { preferences ->
-                    val tokenStore = TestAuthTokenStore(initialToken = randomString())
+        context("when no library exists") {
+            it("TC-36: adds and activates a library for the normalized address") {
+                val libraries = TestLibrariesRepository()
 
-                    sut(preferences, tokenStore).saveServerConfig(randomServerAddress())
+                sut(libraries).saveServerConfig("  example.com:3000/ ")
 
-                    tokenStore.token.first().shouldBeNull()
-                }
+                libraries.getActiveLibraryFlow().first()?.address shouldBe "http://example.com:3000"
             }
-        }
 
-        context("when a different server was saved before") {
-            it("signs out") {
-                withPreferences { preferences ->
-                    val tokenStore = TestAuthTokenStore()
-                    val repository = sut(preferences, tokenStore)
-                    repository.saveServerConfig(randomServerAddress())
-                    tokenStore.save(randomString())
+            it("TC-36: leaves the signed-out state unchanged") {
+                val tokenStore = TestAuthTokenStore()
 
-                    repository.saveServerConfig(randomServerAddress())
+                sut(TestLibrariesRepository(), tokenStore).saveServerConfig(randomServerAddress())
 
-                    tokenStore.token.first().shouldBeNull()
-                }
+                tokenStore.token.first().shouldBeNull()
             }
         }
 
         context("when the same server was saved before") {
-            it("stays signed in") {
-                withPreferences { preferences ->
-                    val address = randomServerAddress()
-                    val token = randomString()
-                    val tokenStore = TestAuthTokenStore()
-                    val repository = sut(preferences, tokenStore)
-                    repository.saveServerConfig(address)
-                    tokenStore.save(token)
+            it("TC-37: keeps the library and its token") {
+                val library = randomLibrary().copy(address = randomServerAddress(), isActive = true)
+                val libraries = TestLibrariesRepository(listOf(library))
+                val token = randomString()
+                val tokenStore = TestAuthTokenStore(initialToken = token)
 
-                    repository.saveServerConfig(address)
+                sut(libraries, tokenStore).saveServerConfig(library.address)
 
-                    tokenStore.token.first() shouldBe token
-                }
+                libraries.getLibrariesFlow().first() shouldBe listOf(library)
+                tokenStore.token.first() shouldBe token
             }
         }
 
         context("when an older build saved the same server as typed") {
-            it("stays signed in") {
-                withPreferences { preferences ->
-                    val host = randomString(8..16).lowercase()
-                    val token = randomString()
-                    val tokenStore = TestAuthTokenStore()
-                    val repository = sut(preferences, tokenStore)
-                    repository.saveServerConfig("$host.example.com:3000/")
-                    tokenStore.save(token)
+            it("TC-37: keeps the library and its token") {
+                val host = randomString(8..16).lowercase()
+                val library = randomLibrary().copy(address = "$host.example.com:3000/", isActive = true)
+                val libraries = TestLibrariesRepository(listOf(library))
+                val token = randomString()
+                val tokenStore = TestAuthTokenStore(initialToken = token)
 
-                    repository.saveServerConfig("http://$host.example.com:3000")
+                sut(libraries, tokenStore).saveServerConfig("http://$host.example.com:3000")
 
-                    tokenStore.token.first() shouldBe token
-                }
+                libraries.getLibrariesFlow().first() shouldBe listOf(library)
+                tokenStore.token.first() shouldBe token
+            }
+        }
+
+        context("when a different server was saved before") {
+            it("TC-38: signs out") {
+                val active = randomLibrary().copy(isActive = true)
+                val tokenStore = TestAuthTokenStore(initialToken = randomString())
+
+                sut(TestLibrariesRepository(listOf(active)), tokenStore).saveServerConfig(randomServerAddress())
+
+                tokenStore.token.first().shouldBeNull()
+            }
+
+            it("TC-38: changes the address of the same library in place") {
+                val active = randomLibrary().copy(isActive = true)
+                val newAddress = randomServerAddress()
+                val libraries = TestLibrariesRepository(listOf(active))
+
+                sut(libraries).saveServerConfig(newAddress)
+
+                val stored = libraries.getLibrariesFlow().first()
+                stored.map { it.id } shouldBe listOf(active.id)
+                stored.single().address shouldBe newAddress
+                stored.single().name shouldBe LibraryHost.of(newAddress)
+            }
+
+            it("TC-38: leaves other libraries unchanged") {
+                val active = randomLibrary().copy(isActive = true)
+                val other = randomLibrary().copy(isActive = false)
+                val libraries = TestLibrariesRepository(listOf(active, other))
+
+                sut(libraries).saveServerConfig(randomServerAddress())
+
+                libraries.getLibrariesFlow().first().single { it.id == other.id } shouldBe other
             }
         }
 
         context("when the old token can't be cleared") {
-            it("still saves the server") {
-                withPreferences { preferences ->
-                    val address = randomServerAddress()
-                    val tokenStore = TestAuthTokenStore().apply { clearFailure = IOException("keystore unavailable") }
-                    val repository = sut(preferences, tokenStore)
+            it("TC-39: still saves the server") {
+                val address = randomServerAddress()
+                val libraries = TestLibrariesRepository(listOf(randomLibrary().copy(isActive = true)))
+                val tokenStore = TestAuthTokenStore().apply { clearFailure = IOException("keystore unavailable") }
+                val repository = sut(libraries, tokenStore)
 
-                    repository.saveServerConfig(address)
+                repository.saveServerConfig(address)
 
-                    repository.getSavedServerConfigFlow().first() shouldBe address
-                }
+                repository.getSavedServerConfigFlow().first() shouldBe address
             }
         }
     }
@@ -183,11 +172,11 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
         context("when the health check responds 200") {
             context("when the address has no scheme") {
                 it("returns Success with the normalized address") {
-                    withServerAndPreferences { server, preferences ->
+                    withMockServer { server ->
                         server.enqueue(ok())
                         val hostAndPort = "${server.hostName}:${server.port}"
 
-                        sut(preferences).validateServerAddress("  $hostAndPort/ ") shouldBe
+                        sut().validateServerAddress("  $hostAndPort/ ") shouldBe
                             ServerValidationResult.Success(serverAddress = "http://$hostAndPort")
                     }
                 }
@@ -195,21 +184,21 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
             context("when the address has a scheme") {
                 it("returns Success with that scheme") {
-                    withServerAndPreferences { server, preferences ->
+                    withMockServer { server ->
                         server.enqueue(ok())
                         val address = "http://${server.hostName}:${server.port}"
 
-                        sut(preferences).validateServerAddress("$address/") shouldBe
+                        sut().validateServerAddress("$address/") shouldBe
                             ServerValidationResult.Success(serverAddress = address)
                     }
                 }
             }
 
             it("probes the health endpoint") {
-                withServerAndPreferences { server, preferences ->
+                withMockServer { server ->
                     server.enqueue(ok())
 
-                    sut(preferences).validateServerAddress(server.url("/").toString())
+                    sut().validateServerAddress(server.url("/").toString())
 
                     server.takeRequest().url.encodedPath shouldBe "/api/_health"
                 }
@@ -217,11 +206,11 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
             context("when a token is stored") {
                 it("TC-12: doesn't send it to the unsaved server") {
-                    withServerAndPreferences { server, preferences ->
+                    withMockServer { server ->
                         server.enqueue(ok())
                         val provider = TestAuthTokenProvider(token = randomString())
 
-                        sut(preferences, authTokenProvider = provider)
+                        sut(authTokenProvider = provider)
                             .validateServerAddress(server.url("/").toString())
 
                         server.takeRequest().headers["Authorization"].shouldBeNull()
@@ -230,9 +219,9 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
             }
 
             it("doesn't save the address") {
-                withServerAndPreferences { server, preferences ->
+                withMockServer { server ->
                     server.enqueue(ok())
-                    val repository = sut(preferences)
+                    val repository = sut()
 
                     repository.validateServerAddress(server.url("/").toString())
 
@@ -243,10 +232,10 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
         context("when the health check responds with a non-2xx status") {
             it("returns ServerNotFound") {
-                withServerAndPreferences { server, preferences ->
+                withMockServer { server ->
                     server.enqueue(MockResponse.Builder().code(404).build())
 
-                    sut(preferences).validateServerAddress(server.url("/").toString()) shouldBe
+                    sut().validateServerAddress(server.url("/").toString()) shouldBe
                         ServerValidationResult.ServerNotFound
                 }
             }
@@ -254,19 +243,19 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
         context("when the server can't be reached") {
             it("returns ServerNotFound") {
-                withPreferences { preferences ->
+                run {
                     val closed = withMockServer { it.url("/").toString() }
 
-                    sut(preferences).validateServerAddress(closed) shouldBe ServerValidationResult.ServerNotFound
+                    sut().validateServerAddress(closed) shouldBe ServerValidationResult.ServerNotFound
                 }
             }
         }
 
         context("when the address can't be parsed") {
             it("returns InvalidAddressFormat for empty, blank, wrong-scheme, hostless and spaced addresses") {
-                withPreferences { preferences ->
+                run {
                     checkAll(Exhaustive.of("", "   ", "ftp://example.com", "http://", "exa mple.com")) { address ->
-                        sut(preferences).validateServerAddress(address) shouldBe
+                        sut().validateServerAddress(address) shouldBe
                             ServerValidationResult.InvalidAddressFormat
                     }
                 }

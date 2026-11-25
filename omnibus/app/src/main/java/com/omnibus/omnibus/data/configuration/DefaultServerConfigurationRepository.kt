@@ -1,26 +1,25 @@
 package com.omnibus.omnibus.data.configuration
 
 import android.util.Log
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.stringPreferencesKey
 import com.omnibus.omnibus.data.auth.local.AuthTokenStore
-import com.omnibus.omnibus.data.configuration.di.ServerConfigPreferences
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import javax.inject.Inject
 
 
 class DefaultServerConfigurationRepository @Inject constructor(
-    @param:ServerConfigPreferences private val serverConfigPreferences: DataStore<Preferences>,
+    private val librariesRepository: LibrariesRepository,
     private val omnibusHttpClient: OmnibusHttpClient,
     private val authTokenStore: AuthTokenStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
@@ -43,25 +42,29 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
-    /** Saves [address]. Saving a different server than before signs the user out of the old one. */
+    /**
+     * Saves [address] as the active library's server. With no library yet, adds and activates one. For the same
+     * server, nothing changes. For a different one, the token is cleared and the library takes the new address, so
+     * the user is signed out of the old server.
+     */
     override suspend fun saveServerConfig(address: String) {
-        var previousAddress: String? = null
-        serverConfigPreferences.updateData { prefs ->
-            previousAddress = prefs[SERVER_URL_PREFS_KEY]
-            prefs.toMutablePreferences().apply {
-                this[SERVER_URL_PREFS_KEY] = address
+        withContext(ioDispatcher) {
+            val normalized = ServerAddress.normalize(address) ?: address.trim()
+            val active = librariesRepository.getActiveLibraryFlow().first()
+            when {
+                active == null -> librariesRepository.add(normalized, activate = true)
+                sameServer(active.address, normalized) -> Unit
+                else -> {
+                    // A token is only valid on the server that issued it.
+                    clearAuthToken()
+                    librariesRepository.changeAddress(active.id, normalized)
+                }
             }
-        }
-
-        val previousServer = previousAddress?.let(ServerAddress::normalize)
-        if (previousServer != ServerAddress.normalize(address)) {
-            // A token is only valid on the server that issued it.
-            clearAuthToken()
         }
     }
 
     override fun getSavedServerConfigFlow(): Flow<String?> =
-        serverConfigPreferences.data.map { configDataStore -> configDataStore[SERVER_URL_PREFS_KEY] }
+        librariesRepository.getActiveLibraryFlow().map { it?.address }
 
     private fun probeServerHealth(serverUrl: HttpUrl): ServerProbeStatus {
         val request = omnibusHttpClient.request(serverUrl, HEALTH_PATH).get().build()
@@ -88,9 +91,14 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
-    companion object {
-        val SERVER_URL_PREFS_KEY = stringPreferencesKey("server_address")
+    /** Whether two addresses name the same server. Host names compare without regard to case. */
+    private fun sameServer(a: String, b: String): Boolean {
+        val left = ServerAddress.normalize(a)?.toHttpUrlOrNull()
+        val right = ServerAddress.normalize(b)?.toHttpUrlOrNull()
+        return if (left != null && right != null) left == right else a == b
+    }
 
+    companion object {
         private const val TAG = "DefaultServerConfigurationRepository"
         private const val HEALTH_PATH = "api/_health"
     }

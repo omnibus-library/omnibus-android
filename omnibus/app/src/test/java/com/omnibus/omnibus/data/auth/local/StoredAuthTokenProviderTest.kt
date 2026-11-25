@@ -1,5 +1,8 @@
 package com.omnibus.omnibus.data.auth.local
 
+import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
+import com.omnibus.omnibus.data.libraries.local.TestLibraryTokenStore
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import com.omnibus.omnibus.testing.mockAndroidLog
 import com.omnibus.omnibus.testing.randomString
 import com.omnibus.omnibus.testing.unmockAndroidLog
@@ -89,6 +92,21 @@ class StoredAuthTokenProviderTest : DescribeSpec({
 
                 shouldThrow<CancellationException> { sut(tokenStore).invalidate() }
             }
+        }
+    }
+
+    describe("invalidating the token of a library") {
+        it("TC-34: invalidates only the active library's token") {
+            val active = randomLibrary().copy(isActive = true)
+            val other = randomLibrary().copy(isActive = false)
+            val otherToken = randomString()
+            val tokens = TestLibraryTokenStore(mapOf(active.id to randomString(), other.id to otherToken))
+            val authTokens = DefaultAuthTokenStore(tokens, TestLibrariesRepository(listOf(active, other)))
+
+            sut(authTokens).invalidate()
+
+            tokens.getTokenFlow(active.id).first().shouldBeNull()
+            tokens.getTokenFlow(other.id).first() shouldBe otherToken
         }
     }
 })

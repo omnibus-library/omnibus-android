@@ -4,8 +4,10 @@
    for details.
 -->
 <data-extraction-rules>
-    <!-- The cover cache is re-downloadable, so it stays out of backups and transfers. The auth keyset and token
-         are unusable on another install: their Keystore master key is never backed up. -->
+    <!-- The cover cache is re-downloadable, so it stays out of backups and transfers. Each library's covers are under
+         covers/<library id>/, and the covers rule excludes all of them. The auth keyset and token are unusable on
+         another install: their Keystore master key is never backed up. omnibus.db (libraries and their per-book data)
+         is backed up by default, so don't add an <include> that would drop it. -->
     <cloud-backup>
         <exclude domain="file" path="covers/"/>
         <exclude domain="sharedpref" path="omnibus_auth_keyset.xml"/>

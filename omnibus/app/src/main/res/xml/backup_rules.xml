@@ -6,11 +6,14 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!-- The cover cache is re-downloadable, so it stays out of backups. -->
+    <!-- The cover cache is re-downloadable, so it stays out of backups. Each library's covers are under
+         covers/<library id>/, and this rule excludes all of them. -->
     <exclude domain="file" path="covers/"/>
     <!-- The auth keyset and token are unusable on another install: their Keystore master key is never backed up. -->
     <exclude domain="sharedpref" path="omnibus_auth_keyset.xml"/>
     <exclude domain="file" path="datastore/auth_token.preferences_pb"/>
+    <!-- omnibus.db (libraries and their per-book data) is backed up by default. Don't add an <include>: a single
+         include switches the backup to include-only, and would drop it. -->
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

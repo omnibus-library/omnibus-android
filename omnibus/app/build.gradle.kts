@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
 }
 
 // The app version. release-please rewrites the version on this line in each release PR
@@ -109,6 +110,11 @@ android {
     }
 }
 
+room {
+    // Exports the Room schema to app/schemas/, committed so each version can be checked against it.
+    schemaDirectory("$projectDir/schemas")
+}
+
 androidComponents {
     beforeVariants {
         // The Compose preview engine behind the screenshot tests registers a task for every variant and
@@ -150,6 +156,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.datastore)
     implementation(libs.androidx.datastore.preferences.core)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.tink) {
         // Pulls in the JVM Tink artifact, whose classes duplicate tink-android's.
         exclude(group = "com.google.crypto.tink", module = "tink")
@@ -177,6 +186,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
