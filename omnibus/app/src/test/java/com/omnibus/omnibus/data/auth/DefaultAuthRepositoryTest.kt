@@ -5,6 +5,8 @@ import com.omnibus.omnibus.data.auth.local.StoredAuthTokenProvider
 import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
+import com.omnibus.omnibus.data.libraries.TestActiveLibrary
+import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
@@ -18,6 +20,7 @@ import com.omnibus.omnibus.testing.unreachableUrl
 import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
@@ -39,10 +42,10 @@ import okhttp3.HttpUrl
 private fun droppedMidBody(body: String): MockResponse =
     MockResponse.Builder().code(200).body(body).onResponseBody(SocketEffect.CloseSocket()).build()
 
-private fun userJson(id: Long = randomLong(), extraFields: String = ""): String = """
+private fun userJson(id: Long = randomLong(), extraFields: String = "", username: String = randomString()): String = """
     {
         "id": $id,
-        "username": "${randomString()}",
+        "username": "$username",
         "is_admin": false,
         "can_upload": true,
         "can_edit": true,
@@ -76,6 +79,8 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     fun sut(
         baseUrl: HttpUrl? = null,
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+        activeLibrary: TestActiveLibrary = TestActiveLibrary(),
     ): DefaultAuthRepository = DefaultAuthRepository(
         ioDispatcher = Dispatchers.Unconfined,
         omnibusHttpClient = OmnibusHttpClient(
@@ -86,30 +91,38 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         ),
         authTokenStore = tokenStore,
+        libraries = libraries,
+        activeLibrary = activeLibrary,
     )
 
     suspend fun signInAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+        activeLibrary: TestActiveLibrary = TestActiveLibrary(),
     ): AuthSignInResult = withMockServer { server ->
         server.enqueue(response)
-        sut(server.url("/"), tokenStore).signIn(randomString(), randomString())
+        sut(server.url("/"), tokenStore, libraries, activeLibrary).signIn(randomString(), randomString())
     }
 
     suspend fun registerAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+        activeLibrary: TestActiveLibrary = TestActiveLibrary(),
     ): AuthRegisterResult = withMockServer { server ->
         server.enqueue(response)
-        sut(server.url("/"), tokenStore).register(randomString(), randomString())
+        sut(server.url("/"), tokenStore, libraries, activeLibrary).register(randomString(), randomString())
     }
 
     suspend fun verifyAnswering(
         response: MockResponse,
         tokenStore: TestAuthTokenStore = storeHolding(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+        activeLibrary: TestActiveLibrary = TestActiveLibrary(),
     ): AuthSessionResult = withMockServer { server ->
         server.enqueue(response)
-        sut(server.url("/"), tokenStore).verifySession()
+        sut(server.url("/"), tokenStore, libraries, activeLibrary).verifySession()
     }
 
     beforeSpec { mockAndroidLog() }
@@ -118,6 +131,20 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
     describe("signing in") {
         context("when the server accepts the credentials") {
+            it("#366 TC-9: records the username on the active library") {
+                val libraries = TestLibrariesRepository()
+                val activeId = randomString()
+                val username = randomString()
+
+                signInAnswering(
+                    reply(200, acceptedBody(user = userJson(username = username))),
+                    libraries = libraries,
+                    activeLibrary = TestActiveLibrary(current = activeId),
+                )
+
+                libraries.usernameUpdates shouldBe listOf(activeId to username)
+            }
+
             it("TC-1: returns Success with the token for every 2xx status") {
                 checkAll(Exhaustive.of(200, 201, 299)) { code ->
                     val token = randomString()
@@ -162,6 +189,16 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server rejects the credentials") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.of(401, 403)) { code ->
+                    val libraries = TestLibrariesRepository()
+
+                    signInAnswering(reply(code), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-2: returns InvalidCredentials for 401 and 403") {
                 checkAll(Exhaustive.of(401, 403)) { code ->
                     signInAnswering(reply(code)) shouldBe AuthSignInResult.InvalidCredentials
@@ -170,12 +207,30 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server is rate limiting") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                signInAnswering(reply(429), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-3: returns TooManyAttempts") {
                 signInAnswering(reply(429)) shouldBe AuthSignInResult.TooManyAttempts
             }
         }
 
         context("when the server responds with any other non-2xx status") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.of(400, 404, 500, 503)) { code ->
+                    val libraries = TestLibrariesRepository()
+
+                    signInAnswering(reply(code), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-4: returns ServerError for each status") {
                 checkAll(Exhaustive.of(400, 404, 500, 503)) { code ->
                     signInAnswering(reply(code)) shouldBe AuthSignInResult.ServerError
@@ -184,6 +239,16 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server responds 200 with a body that can't be used") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    val libraries = TestLibrariesRepository()
+
+                    signInAnswering(reply(200, body), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-5: returns ServerError for each kind of body") {
                 checkAll(Exhaustive.collection(unusableBodies())) { body ->
                     signInAnswering(reply(200, body)) shouldBe AuthSignInResult.ServerError
@@ -214,12 +279,37 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server can't be reached") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                sut(unreachableUrl(), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+                    .signIn(randomString(), randomString())
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-7: returns Unreachable") {
                 sut(unreachableUrl()).signIn(randomString(), randomString()) shouldBe AuthSignInResult.Unreachable
             }
         }
 
         context("when saving the token fails") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
+                    val libraries = TestLibrariesRepository()
+                    val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
+
+                    signInAnswering(
+                        reply(200, acceptedBody()),
+                        tokenStore = tokenStore,
+                        libraries = libraries,
+                        activeLibrary = TestActiveLibrary(current = randomString()),
+                    )
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-6: returns ServerError for an I/O and an unexpected failure") {
                 checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
                     val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
@@ -240,6 +330,20 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
     describe("registering") {
         context("when the server accepts the registration") {
+            it("#366 TC-10: records the username on the active library") {
+                val libraries = TestLibrariesRepository()
+                val activeId = randomString()
+                val username = randomString()
+
+                registerAnswering(
+                    reply(200, acceptedBody(user = userJson(username = username))),
+                    libraries = libraries,
+                    activeLibrary = TestActiveLibrary(current = activeId),
+                )
+
+                libraries.usernameUpdates shouldBe listOf(activeId to username)
+            }
+
             it("TC-40: returns Success with the token for every 2xx status") {
                 checkAll(Exhaustive.of(200, 201, 299)) { code ->
                     val token = randomString()
@@ -275,30 +379,72 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the username is already taken") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                registerAnswering(reply(409), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-41: returns UsernameTaken") {
                 registerAnswering(reply(409)) shouldBe AuthRegisterResult.UsernameTaken
             }
         }
 
         context("when registration is closed") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                registerAnswering(reply(403), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-42: returns RegistrationDisabled") {
                 registerAnswering(reply(403)) shouldBe AuthRegisterResult.RegistrationDisabled
             }
         }
 
         context("when the details are rejected") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                registerAnswering(reply(400), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-43: returns InvalidDetails") {
                 registerAnswering(reply(400)) shouldBe AuthRegisterResult.InvalidDetails
             }
         }
 
         context("when the server is rate limiting") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                registerAnswering(reply(429), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-44: returns TooManyAttempts") {
                 registerAnswering(reply(429)) shouldBe AuthRegisterResult.TooManyAttempts
             }
         }
 
         context("when the server responds with any other non-2xx status") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.of(401, 404, 500, 503)) { code ->
+                    val libraries = TestLibrariesRepository()
+
+                    registerAnswering(reply(code), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-45: returns ServerError for each status") {
                 checkAll(Exhaustive.of(401, 404, 500, 503)) { code ->
                     registerAnswering(reply(code)) shouldBe AuthRegisterResult.ServerError
@@ -307,6 +453,16 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server responds 200 with a body that can't be used") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                    val libraries = TestLibrariesRepository()
+
+                    registerAnswering(reply(200, body), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-46: returns ServerError for each kind of body") {
                 checkAll(Exhaustive.collection(unusableBodies())) { body ->
                     registerAnswering(reply(200, body)) shouldBe AuthRegisterResult.ServerError
@@ -337,12 +493,37 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when the server can't be reached") {
+            it("#366 TC-11: records no username") {
+                val libraries = TestLibrariesRepository()
+
+                sut(unreachableUrl(), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+                    .register(randomString(), randomString())
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
             it("TC-49: returns Unreachable") {
                 sut(unreachableUrl()).register(randomString(), randomString()) shouldBe AuthRegisterResult.Unreachable
             }
         }
 
         context("when saving the token fails") {
+            it("#366 TC-11: records no username") {
+                checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
+                    val libraries = TestLibrariesRepository()
+                    val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
+
+                    registerAnswering(
+                        reply(200, acceptedBody()),
+                        tokenStore = tokenStore,
+                        libraries = libraries,
+                        activeLibrary = TestActiveLibrary(current = randomString()),
+                    )
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             it("TC-50: returns ServerError for an I/O and an unexpected failure") {
                 checkAll(Exhaustive.of(IOException("disk full"), IllegalStateException("keystore unavailable"))) { failure ->
                     val tokenStore = TestAuthTokenStore().apply { saveFailure = failure }
@@ -484,6 +665,20 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         }
 
         context("when a token is stored") {
+            context("when the connection drops mid-body") {
+                it("#366 TC-13: records no username") {
+                    val libraries = TestLibrariesRepository()
+
+                    verifyAnswering(
+                        droppedMidBody(userJson()),
+                        libraries = libraries,
+                        activeLibrary = TestActiveLibrary(current = randomString()),
+                    )
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+            }
+
             context("when no server is saved") {
                 it("TC-22: returns NoServer") {
                     sut(tokenStore = storeHolding()).verifySession() shouldBe AuthSessionResult.NoServer
@@ -491,6 +686,30 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             context("when the server accepts the session") {
+                it("#366 TC-12: records the username on the active library") {
+                    val libraries = TestLibrariesRepository()
+                    val activeId = randomString()
+                    val username = randomString()
+
+                    verifyAnswering(
+                        reply(200, userJson(username = username)),
+                        libraries = libraries,
+                        activeLibrary = TestActiveLibrary(current = activeId),
+                    )
+
+                    libraries.usernameUpdates shouldBe listOf(activeId to username)
+                }
+
+                context("when the body can't be read") {
+                    it("#366 TC-13: records no username") {
+                        val libraries = TestLibrariesRepository()
+
+                        verifyAnswering(reply(200, "not json"), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                        libraries.usernameUpdates.shouldBeEmpty()
+                    }
+                }
+
                 it("TC-23: returns Valid, with a body it can read or not") {
                     checkAll(Exhaustive.of(userJson(), "not json")) { body ->
                         verifyAnswering(reply(200, body)) shouldBe AuthSessionResult.Valid
@@ -513,6 +732,14 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             context("when the server rejects the session") {
+                it("#366 TC-13: records no username") {
+                    val libraries = TestLibrariesRepository()
+
+                    verifyAnswering(reply(401), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                    libraries.usernameUpdates.shouldBeEmpty()
+                }
+
                 it("TC-24: returns Rejected") {
                     verifyAnswering(reply(401)) shouldBe AuthSessionResult.Rejected
                 }
@@ -533,6 +760,16 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
 
             context("when the server answers with a status other than 401") {
+                it("#366 TC-13: records no username") {
+                    checkAll(Exhaustive.of(403, 404, 500, 503)) { code ->
+                        val libraries = TestLibrariesRepository()
+
+                        verifyAnswering(reply(code), libraries = libraries, activeLibrary = TestActiveLibrary(current = randomString()))
+
+                        libraries.usernameUpdates.shouldBeEmpty()
+                    }
+                }
+
                 it("TC-25: returns ServerError for each status") {
                     checkAll(Exhaustive.of(403, 404, 500, 503)) { code ->
                         verifyAnswering(reply(code)) shouldBe AuthSessionResult.ServerError
@@ -717,6 +954,87 @@ class DefaultAuthRepositoryTest : DescribeSpec({
 
                         repository.currentUser.first().shouldBeNull()
                     }
+                }
+            }
+        }
+    }
+
+    describe("recording the username") {
+        context("when there is no active library") {
+            it("#366 TC-14: records no username on sign-in, registration or a session check") {
+                val libraries = TestLibrariesRepository()
+                val activeLibrary = TestActiveLibrary(current = null)
+
+                signInAnswering(reply(200, acceptedBody()), libraries = libraries, activeLibrary = activeLibrary)
+                registerAnswering(reply(200, acceptedBody()), libraries = libraries, activeLibrary = activeLibrary)
+                verifyAnswering(reply(200, userJson()), libraries = libraries, activeLibrary = activeLibrary)
+
+                libraries.usernameUpdates.shouldBeEmpty()
+            }
+
+            it("#366 TC-14: still returns each call's success result") {
+                val token = randomString()
+                val activeLibrary = TestActiveLibrary(current = null)
+
+                signInAnswering(reply(200, acceptedBody(token)), activeLibrary = activeLibrary) shouldBe
+                    AuthSignInResult.Success(token)
+                registerAnswering(reply(200, acceptedBody(token)), activeLibrary = activeLibrary) shouldBe
+                    AuthRegisterResult.Success(token)
+                verifyAnswering(reply(200, userJson()), activeLibrary = activeLibrary) shouldBe AuthSessionResult.Valid
+            }
+        }
+
+        context("when storing it fails") {
+            it("#366 TC-15: returns each call's success result") {
+                val token = randomString()
+                val libraries = TestLibrariesRepository().apply { setUsernameFailure = IllegalStateException("db") }
+                val activeLibrary = TestActiveLibrary(current = randomString())
+
+                signInAnswering(reply(200, acceptedBody(token)), libraries = libraries, activeLibrary = activeLibrary) shouldBe
+                    AuthSignInResult.Success(token)
+                registerAnswering(reply(200, acceptedBody(token)), libraries = libraries, activeLibrary = activeLibrary) shouldBe
+                    AuthRegisterResult.Success(token)
+                verifyAnswering(reply(200, userJson()), libraries = libraries, activeLibrary = activeLibrary) shouldBe
+                    AuthSessionResult.Valid
+            }
+        }
+
+        context("when storing it is cancelled") {
+            it("#366 TC-15: rethrows the cancellation from each call") {
+                val libraries = TestLibrariesRepository().apply { setUsernameFailure = CancellationException("cancelled") }
+                val activeLibrary = TestActiveLibrary(current = randomString())
+
+                shouldThrow<CancellationException> {
+                    signInAnswering(reply(200, acceptedBody()), libraries = libraries, activeLibrary = activeLibrary)
+                }
+                shouldThrow<CancellationException> {
+                    registerAnswering(reply(200, acceptedBody()), libraries = libraries, activeLibrary = activeLibrary)
+                }
+                shouldThrow<CancellationException> {
+                    verifyAnswering(reply(200, userJson()), libraries = libraries, activeLibrary = activeLibrary)
+                }
+            }
+        }
+
+        context("when the server's username is blank") {
+            it("#366 TC-16: records no username on sign-in, registration or a session check") {
+                checkAll(Exhaustive.of("", "   ")) { blank ->
+                    val libraries = TestLibrariesRepository()
+                    val activeLibrary = TestActiveLibrary(current = randomString())
+
+                    signInAnswering(
+                        reply(200, acceptedBody(user = userJson(username = blank))),
+                        libraries = libraries,
+                        activeLibrary = activeLibrary,
+                    )
+                    registerAnswering(
+                        reply(200, acceptedBody(user = userJson(username = blank))),
+                        libraries = libraries,
+                        activeLibrary = activeLibrary,
+                    )
+                    verifyAnswering(reply(200, userJson(username = blank)), libraries = libraries, activeLibrary = activeLibrary)
+
+                    libraries.usernameUpdates.shouldBeEmpty()
                 }
             }
         }

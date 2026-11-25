@@ -24,4 +24,11 @@ interface LibrariesRepository {
      * belongs to no library and is never reused.
      */
     suspend fun remove(libraryId: String)
+
+    // #366
+    /**
+     * Sets library [libraryId]'s username to [username], and nothing else. An unknown id changes nothing. Waits for
+     * the storage upgrade; a storage failure is logged, not thrown.
+     */
+    suspend fun setUsername(libraryId: String, username: String)
 }

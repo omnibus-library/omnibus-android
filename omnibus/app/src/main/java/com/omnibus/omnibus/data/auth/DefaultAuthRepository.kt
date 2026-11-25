@@ -5,6 +5,8 @@ import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
 import com.omnibus.omnibus.data.auth.remote.UserInfoDto
+import com.omnibus.omnibus.data.libraries.ActiveLibrary
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
@@ -26,6 +28,8 @@ class DefaultAuthRepository @Inject constructor(
     private val omnibusHttpClient: OmnibusHttpClient,
     private val authTokenStore: AuthTokenStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val libraries: LibrariesRepository,
+    private val activeLibrary: ActiveLibrary,
 ) : AuthRepository {
 
     override val isSignedIn: Flow<Boolean> =
@@ -71,6 +75,7 @@ class DefaultAuthRepository @Inject constructor(
                         } else {
                             authTokenStore.save(token)
                             lastUser.value = response.user.toCurrentUser()
+                            recordUsername(response.user.username)
                             AuthSignInResult.Success(authToken = token)
                         }
                     } catch (ex: CancellationException) {
@@ -123,6 +128,7 @@ class DefaultAuthRepository @Inject constructor(
                         } else {
                             authTokenStore.save(token)
                             lastUser.value = response.user.toCurrentUser()
+                            recordUsername(response.user.username)
                             AuthRegisterResult.Success(authToken = token)
                         }
                     } catch (ex: CancellationException) {
@@ -187,7 +193,10 @@ class DefaultAuthRepository @Inject constructor(
                 result.isSuccessful -> {
                     Log.d(TAG, "Session status: Valid")
                     // A body that doesn't decode keeps the user from the last good check.
-                    readCurrentUser(result)?.let { lastUser.value = it }
+                    readUser(result)?.let { user ->
+                        lastUser.value = user.toCurrentUser()
+                        recordUsername(user.username)
+                    }
                     AuthSessionResult.Valid
                 }
                 // The client already invalidated the token on this 401.
@@ -209,15 +218,32 @@ class DefaultAuthRepository @Inject constructor(
      * The user in a 2xx `/me` body, or null when it can't be read. `/me` returns the user object
      * directly, with keys [UserInfoDto] doesn't declare, so this decoder ignores unknown keys.
      */
-    private fun readCurrentUser(result: Response): CurrentUser? =
+    private fun readUser(result: Response): UserInfoDto? =
         try {
-            MeJson.decodeFromString<UserInfoDto>(result.body.string()).toCurrentUser()
+            MeJson.decodeFromString<UserInfoDto>(result.body.string())
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
             Log.w(TAG, "Unable to read the current user from the session check", ex)
             null
         }
+
+    // #366
+    /**
+     * Stores [username] on the active library. A blank name, no active library or a storage failure stores
+     * nothing, and nothing but a cancellation is thrown, so the caller's result never changes.
+     */
+    private suspend fun recordUsername(username: String) {
+        if (username.isBlank()) return
+        try {
+            val libraryId = activeLibrary.id() ?: return
+            libraries.setUsername(libraryId, username)
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            Log.e(TAG, "Unable to record the username", ex)
+        }
+    }
 
     internal companion object {
         const val TAG = "DefaultAuthRepository"

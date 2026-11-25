@@ -130,6 +130,7 @@ class DefaultLibrariesRepositoryTest {
                 throw SQLiteFullException("disk full")
             }
             override suspend fun delete(id: String) = real.delete(id)
+            override suspend fun setUsername(id: String, username: String) = real.setUsername(id, username)
         }
     }
 }
