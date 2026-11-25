@@ -52,4 +52,9 @@ abstract class LibrariesDao {
     /** Returns the number of rows updated. */
     @Query("UPDATE libraries SET username = :username WHERE id = :id")
     abstract suspend fun setUsername(id: String, username: String): Int
+
+    // #368
+    /** Sets library [id]'s name. Returns the number of rows updated. */
+    @Query("UPDATE libraries SET name = :name WHERE id = :id")
+    abstract suspend fun rename(id: String, name: String): Int
 }

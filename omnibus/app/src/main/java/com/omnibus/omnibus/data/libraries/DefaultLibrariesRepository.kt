@@ -132,7 +132,32 @@ class DefaultLibrariesRepository @Inject constructor(
         }
     }
 
+    // #368
+    override suspend fun rename(libraryId: String, name: String) {
+        withContext(ioDispatcher) {
+            if (!upgrade.ensureDone()) return@withContext
+            try {
+                dao.rename(libraryId, cleanName(name))
+            } catch (error: SQLException) {
+                Log.e(TAG, "Unable to store the name", error)
+            }
+        }
+    }
+
+    /** [name] trimmed and cut to [NAME_MAX_LENGTH] code points, so a surrogate pair is never split. */
+    private fun cleanName(name: String): String {
+        val trimmed = name.trim()
+        return if (trimmed.codePointCount(0, trimmed.length) <= NAME_MAX_LENGTH) {
+            trimmed
+        } else {
+            trimmed.substring(0, trimmed.offsetByCodePoints(0, NAME_MAX_LENGTH))
+        }
+    }
+
     private companion object {
         const val TAG = "LibrariesRepository"
+
+        /** Longest library name, from the spec's constants. */
+        const val NAME_MAX_LENGTH = 40
     }
 }
