@@ -1,8 +1,10 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.data.library.FacetKind
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.search.facet.FacetBooksRoute
 import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
@@ -44,18 +46,26 @@ class BookDetailDestinationTest : DescribeSpec({
     describe("the route a destination pushes") {
 
         context("when the destination is something to browse") {
-            it("#93 TC-43: is a placeholder with its name, for author, genre or tag") {
+            it("#93 TC-43: is a placeholder with its name, for author or genre") {
                 val name = randomString()
 
                 checkAll(
                     Exhaustive.of(
                         BookDetailDestination.Author(randomLong(), name),
                         BookDetailDestination.Genre(name),
-                        BookDetailDestination.Tag(name),
                     ),
                 ) { destination ->
                     destination.shellRoute(randomPlaceholderTitles()) shouldBe BookDetailPlaceholderRoute(name)
                 }
+            }
+        }
+
+        context("when the destination is a tag") {
+            it("#352 TC-43: is the books tagged list for that tag") {
+                val name = randomString()
+
+                BookDetailDestination.Tag(name).shellRoute(randomPlaceholderTitles()) shouldBe
+                    FacetBooksRoute(FacetKind.Tag, name)
             }
         }
 

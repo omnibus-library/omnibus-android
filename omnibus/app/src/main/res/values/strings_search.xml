@@ -31,4 +31,27 @@
     </plurals>
     <string name="search_see_all_capped">Showing the first 500 of %1$d. Narrow your search to see the rest.</string>
     <string name="search_loading">Loading</string>
+    <!-- #352 -->
+    <string name="search_section_tags">Tags</string>
+    <string name="search_row_tag">Tag</string>
+    <plurals name="search_see_all_tags_link">
+        <item quantity="one">See all %1$d tag</item>
+        <item quantity="other">See all %1$d tags</item>
+    </plurals>
+    <string name="search_see_all_tags_title">Tags matching “%1$s”</string>
+    <plurals name="search_see_all_tags_count">
+        <item quantity="one">%1$d tag</item>
+        <item quantity="other">%1$d tags</item>
+    </plurals>
+    <plurals name="search_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <plurals name="search_facet_tag_count">
+        <item quantity="one">%1$d book tagged “%2$s”</item>
+        <item quantity="other">%1$d books tagged “%2$s”</item>
+    </plurals>
+    <string name="search_facet_empty_title">No books here</string>
+    <string name="search_facet_tag_empty_message">No books are tagged “%1$s”.</string>
+    <string name="search_facet_next_page_failed">Couldn’t load more books.</string>
 </resources>

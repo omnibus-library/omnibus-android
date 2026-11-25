@@ -67,12 +67,14 @@ enum class SortDirection(val apiName: String) {
  *
  * @property formats Only books with one of these formats. Case-insensitive.
  * @property excludeFormats Hides books whose formats are all listed. Case-insensitive.
+ * @property facet Only the books filed under this tag, or every book when null.
  */
 data class BooksPageQuery(
     val sort: LibrarySort = LibrarySort.NewestAdded,
     val dir: SortDirection = SortDirection.Desc,
     val formats: Set<String> = emptySet(),
     val excludeFormats: Set<String> = emptySet(),
+    val facet: BooksFacet? = null,
 )
 
 /**

@@ -56,6 +56,7 @@ class DefaultLibraryRepository @Inject constructor(
                         .joinToString(","),
                 )
             }
+            query.facet?.let { add("filter" to it.toFilterJson()) }
         }
 
         val read = get(EBOOKS_PATH, params = params) { response ->

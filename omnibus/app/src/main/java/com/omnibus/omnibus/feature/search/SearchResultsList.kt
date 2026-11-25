@@ -2,7 +2,9 @@ package com.omnibus.omnibus.feature.search
 
 import androidx.compose.foundation.lazy.LazyListScope
 import com.omnibus.omnibus.data.search.LibraryHit
+import com.omnibus.omnibus.data.search.TagMatch
 import com.omnibus.omnibus.feature.search.rows.LibraryHitRow
+import com.omnibus.omnibus.feature.search.rows.SearchTagRow
 import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
 
 /**
@@ -21,6 +23,9 @@ internal fun LazyListScope.searchResults(sections: List<SearchSection>, query: S
                 when (section.kind) {
                     SearchSectionKind.Books -> section.matches.items.filterIsInstance<LibraryHit>().forEach { hit ->
                         LibraryHitRow(hit, query, onOpen)
+                    }
+                    SearchSectionKind.Tags -> section.matches.items.filterIsInstance<TagMatch>().forEach { tag ->
+                        SearchTagRow(tag, query, onOpen)
                     }
                 }
             }

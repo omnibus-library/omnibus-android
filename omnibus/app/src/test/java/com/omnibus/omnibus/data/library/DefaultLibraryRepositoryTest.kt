@@ -20,6 +20,10 @@ import io.kotest.property.exhaustive.of
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.toList
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 
@@ -165,6 +169,58 @@ class DefaultLibraryRepositoryTest : DescribeSpec({
                     val url = server.nextRequest().url
                     url.queryParameter("formats") shouldBe "epub,pdf"
                     url.queryParameter("exclude_formats") shouldBe "epub,m4b"
+                }
+            }
+        }
+
+        context("when filtering by a facet") {
+            it("#352 TC-4: sends the facet as one include clause in the filter parameter") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+
+                    sut(server).getBooksPageFlow(BooksPageQuery(facet = BooksFacet(FacetKind.Tag, "Woodland"))).single()
+
+                    val filter = server.nextRequest().url.queryParameter("filter")
+                    Json.parseToJsonElement(filter!!) shouldBe
+                        Json.parseToJsonElement("""[{"field":"tag","mode":"include","values":["Woodland"]}]""")
+                }
+            }
+
+            it("#352 TC-5: sends the same filter with the cursor on a later page") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+                    val cursor = randomString()
+
+                    sut(server).getBooksPageFlow(BooksPageQuery(facet = BooksFacet(FacetKind.Tag, "Woodland")), cursor).single()
+
+                    val url = server.nextRequest().url
+                    url.queryParameter("cursor") shouldBe cursor
+                    Json.parseToJsonElement(url.queryParameter("filter")!!) shouldBe
+                        Json.parseToJsonElement("""[{"field":"tag","mode":"include","values":["Woodland"]}]""")
+                }
+            }
+
+            it("#352 TC-6: sends a tag name with quotes, a backslash and non-ASCII characters intact") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+                    val name = """Sci "Fi" \ Été, 2"""
+
+                    sut(server).getBooksPageFlow(BooksPageQuery(facet = BooksFacet(FacetKind.Tag, name))).single()
+
+                    val filter = Json.parseToJsonElement(server.nextRequest().url.queryParameter("filter")!!)
+                    filter.jsonArray.single().jsonObject.getValue("values").jsonArray.single().jsonPrimitive.content shouldBe name
+                }
+            }
+        }
+
+        context("when no facet is given") {
+            it("#352 TC-7: sends no filter parameter") {
+                withMockServer { server ->
+                    server.enqueue(reply(200, EMPTY_BOOKS))
+
+                    sut(server).getBooksPageFlow(BooksPageQuery()).single()
+
+                    server.nextRequest().url.queryParameter("filter").shouldBeNull()
                 }
             }
         }

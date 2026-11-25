@@ -1,9 +1,11 @@
 package com.omnibus.omnibus.feature.bookdetail
 
 import androidx.navigation3.runtime.NavKey
+import com.omnibus.omnibus.data.library.FacetKind
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.search.facet.FacetBooksRoute
 import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 
 /** Where a tap on the Book Detail page leads. The shell maps each destination to a route or a platform action. */
@@ -61,7 +63,7 @@ internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Series -> SeriesDetailsRoute(seriesId, name)
     is BookDetailDestination.Genre -> BookDetailPlaceholderRoute(name)
-    is BookDetailDestination.Tag -> BookDetailPlaceholderRoute(name)
+    is BookDetailDestination.Tag -> FacetBooksRoute(FacetKind.Tag, name)
     is BookDetailDestination.CheckIn -> BookDetailPlaceholderRoute(titles.checkIn)
     BookDetailDestination.Settings -> BookDetailPlaceholderRoute(titles.settings)
 }
