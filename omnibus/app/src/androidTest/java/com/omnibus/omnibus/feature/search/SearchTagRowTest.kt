@@ -7,9 +7,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import com.omnibus.omnibus.data.library.FacetKind
 import com.omnibus.omnibus.data.search.TagMatch
-import com.omnibus.omnibus.feature.search.facet.FacetBooksRoute
+import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.search.rows.SearchTagRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -82,14 +81,17 @@ class SearchTagRowTest {
         rule.onNodeWithContentDescription("Tag, Woodland, 1 book").assertIsDisplayed()
     }
 
-    // TC-17
+    // TC-46
     @Test
-    fun issue352_tc17_clickOpensTheTagsBookList() {
+    fun issue352_tc46_clickOpensTheTagDestination() {
         val opened = mutableListOf<SearchOpen>()
         setRow(TagMatch("Woodland", 14), onOpen = { opened += it })
 
         rule.onNodeWithContentDescription("Tag, Woodland, 14 books").performClick()
 
-        assertEquals(listOf<SearchOpen>(SearchOpen.Route(FacetBooksRoute(FacetKind.Tag, "Woodland"))), opened)
+        assertEquals(
+            listOf<SearchOpen>(SearchOpen.Destination(BookDetailDestination.Tag("Woodland"))),
+            opened,
+        )
     }
 }
