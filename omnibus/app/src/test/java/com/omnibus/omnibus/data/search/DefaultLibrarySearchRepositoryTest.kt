@@ -26,6 +26,13 @@ private fun tagsBody(tags: String, tagTotal: Int? = null): String =
 private fun genresBody(genres: String, genreTotal: Int? = null): String =
     """{"query":"fan","books":[],"genres":[$genres]${genreTotal?.let { ""","genre_total":$it""" } ?: ""}}"""
 
+/** A whole-library palette answer holding [authors] and, when given, an `author_total`, with no books. */
+private fun authorsBody(authors: String, authorTotal: Int? = null): String =
+    """{"query":"her","books":[],"authors":[$authors]${authorTotal?.let { ""","author_total":$it""" } ?: ""}}"""
+
+private const val HERBERT = """{"id":7,"name":"Frank Herbert","book_count":9,"lead_book_title":"Dune"}"""
+private const val HERMAN = """{"id":8,"name":"Herman Melville","book_count":2}"""
+
 private const val FANTASY = """{"name":"Fantasy","book_count":40}"""
 private const val FAN_FICTION = """{"name":"Fan fiction","book_count":3}"""
 
@@ -205,6 +212,43 @@ class DefaultLibrarySearchRepositoryTest : DescribeSpec({
 
                         result.results.tags.total shouldBe 2
                     }
+                }
+            }
+        }
+
+        context("when the answer has authors") {
+            it("#354 TC-1: returns the authors in order with the author total") {
+                withScriptedServer {
+                    script.answer(200, authorsBody("$HERBERT,$HERMAN", authorTotal = 6))
+
+                    val result = repository().searchLibrary("her") as PaletteSearchResult.Success
+
+                    result.results.authors shouldBe SearchMatches(
+                        items = listOf(AuthorMatch(7, "Frank Herbert", 9, "Dune"), AuthorMatch(8, "Herman Melville", 2, null)),
+                        total = 6,
+                    )
+                }
+            }
+
+            it("#354 TC-2: takes the number of authors as the total when the answer has none") {
+                withScriptedServer {
+                    script.answer(200, authorsBody("$HERBERT,$HERMAN"))
+
+                    val result = repository().searchLibrary("her") as PaletteSearchResult.Success
+
+                    result.results.authors.total shouldBe 2
+                }
+            }
+        }
+
+        context("when the answer has no authors") {
+            it("#354 TC-3: has no authors") {
+                withScriptedServer {
+                    script.answer(200, paletteBody(DUNE, total = 1))
+
+                    val result = repository().searchLibrary("lo") as PaletteSearchResult.Success
+
+                    result.results.authors shouldBe SearchMatches.empty()
                 }
             }
         }

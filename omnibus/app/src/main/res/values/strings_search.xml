@@ -71,4 +71,17 @@
         <item quantity="other">%1$d books in “%2$s”</item>
     </plurals>
     <string name="search_facet_genre_empty_message">No books are in “%1$s”.</string>
+    <!-- #354 -->
+    <string name="search_section_authors">Authors</string>
+    <string name="search_row_author">Author</string>
+    <string name="search_author_count_lead">%1$s · incl. %2$s</string>
+    <plurals name="search_see_all_authors_link">
+        <item quantity="one">See all %1$d author</item>
+        <item quantity="other">See all %1$d authors</item>
+    </plurals>
+    <string name="search_see_all_authors_title">Authors matching “%1$s”</string>
+    <plurals name="search_see_all_authors_count">
+        <item quantity="one">%1$d author</item>
+        <item quantity="other">%1$d authors</item>
+    </plurals>
 </resources>
