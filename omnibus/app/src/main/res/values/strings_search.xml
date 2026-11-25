@@ -19,4 +19,16 @@
     <string name="search_not_working_message">Your server couldn’t run that search. Try again in a moment.</string>
     <string name="search_try_again">Try again</string>
     <string name="search_retry">Retry</string>
+    <string name="search_see_all">See all %1$d</string>
+    <plurals name="search_see_all_books_link">
+        <item quantity="one">See all %1$d book</item>
+        <item quantity="other">See all %1$d books</item>
+    </plurals>
+    <string name="search_see_all_books_title">Books matching “%1$s”</string>
+    <plurals name="search_see_all_books_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="search_see_all_capped">Showing the first 500 of %1$d. Narrow your search to see the rest.</string>
+    <string name="search_loading">Loading</string>
 </resources>

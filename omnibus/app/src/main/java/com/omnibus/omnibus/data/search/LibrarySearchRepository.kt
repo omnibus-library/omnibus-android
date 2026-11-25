@@ -9,6 +9,9 @@ interface LibrarySearchRepository {
     /** The library books matching [query], up to the server's first few hits, with the total number of matches. */
     suspend fun searchBooks(query: String): LibrarySearchResult
 
-    /** Every section of the library matching [query], up to the server's default rows per section, with each section's total. */
-    suspend fun searchLibrary(query: String): PaletteSearchResult
+    /**
+     * Every section of the library matching [query], with each section's total. [limit] is the rows per section; null
+     * leaves it to the server (5).
+     */
+    suspend fun searchLibrary(query: String, limit: Int? = null): PaletteSearchResult
 }
