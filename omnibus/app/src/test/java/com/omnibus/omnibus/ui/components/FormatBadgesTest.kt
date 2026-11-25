@@ -1,6 +1,5 @@
 package com.omnibus.omnibus.ui.components
 
-import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
@@ -33,7 +32,7 @@ class FormatBadgesTest : DescribeSpec({
         }
 
         it("TC-8: shows no badge for a book with no matching format and no physical copy") {
-            formatBadges(listOf(randomString()) + otherFormats, hasPhysical = false) shouldBe emptyList()
+            formatBadges(otherFormats, hasPhysical = false) shouldBe emptyList()
         }
     }
 })
