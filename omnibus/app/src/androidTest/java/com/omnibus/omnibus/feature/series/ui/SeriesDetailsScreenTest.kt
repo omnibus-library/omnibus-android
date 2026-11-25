@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertTouchHeightIsEqualTo
 import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -71,10 +72,10 @@ class SeriesDetailsScreenTest {
     }
 
     @Test
-    fun issue349_tc20_backIsAtLeast48dpTall() {
+    fun issue349_tc20_backTouchTargetIs48dpTall() {
         setScreen(uiState = SeriesDetailsUIState(seriesId = 1L, name = "Lavondyss"))
 
-        rule.onNodeWithTag(SeriesDetailsTestTags.BACK).assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithTag(SeriesDetailsTestTags.BACK).assertTouchHeightIsEqualTo(48.dp)
     }
 
     @Test
