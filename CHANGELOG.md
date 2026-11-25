@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.15](https://github.com/omnibus-library/omnibus-android/compare/v0.1.14...v0.1.15) (2026-11-25)
+
+
+### Features
+
+* **search:** search your library's books as you type ([#356](https://github.com/omnibus-library/omnibus-android/issues/356)) ([804e567](https://github.com/omnibus-library/omnibus-android/commit/804e567eebd2cf42f43503574f960d222bcc46e3))
+* **search:** see every book that matches a search ([#358](https://github.com/omnibus-library/omnibus-android/issues/358)) ([69f0123](https://github.com/omnibus-library/omnibus-android/commit/69f0123f03aa509e74afbabe30c6087f5fa45cf5))
+
 ## [0.1.14](https://github.com/omnibus-library/omnibus-android/compare/v0.1.13...v0.1.14) (2026-11-21)
 
 
