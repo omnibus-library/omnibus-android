@@ -88,6 +88,13 @@ class SearchScreenTest {
         }
     }
 
+    /** The snackbar is shown from a coroutine after the first frame, so wait for it instead of asserting at once. */
+    private fun awaitSnackbar(@androidx.annotation.StringRes text: Int) {
+        rule.waitUntil(timeoutMillis = 5_000) {
+            rule.onAllNodesWithText(string(text)).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
     // TC-23
     @Test
     fun issue351_tc23_promptShowsMastheadFieldAndMessage() {
@@ -265,8 +272,8 @@ class SearchScreenTest {
             onNoticeShown = { shown++ },
         )
 
+        awaitSnackbar(R.string.search_unreachable_title)
         rule.onNodeWithText(string(R.string.search_unreachable_title)).assertIsDisplayed()
-        rule.waitForIdle()
         assertEquals(1, shown)
     }
 
@@ -283,6 +290,7 @@ class SearchScreenTest {
             onRetry = { retries++ },
         )
 
+        awaitSnackbar(R.string.search_retry)
         rule.onNodeWithText(string(R.string.search_retry)).performClick()
 
         assertEquals(1, retries)
