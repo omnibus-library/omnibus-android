@@ -179,6 +179,18 @@ class DefaultLibrarySearchRepositoryTest : DescribeSpec({
                 }
             }
         }
+
+        context("when a limit is given") {
+            it("#351 TC-39: sends the limit as the limit parameter") {
+                withScriptedServer {
+                    script.answer(200, paletteBody(DUNE, total = 1))
+
+                    repository().searchLibrary("lo", limit = 500)
+
+                    nextRequest().url.queryParameter("limit") shouldBe "500"
+                }
+            }
+        }
     }
 
     describe("failing to search the whole library") {

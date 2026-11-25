@@ -60,11 +60,11 @@ class SearchViewModelTest : DescribeSpec({
                 vm.updateQuery("wood")
                 advanceTimeBy(SEARCH_DEBOUNCE_MILLIS - 1)
                 runCurrent()
-                repo.libraryCalls shouldBe emptyList()
+                repo.libraryCalls.map { it.query } shouldBe emptyList()
 
                 advanceTimeBy(1)
                 runCurrent()
-                repo.libraryCalls shouldBe listOf("wood")
+                repo.libraryCalls.map { it.query } shouldBe listOf("wood")
             }
         }
 
@@ -78,7 +78,7 @@ class SearchViewModelTest : DescribeSpec({
                 vm.updateQuery("wood")
                 passDebounce()
 
-                repo.libraryCalls shouldBe listOf("wood")
+                repo.libraryCalls.map { it.query } shouldBe listOf("wood")
             }
         }
     }
@@ -94,7 +94,7 @@ class SearchViewModelTest : DescribeSpec({
                 vm.updateQuery("wood ")
                 passDebounce()
 
-                repo.libraryCalls shouldBe listOf("wood")
+                repo.libraryCalls.map { it.query } shouldBe listOf("wood")
             }
         }
 
@@ -123,7 +123,7 @@ class SearchViewModelTest : DescribeSpec({
                     vm.updateQuery(blank)
                     passDebounce()
 
-                    repo.libraryCalls shouldBe emptyList()
+                    repo.libraryCalls.map { it.query } shouldBe emptyList()
                 }
             }
         }
@@ -147,7 +147,7 @@ class SearchViewModelTest : DescribeSpec({
                 vm.clearQuery()
                 passDebounce()
 
-                repo.libraryCalls shouldBe emptyList()
+                repo.libraryCalls.map { it.query } shouldBe emptyList()
                 vm.uiState.value.body shouldBe SearchBody.Prompt
             }
         }
@@ -393,7 +393,7 @@ class SearchViewModelTest : DescribeSpec({
                 vm.retry()
                 runCurrent()
 
-                repo.libraryCalls shouldBe listOf("wood", "wood")
+                repo.libraryCalls.map { it.query } shouldBe listOf("wood", "wood")
             }
         }
     }

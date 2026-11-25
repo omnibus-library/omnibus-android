@@ -27,16 +27,20 @@ class DefaultLibrarySearchRepository @Inject constructor(
         is PaletteFetch.Failed -> LibrarySearchResult.Failure(fetch.error)
     }
 
-    override suspend fun searchLibrary(query: String): PaletteSearchResult = when (val fetch = fetchPalette(query)) {
+    override suspend fun searchLibrary(query: String, limit: Int?): PaletteSearchResult =
+        when (val fetch = fetchPalette(query, limit)) {
         is PaletteFetch.Decoded -> PaletteSearchResult.Success(fetch.dto.toResults())
         PaletteFetch.NoServer -> PaletteSearchResult.NoServer
         is PaletteFetch.Failed -> PaletteSearchResult.Failure(fetch.error)
     }
 
-    /** One `GET api/search/palette` for [query], with its status and exceptions mapped to what the caller can show. */
-    private suspend fun fetchPalette(query: String): PaletteFetch = withContext(ioDispatcher) {
+    /** One `GET api/search/palette` for [query] and [limit], with its status and exceptions mapped to what the caller can show. */
+    private suspend fun fetchPalette(query: String, limit: Int? = null): PaletteFetch = withContext(ioDispatcher) {
         val builder = omnibusHttpClient.request(PALETTE_PATH) ?: return@withContext PaletteFetch.NoServer
-        val url = builder.build().url.newBuilder().addQueryParameter("q", query).build()
+        val url = builder.build().url.newBuilder()
+            .addQueryParameter("q", query)
+            .apply { if (limit != null) addQueryParameter("limit", limit.toString()) }
+            .build()
         val request = builder.url(url).build()
         try {
             omnibusHttpClient.execute(request).use { response ->

@@ -25,8 +25,8 @@ class TestLibrarySearchRepository : LibrarySearchRepository {
         return answers.removeFirstOrNull() ?: unscripted("searchBooks")
     }
 
-    /** Every query passed to [searchLibrary], in call order. */
-    val libraryCalls = mutableListOf<String>()
+    /** Every [searchLibrary] call, in call order. */
+    val libraryCalls = mutableListOf<SearchLibraryCall>()
 
     /** One pending answer per [searchLibrary] call, taken when the call starts. Complete them in any order to model late answers. */
     val libraryAnswers = ArrayDeque<CompletableDeferred<PaletteSearchResult>>()
@@ -40,9 +40,12 @@ class TestLibrarySearchRepository : LibrarySearchRepository {
     fun holdLibrary(): CompletableDeferred<PaletteSearchResult> =
         CompletableDeferred<PaletteSearchResult>().also { libraryAnswers.addLast(it) }
 
-    override suspend fun searchLibrary(query: String): PaletteSearchResult {
-        libraryCalls += query
+    override suspend fun searchLibrary(query: String, limit: Int?): PaletteSearchResult {
+        libraryCalls += SearchLibraryCall(query, limit)
         val answer = libraryAnswers.removeFirstOrNull() ?: unscripted("searchLibrary")
         return answer.await()
     }
 }
+
+/** One [TestLibrarySearchRepository.searchLibrary] call: the trimmed query and the requested rows per section, if any. */
+data class SearchLibraryCall(val query: String, val limit: Int?)
