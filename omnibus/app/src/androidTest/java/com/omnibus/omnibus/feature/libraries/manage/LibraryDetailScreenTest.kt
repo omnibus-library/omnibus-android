@@ -89,12 +89,23 @@ class LibraryDetailScreenTest {
 
     @Test
     fun issue368_tc26_theNameFieldReportsWhatIsTyped() {
-        val changes = mutableListOf<String>()
-        showDetail(onNameChange = { changes += it })
+        // The field is controlled, so the test holds the name the way the view model does: a fixed value would be
+        // written back into the field and reported again.
+        var name by mutableStateOf("Home")
+        rule.setContent {
+            OmnibusTheme(darkTheme = true) {
+                LibraryDetailScreenContent(
+                    uiState = LibraryDetailUIState(library = home, name = name),
+                    onNameChange = { name = it },
+                    onLeave = {},
+                    onBack = {},
+                )
+            }
+        }
 
         rule.onNodeWithTag(LibraryDetailTestTags.NAME_FIELD).performTextReplacement("Den")
 
-        rule.runOnIdle { assertEquals("Den", changes.last()) }
+        rule.runOnIdle { assertEquals("Den", name) }
     }
 
     @Test
