@@ -171,6 +171,7 @@ Instrumented tests run on whatever device is attached: a 320dp emulator in CI, a
 * Assert relative layout (alignment, ordering, no overlap, ratios, one element filling another) instead of absolute positions or sizes that depend on the window. Density rounding also moves absolute values.
 * Choose content that behaves the same at every width. For example, a title meant to wrap and ellipsize should be long enough to do so even in the widest cell.
 * When a test changes a size, assert that it changed before waiting for a reaction to it, so a no-op fails with a clear message.
+* Don't start a gesture at a node's edge right after focusing a text field. The keyboard's inset lands after Compose is idle and shrinks any `imePadding()` content under the gesture, so the default `swipeUp()` can start outside the list and never scroll. Start mid-node (`swipeUp(startY = centerY, endY = top)`).
 * Run new instrumented tests on a small default AVD as well as a phone-sized one. CI creates its AVD with no hardware profile, which is 320x640 at 160dpi.
 
 ## Reopening a DataStore in a test
