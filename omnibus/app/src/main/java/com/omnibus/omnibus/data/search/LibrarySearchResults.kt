@@ -8,7 +8,10 @@ data class SearchMatches<T>(val items: List<T>, val total: Int) {
 }
 
 /** Every section a whole-library search answered. Later tickets add one defaulted section each. */
-data class LibrarySearchResults(val books: SearchMatches<LibraryHit>)
+data class LibrarySearchResults(
+    val books: SearchMatches<LibraryHit>,
+    val tags: SearchMatches<TagMatch> = SearchMatches.empty(),
+)
 
 /** What a whole-library search answered. Every failure is a result, not an exception. */
 sealed interface PaletteSearchResult {

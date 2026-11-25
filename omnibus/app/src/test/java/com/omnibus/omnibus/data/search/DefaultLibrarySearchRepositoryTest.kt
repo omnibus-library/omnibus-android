@@ -18,6 +18,13 @@ import okhttp3.HttpUrl
 private fun paletteBody(books: String, total: Int? = null): String =
     """{"query":"lo","books":[$books]${total?.let { ""","book_total":$it""" } ?: ""}}"""
 
+/** A whole-library palette answer holding [tags] and, when given, a `tag_total`, with no books. */
+private fun tagsBody(tags: String, tagTotal: Int? = null): String =
+    """{"query":"wood","books":[],"tags":[$tags]${tagTotal?.let { ""","tag_total":$it""" } ?: ""}}"""
+
+private const val WOODLAND = """{"name":"Woodland","book_count":14}"""
+private const val WOODWORKING = """{"name":"Woodworking","book_count":2}"""
+
 private const val DUNE = """{"id":1,"uuid":"u-1","title":"Dune","author_display":"Frank Herbert","year":"1965","formats":["EPUB"],"cover_url":"/c","accent":"#fff","has_physical":false}"""
 private const val WOOD = """{"id":3,"uuid":"u-3","title":"Mythago Wood","author_display":"Robert Holdstock","year":"1984","formats":["epub"],"has_physical":true}"""
 private const val LOTR = """{"id":2,"uuid":"u-2","title":"Lord of the Rings","author_display":"J. R. R. Tolkien","formats":[]}"""
@@ -165,6 +172,55 @@ class DefaultLibrarySearchRepositoryTest : DescribeSpec({
                 repository().searchLibrary("lo")
 
                 nextRequest().url.queryParameter("limit") shouldBe null
+            }
+        }
+
+        context("when the answer has tags") {
+            it("#352 TC-1: returns the tags in order with the tag total") {
+                withScriptedServer {
+                    script.answer(200, tagsBody("$WOODLAND,$WOODWORKING", tagTotal = 9))
+
+                    val result = repository().searchLibrary("wood") as PaletteSearchResult.Success
+
+                    result.results.tags shouldBe SearchMatches(
+                        items = listOf(TagMatch("Woodland", 14), TagMatch("Woodworking", 2)),
+                        total = 9,
+                    )
+                }
+            }
+
+            context("when the answer has no tag total") {
+                it("#352 TC-2: takes the number of tags as the total") {
+                    withScriptedServer {
+                        script.answer(200, tagsBody("$WOODLAND,$WOODWORKING"))
+
+                        val result = repository().searchLibrary("wood") as PaletteSearchResult.Success
+
+                        result.results.tags.total shouldBe 2
+                    }
+                }
+            }
+        }
+
+        context("when the answer has no tags") {
+            it("#352 TC-3: has no tags") {
+                withScriptedServer {
+                    script.answer(200, paletteBody(DUNE, total = 1))
+
+                    val result = repository().searchLibrary("lo") as PaletteSearchResult.Success
+
+                    result.results.tags shouldBe SearchMatches.empty()
+                }
+            }
+
+            it("#352 TC-3: still reads the books") {
+                withScriptedServer {
+                    script.answer(200, paletteBody(DUNE, total = 1))
+
+                    val result = repository().searchLibrary("lo") as PaletteSearchResult.Success
+
+                    result.results.books.items.map { it.uuid } shouldBe listOf("u-1")
+                }
             }
         }
 

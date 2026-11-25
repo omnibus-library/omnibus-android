@@ -22,4 +22,10 @@ enum class SearchSectionKind(
         R.plurals.search_see_all_books_link,
         R.plurals.search_see_all_books_count,
     ),
+    Tags(
+        R.string.search_section_tags,
+        R.string.search_see_all_tags_title,
+        R.plurals.search_see_all_tags_link,
+        R.plurals.search_see_all_tags_count,
+    ),
 }

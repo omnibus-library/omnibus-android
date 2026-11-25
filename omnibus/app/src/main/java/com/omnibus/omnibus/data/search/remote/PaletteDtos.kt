@@ -4,6 +4,7 @@ import com.omnibus.omnibus.data.search.LibraryBookMatches
 import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.data.search.LibrarySearchResults
 import com.omnibus.omnibus.data.search.SearchMatches
+import com.omnibus.omnibus.data.search.TagMatch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -19,6 +20,8 @@ internal val PaletteJson = Json {
 internal data class PaletteResultsDto(
     val books: List<PaletteBookDto> = emptyList(),
     @SerialName("book_total") val bookTotal: Int? = null,
+    val tags: List<PaletteTagDto> = emptyList(),
+    @SerialName("tag_total") val tagTotal: Int? = null,
 ) {
     fun toDomain() = LibraryBookMatches(
         books = books.map { it.toDomain() },
@@ -27,6 +30,7 @@ internal data class PaletteResultsDto(
 
     fun toResults() = LibrarySearchResults(
         books = books.matches(bookTotal) { it.toDomain() },
+        tags = tags.matches(tagTotal) { it.toDomain() },
     )
 }
 
@@ -46,4 +50,12 @@ internal data class PaletteBookDto(
     @SerialName("has_physical") val hasPhysical: Boolean = false,
 ) {
     fun toDomain() = LibraryHit(uuid, title, authorDisplay, year, formats, coverUrl, accent, hasPhysical)
+}
+
+@Serializable
+internal data class PaletteTagDto(
+    val name: String,
+    @SerialName("book_count") val bookCount: Int = 0,
+) {
+    fun toDomain() = TagMatch(name, bookCount)
 }
