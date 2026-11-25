@@ -9,6 +9,8 @@ data class LibraryHit(
     val formats: List<String>,
     val coverUrl: String?,
     val accent: String?,
+    /** Whether the library holds a physical copy. */
+    val hasPhysical: Boolean = false,
 )
 
 /**

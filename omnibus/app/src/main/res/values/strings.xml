@@ -54,8 +54,6 @@
     <!-- Under construction -->
     <string name="under_construction_kicker">UNDER CONSTRUCTION</string>
     <string name="under_construction_reserved">RESERVED</string>
-    <string name="under_construction_search_title">Still alphabetizing</string>
-    <string name="under_construction_search_message">Search opens once every book is in its proper place. We\'ve just reached the C\'s.</string>
     <string name="under_construction_stats_title">Stacking your stats</string>
     <string name="under_construction_stats_message">We\'re shelving them by height. It isn\'t Dewey, but it does make a lovely chart.</string>
     <string name="under_construction_you_title">Saving you a shelf</string>

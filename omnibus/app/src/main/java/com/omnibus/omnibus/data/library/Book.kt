@@ -73,12 +73,15 @@ data class Book(
     /** Whether any format is an audiobook format. Format names are compared case-insensitively. */
     val hasAudiobook: Boolean get() = formats.any { it.lowercase() in AUDIO_FORMATS }
 
-    private companion object {
-        const val UNKNOWN_AUTHOR = "Unknown author"
-        const val EPUB_FORMAT = "epub"
+    internal companion object {
+        private const val UNKNOWN_AUTHOR = "Unknown author"
+        private const val EPUB_FORMAT = "epub"
 
-        val EBOOK_FORMATS = setOf("epub", "kepub", "pdf", "mobi", "azw3", "cbz", "cbr")
-        val AUDIO_FORMATS = setOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "opus", "wav")
+        /** Lower-case format names that count as an ebook. */
+        internal val EBOOK_FORMATS = setOf("epub", "kepub", "pdf", "mobi", "azw3", "cbz", "cbr")
+
+        /** Lower-case format names that count as an audiobook. */
+        internal val AUDIO_FORMATS = setOf("m4b", "m4a", "mp3", "aac", "flac", "ogg", "opus", "wav")
     }
 }
 

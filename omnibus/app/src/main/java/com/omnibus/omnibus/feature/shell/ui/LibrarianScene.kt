@@ -16,10 +16,8 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import com.omnibus.omnibus.ui.theme.OmnibusPalette
-import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 /** The drawing's coordinate space. Everything below is laid out in these units, then scaled to fit. */
 internal const val SCENE_WIDTH = 264f
@@ -100,9 +98,6 @@ private fun spines(fromX: Float, toX: Float, base: Float, seed: Int, maxHeight: 
     }
 }
 
-private val SearchShelves = spines(26f, 240f, BOARD_UPPER, 3) +
-    spines(26f, 146f, BOARD_MIDDLE, 11, 40f) +
-    spines(26f, 104f, BOARD_LOWER, 7, 40f)
 private val StatsShelf = spines(26f, 240f, BOARD_UPPER, 5)
 private val YouShelves = spines(26f, 240f, BOARD_UPPER, 9) +
     spines(26f, 184f, BOARD_MIDDLE, 13, 40f) +
@@ -122,33 +117,9 @@ internal fun DrawScope.drawLibrarianScene(
     scale(size.width / SCENE_WIDTH, size.height / SCENE_HEIGHT, pivot = Offset.Zero) {
         drawLine(colors.line, Offset(4f, FLOOR), Offset(260f, FLOOR), strokeWidth = 1.5f)
         when (page) {
-            UnderConstructionPage.Search -> drawSearchScene(phase, colors)
             UnderConstructionPage.Stats -> drawStatsScene(phase, colors)
             UnderConstructionPage.You -> drawYouScene(phase, colors, reservedLabel)
         }
-    }
-}
-
-/** Up the ladder, sliding a book into the last gap while inspecting the shelf through a magnifying glass. */
-private fun DrawScope.drawSearchScene(phase: Float, colors: SceneColors) {
-    drawBookcase(colors, BOARD_UPPER, BOARD_MIDDLE, BOARD_LOWER)
-    SearchShelves.forEach { drawSpine(it) }
-    drawUpright(112f, BOARD_LOWER, 8f, 30f, BookColors[5])
-    rotate(-16f, pivot = Offset(124f, BOARD_LOWER)) {
-        roundRect(BookColors[4], 124f, 134f, 8f, 28f, 1.2f)
-    }
-    drawCart(34f, colors)
-    drawLadder(colors)
-    translate(left = 9f * (1f - shelvedAmount(phase))) {
-        drawUpright(147f, BOARD_MIDDLE, 10f, 37f, BookColors[1])
-    }
-    drawLibrarian(174f, 130f, phase, colors, Arm(-11f, -44f, -20f, -37f))
-    rotate(sin(phase * 2f * PI.toFloat()) * 7f, pivot = Offset(184f, 90f)) {
-        limb(colors.accent, 185f, 88f, 199f, 83f, 5.5f)
-        drawCircle(Skin, 2.8f, Offset(199f, 83f))
-        limb(colors.ink1, 199f, 83f, 206f, 75f, 3f)
-        drawCircle(BookColors[0].copy(alpha = 0.14f), 10.5f, Offset(213f, 67f))
-        drawCircle(colors.ink0, 10.5f, Offset(213f, 67f), style = Stroke(2.5f))
     }
 }
 
@@ -244,20 +215,6 @@ private fun DrawScope.drawCart(x: Float, colors: SceneColors) {
         drawCircle(colors.ink3, 4f, Offset(7f, 181f))
         drawCircle(colors.ink3, 4f, Offset(47f, 181f))
     }
-}
-
-/** A library ladder hanging from a rail along the top of the bookcase. */
-private fun DrawScope.drawLadder(colors: SceneColors) {
-    limb(colors.ink2, 16f, 11f, 248f, 11f, 2f)
-    limb(colors.ink1, 176f, 12f, 158f, FLOOR, 2.6f)
-    limb(colors.ink1, 196f, 12f, 178f, FLOOR, 2.6f)
-    var y = 30f
-    while (y <= 170f) {
-        val inset = 18f * (y - 14f) / 172f
-        limb(colors.ink1, 176f - inset, y, 196f - inset, y, 2f)
-        y += 20f
-    }
-    drawCircle(colors.ink2, 4f, Offset(186f, 11f))
 }
 
 /** An arm from the shoulder to the hand, relative to the librarian's feet. */

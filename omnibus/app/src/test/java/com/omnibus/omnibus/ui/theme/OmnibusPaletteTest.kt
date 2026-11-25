@@ -109,4 +109,23 @@ class OmnibusPaletteTest : DescribeSpec({
             }
         }
     }
+
+    describe("accentText") {
+
+        context("in the dark theme") {
+            it("#351 TC-21: reads at 4.5:1 or more on bg0") {
+                val palette = OmnibusPalette.Atrium
+
+                (contrastRatio(palette.accentText, palette.bg0) >= 4.5) shouldBe true
+            }
+        }
+
+        context("in the light theme") {
+            it("#351 TC-21: reads at 4.5:1 or more on bg0") {
+                val palette = OmnibusPalette.Light
+
+                (contrastRatio(palette.accentText, palette.bg0) >= 4.5) shouldBe true
+            }
+        }
+    }
 })

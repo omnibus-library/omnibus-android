@@ -41,6 +41,8 @@ import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.feature.requests.RequestsRoute
 import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
+import com.omnibus.omnibus.feature.search.SearchOpen
+import com.omnibus.omnibus.feature.search.SearchScreen
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailRoute
 import com.omnibus.omnibus.feature.shelves.detail.ui.ShelfDetailScreen
 import com.omnibus.omnibus.feature.shelves.ui.ShelvesRoute
@@ -135,6 +137,12 @@ private fun SignedInShellContent(
             openPlayer = onOpenPlayer,
             openUri = { uriHandler.openUri(it) },
         )
+    }
+    // Every page opened from Search lands on the stack of the entry that asked (C8).
+    val openFromSearch: (SearchOpen, NavKey) -> Unit = { open, asking ->
+        when (open) {
+            is SearchOpen.Destination -> openDestination(open.destination, asking)
+        }
     }
 
     val navigationLayout = rememberShellNavigationLayout()
@@ -246,7 +254,14 @@ private fun SignedInShellContent(
                                 )
                             }
                         }
-                        entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
+                        entry<SearchRoot> {
+                            ShellPaddedEntry {
+                                SearchScreen(
+                                    resetKey = navigator.reselections(ShellTab.Search),
+                                    onOpen = { openFromSearch(it, SearchRoot) },
+                                )
+                            }
+                        }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
                         entry<YouRoot> {
                             ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) }) }
