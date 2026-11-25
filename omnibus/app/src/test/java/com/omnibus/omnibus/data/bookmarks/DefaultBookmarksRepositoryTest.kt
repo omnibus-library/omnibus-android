@@ -308,7 +308,8 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
                     val postGate = CountDownLatch(1)
                     script.answer("GET", reply(200, "[]"), getGate)
                     // The refresh joins the first fetch if it is still open, and sends a second GET if it has finished.
-                    script.answer("GET", reply(200, "[]"))
+                    // That GET goes out after the POST, so the server lists the saved row.
+                    script.answer("GET", reply(200, listOf(saved).json()))
                     script.answer("POST", reply(200, saved.json()), postGate)
 
                     repository.getBookmarksFlow(draft.bookUuid).test(timeout = AWAIT_TIMEOUT) {
