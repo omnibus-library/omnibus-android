@@ -54,6 +54,15 @@ class ShellNavigatorTest : DescribeSpec({
             stacks.getValue(first).toList() shouldBe listOf(first.root, pushed)
         }
 
+        it("#351 TC-17: switching tabs counts no re-selection") {
+            val tab = randomEnum<ShellTab>()
+            val navigator = sut(selected = tab)
+
+            navigator.select(tabOtherThan(tab))
+
+            ShellTab.entries.map { navigator.reselections(it) } shouldBe ShellTab.entries.map { 0 }
+        }
+
         context("when the tab is already selected") {
             it("pops it to its root") {
                 val stacks = rootStacks()
@@ -65,6 +74,18 @@ class ShellNavigatorTest : DescribeSpec({
                 navigator.select(tab)
 
                 stacks.getValue(tab).toList() shouldBe listOf(tab.root)
+            }
+
+            it("#351 TC-17: counts each re-selection") {
+                val tab = randomEnum<ShellTab>()
+                val navigator = sut(selected = tab)
+                val before = navigator.reselections(tab)
+
+                navigator.select(tab)
+                val once = navigator.reselections(tab)
+                navigator.select(tab)
+
+                listOf(before, once, navigator.reselections(tab)) shouldBe listOf(0, 1, 2)
             }
         }
     }

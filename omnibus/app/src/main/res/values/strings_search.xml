@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- #351 -->
+    <string name="search_title">Search</string>
+    <string name="search_field_label">Search your library</string>
+    <string name="search_clear">Clear search</string>
+    <string name="search_prompt_message">Search your library for books, authors, series, tags and genres.</string>
+    <string name="search_searching">Searching</string>
+    <string name="search_section_books">Books</string>
+    <string name="search_row_book">Book</string>
+    <string name="search_badge_ebook">Ebook</string>
+    <string name="search_badge_audio">Audio</string>
+    <string name="search_badge_print">Print</string>
+    <string name="search_no_matches_title">No matches</string>
+    <string name="search_no_matches_message">Nothing in your library matches “%1$s”.</string>
+    <string name="search_unreachable_title">Can’t reach your server</string>
+    <string name="search_unreachable_message">Check your connection, then try again.</string>
+    <string name="search_not_working_title">Search isn’t working</string>
+    <string name="search_not_working_message">Your server couldn’t run that search. Try again in a moment.</string>
+    <string name="search_try_again">Try again</string>
+    <string name="search_retry">Retry</string>
+    <string name="search_see_all">See all %1$d</string>
+    <plurals name="search_see_all_books_link">
+        <item quantity="one">See all %1$d book</item>
+        <item quantity="other">See all %1$d books</item>
+    </plurals>
+    <string name="search_see_all_books_title">Books matching “%1$s”</string>
+    <plurals name="search_see_all_books_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="search_see_all_capped">Showing the first 500 of %1$d. Narrow your search to see the rest.</string>
+    <string name="search_loading">Loading</string>
+</resources>

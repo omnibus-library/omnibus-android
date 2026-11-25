@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.shell
 
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 
@@ -20,6 +21,8 @@ class ShellNavigator(
     private val stacks: Map<ShellTab, MutableList<NavKey>>,
     private val selectedTab: MutableState<ShellTab>,
 ) {
+    private val reselectionCounts = mutableStateMapOf<ShellTab, Int>()
+
     init {
         require(ShellTab.entries.all { stacks[it]?.firstOrNull() == it.root }) {
             "Every tab needs a back stack starting at its root"
@@ -46,10 +49,14 @@ class ShellNavigator(
         else -> ShellTab.entries.firstOrNull { stacks.getValue(it).lastOrNull() == key } ?: selected
     }
 
-    /** Selects [tab], or pops to its root if it already is selected. */
+    /** How many times [tab] was selected while already selected. Read from Compose state, so a reader recomposes on change. */
+    fun reselections(tab: ShellTab): Int = reselectionCounts[tab] ?: 0
+
+    /** Selects [tab]. Selecting the selected tab pops it to its root and counts a re-selection. */
     fun select(tab: ShellTab) {
         if (tab == selected) {
             popToRoot(tab)
+            reselectionCounts[tab] = reselections(tab) + 1
         } else {
             selectedTab.value = tab
         }

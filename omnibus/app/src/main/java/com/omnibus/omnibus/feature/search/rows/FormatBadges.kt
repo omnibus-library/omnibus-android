@@ -1,4 +1,4 @@
-package com.omnibus.omnibus.ui.components
+package com.omnibus.omnibus.feature.search.rows
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.border
@@ -21,9 +21,9 @@ import java.util.Locale
 
 /** A way a book can be read, shown as a badge on its row, in display order. */
 enum class FormatBadge(@param:StringRes val label: Int) {
-    Ebook(R.string.format_badge_ebook),
-    Audio(R.string.format_badge_audio),
-    Print(R.string.format_badge_print),
+    Ebook(R.string.search_badge_ebook),
+    Audio(R.string.search_badge_audio),
+    Print(R.string.search_badge_print),
 }
 
 /**
@@ -41,7 +41,7 @@ fun formatBadges(formats: List<String>, hasPhysical: Boolean): List<FormatBadge>
 
 /** The [badges] as outlined mono chips that wrap onto a second line at large font scales. Draws nothing when empty. */
 @Composable
-fun FormatBadges(badges: List<FormatBadge>, modifier: Modifier = Modifier) {
+internal fun FormatBadges(badges: List<FormatBadge>, modifier: Modifier = Modifier) {
     if (badges.isEmpty()) return
     val palette = OmnibusTheme.palette
     FlowRow(

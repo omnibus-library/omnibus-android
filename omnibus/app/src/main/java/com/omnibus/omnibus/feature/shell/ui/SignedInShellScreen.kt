@@ -41,6 +41,10 @@ import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.feature.requests.RequestsRoute
 import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
+import com.omnibus.omnibus.feature.search.SearchOpen
+import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
+import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllScreen
+import com.omnibus.omnibus.feature.search.SearchScreen
 import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 import com.omnibus.omnibus.feature.series.ui.SeriesDetailsScreen
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailRoute
@@ -137,6 +141,13 @@ private fun SignedInShellContent(
             openPlayer = onOpenPlayer,
             openUri = { uriHandler.openUri(it) },
         )
+    }
+    // Every page opened from Search lands on the stack of the entry that asked (C8).
+    val openFromSearch: (SearchOpen, NavKey) -> Unit = { open, asking ->
+        when (open) {
+            is SearchOpen.Destination -> openDestination(open.destination, asking)
+            is SearchOpen.Route -> navigator.navigateTo(open.route, navigator.ownerOf(asking))
+        }
     }
 
     val navigationLayout = rememberShellNavigationLayout()
@@ -258,7 +269,23 @@ private fun SignedInShellContent(
                                 )
                             }
                         }
-                        entry<SearchRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Search) } }
+                        entry<SearchRoot> {
+                            ShellPaddedEntry {
+                                SearchScreen(
+                                    resetKey = navigator.reselections(ShellTab.Search),
+                                    onOpen = { openFromSearch(it, SearchRoot) },
+                                )
+                            }
+                        }
+                        entry<SearchSeeAllRoute> { key ->
+                            ShellPaddedEntry {
+                                SearchSeeAllScreen(
+                                    route = key,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpen = { openFromSearch(it, key) },
+                                )
+                            }
+                        }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
                         entry<YouRoot> {
                             ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) }) }

@@ -71,6 +71,7 @@ fun randomLibraryHit(): LibraryHit = LibraryHit(
     formats = List(randomInt(0..3)) { randomString() },
     coverUrl = randomString().orNull(),
     accent = randomString().orNull(),
+    hasPhysical = randomBoolean(),
 )
 
 fun randomProviderBook(): ProviderBook {

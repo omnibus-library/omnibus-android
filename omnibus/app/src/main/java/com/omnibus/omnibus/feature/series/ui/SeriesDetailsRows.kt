@@ -36,10 +36,10 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.cover.CoverSize
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.feature.library.ui.coverIdentity
+import com.omnibus.omnibus.feature.search.rows.FormatBadges
+import com.omnibus.omnibus.feature.search.rows.formatBadges
 import com.omnibus.omnibus.feature.series.SeriesEntry
 import com.omnibus.omnibus.ui.components.BookCover
-import com.omnibus.omnibus.ui.components.FormatBadges
-import com.omnibus.omnibus.ui.components.formatBadges
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle

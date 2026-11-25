@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 /**
  * In-memory [LibrarySearchRepository] for consumers' tests. Each call is recorded, then answered from the head of
  * [answers]. A set [gate] holds the call until the test completes it. An empty queue fails the test.
+ * [searchLibrary] has its own queue, [libraryAnswers], so the two searches can be scripted separately.
  */
 class TestLibrarySearchRepository : LibrarySearchRepository {
 
@@ -23,4 +24,28 @@ class TestLibrarySearchRepository : LibrarySearchRepository {
         gate?.await()
         return answers.removeFirstOrNull() ?: unscripted("searchBooks")
     }
+
+    /** Every [searchLibrary] call, in call order. */
+    val libraryCalls = mutableListOf<SearchLibraryCall>()
+
+    /** One pending answer per [searchLibrary] call, taken when the call starts. Complete them in any order to model late answers. */
+    val libraryAnswers = ArrayDeque<CompletableDeferred<PaletteSearchResult>>()
+
+    /** Queues an answer that is already complete. */
+    fun answerLibrary(result: PaletteSearchResult) {
+        libraryAnswers.addLast(CompletableDeferred(result))
+    }
+
+    /** Queues an answer the test completes later, and returns it. */
+    fun holdLibrary(): CompletableDeferred<PaletteSearchResult> =
+        CompletableDeferred<PaletteSearchResult>().also { libraryAnswers.addLast(it) }
+
+    override suspend fun searchLibrary(query: String, limit: Int?): PaletteSearchResult {
+        libraryCalls += SearchLibraryCall(query, limit)
+        val answer = libraryAnswers.removeFirstOrNull() ?: unscripted("searchLibrary")
+        return answer.await()
+    }
 }
+
+/** One [TestLibrarySearchRepository.searchLibrary] call: the trimmed query and the requested rows per section, if any. */
+data class SearchLibraryCall(val query: String, val limit: Int?)
