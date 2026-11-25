@@ -1,16 +1,9 @@
 package com.omnibus.omnibus.data.audiobook.crossformat.local
 
-import android.util.Log
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
-import androidx.datastore.preferences.core.longPreferencesKey
-import com.omnibus.omnibus.data.audiobook.di.ResumeOffersPreferences
-import java.io.IOException
+import com.omnibus.omnibus.data.libraries.ActiveLibrary
+import com.omnibus.omnibus.data.libraries.readFromActiveLibrary
+import com.omnibus.omnibus.data.libraries.writeToActiveLibrary
 import javax.inject.Inject
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 
 /**
  * The ebook offers the listener dismissed, kept per book as the source clock of the dismissed position (R8). It is
@@ -26,36 +19,20 @@ interface CrossFormatDismissStore {
 }
 
 /**
- * [CrossFormatDismissStore] backed by its own DataStore file. A read failure reads as absent, so the offer shows again;
- * a write failure is logged. Neither throws an IO error.
+ * [CrossFormatDismissStore] backed by the `dismissed_resume_offers` table, scoped to the active library. A read failure
+ * reads as absent, so the offer shows again; a write failure is logged. Neither throws an IO error.
  */
 class DefaultCrossFormatDismissStore @Inject constructor(
-    @param:ResumeOffersPreferences private val dataStore: DataStore<Preferences>,
+    private val dao: DismissedResumeOfferDao,
+    private val activeLibrary: ActiveLibrary,
 ) : CrossFormatDismissStore {
 
-    override suspend fun dismissedClock(bookUuid: String): Long? {
-        val prefs = dataStore.data
-            .catch { error ->
-                if (error is IOException) {
-                    Log.w(TAG, "Unable to read the dismissed ebook offers", error)
-                    emit(emptyPreferences())
-                } else {
-                    throw error
-                }
-            }
-            .first()
-        return prefs[key(bookUuid)]
-    }
+    override suspend fun dismissedClock(bookUuid: String): Long? =
+        activeLibrary.readFromActiveLibrary(TAG) { dao.dismissedClock(it, bookUuid) }
 
     override suspend fun store(bookUuid: String, sourceClock: Long) {
-        try {
-            dataStore.edit { it[key(bookUuid)] = sourceClock }
-        } catch (error: IOException) {
-            Log.e(TAG, "Unable to store the dismissed ebook offer", error)
-        }
+        activeLibrary.writeToActiveLibrary(TAG) { libraryId -> dao.store(libraryId, bookUuid, sourceClock) }
     }
-
-    private fun key(bookUuid: String) = longPreferencesKey("dismissed_clock:$bookUuid:audio")
 
     private companion object {
         const val TAG = "CrossFormatDismissStore"

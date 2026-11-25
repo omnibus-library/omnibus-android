@@ -50,3 +50,34 @@ class DefaultActiveLibrary @Inject constructor(
         const val TAG = "DefaultActiveLibrary"
     }
 }
+
+/**
+ * Runs [block] for the active library and returns its result. Null when there is no active library, or when the
+ * database can't be read, which is logged under [tag].
+ */
+internal suspend fun <T> ActiveLibrary.readFromActiveLibrary(tag: String, block: suspend (libraryId: String) -> T?): T? {
+    val libraryId = id() ?: return null
+    return try {
+        block(libraryId)
+    } catch (error: SQLException) {
+        Log.w(tag, "Unable to read the stored data", error)
+        null
+    }
+}
+
+/**
+ * Runs [block] for the active library. A write with no active library, or one that fails, is dropped and logged
+ * under [tag]. Nothing is thrown.
+ */
+internal suspend fun ActiveLibrary.writeToActiveLibrary(tag: String, block: suspend (libraryId: String) -> Unit) {
+    val libraryId = id()
+    if (libraryId == null) {
+        Log.w(tag, "No active library, so the write was dropped")
+        return
+    }
+    try {
+        block(libraryId)
+    } catch (error: SQLException) {
+        Log.e(tag, "Unable to write the stored data", error)
+    }
+}
