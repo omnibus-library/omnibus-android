@@ -92,8 +92,11 @@ fun OmnibusDatabase.rowsOfBook(table: String, bookUuid: String): Int =
         )
     }
 
-private fun OmnibusDatabase.countWith(sql: String, arg: String): Int =
-    openHelper.readableDatabase.query(sql, arrayOf<Any>(arg)).use { cursor ->
+/** The number of rows in [table], in any library. */
+fun OmnibusDatabase.countAll(table: String): Int = countWith("SELECT COUNT(*) FROM $table", arg = null)
+
+private fun OmnibusDatabase.countWith(sql: String, arg: String?): Int =
+    openHelper.readableDatabase.query(sql, if (arg == null) emptyArray<Any>() else arrayOf<Any>(arg)).use { cursor ->
         cursor.moveToFirst()
         cursor.getInt(0)
     }
