@@ -2,7 +2,7 @@
 
 | Version | Status | Last updated |
 |---|---|---|
-| 1.0.0 | Accepted | 2026-11-25 |
+| 1.0.1 | Accepted | 2026-11-25 |
 
 ## Summary
 
@@ -340,16 +340,16 @@ The sync uses the endpoints each feature already writes to. It adds no endpoint.
 The feature follows the layers in `docs/engineering/feature-layers.md`.
 
 - **Data.**
-  - A `LibrariesRepository` replaces the single saved server. It holds the libraries (id, address, name, username, when added, when last used) and the id of the active library. It saves them in a new `libraries.preferences_pb` DataStore, and exposes add, rename, remove and set-active.
+  - Where each library's data lives on the device, how it is scoped to the library, and how it is deleted are set by `docs/engineering/local-storage.md`.
+  - A `LibrariesRepository` replaces the single saved server. It holds the libraries (id, address, name, username, when added, when last used) and which one is active, in the database's `libraries` table, and exposes add, rename, remove and set-active.
   - `ServerConfigurationRepository` keeps validating addresses. Saving an address becomes adding a library.
-  - The encrypted token store keys tokens by library id instead of holding one. `StoredAuthTokenProvider` and `SavedServerBaseUrlProvider` read the active library's token and address. `invalidate()` clears only the active library's token.
-  - Every per-library store (`reading_positions`, `audiobook_positions`, `audiobook_playback_rates`, `audiobook_resume_offers`, the shelf and filter state, and the `covers` disk cache) moves under `files/libraries/<id>/`, and is opened for the active library. `reader_preferences` and `library_preferences` stay device-wide.
+  - `StoredAuthTokenProvider` and `SavedServerBaseUrlProvider` read the active library's token and address. `invalidate()` clears only the active library's token.
   - A `LibrarySync` sends every unsynced change for one library and reports success or failure within a time limit:
     - for the active library, it drains the highlights, bookmarks, reviews, read-status, journal and metadata write queues, the pending listening positions and sessions, the pending playback speeds, and the latest reading position;
-    - for an inactive library (when removing), it sends only what that library's stores hold, using that library's own address and token.
+    - for an inactive library (when removing), it sends only that library's pending changes in the database, using that library's own address and token.
   - `LibrarySync` also reports whether anything is waiting, so the Syncing stage can be skipped.
 - **Switch.** Committing a switch saves the new active library, then restarts the app process. The new process opens straight into the switching screen's Opening stage. A restart is the only way to make sure none of the in-memory state held by `@Singleton` repositories (per-book highlights, bookmarks, reviews, progress records, playback state, cover memory cache and others) carries over from the previous library. It also stops playback and clears every back stack.
-- **Upgrade.** On first launch, if a server address is saved and no libraries exist, the app creates one library from the address and token, and moves the existing store files into that library's folder. It then fetches `api/auth/me` to fill in the username.
+- **Upgrade.** The upgrade in `docs/engineering/local-storage.md` creates the first library from the saved server and moves the existing data into it. The app then fetches `api/auth/me` to fill in the username.
 - **UI.**
   - The You root gains the account card above the Requests row, and a "Libraries" row.
   - The switcher sheet uses the shared app sheet component.
@@ -384,6 +384,10 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 ---
 
 ## Changelog
+
+**1.0.1** (2026-11-25)
+
+- The architecture's storage details move to `docs/engineering/local-storage.md`, which keeps each library's data in one database instead of a folder of files per library. Why: storage is shared by features beyond this one, and rows scoped to a library are simpler to keep apart and delete than files. No behaviour changes.
 
 **1.0.0** (2026-11-25)
 

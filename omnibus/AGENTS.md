@@ -65,6 +65,7 @@ Follow the documents in `docs/engineering/`:
 - [Feature Layers](docs/engineering/feature-layers.md): Screen (Compose) → ViewModel → Repository → Data sources, with conventions per layer. The login feature is the reference implementation.
 - [Commits](docs/engineering/commits.md): Never commit directly to `main`; work on a branch and merge via pull request. Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification).
 - [Pull Requests](docs/engineering/pull-requests.md): Each PR delivers one meaningful change to the user experience. Split features by user impact, never by architecture layer. Deliver a multi-PR feature as one linear `gh stack`.
+- [Local Storage](docs/engineering/local-storage.md): Where data lives on the device. Data that belongs to a library goes in the Room database, scoped by library id; secrets, shared settings and binary caches stay outside it. Read it before storing anything new.
 - [KDocs](docs/engineering/kdocs.md): Document public APIs with KDoc. Keep descriptions concise and avoid restating what is obvious from the signature.
 - [Testing](docs/engineering/testing.md): Unit test non-Android Kotlin/KMP code with Kotest on the JUnit runner, preferring the [Describe Spec](https://kotest.io/docs/framework/testing-styles.html#describe-spec) style. Test code that needs an Android `Context` with instrumented tests in `app/src/androidTest/`. Check how a piece of UI looks with a screenshot test in `app/src/screenshotTest/`.
 
