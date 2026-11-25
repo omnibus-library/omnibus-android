@@ -46,13 +46,12 @@ class BookDetailDestinationTest : DescribeSpec({
     describe("the route a destination pushes") {
 
         context("when the destination is something to browse") {
-            it("#93 TC-43: is a placeholder with its name, for author or genre") {
+            it("#93 TC-43: is a placeholder with its name, for an author") {
                 val name = randomString()
 
                 checkAll(
                     Exhaustive.of(
                         BookDetailDestination.Author(randomLong(), name),
-                        BookDetailDestination.Genre(name),
                     ),
                 ) { destination ->
                     destination.shellRoute(randomPlaceholderTitles()) shouldBe BookDetailPlaceholderRoute(name)
@@ -66,6 +65,15 @@ class BookDetailDestinationTest : DescribeSpec({
 
                 BookDetailDestination.Tag(name).shellRoute(randomPlaceholderTitles()) shouldBe
                     FacetBooksRoute(FacetKind.Tag, name)
+            }
+        }
+
+        context("when the destination is a genre") {
+            it("#353 TC-43: is the books in genre list for that genre") {
+                val name = randomString()
+
+                BookDetailDestination.Genre(name).shellRoute(randomPlaceholderTitles()) shouldBe
+                    FacetBooksRoute(FacetKind.Genre, name)
             }
         }
 

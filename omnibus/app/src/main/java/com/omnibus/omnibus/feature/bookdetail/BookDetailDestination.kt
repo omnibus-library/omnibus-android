@@ -62,7 +62,7 @@ internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey
     is BookDetailDestination.Request -> BookRequestRoute(bookUuid)
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Series -> SeriesDetailsRoute(seriesId, name)
-    is BookDetailDestination.Genre -> BookDetailPlaceholderRoute(name)
+    is BookDetailDestination.Genre -> FacetBooksRoute(FacetKind.Genre, name)
     is BookDetailDestination.Tag -> FacetBooksRoute(FacetKind.Tag, name)
     is BookDetailDestination.CheckIn -> BookDetailPlaceholderRoute(titles.checkIn)
     BookDetailDestination.Settings -> BookDetailPlaceholderRoute(titles.settings)

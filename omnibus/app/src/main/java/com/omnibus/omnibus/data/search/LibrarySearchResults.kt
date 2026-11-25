@@ -11,6 +11,7 @@ data class SearchMatches<T>(val items: List<T>, val total: Int) {
 data class LibrarySearchResults(
     val books: SearchMatches<LibraryHit>,
     val tags: SearchMatches<TagMatch> = SearchMatches.empty(),
+    val genres: SearchMatches<GenreMatch> = SearchMatches.empty(),
 )
 
 /** What a whole-library search answered. Every failure is a result, not an exception. */

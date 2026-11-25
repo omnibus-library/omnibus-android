@@ -9,7 +9,7 @@ import kotlinx.serialization.json.putJsonArray
 
 /** A taxonomy a books page can be narrowed to. [apiField] is the server's filter field. */
 @Serializable
-enum class FacetKind(val apiField: String) { Tag("tag") }
+enum class FacetKind(val apiField: String) { Tag("tag"), Genre("genre") }
 
 /** Only the books filed under exactly [name] of [kind] (the server ignores case). */
 data class BooksFacet(val kind: FacetKind, val name: String)

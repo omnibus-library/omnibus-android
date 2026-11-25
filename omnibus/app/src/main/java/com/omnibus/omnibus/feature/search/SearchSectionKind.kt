@@ -28,4 +28,10 @@ enum class SearchSectionKind(
         R.plurals.search_see_all_tags_link,
         R.plurals.search_see_all_tags_count,
     ),
+    Genres(
+        R.string.search_section_genres,
+        R.string.search_see_all_genres_title,
+        R.plurals.search_see_all_genres_link,
+        R.plurals.search_see_all_genres_count,
+    ),
 }
