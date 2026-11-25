@@ -86,10 +86,10 @@ Search is the app's second tab. A reader types into one field and, as they type,
 | Genre | Genre glyph tile | Name | "N books" | None |
 
 - A book with no cover gets the app's generated cover plate.
-- Format badges, in order:
-  - one badge per ebook format the book has, named after the format (EPUB, PDF, MOBI and so on); KEPUB counts as EPUB;
-  - one AUDIO badge when the book has any audio format;
-  - one PRINT badge when the reader's library has a physical copy.
+- Format badges, in this order, each shown at most once:
+  - EBOOK when the book has any ebook format;
+  - AUDIO when the book has any audio format;
+  - PRINT when the reader's library has a physical copy.
 - A missing year drops the " · year". A missing author drops "‹author› · ". A missing lead title drops " · incl. ‹lead title›".
 - "1 book" is singular.
 
@@ -228,7 +228,7 @@ Search is the app's second tab. A reader types into one field and, as they type,
 ### Accessibility
 
 - The field MUST be announced as "Search your library", with its current text.
-- Each row MUST be one focusable element that announces its type and its content, for example "Book, Mythago Wood, Robert Holdstock, 1984, EPUB, print".
+- Each row MUST be one focusable element that announces its type and its content, for example "Book, Mythago Wood, Robert Holdstock, 1984, ebook, print".
 - Section headers MUST be headings. "See all N" MUST announce as "See all N ‹section›", for example "See all 9 books".
 - Every touch target MUST be at least 48dp.
 - Rows MUST grow to fit their text at the largest font scale instead of clipping it. The first and second lines MAY end in an ellipsis.
@@ -293,11 +293,12 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 - **Data.**
   - `LibrarySearchRepository` gains a search returning every section with its totals, taking an optional per-section limit. The existing books-only search stays for the scan flow, and both share one decoder.
   - `BooksPageQuery` gains an optional tag or genre clause, which `DefaultLibraryRepository` sends as `filter`. Facet lists then reuse the Library's existing paging.
-- **Domain models.** One result type per row kind (book, author, series, tag, genre). Each section is a list plus its total. Format badges are derived from `formats` and `has_physical` with the format sets `Book` already defines.
+- **Domain models.** One result type per row kind (book, author, series, tag, genre). Each section is a list plus its total. Format badges come from `formats` and `has_physical`: EBOOK and AUDIO use the ebook and audio format sets `Book` already defines.
 - **UI.**
   - `SearchScreen` and `SearchViewModel` replace the under-construction screen at `SearchRoot`.
   - The ViewModel owns the query, the 200ms debounce, cancelling superseded searches, and keeping the last results through a failure.
   - Highlighting is a pure function from the query and a string to an annotated string.
+- **Theme.** The palette gains an `accentText` colour for accent-coloured text: the accent itself in the dark theme, and `#9A5A12` in the light theme, where the accent is too light to read on the background. Highlights and "See all" use it.
 - **Routes.**
   - `FacetBooksRoute(kind, name)` serves both facet lists. `BookDetailDestination.Tag` and `BookDetailDestination.Genre` map to it instead of the placeholder.
   - `SearchSeeAllRoute(section, query)` serves the See all lists.
