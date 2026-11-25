@@ -44,9 +44,9 @@ class AccountCardTest {
 
         rule.onNodeWithTag(AccountCardTestTags.CARD)
             .assertContentDescriptionEquals("Home, signed in as hoon on books.home.lan:8443")
-        rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)), useUnmergedTree = true)
+        rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)))
             .assertCountEquals(0)
-        rule.onAllNodesWithText("Home", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("Home").assertCountEquals(0)
     }
 
     // TC-19
@@ -58,7 +58,7 @@ class AccountCardTest {
 
         rule.onNodeWithTag(AccountCardTestTags.CARD)
             .assertContentDescriptionEquals("Home, on books.home.lan:8443")
-        rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)), useUnmergedTree = true)
+        rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)))
             .assertCountEquals(0)
     }
 
