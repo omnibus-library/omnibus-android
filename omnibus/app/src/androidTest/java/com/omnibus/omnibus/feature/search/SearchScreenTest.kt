@@ -88,11 +88,14 @@ class SearchScreenTest {
         }
     }
 
-    /** The snackbar is shown from a coroutine after the first frame, so wait for it instead of asserting at once. */
-    private fun awaitSnackbar(@androidx.annotation.StringRes text: Int) {
-        rule.waitUntil(timeoutMillis = 5_000) {
-            rule.onAllNodesWithText(string(text)).fetchSemanticsNodes().isNotEmpty()
-        }
+    /**
+     * Shows the snackbar and keeps it up. The test clock normally skips ahead while idle, which would run out the
+     * snackbar's timeout before any assertion, so the clock is paused and moved just past its fade-in.
+     */
+    private fun setSearchWithSnackbar(uiState: SearchUIState, onRetry: () -> Unit = {}, onNoticeShown: () -> Unit = {}) {
+        rule.mainClock.autoAdvance = false
+        setSearch(uiState, onRetry = onRetry, onNoticeShown = onNoticeShown)
+        rule.mainClock.advanceTimeBy(1_000)
     }
 
     // TC-23
@@ -263,7 +266,7 @@ class SearchScreenTest {
     @Test
     fun issue351_tc30_noticeIsShownOnce() {
         var shown = 0
-        setSearch(
+        setSearchWithSnackbar(
             SearchUIState(
                 query = "wood",
                 body = SearchBody.Results("wood", listOf(SearchSection(SearchSectionKind.Books, SearchMatches(listOf(hit(1)), 1)))),
@@ -272,7 +275,6 @@ class SearchScreenTest {
             onNoticeShown = { shown++ },
         )
 
-        awaitSnackbar(R.string.search_unreachable_title)
         rule.onNodeWithText(string(R.string.search_unreachable_title)).assertIsDisplayed()
         assertEquals(1, shown)
     }
@@ -281,7 +283,7 @@ class SearchScreenTest {
     @Test
     fun issue351_tc30_snackbarRetryRetries() {
         var retries = 0
-        setSearch(
+        setSearchWithSnackbar(
             SearchUIState(
                 query = "wood",
                 body = SearchBody.Results("wood", listOf(SearchSection(SearchSectionKind.Books, SearchMatches(listOf(hit(1)), 1)))),
@@ -290,7 +292,6 @@ class SearchScreenTest {
             onRetry = { retries++ },
         )
 
-        awaitSnackbar(R.string.search_retry)
         rule.onNodeWithText(string(R.string.search_retry)).performClick()
 
         assertEquals(1, retries)
