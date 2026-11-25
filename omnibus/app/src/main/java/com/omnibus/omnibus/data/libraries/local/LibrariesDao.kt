@@ -42,10 +42,9 @@ abstract class LibrariesDao {
     }
 
     /**
-     * Changes the address and name of library [id] in place.
-     *
-     * Slice 1 only; removed when changing server replaces the library.
+     * Deletes library [id]. Its books and their per-book rows go with it, through the foreign keys. Returns the
+     * number of rows deleted.
      */
-    @Query("UPDATE libraries SET address = :address, name = :name WHERE id = :id")
-    abstract suspend fun updateAddress(id: String, address: String, name: String)
+    @Query("DELETE FROM libraries WHERE id = :id")
+    abstract suspend fun delete(id: String): Int
 }

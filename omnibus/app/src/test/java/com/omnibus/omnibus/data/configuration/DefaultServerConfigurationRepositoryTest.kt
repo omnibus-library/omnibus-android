@@ -1,10 +1,7 @@
 package com.omnibus.omnibus.data.configuration
 
-import com.omnibus.omnibus.data.auth.local.AuthTokenStore
-import com.omnibus.omnibus.data.auth.local.TestAuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
-import com.omnibus.omnibus.data.libraries.LibraryHost
 import com.omnibus.omnibus.data.libraries.LibrariesRepository
 import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
 import com.omnibus.omnibus.data.libraries.randomLibrary
@@ -20,10 +17,10 @@ import com.omnibus.omnibus.testing.withMockServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
-import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import mockwebserver3.MockResponse
@@ -34,7 +31,6 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
 
     fun sut(
         librariesRepository: LibrariesRepository = TestLibrariesRepository(),
-        authTokenStore: AuthTokenStore = TestAuthTokenStore(),
         authTokenProvider: AuthTokenProvider = TestAuthTokenProvider(),
     ): DefaultServerConfigurationRepository = DefaultServerConfigurationRepository(
         librariesRepository = librariesRepository,
@@ -45,7 +41,6 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
             omnibusNetworkInterceptor = OmnibusNetworkInterceptor(),
             authClientMetadataInterceptor = AuthClientMetadataInterceptor(TestClientInfo()),
         ),
-        authTokenStore = authTokenStore,
         ioDispatcher = Dispatchers.Unconfined,
     )
 
@@ -82,88 +77,54 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
                 libraries.getActiveLibraryFlow().first()?.address shouldBe "http://example.com:3000"
             }
 
-            it("TC-36: leaves the signed-out state unchanged") {
-                val tokenStore = TestAuthTokenStore()
+            it("TC-36: removes nothing") {
+                val libraries = TestLibrariesRepository()
 
-                sut(TestLibrariesRepository(), tokenStore).saveServerConfig(randomServerAddress())
+                sut(libraries).saveServerConfig(randomServerAddress())
 
-                tokenStore.token.first().shouldBeNull()
+                libraries.removedIds shouldBe emptyList()
             }
         }
 
         context("when the same server was saved before") {
-            it("TC-37: keeps the library and its token") {
+            it("TC-37: keeps the library") {
                 val library = randomLibrary().copy(address = randomServerAddress(), isActive = true)
                 val libraries = TestLibrariesRepository(listOf(library))
-                val token = randomString()
-                val tokenStore = TestAuthTokenStore(initialToken = token)
 
-                sut(libraries, tokenStore).saveServerConfig(library.address)
+                sut(libraries).saveServerConfig(library.address)
 
                 libraries.getLibrariesFlow().first() shouldBe listOf(library)
-                tokenStore.token.first() shouldBe token
+                libraries.removedIds shouldBe emptyList()
             }
         }
 
         context("when an older build saved the same server as typed") {
-            it("TC-37: keeps the library and its token") {
+            it("TC-37: keeps the library") {
                 val host = randomString(8..16).lowercase()
                 val library = randomLibrary().copy(address = "$host.example.com:3000/", isActive = true)
                 val libraries = TestLibrariesRepository(listOf(library))
-                val token = randomString()
-                val tokenStore = TestAuthTokenStore(initialToken = token)
 
-                sut(libraries, tokenStore).saveServerConfig("http://$host.example.com:3000")
+                sut(libraries).saveServerConfig("http://$host.example.com:3000")
 
                 libraries.getLibrariesFlow().first() shouldBe listOf(library)
-                tokenStore.token.first() shouldBe token
+                libraries.removedIds shouldBe emptyList()
             }
         }
 
         context("when a different server was saved before") {
-            it("TC-38: signs out") {
-                val active = randomLibrary().copy(isActive = true)
-                val tokenStore = TestAuthTokenStore(initialToken = randomString())
-
-                sut(TestLibrariesRepository(listOf(active)), tokenStore).saveServerConfig(randomServerAddress())
-
-                tokenStore.token.first().shouldBeNull()
-            }
-
-            it("TC-38: changes the address of the same library in place") {
+            it("TC-70: replaces the library for a different address") {
                 val active = randomLibrary().copy(isActive = true)
                 val newAddress = randomServerAddress()
                 val libraries = TestLibrariesRepository(listOf(active))
 
                 sut(libraries).saveServerConfig(newAddress)
 
+                libraries.removedIds shouldBe listOf(active.id)
                 val stored = libraries.getLibrariesFlow().first()
-                stored.map { it.id } shouldBe listOf(active.id)
-                stored.single().address shouldBe newAddress
-                stored.single().name shouldBe LibraryHost.of(newAddress)
-            }
-
-            it("TC-38: leaves other libraries unchanged") {
-                val active = randomLibrary().copy(isActive = true)
-                val other = randomLibrary().copy(isActive = false)
-                val libraries = TestLibrariesRepository(listOf(active, other))
-
-                sut(libraries).saveServerConfig(randomServerAddress())
-
-                libraries.getLibrariesFlow().first().single { it.id == other.id } shouldBe other
-            }
-        }
-
-        context("when the old token can't be cleared") {
-            it("TC-39: still saves the server") {
-                val address = randomServerAddress()
-                val libraries = TestLibrariesRepository(listOf(randomLibrary().copy(isActive = true)))
-                val tokenStore = TestAuthTokenStore().apply { clearFailure = IOException("keystore unavailable") }
-                val repository = sut(libraries, tokenStore)
-
-                repository.saveServerConfig(address)
-
-                repository.getSavedServerConfigFlow().first() shouldBe address
+                stored.count { it.isActive } shouldBe 1
+                val current = libraries.getActiveLibraryFlow().first()
+                current?.address shouldBe newAddress
+                current?.id shouldNotBe active.id
             }
         }
     }

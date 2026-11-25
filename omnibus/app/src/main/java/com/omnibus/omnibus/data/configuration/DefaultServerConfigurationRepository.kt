@@ -1,11 +1,8 @@
 package com.omnibus.omnibus.data.configuration
 
-import android.util.Log
-import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.libraries.LibrariesRepository
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -21,7 +18,6 @@ import javax.inject.Inject
 class DefaultServerConfigurationRepository @Inject constructor(
     private val librariesRepository: LibrariesRepository,
     private val omnibusHttpClient: OmnibusHttpClient,
-    private val authTokenStore: AuthTokenStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ServerConfigurationRepository {
 
@@ -44,8 +40,8 @@ class DefaultServerConfigurationRepository @Inject constructor(
 
     /**
      * Saves [address] as the active library's server. With no library yet, adds and activates one. For the same
-     * server, nothing changes. For a different one, the token is cleared and the library takes the new address, so
-     * the user is signed out of the old server.
+     * server, nothing changes. For a different one, the active library is removed with its data and token, and a
+     * new library is added for the new address, so the user is signed out of the old server.
      */
     override suspend fun saveServerConfig(address: String) {
         withContext(ioDispatcher) {
@@ -54,10 +50,10 @@ class DefaultServerConfigurationRepository @Inject constructor(
             when {
                 active == null -> librariesRepository.add(normalized, activate = true)
                 sameServer(active.address, normalized) -> Unit
+                // A token is only valid on the server that issued it, so the old library goes with its token.
                 else -> {
-                    // A token is only valid on the server that issued it.
-                    clearAuthToken()
-                    librariesRepository.changeAddress(active.id, normalized)
+                    librariesRepository.remove(active.id)
+                    librariesRepository.add(normalized, activate = true)
                 }
             }
         }
@@ -81,16 +77,6 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
-    private suspend fun clearAuthToken() {
-        try {
-            authTokenStore.clear()
-        } catch (ex: CancellationException) {
-            throw ex
-        } catch (ex: Exception) {
-            Log.e(TAG, "Unable to clear the auth token for the previous server", ex)
-        }
-    }
-
     /** Whether two addresses name the same server. Host names compare without regard to case. */
     private fun sameServer(a: String, b: String): Boolean {
         val left = ServerAddress.normalize(a)?.toHttpUrlOrNull()
@@ -99,7 +85,6 @@ class DefaultServerConfigurationRepository @Inject constructor(
     }
 
     companion object {
-        private const val TAG = "DefaultServerConfigurationRepository"
         private const val HEALTH_PATH = "api/_health"
     }
 }

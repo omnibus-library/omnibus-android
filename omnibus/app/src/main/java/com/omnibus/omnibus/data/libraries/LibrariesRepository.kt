@@ -18,8 +18,10 @@ interface LibrariesRepository {
     suspend fun add(address: String, activate: Boolean): Library?
 
     /**
-     * Changes the address of library [libraryId] in place, renaming it after the new host. Slice 1 only; changing
-     * server replaces the library once `remove` exists.
+     * Removes library [libraryId] and all its data: the row goes, so its books and per-book rows cascade, then its
+     * token is cleared and its covers are deleted. Local only. When the removed library was active, no library is
+     * active afterwards. Covers of the removed library that are in flight may be written back once; that directory
+     * belongs to no library and is never reused.
      */
-    suspend fun changeAddress(libraryId: String, address: String)
+    suspend fun remove(libraryId: String)
 }
