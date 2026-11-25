@@ -67,6 +67,8 @@ class DefaultLibrariesRepositoryTest {
             ioDispatcher = Dispatchers.IO,
             dao = db.librariesDao(),
             activeLibrary = DefaultActiveLibrary(db.librariesDao(), upgrade),
+            tokens = files.tokens,
+            covers = files.covers,
             upgrade = upgrade,
             clock = TimeSource { now },
         )
@@ -99,6 +101,8 @@ class DefaultLibrariesRepositoryTest {
             ioDispatcher = Dispatchers.IO,
             dao = failingWrites(db),
             activeLibrary = DefaultActiveLibrary(db.librariesDao(), upgrade),
+            tokens = files.tokens,
+            covers = files.covers,
             upgrade = upgrade,
             clock = TimeSource { TestStorageFiles.NOW },
         )
@@ -125,8 +129,7 @@ class DefaultLibrariesRepositoryTest {
             override suspend fun insertActive(library: LibraryEntity) {
                 throw SQLiteFullException("disk full")
             }
-            override suspend fun updateAddress(id: String, address: String, name: String) =
-                real.updateAddress(id, address, name)
+            override suspend fun delete(id: String) = real.delete(id)
         }
     }
 }

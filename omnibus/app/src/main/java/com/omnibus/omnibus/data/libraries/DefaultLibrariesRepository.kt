@@ -4,7 +4,9 @@ import android.database.SQLException
 import android.util.Log
 import com.omnibus.omnibus.data.configuration.ServerAddress
 import com.omnibus.omnibus.data.libraries.local.LibrariesDao
+import com.omnibus.omnibus.data.libraries.local.LibraryCovers
 import com.omnibus.omnibus.data.libraries.local.LibraryEntity
+import com.omnibus.omnibus.data.libraries.local.LibraryTokenStore
 import com.omnibus.omnibus.data.libraries.local.toLibrary
 import com.omnibus.omnibus.data.libraries.upgrade.StorageUpgrade
 import com.omnibus.omnibus.di.IoDispatcher
@@ -12,6 +14,7 @@ import com.omnibus.omnibus.di.TimeSource
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -31,6 +34,8 @@ class DefaultLibrariesRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val dao: LibrariesDao,
     private val activeLibrary: DefaultActiveLibrary,
+    private val tokens: LibraryTokenStore,
+    private val covers: LibraryCovers,
     private val upgrade: StorageUpgrade,
     private val clock: TimeSource,
 ) : LibrariesRepository {
@@ -88,14 +93,29 @@ class DefaultLibrariesRepository @Inject constructor(
         entity.toLibrary()
     }
 
-    override suspend fun changeAddress(libraryId: String, address: String) {
+    override suspend fun remove(libraryId: String) {
         withContext(ioDispatcher) {
+            // Refused until the upgrade is done, or a legacy import could bring the removed library back.
             if (!upgrade.ensureDone()) return@withContext
-            val normalized = ServerAddress.normalize(address) ?: address.trim()
             try {
-                dao.updateAddress(libraryId, normalized, LibraryHost.of(normalized))
+                val wasActive = dao.activeId() == libraryId
+                dao.delete(libraryId)
+                if (wasActive) activeLibrary.update(null)
             } catch (error: SQLException) {
-                Log.e(TAG, "Unable to change the library's address", error)
+                Log.e(TAG, "Unable to remove the library", error)
+                return@withContext
+            }
+            try {
+                tokens.clear(libraryId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(TAG, "Unable to clear the removed library's token", error)
+            }
+            try {
+                covers.delete(libraryId)
+            } catch (error: SecurityException) {
+                Log.e(TAG, "Unable to delete the removed library's covers", error)
             }
         }
     }

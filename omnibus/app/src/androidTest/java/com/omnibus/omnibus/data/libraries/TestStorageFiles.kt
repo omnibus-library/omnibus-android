@@ -68,6 +68,8 @@ class TestStorageFiles {
             ioDispatcher = Dispatchers.IO,
             dao = database.librariesDao(),
             activeLibrary = active,
+            tokens = tokens,
+            covers = covers,
             upgrade = upgrade,
             clock = TimeSource { NOW },
         )

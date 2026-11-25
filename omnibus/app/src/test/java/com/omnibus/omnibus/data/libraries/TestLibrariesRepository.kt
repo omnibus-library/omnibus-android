@@ -19,6 +19,9 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
     /** When true, [add] returns null and adds nothing. */
     var addFailure = false
 
+    /** The ids passed to [remove], in call order. */
+    val removedIds = mutableListOf<String>()
+
     private var addedCount = 0L
 
     override fun getLibrariesFlow(): Flow<List<Library>> = libraries
@@ -46,16 +49,8 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
         return library
     }
 
-    override suspend fun changeAddress(libraryId: String, address: String) {
-        val normalized = ServerAddress.normalize(address) ?: address.trim()
-        libraries.update { list ->
-            list.map { library ->
-                if (library.id == libraryId) {
-                    library.copy(address = normalized, name = LibraryHost.of(normalized))
-                } else {
-                    library
-                }
-            }
-        }
+    override suspend fun remove(libraryId: String) {
+        removedIds += libraryId
+        libraries.update { list -> list.filterNot { it.id == libraryId } }
     }
 }

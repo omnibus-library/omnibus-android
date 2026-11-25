@@ -57,7 +57,8 @@ class DefaultServerConfigurationRepository @Inject constructor(
                 else -> {
                     // A token is only valid on the server that issued it.
                     clearAuthToken()
-                    librariesRepository.changeAddress(active.id, normalized)
+                    librariesRepository.remove(active.id)
+                    librariesRepository.add(normalized, activate = true)
                 }
             }
         }
