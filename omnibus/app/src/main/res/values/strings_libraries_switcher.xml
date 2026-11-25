@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The library switcher sheet and the account card's link to it (#367). -->
+    <string name="libraries_switcher_title">Libraries</string>
+    <string name="libraries_switcher_card_link">Switch</string>
+    <!-- The account card's TalkBack label. %1$s is the card's own description, such as "Home, signed in as hoon on books.home.lan". -->
+    <string name="libraries_switcher_card_description">%1$s. Switch library</string>
+    <!-- A switcher row's TalkBack label: the library's name, username and host. -->
+    <string name="libraries_switcher_row_description">%1$s, %2$s on %3$s</string>
+    <!-- A switcher row's TalkBack label while the username is unknown: the library's name and host. -->
+    <string name="libraries_switcher_row_description_no_username">%1$s, on %2$s</string>
+    <!-- Read after the open library's row. -->
+    <string name="libraries_switcher_row_current">current</string>
+</resources>
