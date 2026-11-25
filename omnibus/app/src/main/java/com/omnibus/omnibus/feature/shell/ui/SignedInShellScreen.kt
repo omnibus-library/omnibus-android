@@ -42,6 +42,8 @@ import com.omnibus.omnibus.feature.requests.RequestsRoute
 import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
 import com.omnibus.omnibus.feature.search.SearchOpen
+import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
+import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllScreen
 import com.omnibus.omnibus.feature.search.SearchScreen
 import com.omnibus.omnibus.feature.shelves.detail.ShelfDetailRoute
 import com.omnibus.omnibus.feature.shelves.detail.ui.ShelfDetailScreen
@@ -142,6 +144,7 @@ private fun SignedInShellContent(
     val openFromSearch: (SearchOpen, NavKey) -> Unit = { open, asking ->
         when (open) {
             is SearchOpen.Destination -> openDestination(open.destination, asking)
+            is SearchOpen.Route -> navigator.navigateTo(open.route, navigator.ownerOf(asking))
         }
     }
 
@@ -259,6 +262,15 @@ private fun SignedInShellContent(
                                 SearchScreen(
                                     resetKey = navigator.reselections(ShellTab.Search),
                                     onOpen = { openFromSearch(it, SearchRoot) },
+                                )
+                            }
+                        }
+                        entry<SearchSeeAllRoute> { key ->
+                            ShellPaddedEntry {
+                                SearchSeeAllScreen(
+                                    route = key,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpen = { openFromSearch(it, key) },
                                 )
                             }
                         }

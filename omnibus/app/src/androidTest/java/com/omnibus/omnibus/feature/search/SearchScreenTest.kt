@@ -32,6 +32,7 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.data.search.SearchMatches
 import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
+import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -274,5 +275,60 @@ class SearchScreenTest {
         rule.onNode(hasScrollToIndexAction()).performTouchInput { swipeUp() }
 
         rule.onNodeWithContentDescription(string(R.string.search_field_label)).assertIsNotFocused()
+    }
+
+    /** Results for [query] whose Books section holds [hits] out of [total] matches. */
+    private fun resultsOutOf(query: String, hits: List<LibraryHit>, total: Int) = SearchUIState(
+        query = query,
+        body = SearchBody.Results(
+            query = query,
+            sections = listOf(SearchSection(SearchSectionKind.Books, SearchMatches(hits, total))),
+        ),
+    )
+
+    // TC-42
+    @Test
+    fun issue351_tc42_seeAllIsHiddenWhenEveryMatchIsShown() {
+        setSearch(resultsOutOf("wood", List(5) { hit(it) }, total = 5))
+
+        rule.onAllNodesWithContentDescription("See all", substring = true).assertCountEquals(0)
+    }
+
+    // TC-42
+    @Test
+    fun issue351_tc42_seeAllShowsWhenThereIsMore() {
+        setSearch(resultsOutOf("wood", List(5) { hit(it) }, total = 9))
+
+        rule.onNodeWithContentDescription("See all 9 books").assertIsDisplayed()
+    }
+
+    // TC-42
+    @Test
+    fun issue351_tc42_seeAllIsAnnouncedWithTheTotal() {
+        setSearch(resultsOutOf("wood", List(5) { hit(it) }, total = 9))
+
+        rule.onNodeWithContentDescription("See all 9 books").assert(hasClickAction())
+    }
+
+    // TC-42
+    @Test
+    fun issue351_tc42_seeAllIsAtLeast48dpTall() {
+        setSearch(resultsOutOf("wood", List(5) { hit(it) }, total = 9))
+
+        rule.onNodeWithContentDescription("See all 9 books").assertHeightIsAtLeast(48.dp)
+    }
+
+    // TC-42
+    @Test
+    fun issue351_tc42_seeAllOpensTheAnsweredQuery() {
+        val opened = mutableListOf<SearchOpen>()
+        setSearch(
+            resultsOutOf("wood", List(5) { hit(it) }, total = 9).copy(query = "woods"),
+            onOpen = { opened += it },
+        )
+
+        rule.onNodeWithContentDescription("See all 9 books").performClick()
+
+        assertEquals(listOf<SearchOpen>(SearchOpen.Route(SearchSeeAllRoute(SearchSectionKind.Books, "wood"))), opened)
     }
 }

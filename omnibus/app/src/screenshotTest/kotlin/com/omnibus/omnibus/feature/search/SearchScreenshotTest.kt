@@ -15,7 +15,7 @@ import com.omnibus.omnibus.screenshot.Shot
 import com.omnibus.omnibus.ui.components.CoverIdentity
 
 /** Books for a "wood" search. Covers are absent, so each row draws its generated plate. */
-private val woodHits = listOf(
+internal val woodHits = listOf(
     LibraryHit("u-1", "Norwegian Wood", "Haruki Murakami", "1987", listOf("epub", "m4b"), null, null),
     LibraryHit("u-2", "Mythago Wood", "Robert Holdstock", "1984", listOf("epub"), null, null, hasPhysical = true),
     LibraryHit("u-3", "The Wood Wife", "Terri Windling", null, listOf("epub"), null, null),
@@ -32,11 +32,11 @@ private val woodHits = listOf(
     ),
 )
 
-private fun results(query: String, hits: List<LibraryHit> = woodHits) = SearchUIState(
+private fun results(query: String, hits: List<LibraryHit> = woodHits, total: Int = hits.size) = SearchUIState(
     query = query,
     body = SearchBody.Results(
         query = query,
-        sections = listOf(SearchSection(SearchSectionKind.Books, SearchMatches(hits, hits.size))),
+        sections = listOf(SearchSection(SearchSectionKind.Books, SearchMatches(hits, total))),
     ),
 )
 
@@ -54,7 +54,7 @@ fun SearchPrompt() {
 @Composable
 fun SearchResults() {
     Shot {
-        SearchScreenContent(results("wood"), {}, {}, {}, {}, {})
+        SearchScreenContent(results("wood", total = 9), {}, {}, {}, {}, {})
     }
 }
 
