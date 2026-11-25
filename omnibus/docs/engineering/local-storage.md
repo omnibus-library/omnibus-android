@@ -6,13 +6,13 @@
 
 ## Summary
 
-This spec sets where the app keeps data on the device, and how that data belongs to a library. Data that belongs to a library lives in one Room database, where every row names the library it belongs to. Secrets, settings shared by every library, and binary caches stay outside the database.
+This spec sets where the app keeps data on the device, and how that data belongs to a library. Data that belongs to a library lives in one Room database. Most of it belongs to a book, and each book belongs to one library. Secrets, settings shared by every library, and binary caches stay outside the database.
 
 ## Scope
 
 **In scope**
 
-- The database, its tables and how they are scoped to a library.
+- The database, its tables, and how they relate a library to its books and a book to its data.
 - What stays outside the database, and where.
 - Moving today's on-device data into the database on upgrade.
 - Deleting a library's data.
@@ -32,22 +32,38 @@ This spec sets where the app keeps data on the device, and how that data belongs
 |---|---|
 | Library | One saved Omnibus server: its address, a name, the username signed in to it, its session, and its data on this device. |
 | Active library | The library the app is showing. There is at most one. |
-| Per-library data | Data that belongs to one library and is meaningless on another server. |
+| Book | A book in a library, identified by the server's book id. The same id on another server is a different book. |
+| Per-book data | Data about one book in one library: its reading and listening positions, its listening sessions, its playback speed and its dismissed resume offer. |
+| Per-library data | Data that belongs to one library and is meaningless on another server: its books and their per-book data, its session and its covers. |
 | Device-wide data | Data shared by every library on the device. |
 | Pending change | A change saved on the device that the server hasn't accepted yet. |
 
 # Part 1: Requirements
+
+## How data relates
+
+```
+libraries 1 ──< books 1 ──┬── reading_positions        0..1
+                          ├── listening_positions      0..1  (cached and pending)
+                          ├── playback_rates           0..1  (cached and pending)
+                          ├── dismissed_resume_offers  0..1
+                          └──< listening_sessions      0..n
+```
+
+- A library has any number of books. A book belongs to exactly one library.
+- A book has at most one reading position, one listening position, one playback speed and one dismissed resume offer, and any number of listening sessions waiting to be sent.
 
 ## Where data lives
 
 | Data | Scope | Where |
 |---|---|---|
 | Libraries, and which one is active | Device-wide | Database: `libraries` |
-| Reading positions | Per library | Database: `reading_positions` |
-| Listening positions, cached and pending | Per library | Database: `listening_positions` |
-| Listening sessions waiting to be sent | Per library | Database: `listening_sessions` |
-| Per-book playback speeds, cached and pending | Per library | Database: `playback_rates` |
-| Dismissed resume offers | Per library | Database: `dismissed_resume_offers` |
+| Books the device has data for | Per library | Database: `books` |
+| Reading position | Per book | Database: `reading_positions` |
+| Listening position, cached and pending | Per book | Database: `listening_positions` |
+| Listening sessions waiting to be sent | Per book | Database: `listening_sessions` |
+| Playback speed, cached and pending | Per book | Database: `playback_rates` |
+| Dismissed resume offer | Per book | Database: `dismissed_resume_offers` |
 | Sessions (auth tokens) | Per library | Encrypted DataStore `auth_token.preferences_pb`, one key per library |
 | Offline covers | Per library | Disk cache at `files/covers/<library id>/` |
 | Reader appearance settings | Device-wide | DataStore `reader_preferences.preferences_pb` |
@@ -58,11 +74,13 @@ This spec sets where the app keeps data on the device, and how that data belongs
 
 ### Scoping
 
-- Every row of per-library data MUST name its library, and MUST be deleted with it.
-- The app MUST only read and show the active library's per-library data.
-- A pending change MUST only be sent to its own library's server, with that library's session.
+- Every book MUST belong to exactly one library, and every row of per-book data MUST belong to exactly one book.
+- Deleting a library MUST delete its books, and deleting a book MUST delete its per-book data.
+- The app MUST only read and show the active library's books and their data.
+- A pending change MUST only be sent to its book's library's server, with that library's session.
 - Changing the active library MUST NOT change any other library's data.
 - A book's data in one library MUST NOT be affected by a book with the same id in another library.
+- A book MUST be recorded the first time data is saved for it. It holds no details from the server, such as its title or cover, because book details aren't kept on the device.
 
 ### What is stored
 
@@ -85,7 +103,7 @@ This spec sets where the app keeps data on the device, and how that data belongs
 
 ### Removing a library
 
-- Removing a library MUST delete, together, its row and every per-library row that names it.
+- Removing a library MUST delete, together, its row, its books and all their per-book data.
 - Removing a library MUST also clear its session and delete its cover directory.
 - Adding the same address again MUST start with no data from the removed library.
 
@@ -98,7 +116,7 @@ This spec sets where the app keeps data on the device, and how that data belongs
 - On the first launch after upgrading, when a server address is saved and no library exists, the app MUST:
   - create one library from the saved address, named after its host (with the port when the address has one), and make it active;
   - keep the reader signed in, by moving the saved session to that library;
-  - move every reading position, listening position, listening session, playback speed and dismissed resume offer into the database, under that library;
+  - move every reading position, listening position, listening session, playback speed and dismissed resume offer into the database, under its book in that library;
   - move the covers into that library's cover directory.
 - The upgrade MUST finish before any per-library data is read.
 - The old files MUST only be deleted after everything they held is in the database. An upgrade that is interrupted MUST complete on the next launch, with nothing lost and nothing doubled.
@@ -123,11 +141,13 @@ This spec sets where the app keeps data on the device, and how that data belongs
 
 The data layer follows `docs/engineering/feature-layers.md`.
 
-- **Database.** One Room database, `OmnibusDatabase`, provided as a singleton. Each per-library table has a `library_id` column with a foreign key to `libraries.id` that cascades on delete, and a primary key that starts with `library_id` (for example `(library_id, book_uuid)`).
+- **Database.** One Room database, `OmnibusDatabase`, provided as a singleton. Every foreign key cascades on delete, so deleting a library deletes its books and their data in one statement. Foreign keys are enforced.
 - **Tables.**
   - `libraries`: id (a UUID), address (normalized with `ServerAddress.normalize`), name (blank means the host), username (null until known), when added, when last used, and whether it is active.
-  - `reading_positions`, `listening_positions`, `listening_sessions`, `playback_rates`, `dismissed_resume_offers`: the fields under "What is stored", plus `library_id`.
-- **DAOs.** One DAO per domain, beside that domain's code in `data/<domain>/local/`. Every query that reads or writes per-library data takes a library id.
+  - `books`: a local id (auto-generated), `library_id` (foreign key to `libraries.id`) and `book_uuid` (the server's id). `(library_id, book_uuid)` is unique and indexed.
+  - `reading_positions`, `listening_positions`, `playback_rates`, `dismissed_resume_offers`: `book_id` (foreign key to `books.id`) as the primary key, plus the fields under "What is stored". `listening_positions` and `playback_rates` keep the cached and pending values as separate columns, each pending group nullable.
+  - `listening_sessions`: the client id as the primary key, `book_id` (foreign key to `books.id`, indexed), a queue order, plus the fields under "What is stored".
+- **DAOs.** A `BookDao` beside the libraries code finds or creates a book's row for `(library_id, book_uuid)`. One DAO per domain sits beside that domain's code in `data/<domain>/local/`. Every query for per-book data takes the library id and the book uuid, and joins through `books`; a write first finds or creates the book's row, in the same transaction.
 - **Stores.** `ReadingPositionStore`, `AudioPositionStore`, `PlaybackRateCache` and `CrossFormatDismissStore` keep their interfaces. Their implementations move to Room and scope every call to the active library.
 - **Active library.** Read from the database when it is first needed, never when a class is injected, because first-time setup creates the first library in the running process.
 - **Sessions.** `LibraryTokenStore` keys tokens by library id (`auth_token.<library id>`) in the existing encrypted DataStore file. `AuthTokenStore` and `StoredAuthTokenProvider` mean the active library's token.
