@@ -2,7 +2,6 @@ package com.omnibus.omnibus.feature.libraries.manage
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,10 +11,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -45,7 +43,6 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.libraries.LibraryHost
 import com.omnibus.omnibus.ui.components.OmnibusTextField
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
-import com.omnibus.omnibus.ui.theme.Radius
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.monoTextStyle
 import com.omnibus.omnibus.ui.theme.uiTextStyle
@@ -144,19 +141,25 @@ internal fun LibraryDetailScreenContent(
                         host = LibraryHost.of(library.address),
                         onNameChange = onNameChange,
                     )
-                    ReadOnlyField(
-                        label = stringResource(R.string.libraries_detail_address_label),
-                        value = library.address,
-                        testTag = LibraryDetailTestTags.ADDRESS,
-                        mono = true,
-                    )
-                    library.username?.let { username ->
-                        ReadOnlyField(
-                            label = stringResource(R.string.libraries_detail_username_label),
-                            value = username,
-                            testTag = LibraryDetailTestTags.USERNAME,
-                            mono = false,
+                    // Plain rows rather than boxes, so only the name looks like something to edit.
+                    Column(Modifier.padding(top = Spacing.sm)) {
+                        HorizontalDivider(thickness = 0.5.dp, color = palette.line)
+                        ReadOnlyRow(
+                            label = stringResource(R.string.libraries_detail_address_label),
+                            value = library.address,
+                            testTag = LibraryDetailTestTags.ADDRESS,
+                            mono = true,
                         )
+                        HorizontalDivider(thickness = 0.5.dp, color = palette.line)
+                        library.username?.let { username ->
+                            ReadOnlyRow(
+                                label = stringResource(R.string.libraries_detail_username_label),
+                                value = username,
+                                testTag = LibraryDetailTestTags.USERNAME,
+                                mono = false,
+                            )
+                            HorizontalDivider(thickness = 0.5.dp, color = palette.line)
+                        }
                     }
                     actions()
                 }
@@ -193,31 +196,26 @@ private fun NameField(name: String, host: String, onNameChange: (String) -> Unit
     }
 }
 
-/** A label over a value the reader can't edit. The label and value are one TalkBack element. */
+/**
+ * A label over a value the reader can't edit, drawn as plain text with no field box. The label and value are one
+ * TalkBack element.
+ */
 @Composable
-private fun ReadOnlyField(label: String, value: String, testTag: String, mono: Boolean) {
+private fun ReadOnlyRow(label: String, value: String, testTag: String, mono: Boolean) {
     val palette = OmnibusTheme.palette
     Column(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .semantics(mergeDescendants = true) {}
-            .testTag(testTag),
+            .testTag(testTag)
+            .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         Text(label, style = uiTextStyle(14, FontWeight.Normal, palette.ink2))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .clip(RoundedCornerShape(Radius.md))
-                .background(palette.bg1)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(
-                value,
-                style = if (mono) monoTextStyle(15, palette.ink1) else uiTextStyle(16, FontWeight.Normal, palette.ink1),
-            )
-        }
+        Text(
+            value,
+            style = if (mono) monoTextStyle(15, palette.ink0) else uiTextStyle(16, FontWeight.Normal, palette.ink0),
+        )
     }
 }
