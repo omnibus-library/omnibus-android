@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The You tab's account card (#366). -->
+    <string name="libraries_card_description">%1$s, signed in as %2$s on %3$s</string>
+    <string name="libraries_card_description_no_username">%1$s, on %2$s</string>
+</resources>

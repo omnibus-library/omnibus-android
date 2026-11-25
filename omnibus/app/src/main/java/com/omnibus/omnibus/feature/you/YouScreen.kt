@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,11 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.feature.libraries.card.AccountCard
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.requests.needsYouPill
 import com.omnibus.omnibus.feature.requests.rememberRequestWording
-import com.omnibus.omnibus.feature.shell.ui.UnderConstructionPage
-import com.omnibus.omnibus.feature.shell.ui.UnderConstructionScreen
+import com.omnibus.omnibus.ui.components.Masthead
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.uiTextStyle
@@ -48,8 +50,8 @@ internal object YouScreenTestTags {
 }
 
 /**
- * The You tab's root: the Requests row with its "N needs you" pill, when the server has book requests on for the reader.
- * Without that the tab keeps its under-construction page.
+ * The You tab's root: the masthead, the account card for the active library, then the Requests row with its
+ * "N needs you" pill when the server has book requests on for the reader.
  *
  * Stateful wrapper that feeds [YouScreenContent] from [YouViewModel].
  *
@@ -69,7 +71,10 @@ fun YouScreen(
     YouScreenContent(uiState, rememberRequestWording(), onOpenRequests, modifier)
 }
 
-/** The You root's layout, without the ViewModel. Internal so screenshot tests can render each state. */
+/**
+ * The You root's layout, without the ViewModel. Internal so screenshot tests can render each state. The Requests row
+ * waits for the session, so while it's unknown the root shows the masthead and the card only.
+ */
 @Composable
 internal fun YouScreenContent(
     uiState: YouUIState,
@@ -77,13 +82,17 @@ internal fun YouScreenContent(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Nothing while the session is unknown, so the placeholder never flashes before the row.
-    if (uiState.showsRequests == true) {
-        Column(modifier.fillMaxSize().padding(horizontal = Spacing.screen, vertical = Spacing.lg)) {
-            RequestsRow(needsYouPill(uiState.needsYou, wording), onOpenRequests)
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Masthead(title = stringResource(R.string.shell_tab_you))
+        Column(
+            Modifier.padding(start = Spacing.screen, end = Spacing.screen, bottom = Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            uiState.library?.let { AccountCard(it) }
+            if (uiState.showsRequests == true) {
+                RequestsRow(needsYouPill(uiState.needsYou, wording), onOpenRequests)
+            }
         }
-    } else if (uiState.showsRequests == false) {
-        UnderConstructionScreen(UnderConstructionPage.You, modifier.fillMaxSize())
     }
 }
 

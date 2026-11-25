@@ -1,8 +1,13 @@
 package com.omnibus.omnibus.feature.you
 
+import app.cash.turbine.test
 import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.auth.randomCurrentUser
 import com.omnibus.omnibus.data.library.randomBook
+import com.omnibus.omnibus.data.libraries.Library
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
+import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import com.omnibus.omnibus.data.requests.RequestListing
 import com.omnibus.omnibus.data.requests.RequestState
 import com.omnibus.omnibus.data.requests.RequestsError
@@ -12,9 +17,12 @@ import com.omnibus.omnibus.data.requests.randomBookRequest
 import com.omnibus.omnibus.data.requests.randomRequestListing
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -38,8 +46,62 @@ class YouViewModelTest : DescribeSpec({
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
 
-    fun sut(requests: TestRequestsRepository = TestRequestsRepository(), auth: TestAuthRepository = authAs()) =
-        YouViewModel(requests, auth)
+    fun sut(
+        requests: TestRequestsRepository = TestRequestsRepository(),
+        auth: TestAuthRepository = authAs(),
+        libraries: LibrariesRepository = TestLibrariesRepository(),
+    ) = YouViewModel(requests, auth, libraries)
+
+    describe("the account card's library") {
+        context("when the active library gains a username") {
+            it("TC-6: shows the active library, then the same library with the username") {
+                val active = randomLibrary().copy(isActive = true, username = null)
+                val libraries = TestLibrariesRepository(listOf(active))
+                val vm = sut(libraries = libraries)
+
+                vm.uiState.test {
+                    awaitItem().library shouldBe active
+                    libraries.setUsername(active.id, "hoon")
+                    awaitItem().library shouldBe active.copy(username = "hoon")
+                }
+            }
+        }
+
+        context("when there is no active library") {
+            it("TC-7: shows no library") {
+                sut(libraries = TestLibrariesRepository()).uiState.value.library shouldBe null
+            }
+
+            it("TC-7: still shows the Requests row") {
+                val vm = sut(auth = authAs(bookRequests = true), libraries = TestLibrariesRepository())
+
+                vm.shown()
+
+                vm.uiState.value.showsRequests shouldBe true
+            }
+        }
+
+        context("when reading the active library fails") {
+            it("TC-7: shows no library") {
+                val unreadable = object : LibrariesRepository by TestLibrariesRepository() {
+                    override fun getActiveLibraryFlow(): Flow<Library?> = flow { throw IOException("unreadable") }
+                }
+
+                sut(libraries = unreadable).uiState.value.library shouldBe null
+            }
+
+            it("TC-7: still shows the Requests row") {
+                val unreadable = object : LibrariesRepository by TestLibrariesRepository() {
+                    override fun getActiveLibraryFlow(): Flow<Library?> = flow { throw IOException("unreadable") }
+                }
+                val vm = sut(auth = authAs(bookRequests = true), libraries = unreadable)
+
+                vm.shown()
+
+                vm.uiState.value.showsRequests shouldBe true
+            }
+        }
+    }
 
     describe("showing the Requests row") {
         it("is shown only when the server has book requests on for the reader") {
@@ -145,6 +207,17 @@ class YouViewModelTest : DescribeSpec({
             vm.shown()
 
             vm.uiState.value.needsYou to requests.callsTo("list").size shouldBe (0 to 0)
+        }
+
+        it("keeps the library") {
+            val requests = TestRequestsRepository()
+            requests.answer("list", picking("a"))
+            val active = randomLibrary().copy(isActive = true)
+            val vm = sut(requests, libraries = TestLibrariesRepository(listOf(active)))
+
+            vm.shown()
+
+            vm.uiState.value.library shouldBe active
         }
     }
 })
