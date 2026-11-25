@@ -42,6 +42,8 @@ import com.omnibus.omnibus.feature.requests.RequestsRoute
 import com.omnibus.omnibus.feature.requests.list.RequestsScreen
 import com.omnibus.omnibus.feature.requests.page.BookRequestScreen
 import com.omnibus.omnibus.feature.search.SearchOpen
+import com.omnibus.omnibus.feature.search.facet.FacetBooksRoute
+import com.omnibus.omnibus.feature.search.facet.FacetBooksScreen
 import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllRoute
 import com.omnibus.omnibus.feature.search.seeall.SearchSeeAllScreen
 import com.omnibus.omnibus.feature.search.SearchScreen
@@ -268,6 +270,15 @@ private fun SignedInShellContent(
                         entry<SearchSeeAllRoute> { key ->
                             ShellPaddedEntry {
                                 SearchSeeAllScreen(
+                                    route = key,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
+                                    onOpen = { openFromSearch(it, key) },
+                                )
+                            }
+                        }
+                        entry<FacetBooksRoute> { key ->
+                            ShellPaddedEntry {
+                                FacetBooksScreen(
                                     route = key,
                                     onBack = { navigator.back(navigator.ownerOf(key)) },
                                     onOpen = { openFromSearch(it, key) },

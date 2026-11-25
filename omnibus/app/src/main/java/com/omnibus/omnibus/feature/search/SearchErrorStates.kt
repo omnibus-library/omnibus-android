@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.library.LibraryError
 import com.omnibus.omnibus.data.search.LibrarySearchError
 import com.omnibus.omnibus.ui.components.StateAction
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -52,6 +53,13 @@ fun LibrarySearchError.toSearchFailure(): SearchFailure? = when (this) {
     LibrarySearchError.Unreachable -> SearchFailure.Unreachable
     is LibrarySearchError.Http, LibrarySearchError.UnexpectedResponse -> SearchFailure.NotWorking
     LibrarySearchError.SessionExpired -> null
+}
+
+/** The failure to show for a library read's [LibraryError], or null when the app's session handling takes over (401). */
+fun LibraryError.toSearchFailure(): SearchFailure? = when (this) {
+    LibraryError.Unreachable -> SearchFailure.Unreachable
+    is LibraryError.Http, LibraryError.UnexpectedResponse -> SearchFailure.NotWorking
+    LibraryError.SessionExpired -> null
 }
 
 /** A failed search's full-screen state: its [failure] copy with a "Try again" that calls [onRetry]. */
@@ -116,7 +124,7 @@ internal fun SearchStateView(
 
 /** The outlined pill under a Search state. Its 48dp height is the touch target (spec: at least 48dp). */
 @Composable
-private fun SearchRetryButton(label: String, onClick: () -> Unit) {
+internal fun SearchRetryButton(label: String, onClick: () -> Unit) {
     val palette = OmnibusTheme.palette
     Box(
         Modifier

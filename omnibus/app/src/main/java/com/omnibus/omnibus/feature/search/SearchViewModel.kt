@@ -58,6 +58,7 @@ data class SearchNotice(val id: Long, val failure: SearchFailure)
 /** The matches of [kind]. One branch per kind; never add an `else`. */
 internal fun LibrarySearchResults.section(kind: SearchSectionKind): SearchMatches<*> = when (kind) {
     SearchSectionKind.Books -> books
+    SearchSectionKind.Tags -> tags
 }
 
 /** The non-empty sections, in [SearchSectionKind] order. */
