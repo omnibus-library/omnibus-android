@@ -208,7 +208,7 @@ private fun FacetBookRow(book: Book, onOpen: (SearchOpen) -> Unit) {
     val kind = stringResource(R.string.search_row_book)
     SearchBookRow(
         title = AnnotatedString(book.displayTitle),
-        byline = bookByline(book.authorDisplay, year),
+        byline = AnnotatedString(bookByline(book.authorDisplay, year)),
         badges = badges,
         coverIdentity = book.coverIdentity(),
         description = rowDescription(listOf(kind, book.displayTitle, book.authorDisplay, year) + badgeWords),
