@@ -28,6 +28,12 @@ enum class SearchSectionKind(
         R.plurals.search_see_all_authors_link,
         R.plurals.search_see_all_authors_count,
     ),
+    Series(
+        R.string.search_section_series,
+        R.string.search_see_all_series_title,
+        R.plurals.search_see_all_series_link,
+        R.plurals.search_see_all_series_count,
+    ),
     Tags(
         R.string.search_section_tags,
         R.string.search_see_all_tags_title,

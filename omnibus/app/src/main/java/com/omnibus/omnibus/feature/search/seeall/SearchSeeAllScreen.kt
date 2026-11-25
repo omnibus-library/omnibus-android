@@ -32,6 +32,7 @@ import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.search.AuthorMatch
 import com.omnibus.omnibus.data.search.GenreMatch
 import com.omnibus.omnibus.data.search.LibraryHit
+import com.omnibus.omnibus.data.search.SeriesMatch
 import com.omnibus.omnibus.data.search.TagMatch
 import com.omnibus.omnibus.feature.search.SearchErrorState
 import com.omnibus.omnibus.feature.search.SearchOpen
@@ -40,6 +41,7 @@ import com.omnibus.omnibus.feature.search.SearchStateView
 import com.omnibus.omnibus.feature.search.rows.LibraryHitRow
 import com.omnibus.omnibus.feature.search.rows.SearchAuthorRow
 import com.omnibus.omnibus.feature.search.rows.SearchGenreRow
+import com.omnibus.omnibus.feature.search.rows.SearchSeriesRow
 import com.omnibus.omnibus.feature.search.rows.SearchTagRow
 import com.omnibus.omnibus.feature.search.searchColumnSide
 import com.omnibus.omnibus.ui.components.LoadingStateView
@@ -139,6 +141,12 @@ internal fun SearchSeeAllScreenContent(
                             key = { index, _ -> "author-$index" },
                         ) { _, author ->
                             SearchAuthorRow(author, route.query, onOpen)
+                        }
+                        SearchSectionKind.Series -> itemsIndexed(
+                            body.matches.items.filterIsInstance<SeriesMatch>(),
+                            key = { index, _ -> "series-$index" },
+                        ) { _, series ->
+                            SearchSeriesRow(series, route.query, onOpen)
                         }
                         SearchSectionKind.Genres -> itemsIndexed(
                             body.matches.items.filterIsInstance<GenreMatch>(),

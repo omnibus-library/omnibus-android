@@ -11,6 +11,7 @@ data class SearchMatches<T>(val items: List<T>, val total: Int) {
 data class LibrarySearchResults(
     val books: SearchMatches<LibraryHit>,
     val authors: SearchMatches<AuthorMatch> = SearchMatches.empty(),
+    val series: SearchMatches<SeriesMatch> = SearchMatches.empty(),
     val tags: SearchMatches<TagMatch> = SearchMatches.empty(),
     val genres: SearchMatches<GenreMatch> = SearchMatches.empty(),
 )

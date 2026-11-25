@@ -33,6 +33,13 @@ private fun authorsBody(authors: String, authorTotal: Int? = null): String =
 private const val HERBERT = """{"id":7,"name":"Frank Herbert","book_count":9,"lead_book_title":"Dune"}"""
 private const val HERMAN = """{"id":8,"name":"Herman Melville","book_count":2}"""
 
+/** A whole-library palette answer holding [series] and, when given, a `series_total`, with no books. */
+private fun seriesBody(series: String, seriesTotal: Int? = null): String =
+    """{"query":"dun","books":[],"series":[$series]${seriesTotal?.let { ""","series_total":$it""" } ?: ""}}"""
+
+private const val DUNE_CHRONICLES = """{"id":3,"name":"Dune Chronicles","book_count":6,"author_display":"Frank Herbert"}"""
+private const val DUNGEON_CRAWL = """{"id":4,"name":"Dungeon Crawl","book_count":2}"""
+
 private const val FANTASY = """{"name":"Fantasy","book_count":40}"""
 private const val FAN_FICTION = """{"name":"Fan fiction","book_count":3}"""
 
@@ -249,6 +256,34 @@ class DefaultLibrarySearchRepositoryTest : DescribeSpec({
                     val result = repository().searchLibrary("lo") as PaletteSearchResult.Success
 
                     result.results.authors shouldBe SearchMatches.empty()
+                }
+            }
+        }
+
+        context("when the answer has series") {
+            it("#355 TC-1: returns the series in order with the series total") {
+                withScriptedServer {
+                    script.answer(200, seriesBody("$DUNE_CHRONICLES,$DUNGEON_CRAWL", seriesTotal = 6))
+
+                    val result = repository().searchLibrary("dun") as PaletteSearchResult.Success
+
+                    result.results.series shouldBe SearchMatches(
+                        items = listOf(
+                            SeriesMatch(3, "Dune Chronicles", 6, "Frank Herbert"),
+                            SeriesMatch(4, "Dungeon Crawl", 2, null),
+                        ),
+                        total = 6,
+                    )
+                }
+            }
+
+            it("#355 TC-2: takes the number of series as the total when the answer has none") {
+                withScriptedServer {
+                    script.answer(200, seriesBody("$DUNE_CHRONICLES,$DUNGEON_CRAWL"))
+
+                    val result = repository().searchLibrary("dun") as PaletteSearchResult.Success
+
+                    result.results.series.total shouldBe 2
                 }
             }
         }
