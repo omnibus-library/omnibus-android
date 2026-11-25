@@ -3,6 +3,8 @@ package com.omnibus.omnibus.feature.libraries.card
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -10,12 +12,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.data.libraries.Library
 import com.omnibus.omnibus.feature.requests.RequestWording
 import com.omnibus.omnibus.feature.you.YouScreenContent
 import com.omnibus.omnibus.feature.you.YouScreenTestTags
 import com.omnibus.omnibus.feature.you.YouUIState
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -43,10 +48,11 @@ class AccountCardTest {
         }
 
         rule.onNodeWithTag(AccountCardTestTags.CARD)
-            .assertContentDescriptionEquals("Home, signed in as hoon on books.home.lan:8443")
+            .assertContentDescriptionEquals("Home, signed in as hoon on books.home.lan:8443. Switch library")
         rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)))
             .assertCountEquals(0)
         rule.onAllNodesWithText("Home").assertCountEquals(0)
+        rule.onAllNodesWithText("Switch").assertCountEquals(0)
     }
 
     // TC-19
@@ -57,7 +63,7 @@ class AccountCardTest {
         }
 
         rule.onNodeWithTag(AccountCardTestTags.CARD)
-            .assertContentDescriptionEquals("Home, on books.home.lan:8443")
+            .assertContentDescriptionEquals("Home, on books.home.lan:8443. Switch library")
         rule.onAllNodes(hasAnyAncestor(hasTestTag(AccountCardTestTags.CARD)))
             .assertCountEquals(0)
     }
@@ -90,5 +96,28 @@ class AccountCardTest {
         rule.onNodeWithTag(AccountCardTestTags.CARD).assertExists()
         rule.onNodeWithText("You", useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(YouScreenTestTags.REQUESTS_ROW).assertDoesNotExist()
+    }
+
+    // TC-9 (AC1, AC5)
+    @Test
+    fun issue367_tc9_tappingTheCardOpensTheSwitcher() {
+        var opens = 0
+        rule.setContent {
+            OmnibusTheme {
+                YouScreenContent(
+                    YouUIState(showsRequests = false, library = home),
+                    RequestWording(),
+                    onOpenRequests = {},
+                    onOpenSwitcher = { opens++ },
+                )
+            }
+        }
+
+        rule.onNodeWithTag(AccountCardTestTags.CARD)
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+
+        rule.runOnIdle { assertEquals(1, opens) }
     }
 }
