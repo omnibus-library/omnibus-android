@@ -1,13 +1,34 @@
 package com.omnibus.omnibus.data.series
 
+import com.omnibus.omnibus.data.library.Book
+
 /**
- * The series read for the Book Detail page (contract C11). Each call is one request, answered
- * with a result rather than an exception.
+ * The series reads: the Book Detail series fan (contract C11) and the Series Details page. Each call is one request,
+ * answered with a result rather than an exception.
  */
 interface SeriesRepository {
 
     /** The books in series [seriesId], in series order. */
     suspend fun getSeries(seriesId: Long): SeriesResult
+
+    /** Series [seriesId]'s name and its books, in the server's order (not re-sorted). */
+    suspend fun getSeriesDetails(seriesId: Long): SeriesDetailsResult
+}
+
+/** A series' name and its books as the library holds them, for the Series Details page. */
+data class SeriesDetails(val name: String, val books: List<Book>)
+
+/** The outcome of [SeriesRepository.getSeriesDetails]. */
+sealed interface SeriesDetailsResult {
+
+    /** The series' [details]. */
+    data class Success(val details: SeriesDetails) : SeriesDetailsResult
+
+    /** No server is saved, so no request was made. */
+    data object NoServer : SeriesDetailsResult
+
+    /** [error] is why the read failed. The UI layer decides what to show for it. */
+    data class Failure(val error: SeriesError) : SeriesDetailsResult
 }
 
 /**
