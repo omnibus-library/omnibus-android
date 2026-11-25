@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.search.AuthorMatch
 import com.omnibus.omnibus.data.search.GenreMatch
 import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.data.search.TagMatch
@@ -37,6 +38,7 @@ import com.omnibus.omnibus.feature.search.SearchOpen
 import com.omnibus.omnibus.feature.search.SearchSectionKind
 import com.omnibus.omnibus.feature.search.SearchStateView
 import com.omnibus.omnibus.feature.search.rows.LibraryHitRow
+import com.omnibus.omnibus.feature.search.rows.SearchAuthorRow
 import com.omnibus.omnibus.feature.search.rows.SearchGenreRow
 import com.omnibus.omnibus.feature.search.rows.SearchTagRow
 import com.omnibus.omnibus.feature.search.searchColumnSide
@@ -131,6 +133,12 @@ internal fun SearchSeeAllScreenContent(
                             key = { index, _ -> "tag-$index" },
                         ) { _, tag ->
                             SearchTagRow(tag, route.query, onOpen)
+                        }
+                        SearchSectionKind.Authors -> itemsIndexed(
+                            body.matches.items.filterIsInstance<AuthorMatch>(),
+                            key = { index, _ -> "author-$index" },
+                        ) { _, author ->
+                            SearchAuthorRow(author, route.query, onOpen)
                         }
                         SearchSectionKind.Genres -> itemsIndexed(
                             body.matches.items.filterIsInstance<GenreMatch>(),

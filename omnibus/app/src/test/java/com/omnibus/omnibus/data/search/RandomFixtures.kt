@@ -12,6 +12,19 @@ fun randomBookMatches(): SearchMatches<LibraryHit> {
 
 fun randomLibrarySearchResults(): LibrarySearchResults = LibrarySearchResults(books = randomBookMatches())
 
+fun randomAuthorMatch(): AuthorMatch = AuthorMatch(
+    id = randomInt(1..10_000).toLong(),
+    name = randomString(),
+    bookCount = randomInt(1..500),
+    leadBookTitle = randomString(),
+)
+
+/** Up to five authors, with a total at or above the number shown. */
+fun randomAuthorMatches(): SearchMatches<AuthorMatch> {
+    val items = List(randomInt(1..5)) { randomAuthorMatch() }
+    return SearchMatches(items, total = randomInt(items.size..items.size + 50))
+}
+
 fun randomTagMatch(): TagMatch = TagMatch(name = randomString(), bookCount = randomInt(1..500))
 
 /** Up to five tags, with a total at or above the number shown. */

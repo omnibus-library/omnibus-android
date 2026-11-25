@@ -10,6 +10,7 @@ data class SearchMatches<T>(val items: List<T>, val total: Int) {
 /** Every section a whole-library search answered. Later tickets add one defaulted section each. */
 data class LibrarySearchResults(
     val books: SearchMatches<LibraryHit>,
+    val authors: SearchMatches<AuthorMatch> = SearchMatches.empty(),
     val tags: SearchMatches<TagMatch> = SearchMatches.empty(),
     val genres: SearchMatches<GenreMatch> = SearchMatches.empty(),
 )

@@ -127,7 +127,7 @@ fun SearchBookRowLargestFont() {
     Shot {
         SearchBookRow(
             title = AnnotatedString("Lavondyss: Journey into Mythago Wood and the Other Stories of the Forest"),
-            byline = "Robert Holdstock and a Very Long Co-author Name · 1988",
+            byline = AnnotatedString("Robert Holdstock and a Very Long Co-author Name · 1988"),
             badges = listOf(FormatBadge.Ebook, FormatBadge.Audio, FormatBadge.Print),
             coverIdentity = CoverIdentity(uuid = "u-4", title = "Lavondyss", hasCover = false),
             description = "Book, Lavondyss, Robert Holdstock, 1988, ebook, audio, print",

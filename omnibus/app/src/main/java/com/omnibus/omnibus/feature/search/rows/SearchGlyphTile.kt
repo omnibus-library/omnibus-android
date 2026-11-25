@@ -61,6 +61,26 @@ internal fun SearchGlyphRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    SearchLeadingRow(
+        leading = { SearchGlyphTile(glyph) },
+        title = title,
+        subtitle = subtitle,
+        description = description,
+        onClick = onClick,
+        modifier = modifier,
+    )
+}
+
+/** [SearchGlyphRow]'s layout with any [leading] tile, such as an author's initials. */
+@Composable
+internal fun SearchLeadingRow(
+    leading: @Composable () -> Unit,
+    title: AnnotatedString,
+    subtitle: String,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val palette = OmnibusTheme.palette
     Row(
         modifier
@@ -74,7 +94,7 @@ internal fun SearchGlyphRow(
             .padding(horizontal = Spacing.screen, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SearchGlyphTile(glyph)
+        leading()
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(

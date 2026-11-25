@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,13 +42,13 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 import java.util.Locale
 
 /**
- * One book in a list: its cover, [title] (highlighted when it matches a search), [byline] and [badges]. Its spoken text is
+ * One book in a list: its cover, [title] and [byline] (highlighted where they match a search) and [badges]. Its spoken text is
  * [description], one focusable element that opens the book on [onClick].
  */
 @Composable
 fun SearchBookRow(
     title: AnnotatedString,
-    byline: String,
+    byline: AnnotatedString,
     badges: List<FormatBadge>,
     coverIdentity: CoverIdentity,
     description: String,
@@ -81,7 +82,7 @@ fun SearchBookRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (byline.isNotEmpty()) {
+            if (byline.text.isNotEmpty()) {
                 Text(
                     byline,
                     style = uiTextStyle(15, FontWeight.Normal, palette.ink2),
@@ -113,12 +114,13 @@ internal fun LibraryHitRow(
     modifier: Modifier = Modifier,
 ) {
     val palette = OmnibusTheme.palette
+    val highlight = SpanStyle(color = palette.accentText, fontWeight = FontWeight.Bold)
     val badges = formatBadges(hit.formats, hit.hasPhysical)
     val badgeWords = badges.map { stringResource(it.label).lowercase(Locale.ROOT) }
     val kind = stringResource(R.string.search_row_book)
     SearchBookRow(
-        title = highlightMatches(query, hit.title, SpanStyle(color = palette.accentText, fontWeight = FontWeight.Bold)),
-        byline = bookByline(hit.authorDisplay, hit.year),
+        title = highlightMatches(query, hit.title, highlight),
+        byline = highlightedBookByline(query, hit.authorDisplay, hit.year, highlight),
         badges = badges,
         coverIdentity = hit.coverIdentity(),
         description = rowDescription(listOf(kind, hit.title, hit.authorDisplay, hit.year) + badgeWords),
@@ -130,6 +132,17 @@ internal fun LibraryHitRow(
 /** The author and year line: the non-blank parts joined with " · ", so a missing part drops out with its separator. */
 internal fun bookByline(author: String, year: String?): String =
     listOf(author, year.orEmpty()).map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" · ")
+
+/** [bookByline] with [query]'s words in the author drawn in [style]. The year is never highlighted. */
+internal fun highlightedBookByline(query: String, author: String, year: String?, style: SpanStyle): AnnotatedString {
+    val name = author.trim()
+    val years = year.orEmpty().trim()
+    return buildAnnotatedString {
+        append(highlightMatches(query, name, style))
+        if (name.isNotEmpty() && years.isNotEmpty()) append(" · ")
+        append(years)
+    }
+}
 
 /** A spoken row description: the non-blank [parts] joined with ", ". */
 internal fun rowDescription(parts: List<String?>): String =
