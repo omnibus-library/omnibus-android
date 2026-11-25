@@ -1,105 +1,63 @@
 package com.omnibus.omnibus.data.auth.local
 
-import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.core.DataStoreFactory
-import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
-import androidx.datastore.dataStoreFile
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.PreferencesFileSerializer
-import androidx.datastore.preferences.core.emptyPreferences
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.tink.AeadSerializer
-import com.google.crypto.tink.Aead
-import com.google.crypto.tink.KeyTemplate
-import com.google.crypto.tink.RegistryConfiguration
-import com.google.crypto.tink.aead.AeadConfig
-import com.google.crypto.tink.aead.PredefinedAeadParameters
-import com.google.crypto.tink.integration.android.AndroidKeysetManager
-import com.omnibus.omnibus.di.IoDispatcher
-import dagger.hilt.android.qualifiers.ApplicationContext
+import android.util.Log
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
+import com.omnibus.omnibus.data.libraries.local.LibraryTokenStore
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 
-/** Persists the auth token issued by the server. */
+/** Persists the auth token issued by the server, for the active library. */
 interface AuthTokenStore {
-    /** The stored token, or null when signed out. */
+    /** The active library's token, or null when signed out there. */
     val token: Flow<String?>
 
+    /** Saves [token] for the active library. Nothing is saved when there is no active library. */
     suspend fun save(token: String)
 
+    /** Removes the active library's token. Other libraries keep theirs. */
     suspend fun clear()
 }
 
+/**
+ * [AuthTokenStore] over the active library's token in [LibraryTokenStore]. It follows the active library, so a library
+ * added in this process is seen at once.
+ */
 @Singleton
 class DefaultAuthTokenStore @Inject constructor(
-    @param:ApplicationContext private val context: Context,
-    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val tokens: LibraryTokenStore,
+    private val libraries: LibrariesRepository,
 ) : AuthTokenStore {
-    private val dataStore: DataStore<Preferences> by lazy {
-        AeadConfig.register()
-        val keysetHandle = AndroidKeysetManager.Builder()
-            .withSharedPref(context, KEYSET_NAME, KEYSET_PREFERENCES_FILE)
-            .withKeyTemplate(KeyTemplate.createFrom(PredefinedAeadParameters.AES256_GCM))
-            .withMasterKeyUri(MASTER_KEY_URI)
-            .build()
-            .keysetHandle
-        val serializer = AeadSerializer(
-            aead = keysetHandle.getPrimitive(
-                RegistryConfiguration.get(),
-                Aead::class.java,
-            ),
-            wrappedSerializer = PreferencesFileSerializer,
-            associatedData = DATASTORE_FILE_NAME.encodeToByteArray(),
-        )
 
-        DataStoreFactory.create(
-            serializer = serializer,
-            corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
-            scope = CoroutineScope(SupervisorJob() + ioDispatcher),
-            produceFile = { context.dataStoreFile(DATASTORE_FILE_NAME) },
-        )
-    }
-
-    override val token: Flow<String?> = flow {
-        emitAll(dataStore.data.map { preferences ->
-            preferences[AUTH_TOKEN]
-        })
-    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override val token: Flow<String?> = libraries.getActiveLibraryFlow()
+        .map { it?.id }
+        .distinctUntilChanged()
+        .flatMapLatest { id -> if (id == null) flowOf(null) else tokens.getTokenFlow(id) }
 
     override suspend fun save(token: String) {
-        withContext(ioDispatcher) {
-            dataStore.updateData { preferences ->
-                preferences.toMutablePreferences().apply {
-                    this[AUTH_TOKEN] = token
-                }
-            }
+        val libraryId = activeLibraryId()
+        if (libraryId == null) {
+            Log.w(TAG, "No library to save the token for")
+            return
         }
+        tokens.save(libraryId, token)
     }
 
     override suspend fun clear() {
-        withContext(ioDispatcher) {
-            dataStore.updateData { preferences ->
-                preferences.toMutablePreferences().apply {
-                    remove(AUTH_TOKEN)
-                }
-            }
-        }
+        val libraryId = activeLibraryId() ?: return
+        tokens.clear(libraryId)
     }
 
+    private suspend fun activeLibraryId(): String? = libraries.getActiveLibraryFlow().first()?.id
+
     private companion object {
-        const val DATASTORE_FILE_NAME = "auth_token.preferences_pb"
-        const val KEYSET_NAME = "auth_token_keyset"
-        const val KEYSET_PREFERENCES_FILE = "omnibus_auth_keyset"
-        const val MASTER_KEY_URI = "android-keystore://omnibus_auth_master_key"
-        val AUTH_TOKEN = stringPreferencesKey("auth_token")
+        const val TAG = "DefaultAuthTokenStore"
     }
 }
