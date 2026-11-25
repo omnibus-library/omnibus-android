@@ -31,7 +31,9 @@ omnibus/
 ├── app/src/test/                            # JVM unit tests
 ├── app/src/androidTest/                     # Instrumented tests
 ├── app/src/screenshotTest/                  # Compose preview screenshot tests
+├── docs/conventions/                        # Rules for project documents, such as specs
 ├── docs/engineering/                        # Engineering guidelines (read these)
+├── docs/features/                           # Feature specs, the source of truth for each feature
 ├── docs/design-system/                      # Design-system rules for UI components (read these)
 └── gradle/libs.versions.toml                # Version catalog
 ```
@@ -50,6 +52,10 @@ Run from the `omnibus/` directory:
 ```
 
 Releases are automated with release-please; see [Releases](../README.md#releases) in the repo README. Never edit `appVersionName`, `versionName` or `versionCode` in `app/build.gradle.kts` by hand.
+
+## Specs
+
+[Specs](docs/conventions/specs.md) sets the rules and template for specs. A feature with a spec in `docs/features/` is built to that spec: it wins over iOS and over any ticket. When code and spec disagree, fix one of them in the same PR and bump the spec's version.
 
 ## Engineering Guidelines
 
