@@ -2,7 +2,7 @@
 
 | Version | Status | Last updated |
 |---|---|---|
-| 1.0.0 | Accepted | 2026-11-25 |
+| 1.0.1 | Accepted | 2026-11-25 |
 
 ## Summary
 
@@ -308,7 +308,7 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 - **Reuse.**
   - `Masthead` for the masthead.
   - `BookCover` with `CoverIdentity` for covers and the generated plate.
-  - `LoadingStateView`, `EmptyStateView` and `ErrorStateView` for full-screen states.
+  - `LoadingStateView` for the Searching and Loading states. The Prompt, No matches and error states use a Search-specific state view (a dashed circle around a glyph, with an outlined "Try again"), as the images show; the shared `EmptyStateView` and `ErrorStateView` do not match them.
   - The navigation rail's existing 600dp breakpoint for wide windows.
 
 ## Constants
@@ -326,6 +326,10 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 ---
 
 ## Changelog
+
+**1.0.1** (2026-11-25)
+
+- The Reuse list no longer names `EmptyStateView` and `ErrorStateView` for the full-screen states. The images show a different state view, and the images are the design. PATCH: no behaviour changes.
 
 **1.0.0** (2026-11-25)
 
