@@ -272,7 +272,9 @@ class SearchScreenTest {
 
         rule.onNodeWithContentDescription(string(R.string.search_field_label)).performClick()
         rule.onNodeWithContentDescription(string(R.string.search_field_label)).assertIsFocused()
-        rule.onNode(hasScrollToIndexAction()).performTouchInput { swipeUp() }
+        // Start mid-list, not at its bottom edge: the keyboard is still animating in, and imePadding shrinks the
+        // list under the gesture, so a swipe from the old bottom edge can land in the padding and never scroll.
+        rule.onNode(hasScrollToIndexAction()).performTouchInput { swipeUp(startY = centerY, endY = top) }
 
         rule.onNodeWithContentDescription(string(R.string.search_field_label)).assertIsNotFocused()
     }
