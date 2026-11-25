@@ -360,4 +360,8 @@
     <string name="reader_note_delete_title">Delete this note?</string>
     <string name="reader_note_delete_cancel">Cancel</string>
     <string name="reader_note_delete_confirm">Delete</string>
+    <!-- Format badges on book rows (Series Details, Search). -->
+    <string name="format_badge_ebook">Ebook</string>
+    <string name="format_badge_audio">Audio</string>
+    <string name="format_badge_print">Print</string>
 </resources>
