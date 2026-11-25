@@ -3,6 +3,7 @@ package com.omnibus.omnibus.feature.bookdetail
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 import com.omnibus.omnibus.testing.randomDouble
 import com.omnibus.omnibus.testing.randomLong
 import com.omnibus.omnibus.testing.randomString
@@ -43,13 +44,12 @@ class BookDetailDestinationTest : DescribeSpec({
     describe("the route a destination pushes") {
 
         context("when the destination is something to browse") {
-            it("#93 TC-43: is a placeholder with its name, for author, series, genre or tag") {
+            it("#93 TC-43: is a placeholder with its name, for author, genre or tag") {
                 val name = randomString()
 
                 checkAll(
                     Exhaustive.of(
                         BookDetailDestination.Author(randomLong(), name),
-                        BookDetailDestination.Series(null, name),
                         BookDetailDestination.Genre(name),
                         BookDetailDestination.Tag(name),
                     ),
@@ -66,6 +66,16 @@ class BookDetailDestinationTest : DescribeSpec({
                 BookDetailDestination.CheckIn(randomString()).shellRoute(titles) shouldBe
                     BookDetailPlaceholderRoute(titles.checkIn)
                 BookDetailDestination.Settings.shellRoute(titles) shouldBe BookDetailPlaceholderRoute(titles.settings)
+            }
+        }
+
+        context("when the destination is a series") {
+            it("#349 TC-1: is the series page route for that series") {
+                val seriesId = randomLong()
+                val name = randomString()
+
+                BookDetailDestination.Series(seriesId, name).shellRoute(randomPlaceholderTitles()) shouldBe
+                    SeriesDetailsRoute(seriesId, name)
             }
         }
 

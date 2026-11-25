@@ -4,6 +4,7 @@ import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
+import com.omnibus.omnibus.feature.series.SeriesDetailsRoute
 
 /** Where a tap on the Book Detail page leads. The shell maps each destination to a route or a platform action. */
 sealed interface BookDetailDestination {
@@ -29,7 +30,8 @@ sealed interface BookDetailDestination {
 
     data class Author(val authorId: Long, val name: String) : BookDetailDestination
 
-    data class Series(val seriesId: Long?, val name: String) : BookDetailDestination
+    /** Opens series [seriesId]'s page. Only links that know the id dispatch it. */
+    data class Series(val seriesId: Long, val name: String) : BookDetailDestination
 
     data class Genre(val name: String) : BookDetailDestination
 
@@ -57,7 +59,7 @@ internal fun BookDetailDestination.shellRoute(titles: PlaceholderTitles): NavKey
     is BookDetailDestination.Book -> BookDetailRoute(bookUuid)
     is BookDetailDestination.Request -> BookRequestRoute(bookUuid)
     is BookDetailDestination.Author -> BookDetailPlaceholderRoute(name)
-    is BookDetailDestination.Series -> BookDetailPlaceholderRoute(name)
+    is BookDetailDestination.Series -> SeriesDetailsRoute(seriesId, name)
     is BookDetailDestination.Genre -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.Tag -> BookDetailPlaceholderRoute(name)
     is BookDetailDestination.CheckIn -> BookDetailPlaceholderRoute(titles.checkIn)
