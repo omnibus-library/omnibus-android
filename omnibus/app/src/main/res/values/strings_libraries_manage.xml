@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Manage libraries and the library detail screen (#368). -->
+    <string name="libraries_manage_title">Libraries</string>
+    <string name="libraries_manage_you_row">Libraries</string>
+    <string name="libraries_manage_sheet_action">Manage libraries</string>
+    <string name="libraries_detail_name_label">Name</string>
+    <string name="libraries_detail_name_hint">Shown in your list of libraries. Leave it blank to use the address.</string>
+    <string name="libraries_detail_address_label">Address</string>
+    <string name="libraries_detail_username_label">Username</string>
+</resources>

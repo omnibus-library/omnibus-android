@@ -56,6 +56,7 @@ internal object LibraryRowTestTags {
  * @param library The library to show.
  * @param isCurrent Whether this is the library open in the app. It gets the accent tile and the check.
  * @param onClick Called when the row is tapped.
+ * @param showCheck Whether the current library gets the check. Manage libraries shows a chevron instead.
  * @param trailing Shown at the row's end, before the check, for tags such as "Signed out".
  */
 @Composable
@@ -64,6 +65,7 @@ fun LibraryRow(
     isCurrent: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showCheck: Boolean = true,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
@@ -112,7 +114,7 @@ fun LibraryRow(
             )
         }
         trailing()
-        if (isCurrent) {
+        if (isCurrent && showCheck) {
             Icon(
                 painterResource(R.drawable.ic_check),
                 contentDescription = null,
