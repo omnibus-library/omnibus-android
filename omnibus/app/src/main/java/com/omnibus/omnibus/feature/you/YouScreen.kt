@@ -51,20 +51,24 @@ import com.omnibus.omnibus.ui.theme.uiTextStyle
 internal object YouScreenTestTags {
     const val REQUESTS_ROW = "you-requests-row"
     const val REQUESTS_PILL = "you-requests-pill"
+    const val LIBRARIES_ROW = "you-libraries-row"
 }
 
 /**
  * The You tab's root: the masthead, the account card for the active library, then the Requests row with its
- * "N needs you" pill when the server has book requests on for the reader. Tapping the card opens the library switcher.
+ * "N needs you" pill when the server has book requests on for the reader, then the Libraries row. Tapping the card
+ * opens the library switcher.
  *
  * Stateful wrapper that feeds [YouScreenContent] from [YouViewModel] and hosts the switcher sheet.
  *
  * @param onOpenRequests Called when the Requests row is tapped.
+ * @param onOpenManageLibraries Called when the Libraries row is tapped, or "Manage libraries" in the switcher.
  */
 @Composable
 fun YouScreen(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenManageLibraries: () -> Unit = {},
     viewModel: YouViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -75,10 +79,17 @@ fun YouScreen(
     // Saveable, so the sheet is still open after a rotation.
     var showsSwitcher by rememberSaveable { mutableStateOf(false) }
 
-    YouScreenContent(uiState, rememberRequestWording(), onOpenRequests, modifier, onOpenSwitcher = { showsSwitcher = true })
+    YouScreenContent(
+        uiState = uiState,
+        wording = rememberRequestWording(),
+        onOpenRequests = onOpenRequests,
+        modifier = modifier,
+        onOpenSwitcher = { showsSwitcher = true },
+        onOpenManageLibraries = onOpenManageLibraries,
+    )
 
     if (showsSwitcher) {
-        LibrarySwitcherSheet(onDismiss = { showsSwitcher = false })
+        LibrarySwitcherSheet(onDismiss = { showsSwitcher = false }, onManageLibraries = onOpenManageLibraries)
     }
 }
 
@@ -87,6 +98,7 @@ fun YouScreen(
  * waits for the session, so while it's unknown the root shows the masthead and the card only.
  *
  * @param onOpenSwitcher Called when the account card is tapped.
+ * @param onOpenManageLibraries Called when the Libraries row is tapped.
  */
 @Composable
 internal fun YouScreenContent(
@@ -95,6 +107,7 @@ internal fun YouScreenContent(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenSwitcher: () -> Unit = {},
+    onOpenManageLibraries: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Masthead(title = stringResource(R.string.shell_tab_you))
@@ -104,28 +117,38 @@ internal fun YouScreenContent(
         ) {
             uiState.library?.let { AccountCard(it, onClick = onOpenSwitcher) }
             if (uiState.showsRequests == true) {
-                RequestsRow(needsYouPill(uiState.needsYou, wording), onOpenRequests)
+                YouRow(
+                    label = stringResource(R.string.you_requests_row),
+                    testTag = YouScreenTestTags.REQUESTS_ROW,
+                    onClick = onOpenRequests,
+                    pill = needsYouPill(uiState.needsYou, wording),
+                )
             }
+            YouRow(
+                label = stringResource(R.string.libraries_manage_you_row),
+                testTag = YouScreenTestTags.LIBRARIES_ROW,
+                onClick = onOpenManageLibraries,
+            )
         }
     }
 }
 
-/** The Requests row, with the pill when books wait on the reader. */
+/** A row on the You root: its label, an optional pill, and a trailing arrow. */
 @Composable
-private fun RequestsRow(pill: String?, onOpenRequests: () -> Unit) {
+private fun YouRow(label: String, testTag: String, onClick: () -> Unit, pill: String? = null) {
     val palette = OmnibusTheme.palette
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .clickable(role = Role.Button, onClick = onOpenRequests)
+            .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
-            .testTag(YouScreenTestTags.REQUESTS_ROW),
+            .testTag(testTag),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.you_requests_row),
+            text = label,
             style = uiTextStyle(16, FontWeight.Medium, palette.ink0),
             modifier = Modifier.weight(1f),
         )
