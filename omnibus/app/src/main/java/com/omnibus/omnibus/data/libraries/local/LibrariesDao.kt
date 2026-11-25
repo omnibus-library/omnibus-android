@@ -47,4 +47,9 @@ abstract class LibrariesDao {
      */
     @Query("DELETE FROM libraries WHERE id = :id")
     abstract suspend fun delete(id: String): Int
+
+    // #366
+    /** Returns the number of rows updated. */
+    @Query("UPDATE libraries SET username = :username WHERE id = :id")
+    abstract suspend fun setUsername(id: String, username: String): Int
 }

@@ -120,6 +120,18 @@ class DefaultLibrariesRepository @Inject constructor(
         }
     }
 
+    // #366
+    override suspend fun setUsername(libraryId: String, username: String) {
+        withContext(ioDispatcher) {
+            if (!upgrade.ensureDone()) return@withContext
+            try {
+                dao.setUsername(libraryId, username)
+            } catch (error: SQLException) {
+                Log.e(TAG, "Unable to store the username", error)
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "LibrariesRepository"
     }

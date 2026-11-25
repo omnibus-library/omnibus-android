@@ -53,4 +53,17 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
         removedIds += libraryId
         libraries.update { list -> list.filterNot { it.id == libraryId } }
     }
+
+    // #366
+    /** When non-null, [setUsername] throws this instead. */
+    var setUsernameFailure: Throwable? = null
+
+    /** The (libraryId, username) pairs passed to [setUsername], in call order. */
+    val usernameUpdates = mutableListOf<Pair<String, String>>()
+
+    override suspend fun setUsername(libraryId: String, username: String) {
+        setUsernameFailure?.let { throw it }
+        usernameUpdates += libraryId to username
+        libraries.update { list -> list.map { if (it.id == libraryId) it.copy(username = username) else it } }
+    }
 }

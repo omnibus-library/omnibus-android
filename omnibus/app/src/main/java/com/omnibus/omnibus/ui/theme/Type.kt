@@ -33,6 +33,12 @@ val UiFontFamily = FontFamily(
 val MonoFontFamily = FontFamily(Font(R.font.space_mono_regular))
 
 /**
+ * Grenze Gotisch, the blackletter face of library monograms. Only SemiBold is bundled; it is the static instance,
+ * since minSdk 24 can't set a variable font's weight.
+ */
+val MonogramFontFamily = FontFamily(Font(R.font.grenze_gotisch_semibold, FontWeight.SemiBold))
+
+/**
  * A complete [TextStyle] in [DisplayFontFamily], so it replaces rather than merges with
  * `LocalTextStyle` (whose Material letter spacing would otherwise leak in). Display text uses
  * lining figures so numerals sit on the baseline next to the Garamond lowercase.

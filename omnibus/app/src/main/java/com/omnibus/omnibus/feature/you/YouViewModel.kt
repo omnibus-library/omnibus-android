@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.CurrentUser
+import com.omnibus.omnibus.data.libraries.Library
+import com.omnibus.omnibus.data.libraries.LibrariesRepository
 import com.omnibus.omnibus.data.requests.RequestsRepository
 import com.omnibus.omnibus.data.requests.RequestsResult
 import com.omnibus.omnibus.data.requests.toRequestViewer
@@ -19,19 +21,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * What the You root shows about requests.
+ * What the You root shows: the account card and the Requests row.
  *
  * @property showsRequests Whether the Requests row is shown: the server has book requests on for the reader. Null while
- * the session isn't known yet, so the screen shows neither the row nor the placeholder.
+ * the session isn't known yet, so the screen shows no row.
  * @property needsYou How many books wait on the reader to pick a version. Zero shows no pill.
+ * @property library The active library for the account card, or null when there is none or it can't be read.
  */
-data class YouUIState(val showsRequests: Boolean? = null, val needsYou: Int = 0)
+data class YouUIState(val showsRequests: Boolean? = null, val needsYou: Int = 0, val library: Library? = null)
 
-/** Owns the You root's Requests row and its "N needs you" pill. */
+/** Owns the You root's account card, Requests row and its "N needs you" pill. */
 @HiltViewModel
 class YouViewModel @Inject constructor(
     private val requests: RequestsRepository,
     authRepository: AuthRepository,
+    libraries: LibrariesRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(YouUIState())
@@ -52,6 +56,12 @@ class YouViewModel @Inject constructor(
             authRepository.currentUser.catch { emit(null) }.collect {
                 user = it
                 if (isShown) recount()
+            }
+        }
+        // Separate from the session, so a library that can't be read leaves the Requests row alone.
+        viewModelScope.launch {
+            libraries.getActiveLibraryFlow().catch { emit(null) }.collect { library ->
+                _uiState.update { it.copy(library = library) }
             }
         }
     }
