@@ -19,3 +19,11 @@ fun randomTagMatches(): SearchMatches<TagMatch> {
     val items = List(randomInt(1..5)) { randomTagMatch() }
     return SearchMatches(items, total = randomInt(items.size..items.size + 50))
 }
+
+fun randomGenreMatch(): GenreMatch = GenreMatch(name = randomString(), bookCount = randomInt(1..500))
+
+/** Up to five genres, with a total at or above the number shown. */
+fun randomGenreMatches(): SearchMatches<GenreMatch> {
+    val items = List(randomInt(1..5)) { randomGenreMatch() }
+    return SearchMatches(items, total = randomInt(items.size..items.size + 50))
+}

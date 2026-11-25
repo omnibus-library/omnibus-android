@@ -159,9 +159,13 @@ internal fun FacetBooksScreenContent(
                 }
                 FacetBody.Empty -> item(key = "state") {
                     SearchStateView(
-                        glyph = R.drawable.ic_search_tag,
+                        glyph = when (route.kind) {
+                            FacetKind.Tag -> R.drawable.ic_search_tag
+                            FacetKind.Genre -> R.drawable.ic_search_genre
+                        },
                         message = when (route.kind) {
                             FacetKind.Tag -> stringResource(R.string.search_facet_tag_empty_message, route.name)
+                            FacetKind.Genre -> stringResource(R.string.search_facet_genre_empty_message, route.name)
                         },
                         modifier = Modifier.padding(top = 96.dp),
                         title = stringResource(R.string.search_facet_empty_title),
@@ -189,9 +193,10 @@ private fun CountLine(route: FacetBooksRoute, total: Long) {
     )
 }
 
-/** The count-line plural for [kind]. #353 adds its own kind here. */
+/** The count-line plural for [kind]. */
 private fun countPlural(kind: FacetKind): Int = when (kind) {
     FacetKind.Tag -> R.plurals.search_facet_tag_count
+    FacetKind.Genre -> R.plurals.search_facet_genre_count
 }
 
 /** One book in the facet list: the same row as a Search book, with no highlighting. */

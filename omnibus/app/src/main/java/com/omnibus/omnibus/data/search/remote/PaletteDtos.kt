@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.search.remote
 
+import com.omnibus.omnibus.data.search.GenreMatch
 import com.omnibus.omnibus.data.search.LibraryBookMatches
 import com.omnibus.omnibus.data.search.LibraryHit
 import com.omnibus.omnibus.data.search.LibrarySearchResults
@@ -22,6 +23,8 @@ internal data class PaletteResultsDto(
     @SerialName("book_total") val bookTotal: Int? = null,
     val tags: List<PaletteTagDto> = emptyList(),
     @SerialName("tag_total") val tagTotal: Int? = null,
+    val genres: List<PaletteGenreDto> = emptyList(),
+    @SerialName("genre_total") val genreTotal: Int? = null,
 ) {
     fun toDomain() = LibraryBookMatches(
         books = books.map { it.toDomain() },
@@ -31,6 +34,7 @@ internal data class PaletteResultsDto(
     fun toResults() = LibrarySearchResults(
         books = books.matches(bookTotal) { it.toDomain() },
         tags = tags.matches(tagTotal) { it.toDomain() },
+        genres = genres.matches(genreTotal) { it.toDomain() },
     )
 }
 
@@ -58,4 +62,12 @@ internal data class PaletteTagDto(
     @SerialName("book_count") val bookCount: Int = 0,
 ) {
     fun toDomain() = TagMatch(name, bookCount)
+}
+
+@Serializable
+internal data class PaletteGenreDto(
+    val name: String,
+    @SerialName("book_count") val bookCount: Int = 0,
+) {
+    fun toDomain() = GenreMatch(name, bookCount)
 }

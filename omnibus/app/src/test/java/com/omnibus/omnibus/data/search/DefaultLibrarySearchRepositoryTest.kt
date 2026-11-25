@@ -22,6 +22,13 @@ private fun paletteBody(books: String, total: Int? = null): String =
 private fun tagsBody(tags: String, tagTotal: Int? = null): String =
     """{"query":"wood","books":[],"tags":[$tags]${tagTotal?.let { ""","tag_total":$it""" } ?: ""}}"""
 
+/** A whole-library palette answer holding [genres] and, when given, a `genre_total`, with no books. */
+private fun genresBody(genres: String, genreTotal: Int? = null): String =
+    """{"query":"fan","books":[],"genres":[$genres]${genreTotal?.let { ""","genre_total":$it""" } ?: ""}}"""
+
+private const val FANTASY = """{"name":"Fantasy","book_count":40}"""
+private const val FAN_FICTION = """{"name":"Fan fiction","book_count":3}"""
+
 private const val WOODLAND = """{"name":"Woodland","book_count":14}"""
 private const val WOODWORKING = """{"name":"Woodworking","book_count":2}"""
 
@@ -198,6 +205,43 @@ class DefaultLibrarySearchRepositoryTest : DescribeSpec({
 
                         result.results.tags.total shouldBe 2
                     }
+                }
+            }
+        }
+
+        context("when the answer has genres") {
+            it("#353 TC-1: returns the genres in order with the genre total") {
+                withScriptedServer {
+                    script.answer(200, genresBody("$FANTASY,$FAN_FICTION", genreTotal = 7))
+
+                    val result = repository().searchLibrary("fan") as PaletteSearchResult.Success
+
+                    result.results.genres shouldBe SearchMatches(
+                        items = listOf(GenreMatch("Fantasy", 40), GenreMatch("Fan fiction", 3)),
+                        total = 7,
+                    )
+                }
+            }
+
+            it("#353 TC-2: takes the number of genres as the total when the answer has none") {
+                withScriptedServer {
+                    script.answer(200, genresBody("$FANTASY,$FAN_FICTION"))
+
+                    val result = repository().searchLibrary("fan") as PaletteSearchResult.Success
+
+                    result.results.genres.total shouldBe 2
+                }
+            }
+        }
+
+        context("when the answer has no genres") {
+            it("#353 TC-3: has no genres") {
+                withScriptedServer {
+                    script.answer(200, paletteBody(DUNE, total = 1))
+
+                    val result = repository().searchLibrary("lo") as PaletteSearchResult.Success
+
+                    result.results.genres shouldBe SearchMatches.empty()
                 }
             }
         }
