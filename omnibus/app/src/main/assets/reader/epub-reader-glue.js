@@ -485,7 +485,7 @@
       currentFontFamily = opts.fontFamily || null;
 
       if (opts.fontSize) {
-        rendition.themes.fontSize(opts.fontSize + "px");
+        rendition.themes.override("font-size", opts.fontSize + "px", true);
         currentFontSize = opts.fontSize;
       }
       if (opts.lineHeight) currentLineHeight = Number(opts.lineHeight) || currentLineHeight;
@@ -956,6 +956,17 @@
       : "";
   }
 
+  // The reader's font size on the section's root, so `rem` sizes follow it and
+  // a publisher's `html` size can't override it. See setFontSize.
+  function applyRootFontSize(doc) {
+    if (!doc || !doc.documentElement) return;
+    doc.documentElement.style.setProperty(
+      "font-size",
+      currentFontSize + "px",
+      "important"
+    );
+  }
+
   // Repaint the marks once a face change has actually reflowed the section.
   // Force style+layout first so faces declared a moment ago start loading —
   // read earlier, `fonts.ready` is the already-settled promise and the repaint
@@ -1292,6 +1303,7 @@
         doc.head.appendChild(style);
       }
 
+      applyRootFontSize(doc);
       applyFontFamily(doc);
       armFontRepaint(doc);
     });
@@ -3074,10 +3086,22 @@
     }
   }
 
+  // The size goes on `html` as well as `body`, both `!important`: epub.js's own
+  // `themes.fontSize` sets a plain inline size on `body` only, which loses to a
+  // publisher's `body{font-size:…!important}` and leaves `rem` sizes on the
+  // book's root size. epub.js carries the `body` override into every section;
+  // the content hook calls applyRootFontSize for `html`.
   function setFontSize(px) {
     if (!rendition) return;
-    rendition.themes.fontSize(px + "px");
+    rendition.themes.override("font-size", px + "px", true);
     currentFontSize = px;
+    try {
+      rendition.getContents().forEach(function (c) {
+        applyRootFontSize(c.document);
+      });
+    } catch (e) {
+      /* no rendered sections yet */
+    }
     applyMarkStyles();
     scheduleAnnotationRepaint();
   }
