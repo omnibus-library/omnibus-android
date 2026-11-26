@@ -123,7 +123,7 @@ fun Bookcase(state: BookcaseState, modifier: Modifier = Modifier) {
                     .fillMaxWidth()
                     .height(PLANK_HEIGHT)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(palette.line2),
+                    .background(palette.ink3.copy(alpha = 0.4f)),
             )
             state.spines.forEachIndexed { index, spine ->
                 key(spine.libraryId) {

@@ -44,7 +44,8 @@ fun IlluminatedInitial(
             modifier = Modifier.matchParentSize(),
         )
         CompositionLocalProvider(LocalContentColor provides palette.ink0) {
-            LibraryMonogram(monogram, size * 0.6f)
+            // A glyph about half the frame, as in the spec render.
+            LibraryMonogram(monogram, size * 0.85f)
         }
     }
 }
