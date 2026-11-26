@@ -956,13 +956,19 @@
       : "";
   }
 
-  // The reader's font size on the section's root, so `rem` sizes follow it and
-  // a publisher's `html` size can't override it. See setFontSize.
+  // Scale the section's root by the setting over the 16px default, from the
+  // book's own root size, so `rem` sizes follow the setting in proportion
+  // (`html{62.5%}` + `p{1.6rem}` stays at the setting). Re-read each time with
+  // our override removed, and again once a book sheet lands. See setFontSize.
   function applyRootFontSize(doc) {
-    if (!doc || !doc.documentElement) return;
-    doc.documentElement.style.setProperty(
+    if (!doc || !doc.documentElement || !doc.defaultView) return;
+    var root = doc.documentElement;
+    root.style.removeProperty("font-size");
+    var authored = parseFloat(doc.defaultView.getComputedStyle(root).fontSize);
+    if (!authored) return;
+    root.style.setProperty(
       "font-size",
-      currentFontSize + "px",
+      (authored * currentFontSize) / 16 + "px",
       "important"
     );
   }
@@ -1026,6 +1032,7 @@
             // Prepend so book CSS sits ahead of the reader baseline, which
             // only touches html/body and should win any tie (e.g. hyphens).
             doc.head.insertBefore(style, doc.head.firstChild);
+            applyRootFontSize(doc);
           })
           .catch(function () {
             /* unreadable asset — leave prose on UA defaults */
@@ -3086,10 +3093,10 @@
     }
   }
 
-  // The size goes on `html` as well as `body`, both `!important`: epub.js's own
-  // `themes.fontSize` sets a plain inline size on `body` only, which loses to a
-  // publisher's `body{font-size:…!important}` and leaves `rem` sizes on the
-  // book's root size. epub.js carries the `body` override into every section;
+  // The size goes on `body`, and scaled onto `html`, both `!important`:
+  // epub.js's own `themes.fontSize` sets a plain inline size on `body` only,
+  // which loses to a publisher's `body{font-size:…!important}` and leaves
+  // `rem` sizes on the book's root size. epub.js carries the `body` override into every section;
   // the content hook calls applyRootFontSize for `html`.
   function setFontSize(px) {
     if (!rendition) return;

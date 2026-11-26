@@ -62,6 +62,23 @@ class ReaderPublisherFontSizeTest {
         awaitParagraphSize("the first paint") { abs(it - LARGE) <= TOLERANCE * LARGE }
     }
 
+    @Test
+    fun textSizedFromAShrunkRootOpensAtTheStoredSize() {
+        showReader(SHRUNK_ROOT, mutableStateOf(ReaderSettings(fontSize = SMALL)))
+
+        awaitParagraphSize("the first paint") { abs(it - SMALL) <= TOLERANCE * SMALL }
+    }
+
+    @Test
+    fun textSizedFromAShrunkRootChangesToTheSetting() {
+        val settings = mutableStateOf(ReaderSettings(fontSize = SMALL))
+        showReader(SHRUNK_ROOT, settings)
+
+        rule.runOnIdle { settings.value = settings.value.copy(fontSize = LARGE) }
+
+        awaitParagraphSize("the size after $SMALL -> $LARGE") { abs(it - LARGE) <= TOLERANCE * LARGE }
+    }
+
     /** Opens a book with [stylesheet] at [SMALL], changes the setting to [LARGE], and expects the text to scale by as much. */
     private fun assertParagraphFollowsTheSetting(stylesheet: String) {
         val settings = mutableStateOf(ReaderSettings(fontSize = SMALL))
@@ -132,5 +149,8 @@ class ReaderPublisherFontSizeTest {
         const val SMALL = 16
         const val LARGE = 28
         const val TOLERANCE = 0.02
+
+        /** The common 10px-root pattern: body text is 1.6rem, the default 16px. */
+        const val SHRUNK_ROOT = "html{font-size:62.5%} p{font-size:1.6rem}"
     }
 }
