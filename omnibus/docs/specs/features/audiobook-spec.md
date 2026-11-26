@@ -59,7 +59,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 
 **Out of scope**
 
-- In-car platforms (Android Auto, CarPlay).
+- In-car platforms (Android Auto, CarPlay). Android Auto has its own spec, `docs/features/android-auto.md`.
 - The home-screen widget.
 - Downloading audiobooks (#113).
 - The Listen and Immersive read buttons on Book Detail (#99). This feature provides the entry points they open.
@@ -114,6 +114,7 @@ Cite IDs in tickets, test names and PR descriptions. Never renumber one. A dropp
 - P-SYNC-6. **Another device further on.** If the listener has got further on another device and the player didn't learn it in time to start there, a banner offers it: "Listened further elsewhere" / "Another device left off at {h:mm:ss}." with "Go" and "Dismiss".
 - P-SYNC-7. **Ebook further on.** If the listener has read further in the ebook, a banner offers it: "Read further in the ebook" / "Your reading maps to about {h:mm:ss}." When they are re-reading an earlier part of the ebook, the heading is "Re-reading earlier in the ebook" instead. If they have turned on "follow", the player moves there with no banner.
 - P-SYNC-8. Only one banner shows at a time, in this order: an error, then the other-device offer, then the ebook offer.
+- P-SYNC-9. While Android Auto is connected, the device offer and an ebook offer that is ahead are taken without a banner, as `docs/features/android-auto.md` sets out.
 
 **Edge cases**
 
@@ -688,7 +689,7 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | Q2 | The offline dialog's last words: iOS says "read it anywhere". | "listen anywhere" (P-SCR-2). |
 | Q3 | How is one of several audio files chosen? | Book Detail's file chooser (#99). The player itself never asks. |
 | Q4 | Should the Android player be a pushed screen or an overlay above the navigation? | A pushed screen on the root stack (like the reader) that collapses to the mini player (AND-UI-1). |
-| Q5 | In-car platforms. | Out of scope; a separate epic. |
+| Q5 | In-car platforms. | Out of scope; Android Auto is specified in `docs/features/android-auto.md`. |
 
 ## 16. Changelog
 
@@ -711,3 +712,4 @@ These are iOS gaps to close in a later iOS change. They are not Android requirem
 | 2026-11-10 | #271: P-MINI-1 floats the shell's mini player as a card above the content; the reader keeps the docked strip. |
 | 2026-11-18 | #286: P-MINI-1 docks the shell's mini player on the tab bar (collapsing on scroll) and moves it into the rail from 600dp, replacing the floating card. |
 | 2026-11-19 | #311: P-BMK-4 adds "Syncing…" and "Sync failed", with the latest tap's result shown; §9 edge cases cover the failure and offline; P-BMK-AC3 names the new labels; P-A11Y-7 announces "Sync failed" once. |
+| 2026-11-25 | #396: points the in-car out-of-scope line and Q5 at the Android Auto spec; P-SYNC-9 says offers are taken without a banner while Android Auto is connected. |
