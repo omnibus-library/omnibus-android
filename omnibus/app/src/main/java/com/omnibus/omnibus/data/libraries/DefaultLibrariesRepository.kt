@@ -20,9 +20,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * [LibrariesRepository] over the `libraries` table. Every call waits for the storage upgrade, so the libraries
@@ -156,6 +158,20 @@ class DefaultLibrariesRepository @Inject constructor(
         }
     }
 
+    // #371
+    override suspend fun findByAddress(address: String): Library? = withContext(ioDispatcher) {
+        if (!upgrade.ensureDone()) return@withContext null
+        if (ServerAddress.normalize(address) == null) return@withContext null
+        try {
+            dao.librariesFlow().first()
+                .map(LibraryEntity::toLibrary)
+                .firstOrNull { sameServerAddress(it.address, address) }
+        } catch (error: SQLException) {
+            Log.e(TAG, "Unable to read the libraries", error)
+            null
+        }
+    }
+
     /** [name] trimmed and cut to [NAME_MAX_LENGTH] code points, so a surrogate pair is never split. */
     private fun cleanName(name: String): String {
         val trimmed = name.trim()
@@ -172,4 +188,12 @@ class DefaultLibrariesRepository @Inject constructor(
         /** Longest library name, from the spec's constants. */
         const val NAME_MAX_LENGTH = 40
     }
+}
+
+// #371
+/** Whether [a] and [b] name the same server: normalized, scheme and host ignoring case, default port dropped. */
+internal fun sameServerAddress(a: String, b: String): Boolean {
+    val left = ServerAddress.normalize(a)?.toHttpUrlOrNull()
+    val right = ServerAddress.normalize(b)?.toHttpUrlOrNull()
+    return if (left != null && right != null) left == right else a == b
 }

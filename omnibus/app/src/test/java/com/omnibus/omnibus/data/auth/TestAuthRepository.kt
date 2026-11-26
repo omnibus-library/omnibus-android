@@ -72,4 +72,33 @@ class TestAuthRepository : AuthRepository {
         verifySessionCalls++
         return verifySessionResult ?: awaitCancellation()
     }
+
+    // #371
+    /** The arguments of one [signInToNewLibrary] call. */
+    data class NewLibraryAttempt(
+        val address: String,
+        val username: String,
+        val password: String,
+        val createAccount: Boolean,
+    )
+
+    /** Returned by [signInToNewLibrary]. */
+    var newLibraryResult: AuthNewLibraryResult? = null
+
+    /** When set, [signInToNewLibrary] suspends until this completes, to observe pending state. */
+    var newLibraryGate: CompletableDeferred<Unit>? = null
+
+    /** Every [signInToNewLibrary] call, in order. */
+    val newLibraryAttempts = mutableListOf<NewLibraryAttempt>()
+
+    override suspend fun signInToNewLibrary(
+        address: String,
+        username: String,
+        password: String,
+        createAccount: Boolean,
+    ): AuthNewLibraryResult {
+        newLibraryAttempts += NewLibraryAttempt(address, username, password, createAccount)
+        newLibraryGate?.await()
+        return newLibraryResult ?: unscripted("signInToNewLibrary")
+    }
 }

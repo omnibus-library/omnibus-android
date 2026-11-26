@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.feature.auth
 
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthNewLibraryResult
 import com.omnibus.omnibus.data.auth.AuthRegisterResult
 import com.omnibus.omnibus.data.auth.AuthSignInResult
 import com.omnibus.omnibus.data.auth.TestAuthRepository
@@ -9,6 +10,7 @@ import com.omnibus.omnibus.data.configuration.randomServerAddress
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
@@ -214,6 +216,68 @@ class LoginViewModelTest : DescribeSpec({
 
                     auth.registerAttempts shouldBe listOf(username to password)
                 }
+            }
+        }
+    }
+
+    // #371
+    describe("signing in to a library that isn't saved yet") {
+        it("TC-10: sends the address, credentials and create-account flag to the new library's sign-in") {
+            checkAll(Exhaustive.of(false, true)) { createAccount ->
+                val address = randomServerAddress()
+                val username = randomString()
+                val password = randomString()
+                val auth = TestAuthRepository().apply {
+                    newLibraryResult = AuthNewLibraryResult.ServerError
+                }
+                val vm = sut(auth, savedServer())
+
+                if (createAccount) {
+                    vm.attemptRegisterNewLibrary(address, username, password)
+                } else {
+                    vm.attemptAddLibrary(address, username, password)
+                }
+
+                auth.newLibraryAttempts shouldBe listOf(
+                    TestAuthRepository.NewLibraryAttempt(address, username, password, createAccount),
+                )
+                auth.signInAttempts.shouldBeEmpty()
+                auth.registerAttempts.shouldBeEmpty()
+            }
+        }
+
+        it("TC-10: a success is LOGGED_IN with the added library's id") {
+            val auth = TestAuthRepository().apply {
+                newLibraryResult = AuthNewLibraryResult.Success(libraryId = "added")
+            }
+            val vm = sut(auth, savedServer())
+
+            vm.attemptAddLibrary(randomServerAddress(), randomString(), randomString())
+
+            vm.uiState.value.loginStatus shouldBe LoginStatus.LOGGED_IN
+            vm.uiState.value.addedLibraryId shouldBe "added"
+        }
+
+        it("TC-10: maps each result to its status, with AlreadySaved and ServerError as SERVER_ERROR") {
+            checkAll(
+                Exhaustive.of(
+                    AuthNewLibraryResult.AlreadySaved to LoginStatus.SERVER_ERROR,
+                    AuthNewLibraryResult.ServerError to LoginStatus.SERVER_ERROR,
+                    AuthNewLibraryResult.InvalidCredentials to LoginStatus.INVALID_CREDENTIALS,
+                    AuthNewLibraryResult.TooManyAttempts to LoginStatus.TOO_MANY_ATTEMPTS,
+                    AuthNewLibraryResult.UsernameTaken to LoginStatus.USERNAME_TAKEN,
+                    AuthNewLibraryResult.RegistrationDisabled to LoginStatus.REGISTRATION_DISABLED,
+                    AuthNewLibraryResult.InvalidDetails to LoginStatus.INVALID_DETAILS,
+                    AuthNewLibraryResult.Unreachable to LoginStatus.SERVER_UNREACHABLE,
+                ),
+            ) { (result, expected) ->
+                val auth = TestAuthRepository().apply { newLibraryResult = result }
+                val vm = sut(auth, savedServer())
+
+                vm.attemptRegisterNewLibrary(randomServerAddress(), randomString(), randomString())
+
+                vm.uiState.value.loginStatus shouldBe expected
+                vm.uiState.value.addedLibraryId.shouldBeNull()
             }
         }
     }

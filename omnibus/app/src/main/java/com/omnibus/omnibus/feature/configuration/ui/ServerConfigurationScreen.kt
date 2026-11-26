@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,10 +41,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.R
+import com.omnibus.omnibus.data.libraries.Library
 import com.omnibus.omnibus.feature.configuration.ServerConfigSubmissionStatus
 import com.omnibus.omnibus.feature.configuration.ServerConfigUIState
 import com.omnibus.omnibus.ui.components.AdaptiveFormLayout
 import com.omnibus.omnibus.feature.configuration.ServerConfigurationViewModel
+import com.omnibus.omnibus.feature.libraries.displayName
 import com.omnibus.omnibus.ui.components.FilledButton
 import com.omnibus.omnibus.ui.components.InlineError
 import com.omnibus.omnibus.ui.components.OmnibusTextField
@@ -58,12 +62,35 @@ data object ServerConfigurationScreenRoute : NavKey
 
 abstract class ServerConfigurationScreenAction {
     data object ServerConfigurationSaved : ServerConfigurationScreenAction()
+
+    // #371
+    /** Adding a library: the close button was tapped. */
+    data object Close : ServerConfigurationScreenAction()
+
+    // #371
+    /** Adding a library: [address] was accepted and sign-in comes next. */
+    data class Connected(val address: String) : ServerConfigurationScreenAction()
+
+    // #371
+    /** Adding a library: the address is already saved as [library], so switch to it. */
+    data class SwitchTo(val library: Library) : ServerConfigurationScreenAction()
 }
 
+/** Test tags of Connect's adding mode (#371). */
+internal object ServerConfigurationTestTags {
+    const val CLOSE = "server-config-close"
+    const val SWITCH_TO = "server-config-switch-to"
+}
+
+/**
+ * The server address screen. First-time setup saves the address it accepts. With [isAdding], it is the add-library
+ * flow (#371): a close button, an empty field, no save on accept, and an already-saved state for a known address.
+ */
 @Composable
 fun ServerConfigurationScreen(
     onAction: (ServerConfigurationScreenAction) -> Unit,
     modifier: Modifier = Modifier,
+    isAdding: Boolean = false,
     viewModel: ServerConfigurationViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -71,43 +98,63 @@ fun ServerConfigurationScreen(
 
     LaunchedEffect(uiState.submissionStatus) {
         if (uiState.submissionStatus == ServerConfigSubmissionStatus.ACCEPTED) {
-            currentOnAction(ServerConfigurationScreenAction.ServerConfigurationSaved)
+            if (isAdding) {
+                currentOnAction(ServerConfigurationScreenAction.Connected(uiState.acceptedAddress!!))
+                viewModel.connectionShown()
+            } else {
+                currentOnAction(ServerConfigurationScreenAction.ServerConfigurationSaved)
+            }
         }
     }
 
     ServerConfigurationContent(
         modifier = modifier,
         uiState = uiState,
-        onConfigSubmitted = viewModel::submitServerUrl,
+        isAdding = isAdding,
+        onClose = { currentOnAction(ServerConfigurationScreenAction.Close) },
+        onAddressEdited = viewModel::editAddress,
+        onSwitchTo = { currentOnAction(ServerConfigurationScreenAction.SwitchTo(it)) },
+        onConfigSubmitted = if (isAdding) viewModel::submitNewLibraryUrl else viewModel::submitServerUrl,
     )
 }
 
 @Composable
-private fun ServerConfigurationContent(
+internal fun ServerConfigurationContent(
     modifier: Modifier,
     uiState: ServerConfigUIState,
-    onConfigSubmitted: (serverUrl: String) -> Unit
+    isAdding: Boolean = false,
+    onClose: () -> Unit = {},
+    onAddressEdited: () -> Unit = {},
+    onSwitchTo: (Library) -> Unit = {},
+    onConfigSubmitted: (serverUrl: String) -> Unit,
 ) {
     val palette = OmnibusTheme.palette
     val haptics = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
 
-    var serverUrl by rememberSaveable { mutableStateOf(uiState.savedConfigurationValue) }
+    // Adding starts empty: the saved library is the one the reader is adding to, not the address they will type.
+    var serverUrl by rememberSaveable { mutableStateOf(if (isAdding) "" else uiState.savedConfigurationValue) }
     var submittedUrl by rememberSaveable { mutableStateOf("") }
 
     // The saved address loads asynchronously, so seed the field once it arrives unless the user has typed.
     LaunchedEffect(uiState.savedConfigurationValue) {
-        if (serverUrl.isEmpty()) serverUrl = uiState.savedConfigurationValue
+        if (!isAdding && serverUrl.isEmpty()) serverUrl = uiState.savedConfigurationValue
     }
 
     val isProbing = uiState.submissionStatus == ServerConfigSubmissionStatus.PENDING
     val canSubmit = serverUrl.isNotBlank() && uiState.submitButtonEnabled
+    val alreadySaved = uiState.alreadySaved
     val errorMessage = when (uiState.submissionStatus) {
         ServerConfigSubmissionStatus.ERROR -> stringResource(R.string.server_config_error_invalid_address)
         ServerConfigSubmissionStatus.NOT_ACCEPTED -> stringResource(
             R.string.server_config_error_unreachable,
             submittedUrl
         )
+
+        // #371
+        ServerConfigSubmissionStatus.ALREADY_SAVED -> alreadySaved?.let {
+            stringResource(R.string.libraries_add_already_saved, it.address)
+        }
 
         else -> null
     }
@@ -128,7 +175,8 @@ private fun ServerConfigurationContent(
             )
 
             ServerConfigSubmissionStatus.ERROR,
-            ServerConfigSubmissionStatus.NOT_ACCEPTED -> haptics.performHapticFeedback(
+            ServerConfigSubmissionStatus.NOT_ACCEPTED,
+            ServerConfigSubmissionStatus.ALREADY_SAVED -> haptics.performHapticFeedback(
                 HapticFeedbackType.Reject
             )
 
@@ -137,6 +185,21 @@ private fun ServerConfigurationContent(
     }
 
     AdaptiveFormLayout(modifier = modifier) {
+        // #371
+        if (isAdding) {
+            IconButton(
+                onClick = onClose,
+                // The full 48dp touch target, not the 40dp default container.
+                modifier = Modifier.size(48.dp).testTag(ServerConfigurationTestTags.CLOSE),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_reader_close),
+                    contentDescription = stringResource(R.string.libraries_add_close),
+                    tint = palette.ink0,
+                )
+            }
+        }
+
         Header()
 
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -147,7 +210,10 @@ private fun ServerConfigurationContent(
 
             OmnibusTextField(
                 value = serverUrl,
-                onValueChange = { serverUrl = it },
+                onValueChange = {
+                    serverUrl = it
+                    onAddressEdited()
+                },
                 placeholder = stringResource(R.string.server_config_address_placeholder),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri,
@@ -176,13 +242,22 @@ private fun ServerConfigurationContent(
 
         InlineError(message = errorMessage)
 
-        FilledButton(
-            text = stringResource(R.string.server_config_connect),
-            onClick = submit,
-            enabled = canSubmit,
-            isLoading = isProbing,
-            loadingDescription = stringResource(R.string.server_config_connecting),
-        )
+        // #371
+        if (uiState.submissionStatus == ServerConfigSubmissionStatus.ALREADY_SAVED && alreadySaved != null) {
+            FilledButton(
+                text = stringResource(R.string.libraries_add_switch_to, alreadySaved.displayName()),
+                onClick = { onSwitchTo(alreadySaved) },
+                modifier = Modifier.testTag(ServerConfigurationTestTags.SWITCH_TO),
+            )
+        } else {
+            FilledButton(
+                text = stringResource(R.string.server_config_connect),
+                onClick = submit,
+                enabled = canSubmit,
+                isLoading = isProbing,
+                loadingDescription = stringResource(R.string.server_config_connecting),
+            )
+        }
     }
 }
 

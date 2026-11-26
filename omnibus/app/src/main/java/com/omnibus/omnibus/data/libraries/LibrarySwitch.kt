@@ -26,4 +26,7 @@ data class PendingOpening(val libraryId: String, val kind: SwitchKind)
 @Serializable
 enum class SwitchKind {
     Switch,
+
+    /** A library was just added and signed in; switch to it. */
+    Add,
 }

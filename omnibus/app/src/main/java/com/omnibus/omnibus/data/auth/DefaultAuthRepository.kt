@@ -5,12 +5,15 @@ import com.omnibus.omnibus.data.auth.local.AuthTokenStore
 import com.omnibus.omnibus.data.auth.remote.AuthSignInRequestDto
 import com.omnibus.omnibus.data.auth.remote.AuthSignInResponseDto
 import com.omnibus.omnibus.data.auth.remote.UserInfoDto
+import com.omnibus.omnibus.data.configuration.ServerAddress
 import com.omnibus.omnibus.data.libraries.ActiveLibrary
 import com.omnibus.omnibus.data.libraries.LibrariesRepository
+import com.omnibus.omnibus.data.libraries.local.LibraryTokenStore
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.IoDispatcher
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
@@ -30,6 +34,8 @@ class DefaultAuthRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val libraries: LibrariesRepository,
     private val activeLibrary: ActiveLibrary,
+    // #371
+    private val libraryTokens: LibraryTokenStore,
 ) : AuthRepository {
 
     override val isSignedIn: Flow<Boolean> =
@@ -244,6 +250,88 @@ class DefaultAuthRepository @Inject constructor(
             Log.e(TAG, "Unable to record the username", ex)
         }
     }
+
+    // #371
+    override suspend fun signInToNewLibrary(
+        address: String,
+        username: String,
+        password: String,
+        createAccount: Boolean,
+    ): AuthNewLibraryResult = withContext(ioDispatcher) {
+        val normalized = ServerAddress.normalize(address) ?: return@withContext AuthNewLibraryResult.ServerError
+        // Never two libraries for one server, even if the Connect check was skipped.
+        if (libraries.findByAddress(normalized) != null) return@withContext AuthNewLibraryResult.AlreadySaved
+        val body = AuthSignInRequestDto(username = username, password = password).toJsonRequest()
+        // The explicit-base-URL builder never adds Authorization, so a 401 here can't clear the active token.
+        val request = omnibusHttpClient
+            .request(normalized.toHttpUrl(), if (createAccount) REGISTER_PATH else LOGIN_PATH)
+            .post(body)
+            .build()
+        val httpResponse = try {
+            omnibusHttpClient.execute(request)
+        } catch (ex: IOException) {
+            Log.e(TAG, "Unable to reach the new library's server", ex)
+            return@withContext AuthNewLibraryResult.Unreachable
+        }
+
+        httpResponse.use { result ->
+            Log.d(TAG, "New library sign-in result: $result")
+            if (!result.isSuccessful) {
+                return@use newLibraryFailure(result.code, createAccount)
+            }
+            val response = try {
+                AuthSignInResponseDto.fromJsonString(result.body.string())
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                // The exception message can include the response body, which carries the token.
+                Log.e(TAG, "Unable to read the new library's sign-in")
+                return@use AuthNewLibraryResult.ServerError
+            }
+            val token = response.token
+            if (token.isNullOrBlank()) return@use AuthNewLibraryResult.ServerError
+            // Not cancellable: leaving the screen must not strand a library without its token.
+            withContext(NonCancellable) { saveNewLibrary(normalized, token, response.user.username) }
+        }
+    }
+
+    /** Adds [address] as an inactive library and stores its [token] under it. Removes the row if the save fails. */
+    private suspend fun saveNewLibrary(address: String, token: String, username: String): AuthNewLibraryResult {
+        val library = libraries.add(address, activate = false) ?: return AuthNewLibraryResult.ServerError
+        try {
+            libraryTokens.save(library.id, token)
+        } catch (ex: Exception) {
+            // Don't log the exception: it may carry the token.
+            Log.e(TAG, "Unable to store the new library's token")
+            libraries.remove(library.id)
+            return AuthNewLibraryResult.ServerError
+        }
+        if (username.isNotBlank()) {
+            try {
+                libraries.setUsername(library.id, username)
+            } catch (ex: Exception) {
+                Log.e(TAG, "Unable to record the username", ex)
+            }
+        }
+        return AuthNewLibraryResult.Success(libraryId = library.id)
+    }
+
+    private fun newLibraryFailure(code: Int, createAccount: Boolean): AuthNewLibraryResult =
+        if (createAccount) {
+            when (code) {
+                409 -> AuthNewLibraryResult.UsernameTaken
+                403 -> AuthNewLibraryResult.RegistrationDisabled
+                400 -> AuthNewLibraryResult.InvalidDetails
+                429 -> AuthNewLibraryResult.TooManyAttempts
+                else -> AuthNewLibraryResult.ServerError
+            }
+        } else {
+            when (code) {
+                401, 403 -> AuthNewLibraryResult.InvalidCredentials
+                429 -> AuthNewLibraryResult.TooManyAttempts
+                else -> AuthNewLibraryResult.ServerError
+            }
+        }
 
     internal companion object {
         const val TAG = "DefaultAuthRepository"

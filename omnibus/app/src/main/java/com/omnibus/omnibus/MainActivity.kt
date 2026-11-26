@@ -19,10 +19,19 @@ import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.audiobook.player.PlayerScreen
 import com.omnibus.omnibus.feature.auth.ui.LoginScreen
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenAction
+import com.omnibus.omnibus.feature.auth.ui.LoginScreenMode
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreen
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenAction
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.libraries.add.AddLibraryConnectRoute
+import com.omnibus.omnibus.feature.libraries.add.AddLibrarySignInRoute
+import com.omnibus.omnibus.feature.libraries.add.closeAddLibrary
+import com.omnibus.omnibus.feature.libraries.add.closeAddLibrarySignIn
+import com.omnibus.omnibus.feature.libraries.add.finishAddingLibrary
+import com.omnibus.omnibus.feature.libraries.add.openAddLibrary
+import com.omnibus.omnibus.feature.libraries.add.openAddLibrarySignIn
+import com.omnibus.omnibus.feature.libraries.add.switchFromAddLibrary
 import com.omnibus.omnibus.feature.libraries.switching.SwitchingRoute
 import com.omnibus.omnibus.feature.libraries.switching.SwitchingScreen
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
@@ -120,6 +129,7 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                     pendingScannedBook = pendingScannedBook,
                     onPendingScannedBookOpened = { pendingScannedBook = null },
                     onSwitchLibrary = { backstack.openSwitching(it) },
+                    onAddLibrary = { backstack.openAddLibrary() },
                 )
             }
             entry<SwitchingRoute> { key ->
@@ -128,6 +138,27 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                     onLeave = { backstack.closeSwitching(key) },
                     onOpened = { backstack.finishOpening() },
                 )
+            }
+            // #371 Connect in adding mode, over the shell. Back and Close both leave it.
+            entry<AddLibraryConnectRoute> {
+                ServerConfigurationScreen(isAdding = true, onAction = { action ->
+                    when (action) {
+                        is ServerConfigurationScreenAction.Close -> backstack.closeAddLibrary()
+                        is ServerConfigurationScreenAction.Connected -> backstack.openAddLibrarySignIn(action.address)
+                        is ServerConfigurationScreenAction.SwitchTo -> backstack.switchFromAddLibrary(action.library)
+                        is ServerConfigurationScreenAction.ServerConfigurationSaved -> Unit
+                    }
+                })
+            }
+            // #371 Sign-in in adding mode: the address being added, with Connect under it.
+            entry<AddLibrarySignInRoute> { key ->
+                LoginScreen(mode = LoginScreenMode.Adding(key.address), onAction = { action ->
+                    when (action) {
+                        is LoginScreenAction.LibraryAdded -> backstack.finishAddingLibrary(action.libraryId)
+                        is LoginScreenAction.ChangeServer -> backstack.closeAddLibrarySignIn(key)
+                        is LoginScreenAction.Login -> Unit
+                    }
+                })
             }
             entry<ScanRoute> {
                 ScanScreen(

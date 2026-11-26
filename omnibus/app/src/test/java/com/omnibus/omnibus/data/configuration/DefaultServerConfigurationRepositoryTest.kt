@@ -223,4 +223,52 @@ class DefaultServerConfigurationRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    // #371
+    describe("validating a new library's address") {
+        context("when the address matches a saved library") {
+            it("TC-3: returns AlreadySaved for that library, without probing the server") {
+                val saved = randomLibrary().copy(address = "https://books.home.lan", isActive = true)
+                val libraries = TestLibrariesRepository(listOf(saved))
+
+                sut(libraries).validateNewLibraryAddress("HTTPS://Books.Home.LAN/") shouldBe
+                    ServerValidationResult.AlreadySaved(saved)
+            }
+        }
+
+        context("when no saved library matches") {
+            context("when the health check responds 200") {
+                it("TC-4: returns Success with the normalized address") {
+                    withMockServer { server ->
+                        server.enqueue(ok())
+                        val active = randomLibrary().copy(isActive = true)
+
+                        sut(TestLibrariesRepository(listOf(active)))
+                            .validateNewLibraryAddress("  ${server.url("/")}  ") shouldBe
+                            ServerValidationResult.Success(serverAddress = server.url("/").toString().trimEnd('/'))
+                    }
+                }
+
+                it("TC-4: leaves the saved libraries as they were") {
+                    withMockServer { server ->
+                        server.enqueue(ok())
+                        val active = randomLibrary().copy(isActive = true)
+                        val libraries = TestLibrariesRepository(listOf(active))
+
+                        sut(libraries).validateNewLibraryAddress(server.url("/").toString())
+
+                        libraries.getLibrariesFlow().first() shouldBe listOf(active)
+                        libraries.removedIds shouldBe emptyList()
+                    }
+                }
+            }
+
+            context("when the address can't be parsed") {
+                it("TC-4: returns InvalidAddressFormat") {
+                    sut(TestLibrariesRepository(listOf(randomLibrary().copy(isActive = true))))
+                        .validateNewLibraryAddress("http://") shouldBe ServerValidationResult.InvalidAddressFormat
+                }
+            }
+        }
+    }
 })

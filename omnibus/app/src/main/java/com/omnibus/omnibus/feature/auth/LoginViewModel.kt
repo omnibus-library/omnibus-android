@@ -2,6 +2,7 @@ package com.omnibus.omnibus.feature.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.omnibus.omnibus.data.auth.AuthNewLibraryResult
 import com.omnibus.omnibus.data.auth.AuthRegisterResult
 import com.omnibus.omnibus.data.auth.AuthRepository
 import com.omnibus.omnibus.data.auth.AuthSignInResult
@@ -24,13 +25,25 @@ class LoginViewModel @Inject constructor(
 
     private val loginStatus = MutableStateFlow(LoginStatus.NOT_LOGGED_IN)
 
+    // #371
+    /** The library a sign-in in adding mode saved, once it has. */
+    private val addedLibraryId = MutableStateFlow<String?>(null)
+
     val uiState: StateFlow<LoginUIState> =
-        combine(serverConfigRepo.getSavedServerConfigFlow(), loginStatus) { serverAddress, status ->
+        combine(
+            serverConfigRepo.getSavedServerConfigFlow(),
+            loginStatus,
+            addedLibraryId,
+        ) { serverAddress, status, added ->
 
             val loginStatus =
                 if (serverAddress.isNullOrBlank()) LoginStatus.MISSING_SERVER_CONFIG else status
 
-            LoginUIState(loginStatus = loginStatus, serverAddress = serverAddress.orEmpty())
+            LoginUIState(
+                loginStatus = loginStatus,
+                serverAddress = serverAddress.orEmpty(),
+                addedLibraryId = added,
+            )
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.Lazily,
@@ -122,11 +135,77 @@ class LoginViewModel @Inject constructor(
             }
         }
     }
+
+    // #371
+    /** Signs in to the library at [address], which isn't saved yet, and adds it. */
+    fun attemptAddLibrary(address: String, username: String, password: String) {
+        attemptNewLibrary(address, username, password, createAccount = false)
+    }
+
+    // #371
+    /** Registers an account on the library at [address], which isn't saved yet, and adds it. */
+    fun attemptRegisterNewLibrary(address: String, username: String, password: String) {
+        attemptNewLibrary(address, username, password, createAccount = true)
+    }
+
+    private fun attemptNewLibrary(address: String, username: String, password: String, createAccount: Boolean) {
+        if (loginStatus.value != LoginStatus.AUTH_PENDING) {
+            loginStatus.update { LoginStatus.AUTH_PENDING }
+
+            viewModelScope.launch {
+                val result = authRepository.signInToNewLibrary(
+                    address = address,
+                    username = username,
+                    password = password,
+                    createAccount = createAccount,
+                )
+
+                when (result) {
+                    is AuthNewLibraryResult.Success -> {
+                        addedLibraryId.update { result.libraryId }
+                        loginStatus.update { LoginStatus.LOGGED_IN }
+                    }
+
+                    AuthNewLibraryResult.AlreadySaved,
+                    AuthNewLibraryResult.ServerError -> {
+                        loginStatus.update { LoginStatus.SERVER_ERROR }
+                    }
+
+                    AuthNewLibraryResult.InvalidCredentials -> {
+                        loginStatus.update { LoginStatus.INVALID_CREDENTIALS }
+                    }
+
+                    AuthNewLibraryResult.TooManyAttempts -> {
+                        loginStatus.update { LoginStatus.TOO_MANY_ATTEMPTS }
+                    }
+
+                    AuthNewLibraryResult.UsernameTaken -> {
+                        loginStatus.update { LoginStatus.USERNAME_TAKEN }
+                    }
+
+                    AuthNewLibraryResult.RegistrationDisabled -> {
+                        loginStatus.update { LoginStatus.REGISTRATION_DISABLED }
+                    }
+
+                    AuthNewLibraryResult.InvalidDetails -> {
+                        loginStatus.update { LoginStatus.INVALID_DETAILS }
+                    }
+
+                    AuthNewLibraryResult.Unreachable -> {
+                        loginStatus.update { LoginStatus.SERVER_UNREACHABLE }
+                    }
+                }
+            }
+        }
+    }
 }
 
 data class LoginUIState(
     val loginStatus: LoginStatus = LoginStatus.NOT_LOGGED_IN,
     val serverAddress: String = "",
+    // #371
+    /** The library a sign-in in adding mode saved, once [loginStatus] is LOGGED_IN. */
+    val addedLibraryId: String? = null,
 )
 
 enum class LoginStatus {

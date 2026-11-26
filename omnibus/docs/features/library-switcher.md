@@ -2,7 +2,7 @@
 
 | Version | Status | Last updated |
 |---|---|---|
-| 1.0.2 | Accepted | 2026-11-25 |
+| 1.1.0 | Accepted | 2026-11-26 |
 
 ## Summary
 
@@ -249,6 +249,7 @@ The screen runs in three stages:
 - A shelf MUST hold as many spines as fit its width. The next library MUST start a new shelf below.
 - The active library's spine MUST be raised and drawn in the accent colour.
 - The lift MUST take about 0.9 seconds: the current spine settles, then the new spine lifts, and the name and illuminated initial crossfade during the lift.
+- When a library has just been added, its spine MUST drop onto the end of the last shelf, taking about 0.45 seconds, before the lift. While remove-animations is on, the drop MUST happen in one step.
 - When the bookcase doesn't fit the window, it MUST scroll to the new library's shelf before the lift.
 - The Opening stage MUST hold until the new library is ready, then crossfade into it.
 - There MUST be no way to skip the animation.
@@ -372,6 +373,7 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 |---|---|---|
 | Sync limit | 10s | Longest a sync runs before it counts as failed. |
 | Lift | 900ms | The settle and the lift together. |
+| Drop-in | 450ms | How long a newly added library's spine takes to drop onto the shelf. |
 | Name length | 40 characters | Longest library name. |
 | Spine width | 30dp | Width of every spine. |
 | Spine gap | 7dp | Space between spines on a shelf. |
@@ -385,6 +387,10 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 ---
 
 ## Changelog
+
+**1.1.0** (2026-11-26)
+
+- Adds the Drop-in constant (450ms) and states how long the new spine's drop takes, and that it is one step under remove-animations. Why: adding a library drops the new spine before the lift, and its timing wasn't specified.
 
 **1.0.2** (2026-11-25)
 

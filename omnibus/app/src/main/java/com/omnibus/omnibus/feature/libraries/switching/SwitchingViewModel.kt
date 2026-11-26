@@ -25,7 +25,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Where a switch is. Null in [SwitchingUIState.stage] means it has not started yet. */
+/**
+ * Where a switch is. Null in [SwitchingUIState.stage] means it has not started yet, or an added library is dropping in.
+ */
 enum class SwitchingStage {
     /** Sending the current library's pending changes. */
     Syncing,
@@ -43,7 +45,7 @@ enum class SwitchingStage {
 /**
  * What the switching screen shows.
  *
- * @property stage The stage, or null before the switch starts.
+ * @property stage The stage, or null before the switch starts and while an added library's spine drops in.
  * @property current The active library when the switch started, or null when none is.
  * @property target The library being switched to, or null until it is read.
  * @property left Set once the reader has stayed on the current library, so the screen should close.
@@ -83,6 +85,10 @@ class SwitchingViewModel @AssistedInject constructor(
 
     private val _uiState = MutableStateFlow(SwitchingUIState())
 
+    // #371
+    /** Every library on the shelf, in list order, as the switch started. An added library drops onto its end. */
+    private var shelf: List<Library> = emptyList()
+
     /** The screen's state. */
     val uiState: StateFlow<SwitchingUIState> = _uiState.asStateFlow()
 
@@ -93,6 +99,8 @@ class SwitchingViewModel @AssistedInject constructor(
             } else {
                 when (route.kind) {
                     SwitchKind.Switch -> switch()
+                    // #371
+                    SwitchKind.Add -> add()
                 }
             }
         }
@@ -137,11 +145,69 @@ class SwitchingViewModel @AssistedInject constructor(
         }
     }
 
+    // #371
+    /**
+     * The start of a switch to a library that was just added: [switch], except the new library's spine stays off the
+     * shelf until it drops in, so syncing and Sync failed show the shelf as the reader left it.
+     */
+    private suspend fun add() {
+        val all = libraries.getLibrariesFlow().first()
+        shelf = all
+        val target = all.firstOrNull { it.id == route.toLibraryId }
+        if (target == null) {
+            _uiState.update { it.copy(left = true) }
+            return
+        }
+        val current = all.firstOrNull { library -> library.isActive }
+        _uiState.update {
+            it.copy(
+                current = current,
+                target = target,
+                bookcase = bookcase(
+                    all.filterNot { library -> library.id == target.id },
+                    raisedId = current?.id,
+                    transition = BookcaseTransition.Still,
+                ),
+            )
+        }
+
+        if (!sync.hasUnsyncedChanges()) {
+            lift()
+            return
+        }
+        _uiState.update { it.copy(stage = SwitchingStage.Syncing) }
+        when (sync.syncActive()) {
+            LibrarySyncResult.Synced -> lift()
+            LibrarySyncResult.Failed -> _uiState.update { it.copy(stage = SwitchingStage.SyncFailed) }
+        }
+    }
+
+    // #371
+    /**
+     * Drops the added library's spine onto its slot at the end of the shelf, from above, and waits for it to land. The
+     * stage is null meanwhile, so the screen keeps the current library's name with no progress bar.
+     */
+    private suspend fun dropIn() {
+        _uiState.update {
+            it.copy(
+                stage = null,
+                bookcase = bookcase(
+                    shelf,
+                    raisedId = it.current?.id,
+                    transition = BookcaseTransition.DropIn(route.toLibraryId),
+                ),
+            )
+        }
+        delay(BOOKCASE_DROP_IN)
+    }
+
     /**
      * Lifts the new spine for [BookcaseGeometry.LIFT], then opens on the target and commits the switch. The wait runs on
      * [viewModelScope]; the commit runs on [persistScope], so once it has started, clearing this view model cannot stop it.
      */
     private suspend fun lift() {
+        // #371
+        if (route.kind == SwitchKind.Add) dropIn()
         val from = _uiState.value.current?.id
         val transition = if (from == null) BookcaseTransition.Still else BookcaseTransition.Lift(from, route.toLibraryId)
         _uiState.update {

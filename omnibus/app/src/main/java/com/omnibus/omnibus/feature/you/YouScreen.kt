@@ -63,6 +63,7 @@ internal object YouScreenTestTags {
  *
  * @param onOpenRequests Called when the Requests row is tapped.
  * @param onOpenManageLibraries Called when the Libraries row is tapped, or "Manage libraries" in the switcher.
+ * @param onAddLibrary Called when "Add library" in the switcher is tapped (#371). The sheet closes first.
  */
 @Composable
 fun YouScreen(
@@ -70,6 +71,7 @@ fun YouScreen(
     modifier: Modifier = Modifier,
     onOpenManageLibraries: () -> Unit = {},
     onSwitchTo: (libraryId: String) -> Unit = {},
+    onAddLibrary: () -> Unit = {},
     viewModel: YouViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -93,6 +95,7 @@ fun YouScreen(
         LibrarySwitcherSheet(
             onDismiss = { showsSwitcher = false },
             onManageLibraries = onOpenManageLibraries,
+            onAddLibrary = onAddLibrary,
             // Cleared before the switch, so a shell that leaves composition for the switching screen can't reopen it.
             onSwitchTo = { libraryId ->
                 showsSwitcher = false

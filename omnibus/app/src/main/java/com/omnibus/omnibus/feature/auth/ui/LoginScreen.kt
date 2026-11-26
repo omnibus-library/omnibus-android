@@ -66,11 +66,28 @@ private enum class LoginMode { LOGIN, REGISTER }
 abstract class LoginScreenAction {
     data object Login : LoginScreenAction()
     data object ChangeServer : LoginScreenAction()
+
+    // #371
+    /** Adding a library: the sign-in saved [libraryId], which switching now switches to. */
+    data class LibraryAdded(val libraryId: String) : LoginScreenAction()
+}
+
+/**
+ * Which sign-in this is (C14). [SignIn] signs in to the saved server. [Adding] signs in to [address], a library that
+ * isn't saved yet (#371), and adds it. Sealed, so every `when` over it has to decide what a new mode does.
+ */
+sealed interface LoginScreenMode {
+    /** Signs in to the saved server. */
+    data object SignIn : LoginScreenMode
+
+    /** Signs in to [address], which isn't a saved library, and adds it as one. */
+    data class Adding(val address: String) : LoginScreenMode
 }
 
 @Composable
 fun LoginScreen(
     onAction: (LoginScreenAction) -> Unit,
+    mode: LoginScreenMode = LoginScreenMode.SignIn,
     modifier: Modifier = Modifier,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
@@ -80,29 +97,52 @@ fun LoginScreen(
     // The ViewModel can outlive this entry, so only act on LOGGED_IN results from a sign-in made during this visit.
     var awaitingLogin by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.loginStatus, awaitingLogin) {
-        when (uiState.loginStatus) {
-            LoginStatus.LOGGED_IN -> if (awaitingLogin) {
-                awaitingLogin = false
-                currentAction(LoginScreenAction.Login)
+    LaunchedEffect(uiState.loginStatus, awaitingLogin, mode) {
+        when (mode) {
+            LoginScreenMode.SignIn -> when (uiState.loginStatus) {
+                LoginStatus.LOGGED_IN -> if (awaitingLogin) {
+                    awaitingLogin = false
+                    currentAction(LoginScreenAction.Login)
+                }
+
+                LoginStatus.MISSING_SERVER_CONFIG -> currentAction(LoginScreenAction.ChangeServer)
+                else -> {
+                    /* do nothing specific */
+                }
             }
 
-            LoginStatus.MISSING_SERVER_CONFIG -> currentAction(LoginScreenAction.ChangeServer)
-            else -> {
-                /* do nothing specific */
+            // #371 An added library's address is set, so the missing-server state can't occur here.
+            is LoginScreenMode.Adding -> {
+                val added = uiState.addedLibraryId
+                if (uiState.loginStatus == LoginStatus.LOGGED_IN && awaitingLogin && added != null) {
+                    awaitingLogin = false
+                    currentAction(LoginScreenAction.LibraryAdded(added))
+                }
             }
         }
     }
 
+    // #371 Adding shows the address being added, not the saved one.
+    val shown = when (mode) {
+        LoginScreenMode.SignIn -> uiState
+        is LoginScreenMode.Adding -> uiState.copy(serverAddress = mode.address)
+    }
+
     LoginContent(
-        modifier = modifier, uiState = uiState,
+        modifier = modifier, uiState = shown,
         onSignIn = { username, password ->
             awaitingLogin = true
-            viewModel.attemptLogin(username, password)
+            when (mode) {
+                LoginScreenMode.SignIn -> viewModel.attemptLogin(username, password)
+                is LoginScreenMode.Adding -> viewModel.attemptAddLibrary(mode.address, username, password)
+            }
         },
         onRegister = { username, password ->
             awaitingLogin = true
-            viewModel.attemptRegister(username, password)
+            when (mode) {
+                LoginScreenMode.SignIn -> viewModel.attemptRegister(username, password)
+                is LoginScreenMode.Adding -> viewModel.attemptRegisterNewLibrary(mode.address, username, password)
+            }
         },
         onChangeServer = {
             currentAction(LoginScreenAction.ChangeServer)

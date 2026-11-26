@@ -44,6 +44,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.libraries.Library
+import com.omnibus.omnibus.feature.libraries.add.AddLibraryAction
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Radius
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -56,6 +57,7 @@ internal object LibrarySwitcherTestTags {
     const val SHEET = "library-switcher-sheet"
     const val TITLE = "library-switcher-title"
     const val LIST = "library-switcher-list"
+    const val ADD = "library-switcher-add"
     const val MANAGE = "library-switcher-manage"
 }
 
@@ -86,6 +88,7 @@ private const val DIALOG_MAX_HEIGHT = 0.8f
  *
  * @param onDismiss Called once the sheet has closed: the open library tapped, a swipe down, the scrim or Back.
  * @param onManageLibraries Called after the sheet has closed, when "Manage libraries" was tapped.
+ * @param onAddLibrary Called after the sheet has closed, when "Add library" was tapped (#371).
  * @param onSwitchTo Called with the id of another library once the sheet has closed (#369).
  */
 @Composable
@@ -93,6 +96,7 @@ fun LibrarySwitcherSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onManageLibraries: () -> Unit = {},
+    onAddLibrary: () -> Unit = {},
     onSwitchTo: (libraryId: String) -> Unit = {},
     viewModel: LibrarySwitcherViewModel = hiltViewModel(),
 ) {
@@ -103,6 +107,7 @@ fun LibrarySwitcherSheet(
         onDismiss = onDismiss,
         modifier = modifier,
         onManageLibraries = onManageLibraries,
+        onAddLibrary = onAddLibrary,
     )
 }
 
@@ -131,6 +136,7 @@ internal fun switchOrClose(library: Library, close: () -> Unit, onSwitchTo: (lib
  * @param onDismiss Called once the sheet has closed.
  * @param centered Whether to show the dialog rather than the bottom sheet.
  * @param onManageLibraries Called after the sheet has closed, when "Manage libraries" was tapped.
+ * @param onAddLibrary Called after the sheet has closed, when "Add library" was tapped.
  */
 @Composable
 internal fun LibrarySwitcherLayout(
@@ -140,11 +146,12 @@ internal fun LibrarySwitcherLayout(
     modifier: Modifier = Modifier,
     centered: Boolean = LocalWindowInfo.current.containerDpSize.width >= SWITCHER_CENTERED_MIN_WIDTH,
     onManageLibraries: () -> Unit = {},
+    onAddLibrary: () -> Unit = {},
 ) {
     if (centered) {
-        LibrarySwitcherDialog(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries)
+        LibrarySwitcherDialog(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries, onAddLibrary)
     } else {
-        LibrarySwitcherBottomSheet(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries)
+        LibrarySwitcherBottomSheet(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries, onAddLibrary)
     }
 }
 
@@ -157,6 +164,7 @@ private fun LibrarySwitcherBottomSheet(
     onDismiss: () -> Unit,
     modifier: Modifier,
     onManageLibraries: () -> Unit,
+    onAddLibrary: () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -183,6 +191,7 @@ private fun LibrarySwitcherBottomSheet(
             onLibraryClick = { library -> onLibraryClick(library, close) },
             modifier = Modifier.heightIn(max = windowHeight * SHEET_MAX_HEIGHT),
             onManageLibraries = { hideThen { onDismiss(); onManageLibraries() } },
+            onAddLibrary = { hideThen { onDismiss(); onAddLibrary() } },
         )
     }
 }
@@ -195,6 +204,7 @@ private fun LibrarySwitcherDialog(
     onDismiss: () -> Unit,
     modifier: Modifier,
     onManageLibraries: () -> Unit,
+    onAddLibrary: () -> Unit,
 ) {
     val windowHeight = LocalWindowInfo.current.containerDpSize.height
     Dialog(onDismissRequest = onDismiss) {
@@ -205,6 +215,7 @@ private fun LibrarySwitcherDialog(
                 .testTag(LibrarySwitcherTestTags.SHEET)
                 .heightIn(max = windowHeight * DIALOG_MAX_HEIGHT),
             onManageLibraries = { onDismiss(); onManageLibraries() },
+            onAddLibrary = { onDismiss(); onAddLibrary() },
         )
     }
 }
@@ -216,6 +227,7 @@ internal fun LibrarySwitcherDialogCard(
     onLibraryClick: (Library) -> Unit,
     modifier: Modifier = Modifier,
     onManageLibraries: () -> Unit = {},
+    onAddLibrary: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Surface(
@@ -230,6 +242,7 @@ internal fun LibrarySwitcherDialogCard(
             onLibraryClick = onLibraryClick,
             modifier = Modifier.padding(top = Spacing.lg),
             onManageLibraries = onManageLibraries,
+            onAddLibrary = onAddLibrary,
         )
     }
 }
@@ -240,6 +253,7 @@ internal fun LibrarySwitcherDialogCard(
  *
  * @param onLibraryClick Called with the library whose row was tapped.
  * @param onManageLibraries Called when the "Manage libraries" action is tapped.
+ * @param onAddLibrary Called when the "Add library" action is tapped.
  */
 @Composable
 internal fun LibrarySwitcherContent(
@@ -247,6 +261,7 @@ internal fun LibrarySwitcherContent(
     onLibraryClick: (Library) -> Unit,
     modifier: Modifier = Modifier,
     onManageLibraries: () -> Unit = {},
+    onAddLibrary: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Column(modifier.fillMaxWidth()) {
@@ -275,6 +290,7 @@ internal fun LibrarySwitcherContent(
             }
         }
         HorizontalDivider(Modifier.padding(horizontal = Spacing.screen), thickness = 0.5.dp, color = palette.line)
+        AddLibraryAction(onClick = onAddLibrary, testTag = LibrarySwitcherTestTags.ADD)
         SwitcherAction(
             icon = R.drawable.ic_libraries_manage,
             label = stringResource(R.string.libraries_manage_sheet_action),
@@ -285,9 +301,9 @@ internal fun LibrarySwitcherContent(
     }
 }
 
-/** A full-width action row under the list: a gear icon and its label, one TalkBack button. */
+/** A full-width action row under the list: an icon and its label, one TalkBack button. */
 @Composable
-private fun SwitcherAction(
+internal fun SwitcherAction(
     @DrawableRes icon: Int,
     label: String,
     testTag: String,

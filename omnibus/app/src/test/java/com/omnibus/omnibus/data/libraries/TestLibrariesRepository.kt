@@ -104,4 +104,14 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
             list.map { if (it.id == libraryId) it.copy(isActive = true, lastUsedAt = stamp) else it.copy(isActive = false) }
         }
     }
+
+    // #371
+    /** The addresses passed to [findByAddress], in call order. */
+    val foundAddresses = mutableListOf<String>()
+
+    override suspend fun findByAddress(address: String): Library? {
+        foundAddresses += address
+        if (ServerAddress.normalize(address) == null) return null
+        return libraries.value.firstOrNull { sameServerAddress(it.address, address) }
+    }
 }

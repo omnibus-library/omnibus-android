@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.libraries.Library
+import com.omnibus.omnibus.feature.libraries.add.AddLibraryAction
 import com.omnibus.omnibus.feature.libraries.switcher.LibraryRow
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -33,6 +34,7 @@ import com.omnibus.omnibus.ui.theme.Spacing
 internal object ManageLibrariesTestTags {
     const val TITLE = "manage-libraries-title"
     const val LIST = "manage-libraries-list"
+    const val ADD = "manage-libraries-add"
 }
 
 /**
@@ -40,11 +42,13 @@ internal object ManageLibrariesTestTags {
  *
  * @param onBack Called when the back arrow is tapped.
  * @param onOpenLibrary Called with the library's id when its row is tapped.
+ * @param onAddLibrary Called when "Add library", under the list, is tapped (#371).
  */
 @Composable
 fun ManageLibrariesScreen(
     onBack: () -> Unit,
     onOpenLibrary: (libraryId: String) -> Unit,
+    onAddLibrary: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ManageLibrariesViewModel = hiltViewModel(),
 ) {
@@ -54,6 +58,7 @@ fun ManageLibrariesScreen(
         onBack = onBack,
         onOpenLibrary = onOpenLibrary,
         modifier = modifier,
+        footer = { AddLibraryAction(onClick = onAddLibrary, testTag = ManageLibrariesTestTags.ADD) },
     )
 }
 

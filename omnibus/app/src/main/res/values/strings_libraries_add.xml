@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adding a library from the switcher sheet and Manage libraries (#371). -->
+    <!-- The add action's label, in the switcher sheet and under the Manage libraries list. -->
+    <string name="libraries_add_action">Add library</string>
+    <!-- Connect in adding mode: the close button's TalkBack label. -->
+    <string name="libraries_add_close">Close</string>
+    <!-- Connect in adding mode: the address matches a saved library. %1$s is that library's address. -->
+    <string name="libraries_add_already_saved">%1$s is already in your libraries.</string>
+    <!-- Connect in adding mode: the button for a saved library that matches the address. %1$s is its name. -->
+    <string name="libraries_add_switch_to">Switch to %1$s</string>
+</resources>
