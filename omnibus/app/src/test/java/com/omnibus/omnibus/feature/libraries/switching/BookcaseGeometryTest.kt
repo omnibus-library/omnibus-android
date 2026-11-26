@@ -45,9 +45,9 @@ class BookcaseGeometryTest : DescribeSpec({
             slots.last() shouldBe SpineSlot(shelf = 24, x = expectedX(7))
         }
 
-        it("#370 AC3: caps a shelf at 560 dp however wide the window is") {
-            checkAll(Exhaustive.of(560.dp, 600.dp, 840.dp, 1280.dp)) { width ->
-                BookcaseGeometry.spinesPerShelf(width) shouldBe 14
+        it("#370 AC3: caps a shelf at 560 dp inside its margins however wide the bookcase is") {
+            checkAll(Exhaustive.of(600.dp, 840.dp, 1280.dp)) { width ->
+                BookcaseGeometry.spinesPerShelf(width) shouldBe 15
             }
         }
 

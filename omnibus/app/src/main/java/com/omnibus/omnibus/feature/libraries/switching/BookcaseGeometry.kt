@@ -24,7 +24,7 @@ object BookcaseGeometry {
     /** Space on each side of a shelf. */
     val SHELF_MARGIN: Dp = 20.dp
 
-    /** The widest a shelf grows. Narrower windows than the 600 dp breakpoint never reach it. */
+    /** The widest a shelf (its plank, inside the margins) grows: from the 600 dp breakpoint, it is this wide. */
     val SHELF_MAX_WIDTH: Dp = 560.dp
 
     /** Space between one shelf and the next one below it. */
@@ -37,12 +37,13 @@ object BookcaseGeometry {
     val INITIAL_SIZE: Dp = 64.dp
 
     /**
-     * How many spines fit on one shelf of a bookcase [availableWidth] wide, capped at [SHELF_MAX_WIDTH], inside its
-     * [SHELF_MARGIN]s. At least one, so a window too narrow for a spine still shows every library.
+     * How many spines fit on one shelf of a bookcase [availableWidth] wide: the shelf is that width less a
+     * [SHELF_MARGIN] on each side, capped at [SHELF_MAX_WIDTH]. At least one, so a window too narrow for a spine still
+     * shows every library.
      */
     fun spinesPerShelf(availableWidth: Dp): Int {
-        val inside = availableWidth.coerceAtMost(SHELF_MAX_WIDTH) - SHELF_MARGIN * 2
-        return maxOf(1, ((inside + SPINE_GAP) / (SPINE_WIDTH + SPINE_GAP)).toInt())
+        val shelf = (availableWidth - SHELF_MARGIN * 2).coerceAtMost(SHELF_MAX_WIDTH)
+        return maxOf(1, ((shelf + SPINE_GAP) / (SPINE_WIDTH + SPINE_GAP)).toInt())
     }
 
     /**

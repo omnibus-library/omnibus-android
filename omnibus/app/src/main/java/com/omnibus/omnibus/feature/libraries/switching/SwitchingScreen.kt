@@ -128,26 +128,33 @@ internal fun SwitchingScreenContent(
             .semantics { paneTitle = announcement },
         contentAlignment = Alignment.Center,
     ) {
+        // The bookcase spans the window up to a 560 dp shelf plus its own margins, which are its only inset (#370).
         Column(
-            Modifier
-                .widthIn(max = 560.dp)
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.screen),
+            Modifier.widthIn(max = BookcaseGeometry.SHELF_MAX_WIDTH + BookcaseGeometry.SHELF_MARGIN * 2).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
             BookcaseViewport(uiState.bookcase, Modifier.weight(1f, fill = false)) { shelf ->
                 Bookcase(state = shelf, modifier = Modifier.fillMaxWidth())
             }
-            LibraryTitle(library = shown)
+            Column(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.screen),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            ) {
+                LibraryTitle(library = shown)
 
-            when (stage) {
-                SwitchingStage.SyncFailed -> SyncFailedContent(
-                    currentName = currentName,
-                    onStay = onStay,
-                    onSwitchAnyway = onSwitchAnyway,
-                )
-                else -> StatusContent(stage = stage, currentName = currentName, targetName = targetName)
+                when (stage) {
+                    SwitchingStage.SyncFailed -> SyncFailedContent(
+                        currentName = currentName,
+                        onStay = onStay,
+                        onSwitchAnyway = onSwitchAnyway,
+                    )
+                    else -> StatusContent(stage = stage, currentName = currentName, targetName = targetName)
+                }
             }
         }
     }

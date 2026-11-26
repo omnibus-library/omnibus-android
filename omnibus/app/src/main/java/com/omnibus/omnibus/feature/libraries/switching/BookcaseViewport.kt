@@ -22,7 +22,6 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.coerceAtMost
 
 /**
  * Lays the bookcase out on as many shelves as [state]'s spines need (#370), one [shelf] per row of
@@ -94,7 +93,7 @@ fun BookcaseViewport(
 
 /** [spines] split into shelves as [BookcaseGeometry.layout] places them in a bookcase [availableWidth] wide. */
 private fun shelvesOf(spines: List<BookcaseSpine>, availableWidth: Dp): List<List<BookcaseSpine>> {
-    val slots = BookcaseGeometry.layout(spines.size, availableWidth.coerceAtMost(BookcaseGeometry.SHELF_MAX_WIDTH))
+    val slots = BookcaseGeometry.layout(spines.size, availableWidth)
     return spines.indices.groupBy { slots[it].shelf }.values.map { indices -> indices.map(spines::get) }
 }
 
