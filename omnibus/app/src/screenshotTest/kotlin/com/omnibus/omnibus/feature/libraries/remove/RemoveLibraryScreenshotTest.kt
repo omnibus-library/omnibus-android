@@ -20,6 +20,7 @@ private val home = Library(
     isActive = false,
 )
 
+// TC-25
 /** The confirm dialog on a phone, dark, and from 600dp wide, where it is centred and no wider than its cap. */
 @PreviewTest
 @Preview(name = "Light", widthDp = 411, heightDp = 891)
@@ -32,6 +33,7 @@ fun RemoveLibraryConfirm() {
     }
 }
 
+// TC-25
 /** The confirm dialog while the sync runs: Removing with a progress indicator, and Cancel disabled. */
 @PreviewTest
 @Preview(name = "Light", widthDp = 411, heightDp = 891)
@@ -43,6 +45,7 @@ fun RemoveLibraryRemoving() {
     }
 }
 
+// TC-25
 /** The dialog after the sync failed: "Couldn't sync Home" with Remove anyway. */
 @PreviewTest
 @Preview(name = "Light", widthDp = 411, heightDp = 891)
@@ -54,6 +57,7 @@ fun RemoveLibrarySyncFailed() {
     }
 }
 
+// TC-26
 /** The detail of an inactive library, with Remove library under the address and username rows. */
 @PreviewTest
 @Preview(name = "Light", widthDp = 411, heightDp = 891)
