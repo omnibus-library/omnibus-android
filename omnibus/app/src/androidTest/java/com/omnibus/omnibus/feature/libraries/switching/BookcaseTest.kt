@@ -106,12 +106,14 @@ class BookcaseTest {
             }
         }
 
-        listOf(bookcaseSpineTag("home"), bookcaseSpineTag("work"), ILLUMINATED_INITIAL_TAG).forEach { tag ->
+        listOf(bookcaseSpineTag("home"), bookcaseSpineTag("work")).forEach { tag ->
             rule.onNodeWithTag(tag)
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription))
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Focused))
         }
+        // TalkBack reads the merged tree: the initial is no node of its own there, and adds nothing to the name.
+        rule.onNodeWithTag(ILLUMINATED_INITIAL_TAG).assertDoesNotExist()
         rule.onNodeWithTag(SwitchingTestTags.NAME).assertTextEquals("Home")
     }
 
