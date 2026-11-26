@@ -11,8 +11,14 @@ object TestEpub {
     /**
      * Builds the book. With [hiddenMarkup], chapter 1 opens with markup that must never reach a selection's
      * text: a `display:none` page-break span welded into a word, a `[hidden]` block and an in-body style.
+     * A non-empty [stylesheet] goes in every chapter's head, the way a publisher's CSS would.
      */
-    fun build(chapters: Int = 3, paragraphsPerChapter: Int = 60, hiddenMarkup: Boolean = false): ByteArray {
+    fun build(
+        chapters: Int = 3,
+        paragraphsPerChapter: Int = 60,
+        hiddenMarkup: Boolean = false,
+        stylesheet: String = "",
+    ): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             // The mimetype entry must come first and be stored uncompressed.
@@ -73,11 +79,12 @@ object TestEpub {
                 }
                 val html = if (marked) """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">""" else """<html xmlns="http://www.w3.org/1999/xhtml">"""
                 val hidden = if (marked) HIDDEN_MARKUP else ""
+                val style = if (stylesheet.isEmpty()) "" else "<style>$stylesheet</style>"
                 zip.add(
                     "OEBPS/chapter$chapter.xhtml",
                     """<?xml version="1.0" encoding="utf-8"?>
                     $html
-                      <head><title>Chapter $chapter</title></head>
+                      <head><title>Chapter $chapter</title>$style</head>
                       <body><h1>Chapter $chapter</h1>
                       $hidden$body</body>
                     </html>""".trimIndent(),
