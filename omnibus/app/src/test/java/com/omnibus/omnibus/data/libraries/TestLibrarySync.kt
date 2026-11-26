@@ -23,4 +23,18 @@ class TestLibrarySync : LibrarySync {
         syncCalls++
         return gate?.await() ?: result
     }
+
+    /** What [syncInactive] returns when [inactiveGate] is null. */
+    var inactiveResult: LibrarySyncResult = LibrarySyncResult.Synced
+
+    /** When set, [syncInactive] waits for it and returns its value instead of [inactiveResult]. */
+    var inactiveGate: CompletableDeferred<LibrarySyncResult>? = null
+
+    /** The ids passed to [syncInactive], in call order. */
+    val inactiveSyncs = mutableListOf<String>()
+
+    override suspend fun syncInactive(libraryId: String): LibrarySyncResult {
+        inactiveSyncs += libraryId
+        return inactiveGate?.await() ?: inactiveResult
+    }
 }
