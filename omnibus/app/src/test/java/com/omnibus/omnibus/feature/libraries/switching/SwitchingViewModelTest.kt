@@ -252,4 +252,141 @@ class SwitchingViewModelTest : DescribeSpec({
             switch.commits shouldBe listOf("work" to SwitchKind.Switch)
         }
     }
+
+    // #371
+    describe("#371 adding a library") {
+
+        fun added(): TestLibrariesRepository = TestLibrariesRepository(listOf(home(), work()))
+
+        context("when the current library has unsynced changes") {
+            it("TC-14: keeps the new spine off the shelf while the sync runs, with the current library raised") {
+                val gate = CompletableDeferred<LibrarySyncResult>()
+                val sync = TestLibrarySync().apply {
+                    hasUnsynced = true
+                    this.gate = gate
+                }
+
+                val viewModel = sut(
+                    route = SwitchingRoute("work", kind = SwitchKind.Add),
+                    libraries = added(),
+                    sync = sync,
+                )
+
+                viewModel.uiState.value.stage shouldBe SwitchingStage.Syncing
+                viewModel.uiState.value.bookcase.spines.map { it.libraryId } shouldBe listOf("home")
+                viewModel.uiState.value.bookcase.raisedLibraryId shouldBe "home"
+                viewModel.uiState.value.bookcase.transition shouldBe BookcaseTransition.Still
+            }
+
+            it("TC-14: drops the new spine onto the shelf once the sync passes, then lifts it, then commits once") {
+                val gate = CompletableDeferred<LibrarySyncResult>()
+                val switch = TestLibrarySwitch()
+                val sync = TestLibrarySync().apply {
+                    hasUnsynced = true
+                    this.gate = gate
+                }
+                val viewModel = sut(
+                    route = SwitchingRoute("work", kind = SwitchKind.Add),
+                    libraries = added(),
+                    sync = sync,
+                    librarySwitch = switch,
+                )
+
+                gate.complete(LibrarySyncResult.Synced)
+                mainDispatcher.scheduler.runCurrent()
+
+                viewModel.uiState.value.stage shouldBe null
+                viewModel.uiState.value.bookcase.transition shouldBe BookcaseTransition.DropIn("work")
+                viewModel.uiState.value.bookcase.spines.map { it.libraryId } shouldBe listOf("home", "work")
+                switch.commits.shouldBeEmpty()
+
+                mainDispatcher.scheduler.advanceTimeBy(BOOKCASE_DROP_IN.inWholeMilliseconds)
+                mainDispatcher.scheduler.runCurrent()
+
+                viewModel.uiState.value.bookcase.transition shouldBe BookcaseTransition.Lift("home", "work")
+                switch.commits.shouldBeEmpty()
+
+                mainDispatcher.scheduler.advanceTimeBy(BookcaseGeometry.LIFT.inWholeMilliseconds)
+                mainDispatcher.scheduler.runCurrent()
+
+                switch.commits shouldBe listOf("work" to SwitchKind.Add)
+            }
+        }
+
+        context("when the current library has nothing unsynced") {
+            it("TC-14: drops the new spine onto the shelf before the lift, then commits once") {
+                val switch = TestLibrarySwitch()
+                val viewModel = sut(
+                    route = SwitchingRoute("work", kind = SwitchKind.Add),
+                    libraries = added(),
+                    sync = TestLibrarySync().apply { hasUnsynced = false },
+                    librarySwitch = switch,
+                )
+
+                viewModel.uiState.value.bookcase.transition shouldBe BookcaseTransition.DropIn("work")
+
+                mainDispatcher.scheduler.advanceUntilIdle()
+
+                switch.commits shouldBe listOf("work" to SwitchKind.Add)
+            }
+        }
+
+        context("when the sync fails") {
+            fun failedViewModel(switch: TestLibrarySwitch): SwitchingViewModel {
+                val sync = TestLibrarySync().apply {
+                    hasUnsynced = true
+                    result = LibrarySyncResult.Failed
+                }
+                return sut(
+                    route = SwitchingRoute("work", kind = SwitchKind.Add),
+                    libraries = added(),
+                    sync = sync,
+                    librarySwitch = switch,
+                )
+            }
+
+            it("TC-15: keeps the new spine off the shelf, with the current library raised") {
+                val viewModel = failedViewModel(TestLibrarySwitch())
+
+                viewModel.uiState.value.stage shouldBe SwitchingStage.SyncFailed
+                viewModel.uiState.value.bookcase.spines.map { it.libraryId } shouldBe listOf("home")
+                viewModel.uiState.value.bookcase.raisedLibraryId shouldBe "home"
+            }
+
+            it("TC-15: staying commits nothing and removes nothing") {
+                val switch = TestLibrarySwitch()
+                val libraries = added()
+                val viewModel = sut(
+                    route = SwitchingRoute("work", kind = SwitchKind.Add),
+                    libraries = libraries,
+                    sync = TestLibrarySync().apply {
+                        hasUnsynced = true
+                        result = LibrarySyncResult.Failed
+                    },
+                    librarySwitch = switch,
+                )
+
+                viewModel.onStay()
+                mainDispatcher.scheduler.advanceUntilIdle()
+
+                viewModel.uiState.value.left shouldBe true
+                switch.commits.shouldBeEmpty()
+                libraries.removedIds.shouldBeEmpty()
+            }
+
+            it("TC-15: switching anyway drops the new spine in first, then commits once") {
+                val switch = TestLibrarySwitch()
+                val viewModel = failedViewModel(switch)
+
+                viewModel.onSwitchAnyway()
+
+                viewModel.uiState.value.bookcase.transition shouldBe BookcaseTransition.DropIn("work")
+                switch.commits.shouldBeEmpty()
+
+                mainDispatcher.scheduler.advanceUntilIdle()
+
+                switch.commits shouldBe listOf("work" to SwitchKind.Add)
+            }
+        }
+    }
 })

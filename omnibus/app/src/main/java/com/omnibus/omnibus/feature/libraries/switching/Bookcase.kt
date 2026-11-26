@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.omnibus.omnibus.feature.libraries.LibraryMonogram
 import com.omnibus.omnibus.feature.libraries.Monogram
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
+import kotlin.time.Duration
 
 /** One library's spine: its monogram and its height, fixed per library (see [SpineHeights]). */
 data class BookcaseSpine(val libraryId: String, val monogram: Monogram, val height: Dp)
@@ -50,7 +52,15 @@ sealed interface BookcaseTransition {
 
     /** The current spine settles, then the new spine lifts. */
     data class Lift(val fromId: String, val toId: String) : BookcaseTransition
+
+    // #371
+    /** [libraryId]'s spine, just added, drops onto its slot from above. The raised spine stays raised. */
+    data class DropIn(val libraryId: String) : BookcaseTransition
 }
+
+// #371
+/** How long a new library's spine takes to drop onto the shelf: half the lift. */
+internal val BOOKCASE_DROP_IN: Duration = BookcaseGeometry.LIFT / 2
 
 /**
  * The bookcase's content: every library's spine in list order, the raised library, and the transition.
@@ -92,8 +102,14 @@ fun Bookcase(state: BookcaseState, modifier: Modifier = Modifier) {
     val palette = OmnibusTheme.palette
     val instant = removeAnimations()
     val raises = remember { SpineRaises() }
+    val drops = remember { SpineDrops() }
 
     LaunchedEffect(state, instant) {
+        // Any transition other than a drop lands a drop that was cut short, so no spine is left in the air.
+        val dropping = (state.transition as? BookcaseTransition.DropIn)?.libraryId
+        state.spines.forEach { spine ->
+            if (spine.libraryId != dropping) drops.of(spine.libraryId).snapTo(1f)
+        }
         when (val transition = state.transition) {
             BookcaseTransition.Still -> state.spines.forEach { spine ->
                 raises.of(spine.libraryId).snapTo(if (spine.libraryId == state.raisedLibraryId) 1f else 0f)
@@ -108,6 +124,18 @@ fun Bookcase(state: BookcaseState, modifier: Modifier = Modifier) {
                     val half = (BookcaseGeometry.LIFT / 2).inWholeMilliseconds.toInt()
                     settle.animateTo(0f, tween(half))
                     rise.animateTo(1f, tween(half))
+                }
+            }
+            is BookcaseTransition.DropIn -> {
+                state.spines.forEach { spine ->
+                    raises.of(spine.libraryId).snapTo(if (spine.libraryId == state.raisedLibraryId) 1f else 0f)
+                }
+                val drop = drops.of(transition.libraryId, 0f)
+                drop.snapTo(0f)
+                if (instant) {
+                    drop.snapTo(1f)
+                } else {
+                    drop.animateTo(1f, tween(BOOKCASE_DROP_IN.inWholeMilliseconds.toInt()))
                 }
             }
         }
@@ -129,13 +157,16 @@ fun Bookcase(state: BookcaseState, modifier: Modifier = Modifier) {
                 key(spine.libraryId) {
                     val raise = raises.of(spine.libraryId, initialFraction(spine.libraryId, state))
                     val fraction = raise.value
+                    val drop = drops.of(spine.libraryId, initialDrop(spine.libraryId, state)).value
+                    val placed = Modifier.offset(
+                        x = slots[index].x,
+                        y = SHELF_HEIGHT - PLANK_HEIGHT - spine.height - BookcaseGeometry.RAISE * fraction -
+                            (spine.height + BookcaseGeometry.RAISE) * (1f - drop),
+                    )
                     Spine(
                         spine = spine,
                         fraction = fraction,
-                        modifier = Modifier.offset(
-                            x = slots[index].x,
-                            y = SHELF_HEIGHT - PLANK_HEIGHT - spine.height - BookcaseGeometry.RAISE * fraction,
-                        ),
+                        modifier = if (drop < 1f) placed.graphicsLayer { alpha = drop } else placed,
                     )
                 }
             }
@@ -147,6 +178,15 @@ fun Bookcase(state: BookcaseState, modifier: Modifier = Modifier) {
 private fun initialFraction(libraryId: String, state: BookcaseState): Float = when (val transition = state.transition) {
     BookcaseTransition.Still -> if (libraryId == state.raisedLibraryId) 1f else 0f
     is BookcaseTransition.Lift -> if (libraryId == transition.fromId) 1f else 0f
+    // #371
+    is BookcaseTransition.DropIn -> if (libraryId == state.raisedLibraryId) 1f else 0f
+}
+
+// #371
+/** Where a spine's drop starts: above its slot and transparent while it is dropping in, landed otherwise. */
+private fun initialDrop(libraryId: String, state: BookcaseState): Float = when (val transition = state.transition) {
+    BookcaseTransition.Still, is BookcaseTransition.Lift -> 1f
+    is BookcaseTransition.DropIn -> if (libraryId == transition.libraryId) 0f else 1f
 }
 
 /** One spine. [fraction] is how raised it is: 0 on the shelf, 1 fully raised, in accent. */
@@ -194,4 +234,13 @@ private class SpineRaises {
 
     fun of(libraryId: String, initial: Float = 0f): Animatable<Float, AnimationVector1D> =
         raises.getOrPut(libraryId) { Animatable(initial) }
+}
+
+// #371
+/** The drop of each spine, 0 above its slot and 1 landed, kept across recompositions. */
+private class SpineDrops {
+    private val drops = mutableMapOf<String, Animatable<Float, AnimationVector1D>>()
+
+    fun of(libraryId: String, initial: Float = 1f): Animatable<Float, AnimationVector1D> =
+        drops.getOrPut(libraryId) { Animatable(initial) }
 }

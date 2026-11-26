@@ -26,7 +26,7 @@ class DefaultLibrarySwitch @Inject constructor(
 
     override suspend fun commit(targetLibraryId: String, kind: SwitchKind) {
         when (kind) {
-            SwitchKind.Switch -> {
+            SwitchKind.Switch, SwitchKind.Add -> {
                 // Pin the old library in the ActiveLibrary cache, so stop()'s final save is scoped to it.
                 activeLibrary.id()
                 audiobook.stop()
