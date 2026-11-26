@@ -128,24 +128,34 @@ internal fun SwitchingScreenContent(
             .semantics { paneTitle = announcement },
         contentAlignment = Alignment.Center,
     ) {
+        // The bookcase spans the window up to a 560 dp shelf plus its own margins, which are its only inset, and sits
+        // two steps above the name, as in the spec's renders (#370).
         Column(
-            Modifier
-                .widthIn(max = 560.dp)
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.screen),
+            Modifier.widthIn(max = BookcaseGeometry.SHELF_MAX_WIDTH + BookcaseGeometry.SHELF_MARGIN * 2).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg * 2),
         ) {
-            Bookcase(state = uiState.bookcase, modifier = Modifier.fillMaxWidth())
-            LibraryTitle(library = shown)
+            BookcaseViewport(uiState.bookcase, Modifier.weight(1f, fill = false)) { shelf ->
+                Bookcase(state = shelf, modifier = Modifier.fillMaxWidth())
+            }
+            Column(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.screen),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            ) {
+                LibraryTitle(library = shown)
 
-            when (stage) {
-                SwitchingStage.SyncFailed -> SyncFailedContent(
-                    currentName = currentName,
-                    onStay = onStay,
-                    onSwitchAnyway = onSwitchAnyway,
-                )
-                else -> StatusContent(stage = stage, currentName = currentName, targetName = targetName)
+                when (stage) {
+                    SwitchingStage.SyncFailed -> SyncFailedContent(
+                        currentName = currentName,
+                        onStay = onStay,
+                        onSwitchAnyway = onSwitchAnyway,
+                    )
+                    else -> StatusContent(stage = stage, currentName = currentName, targetName = targetName)
+                }
             }
         }
     }
