@@ -2,7 +2,7 @@
 
 | Version | Status | Last updated |
 |---|---|---|
-| 1.0.0 | Accepted | 2026-11-25 |
+| 1.1.0 | Accepted | 2026-11-25 |
 
 ## Summary
 
@@ -65,6 +65,7 @@ libraries 1 ──< books 1 ──┬── reading_positions        0..1
 | Playback speed, cached and pending | Per book | Database: `playback_rates` |
 | Dismissed resume offer | Per book | Database: `dismissed_resume_offers` |
 | Sessions (auth tokens) | Per library | Encrypted DataStore `auth_token.preferences_pb`, one key per library |
+| Library to open after a switch (pending opening) | Device-wide, temporary | DataStore `pending_opening.preferences_pb` |
 | Offline covers | Per library | Disk cache at `files/covers/<library id>/` |
 | Reader appearance settings | Device-wide | DataStore `reader_preferences.preferences_pb` |
 | Library sort and grouping | Device-wide | DataStore `library_preferences.preferences_pb` |
@@ -166,6 +167,10 @@ The data layer follows `docs/engineering/feature-layers.md`.
 ---
 
 ## Changelog
+
+**1.1.0** (2026-11-25)
+
+- Adds the pending opening, the library a switch reopens on after the app restarts, as a small device-wide DataStore. Why: the switch restarts the process and must know where to land, without a database schema change.
 
 **1.0.0** (2026-11-25)
 
