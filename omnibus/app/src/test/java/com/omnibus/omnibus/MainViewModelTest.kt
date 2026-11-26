@@ -4,8 +4,16 @@ import com.omnibus.omnibus.data.auth.AuthSessionResult
 import com.omnibus.omnibus.data.auth.TestAuthRepository
 import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
 import com.omnibus.omnibus.data.configuration.randomServerAddress
+import com.omnibus.omnibus.data.libraries.PendingOpening
+import com.omnibus.omnibus.data.libraries.SwitchKind
+import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
+import com.omnibus.omnibus.data.libraries.TestLibrarySwitch
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Exhaustive
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.enum
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +28,12 @@ class MainViewModelTest : DescribeSpec({
     fun sut(
         serverRepository: TestServerConfigurationRepository = TestServerConfigurationRepository(),
         authRepository: TestAuthRepository = TestAuthRepository(),
-    ) = MainViewModel(serverRepository, authRepository)
+        librarySwitch: TestLibrarySwitch = TestLibrarySwitch(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+    ) = MainViewModel(serverRepository, authRepository, librarySwitch, libraries)
+
+    /** Ways a saved marker can be stale at launch. */
+    fun staleMarkerKinds() = Exhaustive.enum<StaleMarker>()
 
     beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     afterSpec { Dispatchers.resetMain() }
@@ -266,4 +279,128 @@ class MainViewModelTest : DescribeSpec({
             }
         }
     }
+
+    describe("switching libraries") {
+
+        context("when a marker names the active library and a session is saved") {
+            it("#369 TC-12: opens the switching screen's Opening stage for it") {
+                val library = randomLibrary().copy(isActive = true)
+                val authRepository = TestAuthRepository()
+                authRepository.signedIn.value = true
+                val librarySwitch = TestLibrarySwitch()
+                librarySwitch.pending.value = PendingOpening(library.id, SwitchKind.Switch)
+
+                val viewModel = sut(
+                    TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                    authRepository,
+                    librarySwitch,
+                    TestLibrariesRepository(listOf(library)),
+                )
+
+                viewModel.startDestination.value shouldBe
+                    StartDestination.SwitchOpening(PendingOpening(library.id, SwitchKind.Switch))
+            }
+
+            it("#369 TC-12: verifies the session exactly once") {
+                val library = randomLibrary().copy(isActive = true)
+                val authRepository = TestAuthRepository()
+                authRepository.signedIn.value = true
+                val librarySwitch = TestLibrarySwitch()
+                librarySwitch.pending.value = PendingOpening(library.id, SwitchKind.Switch)
+
+                sut(
+                    TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                    authRepository,
+                    librarySwitch,
+                    TestLibrariesRepository(listOf(library)),
+                )
+
+                authRepository.verifySessionCalls shouldBe 1
+            }
+
+            it("#369 TC-12: leaves the marker for the opening to clear") {
+                val library = randomLibrary().copy(isActive = true)
+                val authRepository = TestAuthRepository()
+                authRepository.signedIn.value = true
+                val librarySwitch = TestLibrarySwitch()
+                librarySwitch.pending.value = PendingOpening(library.id, SwitchKind.Switch)
+
+                sut(
+                    TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                    authRepository,
+                    librarySwitch,
+                    TestLibrariesRepository(listOf(library)),
+                )
+
+                librarySwitch.clears shouldBe 0
+            }
+        }
+
+        context("when a marker is stale and a session is saved") {
+            it("#369 TC-13: clears the marker once and opens the signed-in shell") {
+                checkAll(staleMarkerKinds()) { kind ->
+                    val target = randomLibrary().copy(isActive = false)
+                    val other = randomLibrary().copy(isActive = true)
+                    val libraries = when (kind) {
+                        StaleMarker.NotActive -> listOf(target, other)
+                        StaleMarker.Missing -> listOf(other)
+                    }
+                    val authRepository = TestAuthRepository()
+                    authRepository.signedIn.value = true
+                    val librarySwitch = TestLibrarySwitch()
+                    librarySwitch.pending.value = PendingOpening(target.id, SwitchKind.Switch)
+
+                    val viewModel = sut(
+                        TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                        authRepository,
+                        librarySwitch,
+                        TestLibrariesRepository(libraries),
+                    )
+
+                    librarySwitch.clears shouldBe 1
+                    viewModel.startDestination.value shouldBe StartDestination.SignedIn
+                }
+            }
+        }
+
+        context("when a marker names the active library and no session is saved") {
+            it("#369 TC-14: clears the marker once and opens login") {
+                val library = randomLibrary().copy(isActive = true)
+                val authRepository = TestAuthRepository()
+                authRepository.signedIn.value = false
+                val librarySwitch = TestLibrarySwitch()
+                librarySwitch.pending.value = PendingOpening(library.id, SwitchKind.Switch)
+
+                val viewModel = sut(
+                    TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                    authRepository,
+                    librarySwitch,
+                    TestLibrariesRepository(listOf(library)),
+                )
+
+                librarySwitch.clears shouldBe 1
+                viewModel.startDestination.value shouldBe StartDestination.Login
+            }
+
+            it("#369 TC-14: does not verify a session") {
+                val library = randomLibrary().copy(isActive = true)
+                val authRepository = TestAuthRepository()
+                authRepository.signedIn.value = false
+                val librarySwitch = TestLibrarySwitch()
+                librarySwitch.pending.value = PendingOpening(library.id, SwitchKind.Switch)
+
+                sut(
+                    TestServerConfigurationRepository(initialAddress = randomServerAddress()),
+                    authRepository,
+                    librarySwitch,
+                    TestLibrariesRepository(listOf(library)),
+                )
+
+                authRepository.verifySessionCalls shouldBe 0
+            }
+        }
+    }
 })
+
+/** The ways a saved switch marker can be stale at launch. */
+private enum class StaleMarker { NotActive, Missing }

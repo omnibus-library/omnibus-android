@@ -15,6 +15,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
+import com.omnibus.omnibus.feature.libraries.switching.SwitchingRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.scan.ScanRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
@@ -22,9 +23,10 @@ import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 /**
  * Whether the user should be sent to sign-in: the session is known to be gone (an explicit false,
  * not the not-yet-read null) and the shell is still on the stack, wherever it sits under the top.
+ * A sign-out that arrives while a switch is on top waits until the reader stays (the switch's sync can end with a 401).
  */
 internal fun shouldLeaveForLogin(backstack: List<NavKey>, isSignedIn: Boolean?): Boolean =
-    isSignedIn == false && SignedInShellRoute in backstack
+    isSignedIn == false && SignedInShellRoute in backstack && backstack.lastOrNull() !is SwitchingRoute
 
 /** Replaces the whole stack with the sign-in screen. Adds before removing, so the stack is never empty. */
 internal fun MutableList<NavKey>.leaveForLogin() {
@@ -37,7 +39,7 @@ internal fun MutableList<NavKey>.leaveForLogin() {
  * would keep the shell's tab bar above the keyboard and stop the reader and the player going edge to edge.
  */
 internal fun drawsOwnInsets(top: NavKey?): Boolean =
-    top == SignedInShellRoute || top is ReaderRoute || top is PlayerRoute || top == ScanRoute
+    top == SignedInShellRoute || top is ReaderRoute || top is PlayerRoute || top == ScanRoute || top is SwitchingRoute
 
 /** Opens the scanner over the shell. A second open while it is on top is ignored. */
 internal fun MutableList<NavKey>.openScanner() {
@@ -47,6 +49,24 @@ internal fun MutableList<NavKey>.openScanner() {
 /** Leaves the scanner, but only when it is still on top. */
 internal fun MutableList<NavKey>.closeScanner() {
     if (lastOrNull() == ScanRoute) removeAt(lastIndex)
+}
+
+// #369
+/** Opens the switching screen for [libraryId] over the stack. A second open while it is on top is ignored. */
+internal fun MutableList<NavKey>.openSwitching(libraryId: String) {
+    if (lastOrNull() !is SwitchingRoute) add(SwitchingRoute(libraryId))
+}
+
+/** Leaves the switching screen for [route], but only when it is still on top. */
+internal fun MutableList<NavKey>.closeSwitching(route: SwitchingRoute) {
+    if (lastOrNull() == route) removeAt(lastIndex)
+}
+
+/** Ends an Opening stage: the shell replaces the whole stack, so the reader lands on the Library tab with no history. */
+internal fun MutableList<NavKey>.finishOpening() {
+    // Adds the shell before removing anything, so the stack is never empty. A shell already in the stack is kept once.
+    if (SignedInShellRoute !in this) add(SignedInShellRoute)
+    removeAll { it != SignedInShellRoute }
 }
 
 /**
@@ -91,8 +111,10 @@ internal fun RootNavDisplay(
     isSignedIn: Boolean?,
     entryProvider: (NavKey) -> NavEntry<NavKey>,
 ) {
-    // Null means the session hasn't been read yet, so only an explicit false leaves the shell.
-    LaunchedEffect(isSignedIn) {
+    // Null means the session hasn't been read yet, so only an explicit false leaves the shell. Keyed on the top too,
+    // so a sign-out held back by a switch is acted on once the switching screen is gone.
+    val top = backstack.lastOrNull()
+    LaunchedEffect(isSignedIn, top) {
         if (shouldLeaveForLogin(backstack, isSignedIn)) backstack.leaveForLogin()
     }
 
@@ -108,7 +130,8 @@ internal fun RootNavDisplay(
             modifier = Modifier.padding(innerPadding),
             backStack = backstack,
             onBack = {
-                backstack.removeLastOrNull()
+                // The switching screen handles Back itself, so Back never leaves it from here.
+                if (backstack.lastOrNull() !is SwitchingRoute) backstack.removeLastOrNull()
             },
             entryDecorators = listOf(
                 rememberSaveableStateHolderNavEntryDecorator(),

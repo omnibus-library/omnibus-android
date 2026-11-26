@@ -93,6 +93,7 @@ fun SignedInShellScreen(
     onOpenScanner: () -> Unit = {},
     pendingScannedBook: String? = null,
     onPendingScannedBookOpened: () -> Unit = {},
+    onSwitchLibrary: (libraryId: String) -> Unit = {},
 ) {
     val navigator = rememberShellNavigator()
     val activity = LocalActivity.current
@@ -106,6 +107,7 @@ fun SignedInShellScreen(
         onOpenScanner = onOpenScanner,
         pendingScannedBook = pendingScannedBook,
         onPendingScannedBookOpened = onPendingScannedBookOpened,
+        onSwitchLibrary = onSwitchLibrary,
         modifier = modifier,
     )
 }
@@ -127,6 +129,7 @@ private fun SignedInShellContent(
     onOpenScanner: () -> Unit,
     pendingScannedBook: String?,
     onPendingScannedBookOpened: () -> Unit,
+    onSwitchLibrary: (libraryId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tabBarItems = ShellTab.entries.map {
@@ -307,6 +310,7 @@ private fun SignedInShellContent(
                                 YouScreen(
                                     onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) },
                                     onOpenManageLibraries = { navigator.navigateTo(ManageLibrariesRoute, ShellTab.You) },
+                                    onSwitchTo = onSwitchLibrary,
                                 )
                             }
                         }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The switching screen (#369). -->
+    <string name="libraries_switching_announce">Switching to %1$s</string>
+    <string name="libraries_switching_syncing">Syncing %1$s</string>
+    <string name="libraries_switching_opening">Opening %1$s</string>
+    <string name="libraries_switching_failed_title">Couldn\'t sync %1$s</string>
+    <string name="libraries_switching_failed_body">Some changes on this device haven\'t reached %1$s. If you switch now, they may be lost.</string>
+    <string name="libraries_switching_stay">Stay on %1$s</string>
+    <string name="libraries_switching_switch_anyway">Switch anyway</string>
+</resources>

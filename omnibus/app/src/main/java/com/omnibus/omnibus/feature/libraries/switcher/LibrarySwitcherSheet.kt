@@ -82,22 +82,24 @@ private const val DIALOG_MAX_HEIGHT = 0.8f
  * bottom sheet in a compact window and a centred dialog from [SWITCHER_CENTERED_MIN_WIDTH]. It needs nothing from
  * the shell, so it can be hosted anywhere.
  *
- * Tapping the open library closes it. Switching to another library arrives with #369.
+ * Tapping another library closes the sheet and switches to it. Tapping the open library only closes it.
  *
  * @param onDismiss Called once the sheet has closed: the open library tapped, a swipe down, the scrim or Back.
  * @param onManageLibraries Called after the sheet has closed, when "Manage libraries" was tapped.
+ * @param onSwitchTo Called with the id of another library once the sheet has closed (#369).
  */
 @Composable
 fun LibrarySwitcherSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onManageLibraries: () -> Unit = {},
+    onSwitchTo: (libraryId: String) -> Unit = {},
     viewModel: LibrarySwitcherViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     LibrarySwitcherLayout(
         libraries = uiState.libraries,
-        onLibraryClick = ::closeOnCurrent,
+        onLibraryClick = { library, close -> switchOrClose(library, close, onSwitchTo) },
         onDismiss = onDismiss,
         modifier = modifier,
         onManageLibraries = onManageLibraries,
@@ -105,11 +107,20 @@ fun LibrarySwitcherSheet(
 }
 
 /**
- * What a row tap does today: the open library closes the sheet, and any other library does nothing until switching
- * arrives with #369.
+ * What a row tap does for the open library: it only closes the sheet. The sheet itself uses [switchOrClose]; this stays
+ * for tests of the open row alone.
  */
 internal fun closeOnCurrent(library: Library, close: () -> Unit) {
     if (library.isActive) close()
+}
+
+/**
+ * What a row tap does (#369): closes the sheet, then, for any library but the open one, switches to it. The open
+ * library only closes the sheet.
+ */
+internal fun switchOrClose(library: Library, close: () -> Unit, onSwitchTo: (libraryId: String) -> Unit) {
+    close()
+    if (!library.isActive) onSwitchTo(library.id)
 }
 
 /**

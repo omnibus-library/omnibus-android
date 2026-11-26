@@ -69,6 +69,7 @@ fun YouScreen(
     onOpenRequests: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenManageLibraries: () -> Unit = {},
+    onSwitchTo: (libraryId: String) -> Unit = {},
     viewModel: YouViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -89,7 +90,15 @@ fun YouScreen(
     )
 
     if (showsSwitcher) {
-        LibrarySwitcherSheet(onDismiss = { showsSwitcher = false }, onManageLibraries = onOpenManageLibraries)
+        LibrarySwitcherSheet(
+            onDismiss = { showsSwitcher = false },
+            onManageLibraries = onOpenManageLibraries,
+            // Cleared before the switch, so a shell that leaves composition for the switching screen can't reopen it.
+            onSwitchTo = { libraryId ->
+                showsSwitcher = false
+                onSwitchTo(libraryId)
+            },
+        )
     }
 }
 

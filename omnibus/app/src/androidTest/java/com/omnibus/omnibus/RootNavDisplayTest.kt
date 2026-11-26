@@ -31,6 +31,7 @@ import com.omnibus.omnibus.feature.bookdetail.BookDetailDestination
 import com.omnibus.omnibus.feature.bookdetail.BookDetailUIState
 import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreenContent
+import com.omnibus.omnibus.feature.libraries.switching.SwitchingRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
@@ -66,6 +67,9 @@ class RootNavDisplayTest {
                         }
                         entry<LoginScreenRoute> {
                             Text("fake login", modifier = Modifier.testTag(FAKE_LOGIN))
+                        }
+                        entry<SwitchingRoute> {
+                            Text("fake switching", modifier = Modifier.testTag(FAKE_SWITCHING))
                         }
                     },
                 )
@@ -168,6 +172,26 @@ class RootNavDisplayTest {
         assertEquals(listOf<NavKey>(LoginScreenRoute), stack.toList())
     }
 
+    // #369 TC-19
+    @Test
+    fun issue369_tc19_aSignOutDuringTheSwitchWaitsForTheReaderToStay() {
+        setRoot()
+        rule.runOnIdle { stack.openSwitching("book-b") }
+        rule.waitForIdle()
+
+        rule.runOnIdle { isSignedIn.value = false }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(FAKE_SWITCHING).assertIsDisplayed()
+        rule.onAllNodesWithTag(FAKE_LOGIN).assertCountEquals(0)
+
+        rule.runOnIdle { stack.closeSwitching(SwitchingRoute("book-b")) }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag(FAKE_LOGIN).assertIsDisplayed()
+        assertEquals(listOf<NavKey>(LoginScreenRoute), stack.toList())
+    }
+
     /** The shell stand-in: a counter that survives leaving the reader, and a tab bar node. */
     @Composable
     private fun TestShell() {
@@ -187,5 +211,6 @@ class RootNavDisplayTest {
         const val FAKE_READER = "fake_reader"
         const val FAKE_PLAYER = "fake_player"
         const val FAKE_LOGIN = "fake_login"
+        const val FAKE_SWITCHING = "fake_switching"
     }
 }
