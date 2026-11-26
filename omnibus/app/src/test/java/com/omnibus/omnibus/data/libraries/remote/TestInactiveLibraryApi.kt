@@ -50,8 +50,12 @@ class TestInactiveLibraryApi : InactiveLibraryApi {
     /** When set, every send waits for it before answering. */
     var sendGate: CompletableDeferred<Unit>? = null
 
+    /** When set, [logout] waits for it before returning. */
+    var logoutGate: CompletableDeferred<Unit>? = null
+
     override suspend fun logout(baseUrl: HttpUrl, token: String) {
         calls += Logout(baseUrl, token)
+        logoutGate?.await()
     }
 
     override suspend fun sendPosition(baseUrl: HttpUrl, token: String, position: AudioPosition): Boolean {
