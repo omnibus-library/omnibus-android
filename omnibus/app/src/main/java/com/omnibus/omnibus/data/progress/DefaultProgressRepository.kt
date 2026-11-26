@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.progress
 
 import android.util.Log
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.progress.local.ReadingPositionStore
 import com.omnibus.omnibus.data.progress.remote.BookProgressResponseDto
@@ -9,6 +10,7 @@ import com.omnibus.omnibus.data.progress.remote.ProgressUpdateRequestDto
 import com.omnibus.omnibus.di.IoDispatcher
 import java.io.IOException
 import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -20,6 +22,7 @@ import kotlinx.coroutines.withContext
  * Default [ProgressRepository]. Every failure becomes a result, so no exception leaves this class,
  * except cancellation, which always propagates.
  */
+@Singleton
 class DefaultProgressRepository @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val omnibusHttpClient: OmnibusHttpClient,
@@ -29,13 +32,17 @@ class DefaultProgressRepository @Inject constructor(
     /** Serializes write-then-push, so writes land in call order and an older one never overwrites a newer one. */
     private val mutex = Mutex()
 
+    // #369: the in-flight position pushes, for the library switch's sync.
+    internal val inFlightWrites = InFlightWrites()
+
     override suspend fun getLocalPosition(bookUuid: String): ReadingPosition? =
         store.getPositionFlow(bookUuid).first()
 
     override suspend fun savePosition(position: ReadingPosition, push: Boolean): PositionSaveResult =
         mutex.withLock {
             store.save(position)
-            if (push) push(position) else PositionSaveResult.NotPushed
+            if (push) inFlightWrites.tracking<PositionSaveResult>({ it is PositionSaveResult.Pushed }) { push(position) }
+            else PositionSaveResult.NotPushed
         }
 
     /**

@@ -1012,4 +1012,58 @@ class DefaultReviewsRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the write is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val uuid = randomString()
+                val mine = randomMine()
+                val rating = otherRating(mine.rating)
+                val saved = randomMine()
+                val gate = CountDownLatch(1)
+                val repository = threadedSut()
+                val participant = ReviewsSyncParticipant(repository = repository)
+                load(repository, uuid, reviewsBody(mine))
+                script.answer("PATCH", reply(200, saved.toJson().toString()), gate)
+                script.answer("GET", reply(200, reviewsBody(saved)))
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.updateMyReview(uuid, ratingPatch(rating)) }
+                // The patch is on the server and held on its gate.
+                nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight write before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                write.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the write fails") {
+            withScriptedServer {
+                val uuid = randomString()
+                val mine = randomMine()
+                val rating = otherRating(mine.rating)
+                val gate = CountDownLatch(1)
+                val repository = threadedSut()
+                val participant = ReviewsSyncParticipant(repository = repository)
+                load(repository, uuid, reviewsBody(mine))
+                script.answer("PATCH", reply(500), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.updateMyReview(uuid, ratingPatch(rating)) }
+                // The patch is on the server and held on its gate.
+                nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                write.await()
+            }
+        }
+    }
 })

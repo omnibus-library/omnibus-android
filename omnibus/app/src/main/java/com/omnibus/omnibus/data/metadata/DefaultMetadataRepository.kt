@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.metadata
 
 import android.util.Log
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.library.Book
 import com.omnibus.omnibus.data.library.remote.BookDto
 import com.omnibus.omnibus.data.library.remote.LibraryJson
@@ -43,6 +44,8 @@ class DefaultMetadataRepository @Inject constructor(
     private val omnibusHttpClient: OmnibusHttpClient,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) : MetadataRepository {
+    internal val inFlightWrites = InFlightWrites()
+
 
     /** The write queue for one (book, kind): a lock that keeps saves in order, and a counter that marks the newest. */
     private class Chain {
@@ -69,7 +72,7 @@ class DefaultMetadataRepository @Inject constructor(
                 if (chain.generation.get() != mine) MetadataWriteResult.Superseded
                 else post(bookUuid, kind, values)
             }
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is MetadataWriteResult.Saved || result == MetadataWriteResult.Superseded } }.await()
     }
 
     override suspend fun getVocabulary(kind: MetadataListKind): VocabularyResult = withContext(ioDispatcher) {

@@ -9,10 +9,12 @@ import com.omnibus.omnibus.data.audiobook.position.DeviceTimeZone
 import com.omnibus.omnibus.data.audiobook.position.ListeningPositionSync
 import com.omnibus.omnibus.data.audiobook.position.ListeningProgressRepository
 import com.omnibus.omnibus.data.audiobook.position.ListeningSessionTracker
+import com.omnibus.omnibus.data.audiobook.position.ListeningSyncParticipant
 import com.omnibus.omnibus.data.audiobook.position.ReadStatusMarker
 import com.omnibus.omnibus.data.audiobook.position.SystemDeviceTimeZone
 import com.omnibus.omnibus.data.audiobook.position.local.AudioPositionStore
 import com.omnibus.omnibus.data.audiobook.position.local.DefaultAudioPositionStore
+import com.omnibus.omnibus.data.libraries.LibrarySyncParticipant
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -62,4 +64,8 @@ abstract class ListeningPositionModule {
 
     @Binds
     abstract fun bindDeviceTimeZone(zone: SystemDeviceTimeZone): DeviceTimeZone
+
+    @Binds
+    @IntoSet
+    abstract fun bindListeningSyncParticipant(participant: ListeningSyncParticipant): LibrarySyncParticipant
 }

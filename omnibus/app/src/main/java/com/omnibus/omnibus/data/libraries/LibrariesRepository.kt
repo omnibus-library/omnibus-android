@@ -39,4 +39,12 @@ interface LibrariesRepository {
      * other column. Waits for the storage upgrade; a storage failure is logged, not thrown. Local only.
      */
     suspend fun rename(libraryId: String, name: String)
+
+    // #369
+    /**
+     * Makes library [libraryId] the only active library and stamps its `lastUsedAt` with the clock. An unknown id
+     * changes nothing. Waits for the storage upgrade; a storage failure is logged, not thrown. Does not change
+     * [ActiveLibrary]: a switch restarts the process instead.
+     */
+    suspend fun setActive(libraryId: String)
 }

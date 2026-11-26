@@ -23,6 +23,8 @@ import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreen
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenAction
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.libraries.switching.SwitchingRoute
+import com.omnibus.omnibus.feature.libraries.switching.SwitchingScreen
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderScreen
 import com.omnibus.omnibus.feature.scan.ScanRoute
@@ -49,11 +51,17 @@ class MainActivity : ComponentActivity() {
             val startDestination by viewModel.startDestination.collectAsState()
             val isSignedIn by viewModel.isSignedIn.collectAsState()
 
-            val startRoute: NavKey? = when (startDestination) {
+            val destination = startDestination
+            val startRoute: NavKey? = when (destination) {
                 StartDestination.Loading -> null
                 StartDestination.ServerConfiguration -> ServerConfigurationScreenRoute
                 StartDestination.Login -> LoginScreenRoute
                 StartDestination.SignedIn -> SignedInShellRoute
+                is StartDestination.SwitchOpening -> SwitchingRoute(
+                    toLibraryId = destination.pending.libraryId,
+                    kind = destination.pending.kind,
+                    atOpening = true,
+                )
             }
 
             OmnibusTheme {
@@ -111,6 +119,14 @@ private fun OmnibusNavigation(startRoute: NavKey, isSignedIn: Boolean?) {
                     onOpenScanner = { backstack.openScanner() },
                     pendingScannedBook = pendingScannedBook,
                     onPendingScannedBookOpened = { pendingScannedBook = null },
+                    onSwitchLibrary = { backstack.openSwitching(it) },
+                )
+            }
+            entry<SwitchingRoute> { key ->
+                SwitchingScreen(
+                    route = key,
+                    onLeave = { backstack.closeSwitching(key) },
+                    onOpened = { backstack.finishOpening() },
                 )
             }
             entry<ScanRoute> {

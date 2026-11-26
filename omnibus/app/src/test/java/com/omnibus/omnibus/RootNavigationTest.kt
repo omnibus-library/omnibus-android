@@ -4,6 +4,7 @@ import androidx.navigation3.runtime.NavKey
 import com.omnibus.omnibus.feature.audiobook.player.PlayerRoute
 import com.omnibus.omnibus.feature.auth.ui.LoginScreenRoute
 import com.omnibus.omnibus.feature.configuration.ui.ServerConfigurationScreenRoute
+import com.omnibus.omnibus.feature.libraries.switching.SwitchingRoute
 import com.omnibus.omnibus.feature.reader.ui.ReaderRoute
 import com.omnibus.omnibus.feature.scan.ScanRoute
 import com.omnibus.omnibus.feature.shell.ui.SignedInShellRoute
@@ -191,6 +192,61 @@ class RootNavigationTest : DescribeSpec({
             stack.closeScanner()
 
             stack shouldContainExactly listOf(SignedInShellRoute, ScanRoute, LoginScreenRoute)
+        }
+    }
+
+    describe("switching libraries") {
+
+        it("#369 TC-16: pushes a switching route for the library over the shell") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openSwitching("b")
+
+            stack shouldContainExactly listOf(SignedInShellRoute, SwitchingRoute("b"))
+        }
+
+        it("#369 TC-16: ignores a second open while a switching route is on top") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute)
+
+            stack.openSwitching("b")
+            stack.openSwitching("c")
+
+            stack shouldContainExactly listOf(SignedInShellRoute, SwitchingRoute("b"))
+        }
+
+        it("#369 TC-17: pops the switching route once, and ignores a close while it is not on top") {
+            val route = SwitchingRoute("b")
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, route)
+
+            stack.closeSwitching(route)
+            stack.closeSwitching(route)
+
+            stack shouldContainExactly listOf(SignedInShellRoute)
+        }
+
+        it("#369 TC-17: a close does not pop another route on top of the switching route") {
+            val route = SwitchingRoute("b")
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, route, LoginScreenRoute)
+
+            stack.closeSwitching(route)
+
+            stack shouldContainExactly listOf(SignedInShellRoute, route, LoginScreenRoute)
+        }
+
+        it("#369 TC-18: finishing an opening from a restarted root leaves only the shell") {
+            val stack = mutableListOf<NavKey>(SwitchingRoute("b", atOpening = true))
+
+            stack.finishOpening()
+
+            stack shouldContainExactly listOf(SignedInShellRoute)
+        }
+
+        it("#369 TC-18: finishing an opening over the shell leaves only the shell") {
+            val stack = mutableListOf<NavKey>(SignedInShellRoute, SwitchingRoute("b"))
+
+            stack.finishOpening()
+
+            stack shouldContainExactly listOf(SignedInShellRoute)
         }
     }
 })

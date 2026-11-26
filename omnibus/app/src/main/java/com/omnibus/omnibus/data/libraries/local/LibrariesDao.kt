@@ -57,4 +57,13 @@ abstract class LibrariesDao {
     /** Sets library [id]'s name. Returns the number of rows updated. */
     @Query("UPDATE libraries SET name = :name WHERE id = :id")
     abstract suspend fun rename(id: String, name: String): Int
+
+    // #369
+    /** Makes [id] the only active library and stamps it with [now]. Changes nothing, and returns 0, when [id] is unknown. */
+    @Query(
+        "UPDATE libraries SET is_active = (id = :id), " +
+            "last_used_at = CASE WHEN id = :id THEN :now ELSE last_used_at END " +
+            "WHERE EXISTS (SELECT 1 FROM libraries WHERE id = :id)"
+    )
+    abstract suspend fun setActive(id: String, now: Long): Int
 }

@@ -142,11 +142,13 @@ class DefaultPlaybackRateStore @Inject constructor(
     /**
      * Sends every pending rate, one PUT per book with its current value, so a burst of changes goes out as its newest
      * value (I-SPD-3). Does nothing while offline. A sent or rejected rate is cleared only if it is still the pending one.
+     * Returns true only when the device was online and every rate sent was accepted (#369: the library switch's sync).
      */
-    internal suspend fun flush() {
+    internal suspend fun flush(): Boolean {
         try {
-            flushMutex.withLock {
-                if (!connectivity.isOnline.value) return@withLock
+            return flushMutex.withLock {
+                if (!connectivity.isOnline.value) return@withLock false
+                var allSent = true
                 for (bookUuid in cache.allPending().keys) {
                     val current = cache.pending(bookUuid) ?: continue
                     when (api.put(bookUuid, current)) {
@@ -154,15 +156,18 @@ class DefaultPlaybackRateStore @Inject constructor(
                         PutOutcome.Drop -> {
                             Log.w(TAG, "Dropping a rejected playback rate for $bookUuid")
                             cache.clearPendingIf(bookUuid, current)
+                            allSent = false
                         }
-                        PutOutcome.Keep -> Unit
+                        PutOutcome.Keep -> allSent = false
                     }
                 }
+                allSent
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Unexpected failure sending playback rates", e)
+            return false
         }
     }
 

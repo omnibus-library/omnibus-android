@@ -85,4 +85,23 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
         }
         libraries.update { list -> list.map { if (it.id == libraryId) it.copy(name = stored) else it } }
     }
+
+    // #369
+    /** When non-null, [setActive] throws this instead. */
+    var setActiveFailure: Throwable? = null
+
+    /** The ids passed to [setActive], as given, in call order. */
+    val activations = mutableListOf<String>()
+
+    private var activationCount = 0L
+
+    override suspend fun setActive(libraryId: String) {
+        setActiveFailure?.let { throw it }
+        activations += libraryId
+        if (libraries.value.none { it.id == libraryId }) return
+        val stamp = ++activationCount
+        libraries.update { list ->
+            list.map { if (it.id == libraryId) it.copy(isActive = true, lastUsedAt = stamp) else it.copy(isActive = false) }
+        }
+    }
 }
