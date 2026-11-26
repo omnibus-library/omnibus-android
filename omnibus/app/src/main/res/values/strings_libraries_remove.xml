@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Removing a library from its detail screen (#373). -->
+    <string name="libraries_remove_button">Remove library</string>
+    <string name="libraries_remove_confirm_title">Remove %1$s?</string>
+    <string name="libraries_remove_confirm_body">You\'ll be signed out of %1$s, and its data on this device will be deleted.</string>
+    <string name="libraries_remove_cancel">Cancel</string>
+    <string name="libraries_remove_confirm">Remove</string>
+    <string name="libraries_remove_removing">Removing</string>
+    <string name="libraries_remove_failed_title">Couldn\'t sync %1$s</string>
+    <string name="libraries_remove_failed_body">Some changes on this device haven\'t reached %1$s. If you remove it now, they\'ll be lost.</string>
+    <string name="libraries_remove_anyway">Remove anyway</string>
+</resources>
