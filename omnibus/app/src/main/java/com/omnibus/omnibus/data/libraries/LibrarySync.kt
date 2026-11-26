@@ -14,10 +14,17 @@ interface LibrarySync {
      * every participant sent everything; any other outcome, or the limit passing, is [LibrarySyncResult.Failed].
      */
     suspend fun syncActive(): LibrarySyncResult
-    // #373 appends: suspend fun syncInactive(libraryId: String): LibrarySyncResult
+
+    /**
+     * Sends library [libraryId]'s pending changes to its own server with its own token, and waits at most
+     * [SYNC_LIMIT]. [LibrarySyncResult.Synced] only when every pending change was accepted, or none was pending. An
+     * unknown library, an address that doesn't parse, no token, any refused or failed send, or the limit passing is
+     * [LibrarySyncResult.Failed]. Never touches the active library's server or token.
+     */
+    suspend fun syncInactive(libraryId: String): LibrarySyncResult
 }
 
-/** The outcome of [LibrarySync.syncActive]. */
+/** The outcome of [LibrarySync.syncActive] and [LibrarySync.syncInactive]. */
 sealed interface LibrarySyncResult {
 
     data object Synced : LibrarySyncResult

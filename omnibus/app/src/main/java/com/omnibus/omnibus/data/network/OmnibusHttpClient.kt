@@ -48,6 +48,13 @@ class OmnibusHttpClient @Inject constructor(
     fun request(baseUrl: HttpUrl, path: String): Request.Builder =
         Request.Builder().url(resolve(baseUrl, path))
 
+    /**
+     * Builds a request for [path] on [baseUrl] carrying `Authorization: Bearer [token]`, for a library other than the
+     * active one. Run it with [newCall], never [execute]: a 401 there must not clear the active library's token.
+     */
+    fun request(baseUrl: HttpUrl, path: String, token: String): Request.Builder =
+        request(baseUrl, path).header("Authorization", "Bearer $token")
+
     fun newCall(request: Request): Call = client.newCall(request)
 
     /**

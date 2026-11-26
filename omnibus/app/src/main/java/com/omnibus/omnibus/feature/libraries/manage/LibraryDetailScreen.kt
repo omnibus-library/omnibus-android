@@ -41,6 +41,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.omnibus.omnibus.R
 import com.omnibus.omnibus.data.libraries.LibraryHost
+import com.omnibus.omnibus.feature.libraries.displayName
+import com.omnibus.omnibus.feature.libraries.remove.RemoveLibraryButton
+import com.omnibus.omnibus.feature.libraries.remove.RemoveLibraryDialog
 import com.omnibus.omnibus.ui.components.OmnibusTextField
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Spacing
@@ -78,7 +81,18 @@ fun LibraryDetailScreen(
         onLeave = viewModel::save,
         onBack = onBack,
         modifier = modifier,
+        actions = { if (uiState.canRemove) RemoveLibraryButton(onClick = viewModel::removeClicked) },
     )
+    val library = uiState.library
+    if (library != null && !uiState.isMissing) {
+        RemoveLibraryDialog(
+            state = uiState.removeState,
+            name = library.displayName(),
+            onCancel = viewModel::cancelRemove,
+            onRemove = viewModel::confirmRemove,
+            onRemoveAnyway = viewModel::removeAnyway,
+        )
+    }
 }
 
 /**
@@ -87,7 +101,7 @@ fun LibraryDetailScreen(
  * @param onLeave Called when the reader leaves: the back arrow, the app stopping, or the screen leaving composition.
  * Saving is idempotent, so repeated calls are harmless.
  * @param onBack Called to leave the screen.
- * @param actions Shown under the fields. #373 puts Remove library here.
+ * @param actions Shown under the fields: Remove library.
  */
 @Composable
 internal fun LibraryDetailScreenContent(
