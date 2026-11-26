@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.omnibus.omnibus.data.libraries.Library
+import com.omnibus.omnibus.feature.libraries.displayName
+import com.omnibus.omnibus.feature.libraries.monogramOf
 import com.omnibus.omnibus.screenshot.Shot
 
 // Fixed libraries, not random: the screenshots must be stable.
@@ -28,6 +30,13 @@ private val work = Library(
     isActive = false,
 )
 
+/** The shelf of the two libraries above, with [raised] raised and nothing moving. */
+private fun shelf(raised: String) = BookcaseState(
+    spines = listOf(home, work).map { BookcaseSpine(it.id, monogramOf(it.displayName()), SpineHeights.of(it.id)) },
+    raisedLibraryId = raised,
+    transition = BookcaseTransition.Still,
+)
+
 /** The syncing stage: the current library, its monogram and "Syncing Home". */
 @PreviewTest
 @Preview(name = "Light", widthDp = 411, heightDp = 891)
@@ -36,7 +45,12 @@ private val work = Library(
 fun SwitchingSyncing() {
     Shot {
         SwitchingScreenContent(
-            uiState = SwitchingUIState(stage = SwitchingStage.Syncing, current = home, target = work),
+            uiState = SwitchingUIState(
+                stage = SwitchingStage.Syncing,
+                current = home,
+                target = work,
+                bookcase = shelf(raised = home.id),
+            ),
             onStay = {},
             onSwitchAnyway = {},
         )
@@ -52,7 +66,12 @@ fun SwitchingSyncing() {
 fun SwitchingFailed() {
     Shot {
         SwitchingScreenContent(
-            uiState = SwitchingUIState(stage = SwitchingStage.SyncFailed, current = home, target = work),
+            uiState = SwitchingUIState(
+                stage = SwitchingStage.SyncFailed,
+                current = home,
+                target = work,
+                bookcase = shelf(raised = home.id),
+            ),
             onStay = {},
             onSwitchAnyway = {},
         )
@@ -67,7 +86,12 @@ fun SwitchingFailed() {
 fun SwitchingOpening() {
     Shot {
         SwitchingScreenContent(
-            uiState = SwitchingUIState(stage = SwitchingStage.Opening, current = home, target = work),
+            uiState = SwitchingUIState(
+                stage = SwitchingStage.Opening,
+                current = home,
+                target = work,
+                bookcase = shelf(raised = work.id),
+            ),
             onStay = {},
             onSwitchAnyway = {},
         )
