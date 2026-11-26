@@ -136,7 +136,9 @@ internal fun SwitchingScreenContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
-            Bookcase(state = uiState.bookcase, modifier = Modifier.fillMaxWidth())
+            BookcaseViewport(uiState.bookcase, Modifier.weight(1f, fill = false)) { shelf ->
+                Bookcase(state = shelf, modifier = Modifier.fillMaxWidth())
+            }
             LibraryTitle(library = shown)
 
             when (stage) {
