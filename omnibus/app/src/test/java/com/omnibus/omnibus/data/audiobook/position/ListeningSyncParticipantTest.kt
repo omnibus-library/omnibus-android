@@ -108,7 +108,7 @@ class ListeningSyncParticipantTest : DescribeSpec({
         it("#369 TC-6: is true when every pending position is accepted") {
             withServer { scope ->
                 val store = TestAudioPositionStore()
-                val participant = scope.participant(url, store, TestConnectivityMonitor(online = false))
+                val participant = scope.participant(url, store, TestConnectivityMonitor(online = true))
                 store.save(randomAudioPosition())
                 script.answer(200)
 
@@ -120,7 +120,7 @@ class ListeningSyncParticipantTest : DescribeSpec({
         it("#369 TC-6: is true when every queued session is accepted") {
             withServer { scope ->
                 val store = TestAudioPositionStore()
-                val participant = scope.participant(url, store, TestConnectivityMonitor(online = false))
+                val participant = scope.participant(url, store, TestConnectivityMonitor(online = true))
                 store.queueSessions(listOf(randomListeningSessionReport()))
                 script.answer(200)
 
