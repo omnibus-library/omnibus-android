@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/omnibus-library/omnibus-android/compare/v0.1.16...v0.1.17) (2026-11-26)
+
+
+### Features
+
+* **libraries:** remove a library you're not in ([#412](https://github.com/omnibus-library/omnibus-android/issues/412)) ([ab90fb5](https://github.com/omnibus-library/omnibus-android/commit/ab90fb5c3cc2877e8f3e5054d8878c1c334f4f62))
+
 ## [0.1.16](https://github.com/omnibus-library/omnibus-android/compare/v0.1.15...v0.1.16) (2026-11-26)
 
 
