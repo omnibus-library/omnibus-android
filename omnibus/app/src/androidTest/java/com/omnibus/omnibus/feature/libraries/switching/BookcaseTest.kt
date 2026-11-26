@@ -3,9 +3,14 @@ package com.omnibus.omnibus.feature.libraries.switching
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import com.omnibus.omnibus.data.libraries.Library
 import com.omnibus.omnibus.feature.libraries.Monogram
 import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import org.junit.Assert.assertEquals
@@ -77,9 +82,52 @@ class BookcaseTest {
         assertEquals("b is raised at once", -raise, bottomOf("b").toDouble() - bottomOf("a"), 1.0)
     }
 
+    @Test
+    fun issue369_tc32_bookcaseAndInitialAreDecorative() {
+        val home = library("home", "Home", isActive = true)
+        val work = library("work", "Work", isActive = false)
+        val shelf = BookcaseState(
+            spines = listOf(spine("home", 100), spine("work", 90)),
+            raisedLibraryId = "home",
+            transition = BookcaseTransition.Still,
+        )
+        rule.setContent {
+            OmnibusTheme {
+                SwitchingScreenContent(
+                    uiState = SwitchingUIState(
+                        stage = SwitchingStage.Syncing,
+                        current = home,
+                        target = work,
+                        bookcase = shelf,
+                    ),
+                    onStay = {},
+                    onSwitchAnyway = {},
+                )
+            }
+        }
+
+        listOf(bookcaseSpineTag("home"), bookcaseSpineTag("work"), ILLUMINATED_INITIAL_TAG).forEach { tag ->
+            rule.onNodeWithTag(tag)
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ContentDescription))
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Focused))
+        }
+        rule.onNodeWithTag(SwitchingTestTags.NAME).assertTextEquals("Home")
+    }
+
     private fun spine(id: String, heightDp: Int) = BookcaseSpine(
         libraryId = id,
         monogram = Monogram.Letter(id.uppercase()),
         height = heightDp.dp,
+    )
+
+    private fun library(id: String, name: String, isActive: Boolean) = Library(
+        id = id,
+        address = "https://$id.lan",
+        name = name,
+        username = null,
+        addedAt = 0,
+        lastUsedAt = 0,
+        isActive = isActive,
     )
 }

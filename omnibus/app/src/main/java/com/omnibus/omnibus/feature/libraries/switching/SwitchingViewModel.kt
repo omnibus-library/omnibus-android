@@ -10,6 +10,8 @@ import com.omnibus.omnibus.data.libraries.LibrarySync
 import com.omnibus.omnibus.data.libraries.LibrarySyncResult
 import com.omnibus.omnibus.data.libraries.SwitchKind
 import com.omnibus.omnibus.di.ApplicationScope
+import com.omnibus.omnibus.feature.libraries.displayName
+import com.omnibus.omnibus.feature.libraries.monogramOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -18,9 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -47,6 +48,7 @@ enum class SwitchingStage {
  * @property target The library being switched to, or null until it is read.
  * @property left Set once the reader has stayed on the current library, so the screen should close.
  * @property opened Set once the app has opened on the target library, so the screen should hand over to the shell.
+ * @property bookcase The shelf of spines and what it is doing.
  */
 data class SwitchingUIState(
     val stage: SwitchingStage? = null,
@@ -54,6 +56,7 @@ data class SwitchingUIState(
     val target: Library? = null,
     val left: Boolean = false,
     val opened: Boolean = false,
+    val bookcase: BookcaseState = BookcaseState(emptyList(), null, BookcaseTransition.Still),
 )
 
 /**
@@ -104,7 +107,7 @@ class SwitchingViewModel @AssistedInject constructor(
 
     /** The user chose to switch with the changes unsent. Only offered from [SwitchingStage.SyncFailed]; never syncs again. */
     fun onSwitchAnyway() {
-        if (_uiState.value.stage == SwitchingStage.SyncFailed) lift()
+        if (_uiState.value.stage == SwitchingStage.SyncFailed) viewModelScope.launch { lift() }
     }
 
     private suspend fun switch() {
@@ -114,7 +117,14 @@ class SwitchingViewModel @AssistedInject constructor(
             _uiState.update { it.copy(left = true) }
             return
         }
-        _uiState.update { it.copy(current = all.firstOrNull { library -> library.isActive }, target = target) }
+        val current = all.firstOrNull { library -> library.isActive }
+        _uiState.update {
+            it.copy(
+                current = current,
+                target = target,
+                bookcase = bookcase(all, raisedId = current?.id, transition = BookcaseTransition.Still),
+            )
+        }
 
         if (!sync.hasUnsyncedChanges()) {
             lift()
@@ -127,22 +137,50 @@ class SwitchingViewModel @AssistedInject constructor(
         }
     }
 
-    private fun lift() {
-        _uiState.update { it.copy(stage = SwitchingStage.Lifting) }
-        _uiState.update { it.copy(stage = SwitchingStage.Opening) }
+    /**
+     * Lifts the new spine for [BookcaseGeometry.LIFT], then opens on the target and commits the switch. The wait runs on
+     * [viewModelScope]; the commit runs on [persistScope], so once it has started, clearing this view model cannot stop it.
+     */
+    private suspend fun lift() {
+        val from = _uiState.value.current?.id
+        val transition = if (from == null) BookcaseTransition.Still else BookcaseTransition.Lift(from, route.toLibraryId)
+        _uiState.update {
+            it.copy(
+                stage = SwitchingStage.Lifting,
+                bookcase = it.bookcase.copy(raisedLibraryId = route.toLibraryId, transition = transition),
+            )
+        }
+        delay(BookcaseGeometry.LIFT)
+        _uiState.update {
+            it.copy(
+                stage = SwitchingStage.Opening,
+                bookcase = it.bookcase.copy(transition = BookcaseTransition.Still),
+            )
+        }
         persistScope.launch { librarySwitch.commit(route.toLibraryId, route.kind) }
     }
 
     /** After the restart: waits for the target library and the session, then clears the pending opening. */
     private suspend fun open() {
         _uiState.update { it.copy(stage = SwitchingStage.Opening) }
-        val target = libraries.getLibrariesFlow()
-            .map { list -> list.firstOrNull { it.id == route.toLibraryId } }
-            .filterNotNull()
-            .first()
-        _uiState.update { it.copy(target = target) }
+        val all = libraries.getLibrariesFlow()
+            .first { list -> list.any { it.id == route.toLibraryId } }
+        val target = all.first { it.id == route.toLibraryId }
+        _uiState.update {
+            it.copy(
+                target = target,
+                bookcase = bookcase(all, raisedId = target.id, transition = BookcaseTransition.Still),
+            )
+        }
         auth.isSignedIn.first()
         librarySwitch.clearPendingOpening()
         _uiState.update { it.copy(opened = true) }
     }
+
+    /** The shelf for [libraries] in list order, with [raisedId] raised. */
+    private fun bookcase(libraries: List<Library>, raisedId: String?, transition: BookcaseTransition) = BookcaseState(
+        spines = libraries.map { BookcaseSpine(it.id, monogramOf(it.displayName()), SpineHeights.of(it.id)) },
+        raisedLibraryId = raisedId,
+        transition = transition,
+    )
 }

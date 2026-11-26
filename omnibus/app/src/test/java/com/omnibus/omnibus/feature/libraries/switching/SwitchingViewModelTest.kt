@@ -29,7 +29,10 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class SwitchingViewModelTest : DescribeSpec({
 
-    beforeSpec { Dispatchers.setMain(UnconfinedTestDispatcher()) }
+    // The lift waits on the main dispatcher's virtual time, so the tests drive it through this scheduler.
+    val mainDispatcher = UnconfinedTestDispatcher()
+
+    beforeSpec { Dispatchers.setMain(mainDispatcher) }
 
     afterSpec { Dispatchers.resetMain() }
 
@@ -70,6 +73,7 @@ class SwitchingViewModelTest : DescribeSpec({
                 sync = TestLibrarySync().apply { hasUnsynced = false },
                 librarySwitch = switch,
             )
+            mainDispatcher.scheduler.advanceUntilIdle()
 
             switch.commits shouldBe listOf("work" to SwitchKind.Switch)
         }
@@ -109,6 +113,7 @@ class SwitchingViewModelTest : DescribeSpec({
             )
 
             gate.complete(LibrarySyncResult.Synced)
+            mainDispatcher.scheduler.advanceUntilIdle()
 
             switch.commits shouldBe listOf("work" to SwitchKind.Switch)
         }
@@ -156,6 +161,7 @@ class SwitchingViewModelTest : DescribeSpec({
             val viewModel = failedViewModel(switch, sync)
 
             viewModel.onSwitchAnyway()
+            mainDispatcher.scheduler.advanceUntilIdle()
 
             switch.commits shouldBe listOf("work" to SwitchKind.Switch)
             sync.syncCalls shouldBe 1
@@ -238,6 +244,7 @@ class SwitchingViewModelTest : DescribeSpec({
                     }
                 },
             )[SwitchingViewModel::class]
+            mainDispatcher.scheduler.advanceUntilIdle()
             store.clear()
 
             gate.complete(Unit)
