@@ -128,11 +128,12 @@ internal fun SwitchingScreenContent(
             .semantics { paneTitle = announcement },
         contentAlignment = Alignment.Center,
     ) {
-        // The bookcase spans the window up to a 560 dp shelf plus its own margins, which are its only inset (#370).
+        // The bookcase spans the window up to a 560 dp shelf plus its own margins, which are its only inset, and sits
+        // two steps above the name, as in the spec's renders (#370).
         Column(
             Modifier.widthIn(max = BookcaseGeometry.SHELF_MAX_WIDTH + BookcaseGeometry.SHELF_MARGIN * 2).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg * 2),
         ) {
             BookcaseViewport(uiState.bookcase, Modifier.weight(1f, fill = false)) { shelf ->
                 Bookcase(state = shelf, modifier = Modifier.fillMaxWidth())
