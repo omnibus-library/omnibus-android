@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.16](https://github.com/omnibus-library/omnibus-android/compare/v0.1.15...v0.1.16) (2026-11-26)
+
+
+### Features
+
+* **libraries:** add a library from the switcher ([#409](https://github.com/omnibus-library/omnibus-android/issues/409)) ([52351dc](https://github.com/omnibus-library/omnibus-android/commit/52351dc2ff1f88f717c5547614eeef1e66a39a86))
+* **libraries:** draw the libraries as a bookcase while switching ([#405](https://github.com/omnibus-library/omnibus-android/issues/405)) ([5b8ade2](https://github.com/omnibus-library/omnibus-android/commit/5b8ade2011797a96f507fc053287994ca3266ba2))
+* **libraries:** fit many libraries on the bookcase's shelves ([#407](https://github.com/omnibus-library/omnibus-android/issues/407)) ([4a49f1b](https://github.com/omnibus-library/omnibus-android/commit/4a49f1bf1f7bf6c0929f42824e563b448a832f5a))
+* **libraries:** manage and rename saved libraries ([#399](https://github.com/omnibus-library/omnibus-android/issues/399)) ([8021068](https://github.com/omnibus-library/omnibus-android/commit/8021068b88964ac747ff2bb97bea76e6c8dc81f2))
+* **libraries:** open a library switcher sheet from the account card ([#397](https://github.com/omnibus-library/omnibus-android/issues/397)) ([c2d4a58](https://github.com/omnibus-library/omnibus-android/commit/c2d4a58a6b18aacfc3c5a9efdabe77770d7d94c2))
+* **libraries:** show the account card on the You tab ([#390](https://github.com/omnibus-library/omnibus-android/issues/390)) ([282ce95](https://github.com/omnibus-library/omnibus-android/commit/282ce95705317981df5bb89a5ca082319ae004ba))
+* **libraries:** switch libraries from the switcher sheet ([#404](https://github.com/omnibus-library/omnibus-android/issues/404)) ([62b1e23](https://github.com/omnibus-library/omnibus-android/commit/62b1e23aae2635bf9d4fbef90e079dd4fb2f7c66))
+* **search:** find authors by the names that match a search ([#386](https://github.com/omnibus-library/omnibus-android/issues/386)) ([9574ca3](https://github.com/omnibus-library/omnibus-android/commit/9574ca317c4b12c886bd19722a7f99620bab91c0))
+* **search:** find books by the tags that match a search ([#376](https://github.com/omnibus-library/omnibus-android/issues/376)) ([d6500ab](https://github.com/omnibus-library/omnibus-android/commit/d6500ab7ef5565d2db701a65f68afedeb976d32f))
+* **search:** find series by the names that match a search ([#388](https://github.com/omnibus-library/omnibus-android/issues/388)) ([870ed27](https://github.com/omnibus-library/omnibus-android/commit/870ed27e1fba9079fda5cc1d61a756b3792d48e3))
+* **series:** add the series details page ([#365](https://github.com/omnibus-library/omnibus-android/issues/365)) ([ac30fc4](https://github.com/omnibus-library/omnibus-android/commit/ac30fc4d96a6f85c3ca4bcd8ba2422cee0c85365))
+* **storage:** keep each library's data in a local database ([#383](https://github.com/omnibus-library/omnibus-android/issues/383)) ([3951bcd](https://github.com/omnibus-library/omnibus-android/commit/3951bcd13ca983b12a2dfaf133775a8cc0939d1f))
+* **storage:** start a new library when the server changes ([#385](https://github.com/omnibus-library/omnibus-android/issues/385)) ([64c15d0](https://github.com/omnibus-library/omnibus-android/commit/64c15d05c67c75026d72628c7ce6324ec4f896d0))
+
+
+### Bug Fixes
+
+* **reader:** apply the font size to html and body over the book's own CSS ([#408](https://github.com/omnibus-library/omnibus-android/issues/408)) ([44f4c4e](https://github.com/omnibus-library/omnibus-android/commit/44f4c4e088ff46c87b33f0dfc7b6fe583297e8d0))
+
 ## [0.1.15](https://github.com/omnibus-library/omnibus-android/compare/v0.1.14...v0.1.15) (2026-11-25)
 
 
