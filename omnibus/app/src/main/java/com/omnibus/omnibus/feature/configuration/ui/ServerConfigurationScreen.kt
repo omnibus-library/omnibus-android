@@ -189,7 +189,8 @@ internal fun ServerConfigurationContent(
         if (isAdding) {
             IconButton(
                 onClick = onClose,
-                modifier = Modifier.testTag(ServerConfigurationTestTags.CLOSE),
+                // The full 48dp touch target, not the 40dp default container.
+                modifier = Modifier.size(48.dp).testTag(ServerConfigurationTestTags.CLOSE),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_reader_close),
