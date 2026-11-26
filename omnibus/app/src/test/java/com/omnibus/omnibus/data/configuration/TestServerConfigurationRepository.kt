@@ -38,4 +38,19 @@ class TestServerConfigurationRepository(initialAddress: String? = null) :
         readFailure?.let { throw it }
         savedAddress.collect { emit(it) }
     }
+
+    // #371
+    /** Returned by [validateNewLibraryAddress]. */
+    var newLibraryValidationResult: (address: String) -> ServerValidationResult = {
+        unscripted("validateNewLibraryAddress")
+    }
+
+    /** Every address passed to [validateNewLibraryAddress], in order. */
+    val newLibraryValidatedAddresses = mutableListOf<String>()
+
+    override suspend fun validateNewLibraryAddress(address: String): ServerValidationResult {
+        newLibraryValidatedAddresses += address
+        validationGate?.await()
+        return newLibraryValidationResult(address)
+    }
 }

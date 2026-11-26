@@ -38,6 +38,13 @@ class DefaultServerConfigurationRepository @Inject constructor(
         }
     }
 
+    // #371
+    override suspend fun validateNewLibraryAddress(address: String): ServerValidationResult {
+        val normalized = ServerAddress.normalize(address) ?: return ServerValidationResult.InvalidAddressFormat
+        librariesRepository.findByAddress(normalized)?.let { return ServerValidationResult.AlreadySaved(it) }
+        return validateServerAddress(normalized)
+    }
+
     /**
      * Saves [address] as the active library's server. With no library yet, adds and activates one. For the same
      * server, nothing changes. For a different one, the active library is removed with its data and token, and a

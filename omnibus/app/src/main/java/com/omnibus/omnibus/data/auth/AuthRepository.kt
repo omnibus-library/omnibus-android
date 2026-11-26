@@ -22,6 +22,50 @@ interface AuthRepository {
 
     /** Confirms the stored session with the server. */
     suspend fun verifySession(): AuthSessionResult
+
+    // #371
+    /**
+     * Signs in to (or, with [createAccount], registers on) the server at [address], which isn't a saved library. On
+     * success, adds it as an inactive library with its own token and username. The active library, its token and the
+     * current user are never changed. Nothing is saved on failure.
+     */
+    suspend fun signInToNewLibrary(
+        address: String,
+        username: String,
+        password: String,
+        createAccount: Boolean = false,
+    ): AuthNewLibraryResult
+}
+
+// #371
+/** The outcome of signing in to a library that isn't saved yet. */
+sealed interface AuthNewLibraryResult {
+    /** The library was added with its token saved; [libraryId] is its id. */
+    data class Success(val libraryId: String) : AuthNewLibraryResult
+
+    /** The address became a saved library, so nothing was requested. */
+    data object AlreadySaved : AuthNewLibraryResult
+
+    /** Sign-in was rejected (401 or 403). Nothing saved. */
+    data object InvalidCredentials : AuthNewLibraryResult
+
+    /** Rate limited (429). Nothing saved. */
+    data object TooManyAttempts : AuthNewLibraryResult
+
+    /** Registration name is taken (409). Nothing saved. */
+    data object UsernameTaken : AuthNewLibraryResult
+
+    /** Registration is closed (403). Nothing saved. */
+    data object RegistrationDisabled : AuthNewLibraryResult
+
+    /** Username or password rejected on registration (400). Nothing saved. */
+    data object InvalidDetails : AuthNewLibraryResult
+
+    /** The request failed before the server responded. Nothing saved. */
+    data object Unreachable : AuthNewLibraryResult
+
+    /** Any other failure: a status, an unusable body, a blank token, storage, or a bad address. Nothing saved. */
+    data object ServerError : AuthNewLibraryResult
 }
 
 sealed interface AuthSignInResult {

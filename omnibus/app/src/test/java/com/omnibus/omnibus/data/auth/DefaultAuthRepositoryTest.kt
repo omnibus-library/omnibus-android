@@ -7,6 +7,9 @@ import com.omnibus.omnibus.data.auth.remote.AuthClientMetadataInterceptor
 import com.omnibus.omnibus.data.auth.remote.TestClientInfo
 import com.omnibus.omnibus.data.libraries.TestActiveLibrary
 import com.omnibus.omnibus.data.libraries.TestLibrariesRepository
+import com.omnibus.omnibus.data.libraries.local.LibraryTokenStore
+import com.omnibus.omnibus.data.libraries.local.TestLibraryTokenStore
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.network.OmnibusNetworkInterceptor
 import com.omnibus.omnibus.data.network.TestServerBaseUrlProvider
@@ -81,6 +84,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         tokenStore: TestAuthTokenStore = TestAuthTokenStore(),
         libraries: TestLibrariesRepository = TestLibrariesRepository(),
         activeLibrary: TestActiveLibrary = TestActiveLibrary(),
+        libraryTokens: LibraryTokenStore = TestLibraryTokenStore(),
     ): DefaultAuthRepository = DefaultAuthRepository(
         ioDispatcher = Dispatchers.Unconfined,
         omnibusHttpClient = OmnibusHttpClient(
@@ -93,6 +97,7 @@ class DefaultAuthRepositoryTest : DescribeSpec({
         authTokenStore = tokenStore,
         libraries = libraries,
         activeLibrary = activeLibrary,
+        libraryTokens = libraryTokens,
     )
 
     suspend fun signInAnswering(
@@ -123,6 +128,19 @@ class DefaultAuthRepositoryTest : DescribeSpec({
     ): AuthSessionResult = withMockServer { server ->
         server.enqueue(response)
         sut(server.url("/"), tokenStore, libraries, activeLibrary).verifySession()
+    }
+
+    // #371
+    suspend fun addAnswering(
+        response: MockResponse,
+        createAccount: Boolean = false,
+        tokenStore: TestAuthTokenStore = storeHolding(),
+        libraries: TestLibrariesRepository = TestLibrariesRepository(),
+        libraryTokens: LibraryTokenStore = TestLibraryTokenStore(),
+    ): AuthNewLibraryResult = withMockServer { server ->
+        server.enqueue(response)
+        sut(tokenStore = tokenStore, libraries = libraries, libraryTokens = libraryTokens)
+            .signInToNewLibrary(server.url("/").toString(), randomString(), randomString(), createAccount)
     }
 
     beforeSpec { mockAndroidLog() }
@@ -1039,4 +1057,184 @@ class DefaultAuthRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    // #371
+    describe("signing in to a library that isn't saved yet") {
+        it("TC-5: posts once to the sign-in or registration path, without an Authorization header") {
+            checkAll(Exhaustive.of(false, true)) { createAccount ->
+                val tokenStore = storeHolding()
+                withMockServer { server ->
+                    server.enqueue(reply(200, acceptedBody()))
+
+                    sut(tokenStore = tokenStore).signInToNewLibrary(
+                        server.url("/").toString(), randomString(), randomString(), createAccount,
+                    )
+
+                    val request = server.takeRequest()
+                    server.requestCount shouldBe 1
+                    request.method shouldBe "POST"
+                    request.url.encodedPath shouldBe if (createAccount) "/api/auth/register" else "/api/auth/login"
+                    request.headers["Authorization"].shouldBeNull()
+                }
+            }
+        }
+
+        it("TC-6: maps each status to its result and saves nothing") {
+            val failures = listOf(
+                Triple(false, reply(401), AuthNewLibraryResult.InvalidCredentials),
+                Triple(false, reply(403), AuthNewLibraryResult.InvalidCredentials),
+                Triple(false, reply(429), AuthNewLibraryResult.TooManyAttempts),
+                Triple(false, reply(500), AuthNewLibraryResult.ServerError),
+                Triple(true, reply(409), AuthNewLibraryResult.UsernameTaken),
+                Triple(true, reply(403), AuthNewLibraryResult.RegistrationDisabled),
+                Triple(true, reply(400), AuthNewLibraryResult.InvalidDetails),
+                Triple(true, reply(429), AuthNewLibraryResult.TooManyAttempts),
+            )
+            checkAll(Exhaustive.collection(failures)) { (createAccount, response, expected) ->
+                val tokenStore = storeHolding()
+                val token = tokenStore.token.first()
+                val libraries = TestLibrariesRepository()
+
+                addAnswering(response, createAccount, tokenStore, libraries) shouldBe expected
+
+                libraries.getLibrariesFlow().first().shouldBeEmpty()
+                tokenStore.token.first() shouldBe token
+            }
+        }
+
+        it("TC-6: maps an unreachable server to Unreachable and saves nothing") {
+            val libraries = TestLibrariesRepository()
+
+            sut(libraries = libraries).signInToNewLibrary(
+                unreachableUrl().toString(), randomString(), randomString(),
+            ) shouldBe AuthNewLibraryResult.Unreachable
+
+            libraries.getLibrariesFlow().first().shouldBeEmpty()
+        }
+
+        it("TC-6: maps each unusable 2xx body to ServerError and saves nothing") {
+            checkAll(Exhaustive.collection(unusableBodies())) { body ->
+                val libraries = TestLibrariesRepository()
+
+                addAnswering(reply(200, body), libraries = libraries) shouldBe AuthNewLibraryResult.ServerError
+
+                libraries.getLibrariesFlow().first().shouldBeEmpty()
+            }
+        }
+
+        it("TC-7: adds the library inactive, at the normalized address") {
+            val active = randomLibrary().copy(isActive = true)
+            val libraries = TestLibrariesRepository(listOf(active))
+
+            withMockServer { server ->
+                server.enqueue(reply(200, acceptedBody()))
+                val address = server.url("/").toString()
+
+                sut(libraries = libraries).signInToNewLibrary("$address/", randomString(), randomString())
+
+                val added = libraries.getLibrariesFlow().first().last()
+                added.address shouldBe address.trimEnd('/')
+                added.isActive shouldBe false
+            }
+        }
+
+        it("TC-7: keeps the active library active") {
+            val active = randomLibrary().copy(isActive = true)
+            val libraries = TestLibrariesRepository(listOf(active))
+
+            addAnswering(reply(200, acceptedBody()), libraries = libraries)
+
+            libraries.getActiveLibraryFlow().first() shouldBe active
+        }
+
+        it("TC-7: stores the new token under the new library and leaves the active token alone") {
+            val active = randomLibrary().copy(isActive = true)
+            val activeToken = randomString()
+            val tokenStore = storeHolding(activeToken)
+            val libraryTokens = TestLibraryTokenStore(initialTokens = mapOf(active.id to activeToken))
+            val libraries = TestLibrariesRepository(listOf(active))
+            val newToken = randomString()
+
+            val result = addAnswering(
+                reply(200, acceptedBody(token = newToken)),
+                tokenStore = tokenStore,
+                libraries = libraries,
+                libraryTokens = libraryTokens,
+            )
+
+            val id = (result as AuthNewLibraryResult.Success).libraryId
+            libraryTokens.getTokenFlow(id).first() shouldBe newToken
+            libraryTokens.getTokenFlow(active.id).first() shouldBe activeToken
+            tokenStore.token.first() shouldBe activeToken
+        }
+
+        it("TC-7: records the username on the new library only") {
+            val active = randomLibrary().copy(isActive = true)
+            val libraries = TestLibrariesRepository(listOf(active))
+            val username = randomString()
+
+            val result = addAnswering(
+                reply(200, acceptedBody(user = userJson(username = username))),
+                libraries = libraries,
+            )
+
+            val id = (result as AuthNewLibraryResult.Success).libraryId
+            libraries.usernameUpdates shouldBe listOf(id to username)
+        }
+
+        it("TC-7: leaves the active library and the current user as they were") {
+            withMockServer(reply(200, userJson()), reply(200, acceptedBody())) { server ->
+                val active = randomLibrary().copy(isActive = true)
+                val libraries = TestLibrariesRepository(listOf(active))
+                val activeLibrary = TestActiveLibrary(current = active.id)
+                val repository = sut(
+                    server.url("/"),
+                    storeHolding(),
+                    libraries,
+                    activeLibrary,
+                )
+                repository.verifySession()
+                val user = repository.currentUser.first()
+
+                repository.signInToNewLibrary(server.url("/").toString(), randomString(), randomString())
+
+                repository.currentUser.first() shouldBe user
+                activeLibrary.id() shouldBe active.id
+                libraries.activations.shouldBeEmpty()
+            }
+        }
+
+        it("TC-8: removes the new library when its token can't be saved, and reports ServerError") {
+            val libraries = TestLibrariesRepository()
+
+            val result = addAnswering(
+                reply(200, acceptedBody()),
+                libraries = libraries,
+                libraryTokens = FailingSaveTokenStore(),
+            )
+
+            result shouldBe AuthNewLibraryResult.ServerError
+            libraries.removedIds.size shouldBe 1
+            libraries.getLibrariesFlow().first().shouldBeEmpty()
+        }
+
+        it("TC-9: returns AlreadySaved without sending a request when the address is saved") {
+            withMockServer { server ->
+                val saved = randomLibrary().copy(address = server.url("/").toString().trimEnd('/'))
+                val libraries = TestLibrariesRepository(listOf(saved))
+
+                sut(libraries = libraries).signInToNewLibrary(
+                    server.url("/").toString(), randomString(), randomString(),
+                ) shouldBe AuthNewLibraryResult.AlreadySaved
+
+                server.requestCount shouldBe 0
+            }
+        }
+    }
 })
+
+/** Token store whose save fails, as a full disk does. Reads go to [inner]. */
+private class FailingSaveTokenStore(inner: LibraryTokenStore = TestLibraryTokenStore()) :
+    LibraryTokenStore by inner {
+    override suspend fun save(libraryId: String, token: String): Unit = throw IOException("disk full")
+}

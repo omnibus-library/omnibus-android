@@ -1,5 +1,6 @@
 package com.omnibus.omnibus.data.configuration
 
+import com.omnibus.omnibus.data.libraries.Library
 import kotlinx.coroutines.flow.Flow
 
 interface ServerConfigurationRepository {
@@ -7,6 +8,14 @@ interface ServerConfigurationRepository {
     suspend fun saveServerConfig(address: String)
 
     fun getSavedServerConfigFlow(): Flow<String?>
+
+    // #371
+    /**
+     * Checks [address] for adding a library. An address that matches a saved library gives
+     * [ServerValidationResult.AlreadySaved] without probing. Otherwise it is probed as [validateServerAddress] does.
+     * Never saves anything.
+     */
+    suspend fun validateNewLibraryAddress(address: String): ServerValidationResult
 }
 
 sealed interface ServerValidationResult {
@@ -14,4 +23,11 @@ sealed interface ServerValidationResult {
     data class Success(val serverAddress: String) : ServerValidationResult
     data object InvalidAddressFormat : ServerValidationResult
     data object ServerNotFound : ServerValidationResult
+
+    // #371
+    /**
+     * The address is already saved as [library]. Only [ServerConfigurationRepository.validateNewLibraryAddress]
+     * returns it.
+     */
+    data class AlreadySaved(val library: Library) : ServerValidationResult
 }

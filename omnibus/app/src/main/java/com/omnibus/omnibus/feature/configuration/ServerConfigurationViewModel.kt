@@ -45,6 +45,8 @@ class ServerConfigurationViewModel @Inject constructor(
                 is ServerValidationResult.Success -> ServerConfigSubmissionStatus.ACCEPTED
                 is ServerValidationResult.InvalidAddressFormat -> ServerConfigSubmissionStatus.ERROR
                 is ServerValidationResult.ServerNotFound -> ServerConfigSubmissionStatus.NOT_ACCEPTED
+                // validateServerAddress never returns AlreadySaved
+                is ServerValidationResult.AlreadySaved -> ServerConfigSubmissionStatus.ERROR
             }
 
             if (submissionResult is ServerValidationResult.Success) {
