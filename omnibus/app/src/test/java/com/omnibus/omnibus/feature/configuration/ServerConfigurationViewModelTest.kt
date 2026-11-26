@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.omnibus.omnibus.data.configuration.ServerValidationResult
 import com.omnibus.omnibus.data.configuration.TestServerConfigurationRepository
 import com.omnibus.omnibus.data.configuration.randomServerAddress
+import com.omnibus.omnibus.data.libraries.randomLibrary
 import com.omnibus.omnibus.testing.randomString
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -124,6 +125,84 @@ class ServerConfigurationViewModelTest : DescribeSpec({
                 ),
             ) { (status, enabled) ->
                 ServerConfigUIState(submissionStatus = status).submitButtonEnabled shouldBe enabled
+            }
+        }
+    }
+    // #371
+    describe("submitting a new library's address") {
+        context("when the address is accepted") {
+            it("TC-1: accepts it without saving it, so the saved address stays as it was") {
+                val saved = randomServerAddress()
+                val accepted = "https://${randomString(8..16).lowercase()}.lan"
+                val repository = TestServerConfigurationRepository(saved).apply {
+                    newLibraryValidationResult = { ServerValidationResult.Success(accepted) }
+                }
+                val vm = sut(repository)
+
+                vm.submitNewLibraryUrl(randomString())
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.ACCEPTED
+                vm.uiState.value.acceptedAddress shouldBe accepted
+                repository.savedAddress.value shouldBe saved
+            }
+
+            it("TC-1: returns to unsubmitted once the connection has been shown") {
+                val accepted = "https://${randomString(8..16).lowercase()}.lan"
+                val repository = TestServerConfigurationRepository().apply {
+                    newLibraryValidationResult = { ServerValidationResult.Success(accepted) }
+                }
+                val vm = sut(repository)
+                vm.submitNewLibraryUrl(randomString())
+
+                vm.connectionShown()
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.UNSUBMITTED
+                vm.uiState.value.acceptedAddress.shouldBeNull()
+            }
+
+            it("TC-1: accepts the address again when the reader connects again") {
+                val accepted = "https://${randomString(8..16).lowercase()}.lan"
+                val repository = TestServerConfigurationRepository().apply {
+                    newLibraryValidationResult = { ServerValidationResult.Success(accepted) }
+                }
+                val vm = sut(repository)
+                vm.submitNewLibraryUrl(randomString())
+                vm.connectionShown()
+
+                vm.submitNewLibraryUrl(randomString())
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.ACCEPTED
+                vm.uiState.value.acceptedAddress shouldBe accepted
+            }
+        }
+
+        context("when the address matches a saved library") {
+            it("TC-2: shows ALREADY_SAVED with that library, and disables the submit button") {
+                val library = randomLibrary()
+                val repository = TestServerConfigurationRepository().apply {
+                    newLibraryValidationResult = { ServerValidationResult.AlreadySaved(library) }
+                }
+                val vm = sut(repository)
+
+                vm.submitNewLibraryUrl(randomString())
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.ALREADY_SAVED
+                vm.uiState.value.alreadySaved shouldBe library
+                vm.uiState.value.submitButtonEnabled shouldBe false
+            }
+
+            it("TC-2: returns to unsubmitted once the address is edited") {
+                val library = randomLibrary()
+                val repository = TestServerConfigurationRepository().apply {
+                    newLibraryValidationResult = { ServerValidationResult.AlreadySaved(library) }
+                }
+                val vm = sut(repository)
+                vm.submitNewLibraryUrl(randomString())
+
+                vm.editAddress()
+
+                vm.uiState.value.submissionStatus shouldBe ServerConfigSubmissionStatus.UNSUBMITTED
+                vm.uiState.value.alreadySaved.shouldBeNull()
             }
         }
     }
