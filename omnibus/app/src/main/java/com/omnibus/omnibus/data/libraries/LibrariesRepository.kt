@@ -47,4 +47,12 @@ interface LibrariesRepository {
      * [ActiveLibrary]: a switch restarts the process instead.
      */
     suspend fun setActive(libraryId: String)
+
+    // #371
+    /**
+     * The saved library whose address is [address] once both are normalized, with the scheme and host compared without
+     * regard to case and a default port ignored. Null when none matches or [address] doesn't normalize. Waits for the
+     * storage upgrade, and gives null if it fails. A storage failure is logged, not thrown.
+     */
+    suspend fun findByAddress(address: String): Library?
 }
