@@ -132,6 +132,7 @@ class DefaultLibrariesRepositoryTest {
             override suspend fun delete(id: String) = real.delete(id)
             override suspend fun setUsername(id: String, username: String) = real.setUsername(id, username)
             override suspend fun rename(id: String, name: String) = real.rename(id, name)
+            override suspend fun setActive(id: String, now: Long) = real.setActive(id, now)
         }
     }
 }

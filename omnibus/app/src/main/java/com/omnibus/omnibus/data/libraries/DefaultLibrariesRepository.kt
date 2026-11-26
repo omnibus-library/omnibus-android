@@ -144,6 +144,18 @@ class DefaultLibrariesRepository @Inject constructor(
         }
     }
 
+    // #369
+    override suspend fun setActive(libraryId: String) {
+        withContext(ioDispatcher) {
+            if (!upgrade.ensureDone()) return@withContext
+            try {
+                dao.setActive(libraryId, clock.nowMillis())
+            } catch (error: SQLException) {
+                Log.e(TAG, "Unable to make the library active", error)
+            }
+        }
+    }
+
     /** [name] trimmed and cut to [NAME_MAX_LENGTH] code points, so a surrogate pair is never split. */
     private fun cleanName(name: String): String {
         val trimmed = name.trim()
