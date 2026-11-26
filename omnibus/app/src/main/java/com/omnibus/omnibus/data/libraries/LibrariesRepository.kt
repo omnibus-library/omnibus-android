@@ -31,4 +31,12 @@ interface LibrariesRepository {
      * the storage upgrade; a storage failure is logged, not thrown.
      */
     suspend fun setUsername(libraryId: String, username: String)
+
+    // #368
+    /**
+     * Stores [name] as library [libraryId]'s name, trimmed and cut to 40 characters (code points; a surrogate pair is
+     * never split). A blank name is stored as "" and shows as the host. An unknown id changes nothing. Touches no
+     * other column. Waits for the storage upgrade; a storage failure is logged, not thrown. Local only.
+     */
+    suspend fun rename(libraryId: String, name: String)
 }

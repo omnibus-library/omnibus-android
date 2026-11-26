@@ -66,4 +66,23 @@ class TestLibrariesRepository(initial: List<Library> = emptyList()) : LibrariesR
         usernameUpdates += libraryId to username
         libraries.update { list -> list.map { if (it.id == libraryId) it.copy(username = username) else it } }
     }
+
+    // #368
+    /** When non-null, [rename] throws this instead. */
+    var renameFailure: Throwable? = null
+
+    /** The (libraryId, name) pairs passed to [rename], as given, in call order. */
+    val renames = mutableListOf<Pair<String, String>>()
+
+    override suspend fun rename(libraryId: String, name: String) {
+        renameFailure?.let { throw it }
+        renames += libraryId to name
+        val trimmed = name.trim()
+        val stored = if (trimmed.codePointCount(0, trimmed.length) <= 40) {
+            trimmed
+        } else {
+            trimmed.substring(0, trimmed.offsetByCodePoints(0, 40))
+        }
+        libraries.update { list -> list.map { if (it.id == libraryId) it.copy(name = stored) else it } }
+    }
 }

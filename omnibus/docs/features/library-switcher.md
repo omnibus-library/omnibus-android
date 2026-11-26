@@ -2,7 +2,7 @@
 
 | Version | Status | Last updated |
 |---|---|---|
-| 1.0.1 | Accepted | 2026-11-25 |
+| 1.0.2 | Accepted | 2026-11-25 |
 
 ## Summary
 
@@ -86,6 +86,7 @@ The library switcher is for readers who have accounts on more than one Omnibus s
 
 - The detail screen's title is the library's name, and it follows the name field as it changes.
 - A rename is saved when the reader leaves the screen.
+- The address and username are plain text rows, not fields, so only the name looks like something to edit.
 
 ### Removing a library
 
@@ -384,6 +385,10 @@ The feature follows the layers in `docs/engineering/feature-layers.md`.
 ---
 
 ## Changelog
+
+**1.0.2** (2026-11-25)
+
+- The library detail screen shows the address and username as plain text rows instead of field boxes, with refreshed renders. Why: the filled boxes looked like inputs that ignored taps. No behaviour changes.
 
 **1.0.1** (2026-11-25)
 

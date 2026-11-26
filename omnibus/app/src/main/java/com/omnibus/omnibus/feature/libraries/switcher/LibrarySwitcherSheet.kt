@@ -1,17 +1,25 @@
 package com.omnibus.omnibus.feature.libraries.switcher
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,12 +28,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -36,6 +48,7 @@ import com.omnibus.omnibus.ui.theme.OmnibusTheme
 import com.omnibus.omnibus.ui.theme.Radius
 import com.omnibus.omnibus.ui.theme.Spacing
 import com.omnibus.omnibus.ui.theme.displayTextStyle
+import com.omnibus.omnibus.ui.theme.uiTextStyle
 import kotlinx.coroutines.launch
 
 /** Test tags for the switcher sheet. */
@@ -43,6 +56,7 @@ internal object LibrarySwitcherTestTags {
     const val SHEET = "library-switcher-sheet"
     const val TITLE = "library-switcher-title"
     const val LIST = "library-switcher-list"
+    const val MANAGE = "library-switcher-manage"
 }
 
 /**
@@ -71,11 +85,13 @@ private const val DIALOG_MAX_HEIGHT = 0.8f
  * Tapping the open library closes it. Switching to another library arrives with #369.
  *
  * @param onDismiss Called once the sheet has closed: the open library tapped, a swipe down, the scrim or Back.
+ * @param onManageLibraries Called after the sheet has closed, when "Manage libraries" was tapped.
  */
 @Composable
 fun LibrarySwitcherSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onManageLibraries: () -> Unit = {},
     viewModel: LibrarySwitcherViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -84,6 +100,7 @@ fun LibrarySwitcherSheet(
         onLibraryClick = ::closeOnCurrent,
         onDismiss = onDismiss,
         modifier = modifier,
+        onManageLibraries = onManageLibraries,
     )
 }
 
@@ -102,6 +119,7 @@ internal fun closeOnCurrent(library: Library, close: () -> Unit) {
  * a phone) and then calls [onDismiss].
  * @param onDismiss Called once the sheet has closed.
  * @param centered Whether to show the dialog rather than the bottom sheet.
+ * @param onManageLibraries Called after the sheet has closed, when "Manage libraries" was tapped.
  */
 @Composable
 internal fun LibrarySwitcherLayout(
@@ -110,11 +128,12 @@ internal fun LibrarySwitcherLayout(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     centered: Boolean = LocalWindowInfo.current.containerDpSize.width >= SWITCHER_CENTERED_MIN_WIDTH,
+    onManageLibraries: () -> Unit = {},
 ) {
     if (centered) {
-        LibrarySwitcherDialog(libraries, onLibraryClick, onDismiss, modifier)
+        LibrarySwitcherDialog(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries)
     } else {
-        LibrarySwitcherBottomSheet(libraries, onLibraryClick, onDismiss, modifier)
+        LibrarySwitcherBottomSheet(libraries, onLibraryClick, onDismiss, modifier, onManageLibraries)
     }
 }
 
@@ -126,14 +145,16 @@ private fun LibrarySwitcherBottomSheet(
     onLibraryClick: (library: Library, close: () -> Unit) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier,
+    onManageLibraries: () -> Unit,
 ) {
     val palette = OmnibusTheme.palette
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    // Hide first, then report, so the sheet slides away instead of vanishing when the caller drops it.
-    val close: () -> Unit = {
-        scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) onDismiss() }
+    // Hide first, then run the rest, so the sheet slides away instead of vanishing when the caller drops it.
+    val hideThen: (() -> Unit) -> Unit = { then ->
+        scope.launch { sheetState.hide() }.invokeOnCompletion { if (!sheetState.isVisible) then() }
     }
+    val close: () -> Unit = { hideThen(onDismiss) }
     val windowHeight = LocalWindowInfo.current.containerDpSize.height
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -150,6 +171,7 @@ private fun LibrarySwitcherBottomSheet(
             libraries = libraries,
             onLibraryClick = { library -> onLibraryClick(library, close) },
             modifier = Modifier.heightIn(max = windowHeight * SHEET_MAX_HEIGHT),
+            onManageLibraries = { hideThen { onDismiss(); onManageLibraries() } },
         )
     }
 }
@@ -161,6 +183,7 @@ private fun LibrarySwitcherDialog(
     onLibraryClick: (library: Library, close: () -> Unit) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier,
+    onManageLibraries: () -> Unit,
 ) {
     val windowHeight = LocalWindowInfo.current.containerDpSize.height
     Dialog(onDismissRequest = onDismiss) {
@@ -170,6 +193,7 @@ private fun LibrarySwitcherDialog(
             modifier = modifier
                 .testTag(LibrarySwitcherTestTags.SHEET)
                 .heightIn(max = windowHeight * DIALOG_MAX_HEIGHT),
+            onManageLibraries = { onDismiss(); onManageLibraries() },
         )
     }
 }
@@ -180,6 +204,7 @@ internal fun LibrarySwitcherDialogCard(
     libraries: List<Library>,
     onLibraryClick: (Library) -> Unit,
     modifier: Modifier = Modifier,
+    onManageLibraries: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Surface(
@@ -189,7 +214,12 @@ internal fun LibrarySwitcherDialogCard(
         contentColor = palette.ink0,
         border = BorderStroke(0.5.dp, palette.line2),
     ) {
-        LibrarySwitcherContent(libraries, onLibraryClick, Modifier.padding(top = Spacing.lg))
+        LibrarySwitcherContent(
+            libraries = libraries,
+            onLibraryClick = onLibraryClick,
+            modifier = Modifier.padding(top = Spacing.lg),
+            onManageLibraries = onManageLibraries,
+        )
     }
 }
 
@@ -198,12 +228,14 @@ internal fun LibrarySwitcherDialogCard(
  * one [LibraryRow] per library. The list scrolls inside whatever height the window leaves it, under a fixed title.
  *
  * @param onLibraryClick Called with the library whose row was tapped.
+ * @param onManageLibraries Called when the "Manage libraries" action is tapped.
  */
 @Composable
 internal fun LibrarySwitcherContent(
     libraries: List<Library>,
     onLibraryClick: (Library) -> Unit,
     modifier: Modifier = Modifier,
+    onManageLibraries: () -> Unit = {},
 ) {
     val palette = OmnibusTheme.palette
     Column(modifier.fillMaxWidth()) {
@@ -224,12 +256,49 @@ internal fun LibrarySwitcherContent(
                 start = Spacing.screen,
                 end = Spacing.screen,
                 top = Spacing.xs,
-                bottom = Spacing.xl,
+                bottom = Spacing.sm,
             ),
         ) {
             items(libraries, key = { it.id }) { library ->
                 LibraryRow(library, isCurrent = library.isActive, onClick = { onLibraryClick(library) })
             }
         }
+        HorizontalDivider(Modifier.padding(horizontal = Spacing.screen), thickness = 0.5.dp, color = palette.line)
+        SwitcherAction(
+            icon = R.drawable.ic_libraries_manage,
+            label = stringResource(R.string.libraries_manage_sheet_action),
+            testTag = LibrarySwitcherTestTags.MANAGE,
+            onClick = onManageLibraries,
+            modifier = Modifier.padding(bottom = Spacing.lg),
+        )
+    }
+}
+
+/** A full-width action row under the list: a gear icon and its label, one TalkBack button. */
+@Composable
+private fun SwitcherAction(
+    @DrawableRes icon: Int,
+    label: String,
+    testTag: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = OmnibusTheme.palette
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {}
+            .testTag(testTag)
+            .padding(horizontal = Spacing.screen, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The 40dp box lines the label up with the library names above it.
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = palette.ink2, modifier = Modifier.size(20.dp))
+        }
+        Text(label, style = uiTextStyle(16, FontWeight.Medium, palette.ink0))
     }
 }

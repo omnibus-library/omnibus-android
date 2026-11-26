@@ -36,6 +36,10 @@ import com.omnibus.omnibus.feature.bookdetail.stub.BookDetailPlaceholderScreen
 import com.omnibus.omnibus.feature.bookdetail.transition.ProvideBookCoverTransition
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailRoute
 import com.omnibus.omnibus.feature.bookdetail.ui.BookDetailScreen
+import com.omnibus.omnibus.feature.libraries.manage.LibraryDetailRoute
+import com.omnibus.omnibus.feature.libraries.manage.LibraryDetailScreen
+import com.omnibus.omnibus.feature.libraries.manage.ManageLibrariesRoute
+import com.omnibus.omnibus.feature.libraries.manage.ManageLibrariesScreen
 import com.omnibus.omnibus.feature.library.ui.LibraryScreen
 import com.omnibus.omnibus.feature.requests.BookRequestRoute
 import com.omnibus.omnibus.feature.requests.RequestsRoute
@@ -299,13 +303,36 @@ private fun SignedInShellContent(
                         }
                         entry<StatsRoot> { ShellPaddedEntry { UnderConstructionScreen(UnderConstructionPage.Stats) } }
                         entry<YouRoot> {
-                            ShellPaddedEntry { YouScreen(onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) }) }
+                            ShellPaddedEntry {
+                                YouScreen(
+                                    onOpenRequests = { navigator.navigateTo(RequestsRoute, ShellTab.You) },
+                                    onOpenManageLibraries = { navigator.navigateTo(ManageLibrariesRoute, ShellTab.You) },
+                                )
+                            }
                         }
                         entry<RequestsRoute> {
                             ShellUnderStatusBarEntry {
                                 RequestsScreen(
                                     onBack = { navigator.back(navigator.ownerOf(RequestsRoute)) },
                                     onOpenRequest = { navigator.navigateTo(BookRequestRoute(it), navigator.ownerOf(RequestsRoute)) },
+                                )
+                            }
+                        }
+                        entry<ManageLibrariesRoute> {
+                            ShellUnderStatusBarEntry {
+                                ManageLibrariesScreen(
+                                    onBack = { navigator.back(navigator.ownerOf(ManageLibrariesRoute)) },
+                                    onOpenLibrary = {
+                                        navigator.navigateTo(LibraryDetailRoute(it), navigator.ownerOf(ManageLibrariesRoute))
+                                    },
+                                )
+                            }
+                        }
+                        entry<LibraryDetailRoute> { key ->
+                            ShellUnderStatusBarEntry {
+                                LibraryDetailScreen(
+                                    libraryId = key.libraryId,
+                                    onBack = { navigator.back(navigator.ownerOf(key)) },
                                 )
                             }
                         }
