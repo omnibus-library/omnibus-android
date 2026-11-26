@@ -8,8 +8,11 @@ import com.omnibus.omnibus.data.libraries.Library
 import com.omnibus.omnibus.feature.libraries.displayName
 import com.omnibus.omnibus.feature.libraries.monogramOf
 import com.omnibus.omnibus.screenshot.Shot
+import java.util.UUID
 
-// Fixed ids and names, not random: spine heights come from the ids, so the screenshots must be stable.
+// Fixed ids and names, not random: spine heights come from the ids, so the screenshots must be stable. The ids are
+// name-based UUIDs, like real ones, so their hashes and the spine heights spread out; ids that differ in one
+// character ("library-1", "library-2") hash one apart and would draw spines of nearly one height.
 private val names = listOf(
     "Home", "Reading group", "Work book club", "Poetry", "Mysteries", "Archive", "Comics", "Kids", "Drama",
     "Letters", "Sagas", "Uncle's", "Travel", "Nonfiction", "Opera", "Zines",
@@ -18,7 +21,7 @@ private val names = listOf(
 private fun libraries(count: Int): List<Library> = List(count) { index ->
     val name = names[index % names.size].let { if (index < names.size) it else "$it ${index / names.size + 1}" }
     Library(
-        id = "library-$index",
+        id = UUID.nameUUIDFromBytes("library-$index".toByteArray()).toString(),
         address = "https://library-$index.lan",
         name = name,
         username = "hoon",
