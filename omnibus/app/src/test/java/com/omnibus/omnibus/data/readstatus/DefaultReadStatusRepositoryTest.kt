@@ -719,4 +719,52 @@ class DefaultReadStatusRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the write is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val uuid = randomString()
+                val status = randomEnum<ReadStatus>()
+                val gate = CountDownLatch(1)
+                val repository = threadedSut()
+                val participant = ReadStatusSyncParticipant(repository = repository)
+                script.answer("PUT", reply(recordOf(status)), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.setStatus(uuid, status) }
+                // The status is on the server and held on its gate.
+                nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight write before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                write.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the write fails") {
+            withScriptedServer {
+                val uuid = randomString()
+                val status = randomEnum<ReadStatus>()
+                val gate = CountDownLatch(1)
+                val repository = threadedSut()
+                val participant = ReadStatusSyncParticipant(repository = repository)
+                script.answer("PUT", reply(500), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.setStatus(uuid, status) }
+                // The status is on the server and held on its gate.
+                nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                write.await()
+            }
+        }
+    }
 })

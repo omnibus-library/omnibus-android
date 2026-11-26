@@ -9,6 +9,7 @@ import com.omnibus.omnibus.testing.reply
 import com.omnibus.omnibus.testing.testOmnibusHttpClient
 import com.omnibus.omnibus.testing.unmockAndroidLog
 import com.omnibus.omnibus.testing.withMockServer
+import com.omnibus.omnibus.testing.withScriptedServer
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -16,8 +17,10 @@ import io.kotest.matchers.types.shouldBeTypeOf
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.serialization.json.Json
@@ -374,6 +377,54 @@ class DefaultMetadataRepositoryTest : DescribeSpec({
         context("when no server is saved") {
             it("TC-18: gives NoServer") {
                 sut().getVocabulary(randomEnum()) shouldBe VocabularyResult.NoServer
+            }
+        }
+    }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the write is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val uuid = randomString()
+                val kind = randomEnum<MetadataListKind>()
+                val gate = CountDownLatch(1)
+                val repository = sut(server, Dispatchers.IO)
+                val participant = MetadataSyncParticipant(repository = repository)
+                script.answer("POST", saved(), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.replaceList(uuid, kind, randomValues()) }
+                // The save is on the server and held on its gate.
+                nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight save before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                write.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the write fails") {
+            withScriptedServer {
+                val uuid = randomString()
+                val kind = randomEnum<MetadataListKind>()
+                val gate = CountDownLatch(1)
+                val repository = sut(server, Dispatchers.IO)
+                val participant = MetadataSyncParticipant(repository = repository)
+                script.answer("POST", reply(500), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.replaceList(uuid, kind, randomValues()) }
+                // The save is on the server and held on its gate.
+                nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                write.await()
             }
         }
     }

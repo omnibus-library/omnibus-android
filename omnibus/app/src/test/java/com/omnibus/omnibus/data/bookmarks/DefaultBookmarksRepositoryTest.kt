@@ -763,4 +763,50 @@ class DefaultBookmarksRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the write is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val draft = randomBookmarkDraft()
+                val repository = threadedSut(server, scope)
+                val participant = BookmarksSyncParticipant(repository = repository)
+                val gate = CountDownLatch(1)
+                script.answer("POST", reply(200, savedRow(draft.bookUuid).json()), gate)
+
+                val add = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.addBookmark(draft) }
+                // The create is on the server and held on its gate.
+                server.nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight add before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                add.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the write fails") {
+            withScriptedServer {
+                val draft = randomBookmarkDraft()
+                val repository = threadedSut(server, scope)
+                val participant = BookmarksSyncParticipant(repository = repository)
+                val gate = CountDownLatch(1)
+                script.answer("POST", reply(400), gate)
+
+                val add = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.addBookmark(draft) }
+                // The create is on the server and held on its gate.
+                server.nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                add.await()
+            }
+        }
+    }
 })

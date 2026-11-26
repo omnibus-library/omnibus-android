@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.readstatus
 
 import android.util.Log
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.readstatus.remote.ReadStatusJson
 import com.omnibus.omnibus.data.readstatus.remote.ReadStatusRecordDto
@@ -39,6 +40,8 @@ class DefaultReadStatusRepository @Inject constructor(
     private val timeSource: TimeSource,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) : ReadStatusRepository {
+    internal val inFlightWrites = InFlightWrites()
+
 
     /** One book's state. Everything but [writeMutex] is guarded by [lock]. */
     private class Entry {
@@ -133,7 +136,7 @@ class DefaultReadStatusRepository @Inject constructor(
                 if (seq == entry.writeSeq) entry.state.value = entry.confirmed
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is ReadStatusWriteResult.Saved } }.await()
     }
 
     /** The record shown before the server answers. A move into Finished takes the time now, unless it was already Finished. */

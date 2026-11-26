@@ -17,9 +17,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.of
+import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -267,6 +270,54 @@ class DefaultProgressRepositoryTest : DescribeSpec({
         context("when no server is saved") {
             it("TC-53: is Error") {
                 sut().getServerPosition(randomString()) shouldBe ServerPositionResult.Error
+            }
+        }
+    }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the push is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val gate = CountDownLatch(1)
+                val repository = sut(server, ioDispatcher = Dispatchers.IO)
+                val participant = ReadingPositionSyncParticipant(repository = repository)
+                script.answer("POST", reply(200), gate)
+
+                val save = scope.async(start = CoroutineStart.UNDISPATCHED) {
+                    repository.savePosition(randomReadingPosition(), push = true)
+                }
+                // The push is on the server and held on its gate.
+                nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight push before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                save.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the push fails") {
+            withScriptedServer {
+                val gate = CountDownLatch(1)
+                val repository = sut(server, ioDispatcher = Dispatchers.IO)
+                val participant = ReadingPositionSyncParticipant(repository = repository)
+                script.answer("POST", reply(500), gate)
+
+                val save = scope.async(start = CoroutineStart.UNDISPATCHED) {
+                    repository.savePosition(randomReadingPosition(), push = true)
+                }
+                // The push is on the server and held on its gate.
+                nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                save.await()
             }
         }
     }

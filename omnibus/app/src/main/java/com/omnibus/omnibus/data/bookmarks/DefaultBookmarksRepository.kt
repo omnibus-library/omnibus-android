@@ -4,6 +4,7 @@ import android.util.Log
 import com.omnibus.omnibus.data.bookmarks.remote.BookmarkCreateRequestDto
 import com.omnibus.omnibus.data.bookmarks.remote.BookmarkDto
 import com.omnibus.omnibus.data.bookmarks.remote.BookmarksJson
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.ClientIdSource
@@ -40,6 +41,8 @@ class DefaultBookmarksRepository @Inject constructor(
     private val timeSource: TimeSource,
     private val clientIdSource: ClientIdSource,
 ) : BookmarksRepository {
+    internal val inFlightWrites = InFlightWrites()
+
 
     /** A write that resolved while a fetch was in flight, so the fetch's answer can be corrected for it. */
     private sealed interface Resolved {
@@ -179,7 +182,7 @@ class DefaultBookmarksRepository @Inject constructor(
                 publish(entry)
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is BookmarkWriteResult.Saved } }.await()
     }
 
     override suspend fun removeBookmark(bookmark: Bookmark): BookmarkWriteResult {
@@ -207,7 +210,7 @@ class DefaultBookmarksRepository @Inject constructor(
                 publish(entry)
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is BookmarkWriteResult.Removed } }.await()
     }
 
     /**

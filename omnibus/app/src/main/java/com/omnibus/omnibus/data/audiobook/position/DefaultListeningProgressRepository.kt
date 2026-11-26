@@ -119,9 +119,11 @@ class DefaultListeningProgressRepository @Inject constructor(
     /**
      * Sends every pending write, then the queued sessions in batches of at most [SESSION_BATCH_CAP]. Does nothing
      * while offline. Each outcome is applied as soon as it is known, so a later failure keeps earlier successes.
+     * Returns true only when the device was online and every row sent was accepted (#369: the library switch's sync).
      */
-    internal suspend fun flush(): Unit = flushMutex.withLock {
-        if (!connectivity.isOnline.value) return@withLock
+    internal suspend fun flush(): Boolean = flushMutex.withLock {
+        if (!connectivity.isOnline.value) return@withLock false
+        var allSent = true
 
         for (position in store.allPending()) {
             when (postPosition(position)) {
@@ -129,8 +131,9 @@ class DefaultListeningProgressRepository @Inject constructor(
                 Outcome.Drop -> {
                     Log.w(TAG, "Dropping a rejected audio position for ${position.bookUuid}")
                     store.clearPendingIf(position)
+                    allSent = false
                 }
-                Outcome.Keep -> Unit
+                Outcome.Keep -> allSent = false
             }
         }
 
@@ -140,10 +143,15 @@ class DefaultListeningProgressRepository @Inject constructor(
                 Outcome.Drop -> {
                     Log.w(TAG, "Dropping ${batch.size} rejected listening sessions")
                     store.removeSessions(batch.mapTo(mutableSetOf()) { it.clientId })
+                    allSent = false
                 }
-                Outcome.Keep -> break
+                Outcome.Keep -> {
+                    allSent = false
+                    break
+                }
             }
         }
+        allSent
     }
 
     private suspend fun postPosition(position: AudioPosition): Outcome = withContext(ioDispatcher) {

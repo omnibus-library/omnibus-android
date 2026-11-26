@@ -2,14 +2,17 @@ package com.omnibus.omnibus.data.audiobook.di
 
 import com.omnibus.omnibus.data.audiobook.playback.PlaybackRateStore
 import com.omnibus.omnibus.data.audiobook.rate.DefaultPlaybackRateStore
+import com.omnibus.omnibus.data.audiobook.rate.PlaybackRateSyncParticipant
 import com.omnibus.omnibus.data.audiobook.rate.local.DefaultPlaybackRateCache
 import com.omnibus.omnibus.data.audiobook.rate.local.PlaybackRateCache
 import com.omnibus.omnibus.data.audiobook.rate.remote.DefaultPlaybackRateApi
 import com.omnibus.omnibus.data.audiobook.rate.remote.PlaybackRateApi
+import com.omnibus.omnibus.data.libraries.LibrarySyncParticipant
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
 import javax.inject.Singleton
 
 /**
@@ -30,4 +33,8 @@ abstract class PlaybackRateModule {
 
     @Binds
     abstract fun bindPlaybackRateCache(cache: DefaultPlaybackRateCache): PlaybackRateCache
+
+    @Binds
+    @IntoSet
+    abstract fun bindPlaybackRateSyncParticipant(participant: PlaybackRateSyncParticipant): LibrarySyncParticipant
 }

@@ -942,4 +942,50 @@ class DefaultHighlightsRepositoryTest : DescribeSpec({
             }
         }
     }
+
+    describe("waiting for its writes to send") {
+
+        it("#369 TC-8: reports pending while the write is gated, then sends true once it succeeds") {
+            withScriptedServer {
+                val draft = randomHighlightDraft()
+                val repository = threadedSut(server, scope)
+                val participant = HighlightsSyncParticipant(repository = repository)
+                val gate = CountDownLatch(1)
+                script.answer("POST", reply(200, createdRow(2, draft)), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.addHighlight(draft) }
+                // The create is on the server and held on its gate.
+                server.nextRequest()
+
+                participant.hasPending() shouldBe true
+
+                // Snapshots the in-flight write before the gate opens, so the answer cannot race past it.
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe true
+                write.await()
+            }
+        }
+
+        it("#369 TC-8: is false when the write fails") {
+            withScriptedServer {
+                val draft = randomHighlightDraft()
+                val repository = threadedSut(server, scope)
+                val participant = HighlightsSyncParticipant(repository = repository)
+                val gate = CountDownLatch(1)
+                script.answer("POST", reply(400), gate)
+
+                val write = scope.async(start = CoroutineStart.UNDISPATCHED) { repository.addHighlight(draft) }
+                // The create is on the server and held on its gate.
+                server.nextRequest()
+
+                val sent = scope.async(start = CoroutineStart.UNDISPATCHED) { participant.sendPending() }
+                gate.countDown()
+
+                sent.await() shouldBe false
+                write.await()
+            }
+        }
+    }
 })

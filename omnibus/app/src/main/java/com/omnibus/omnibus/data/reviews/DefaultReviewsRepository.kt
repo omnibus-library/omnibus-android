@@ -1,6 +1,7 @@
 package com.omnibus.omnibus.data.reviews
 
 import android.util.Log
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.network.ConnectivityMonitor
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.data.reviews.remote.BookReviewsDto
@@ -41,6 +42,8 @@ class DefaultReviewsRepository @Inject constructor(
     private val connectivityMonitor: ConnectivityMonitor,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
 ) : ReviewsRepository {
+    internal val inFlightWrites = InFlightWrites()
+
 
     /** One book's state. Everything but [writeMutex] is guarded by [lock]. */
     private class Entry {
@@ -128,7 +131,7 @@ class DefaultReviewsRepository @Inject constructor(
             }
             if (result is ReviewWriteResult.Saved) refetchAfterWrite(uuid, entry, seq)
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is ReviewWriteResult.Saved } }.await()
     }
 
     /**

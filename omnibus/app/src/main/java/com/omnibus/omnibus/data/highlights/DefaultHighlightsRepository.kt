@@ -6,6 +6,7 @@ import com.omnibus.omnibus.data.highlights.remote.HighlightDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightNoteRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightRecolorRequestDto
 import com.omnibus.omnibus.data.highlights.remote.HighlightsJson
+import com.omnibus.omnibus.data.libraries.InFlightWrites
 import com.omnibus.omnibus.data.network.OmnibusHttpClient
 import com.omnibus.omnibus.di.ApplicationScope
 import com.omnibus.omnibus.di.ClientIdSource
@@ -42,6 +43,8 @@ class DefaultHighlightsRepository @Inject constructor(
     private val timeSource: TimeSource,
     private val clientIdSource: ClientIdSource,
 ) : HighlightsRepository {
+    internal val inFlightWrites = InFlightWrites()
+
 
     /** One book's state. Everything but [writeMutex] is guarded by [lock]. */
     private class Entry {
@@ -98,7 +101,7 @@ class DefaultHighlightsRepository @Inject constructor(
                 }
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is HighlightWriteResult.Saved } }.await()
     }
 
     override suspend fun deleteHighlight(bookUuid: String, id: Long): HighlightDeleteResult {
@@ -117,7 +120,7 @@ class DefaultHighlightsRepository @Inject constructor(
                 }
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is HighlightDeleteResult.Deleted } }.await()
     }
 
     override suspend fun recolorHighlight(bookUuid: String, id: Long, color: HighlightColor): HighlightRecolorResult {
@@ -137,7 +140,7 @@ class DefaultHighlightsRepository @Inject constructor(
                 }
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is HighlightRecolorResult.Recolored } }.await()
     }
 
     override suspend fun updateHighlightNote(bookUuid: String, id: Long, note: String?): HighlightNoteResult {
@@ -157,7 +160,7 @@ class DefaultHighlightsRepository @Inject constructor(
                 }
             }
             result
-        }.await()
+        }.also { inFlightWrites.track(it) { result -> result is HighlightNoteResult.Saved } }.await()
     }
 
     /** One POST of a create. A 2xx answer is the saved row; a 400, 401, 404 or other code is a typed failure. */
